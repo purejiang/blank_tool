@@ -1,0 +1,73 @@
+{
+  "name": "blank_tool",
+  "version": "1.0.0",
+  "main": "src/main/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:vite\" \"wait-on http://localhost:3000 && npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "electron . --dev",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "dist": "npm run build"
+  },
+  "keywords": [
+    "electron",
+    "desktop",
+    "app",
+    "python"
+  ],
+  "author": "cyanrain",
+  "license": "ISC",
+  "description": "一个基于 Electron+Vue3 的桌面应用程序，集成 Android 常用开发工具",
+  "build": {
+    "appId": "com.cyanrain.blank-tool",
+    "productName": "Blank Tool",
+    "directories": {
+      "output": "build"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend"
+      },
+      {
+        "from": "tools",
+        "to": "tools"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^38.3.0",
+    "electron-builder": "^26.0.12",
+    "express": "^5.1.0",
+    "wait-on": "^9.0.1"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "electron-store": "^11.0.2",
+    "pinia": "^3.0.3",
+    "vite": "^6.4.1",
+    "vue": "^3.2.25",
+    "vue-router": "^4.6.3"
+  }
+}

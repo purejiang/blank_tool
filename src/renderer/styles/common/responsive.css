@@ -1,0 +1,152 @@
+/* 通用响应式工具类 */
+
+/* 双列布局响应式 */
+.responsive-two-column {
+    display: flex;
+    gap: var(--spacing-lg);
+}
+
+.responsive-two-column .left-panel,
+.responsive-two-column .right-panel {
+    flex: 1;
+    min-width: 400px;
+}
+
+/* 1000px以下变为单列 */
+@media (max-width: 1000px) {
+    .responsive-two-column {
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+    
+    .responsive-two-column .left-panel,
+    .responsive-two-column .right-panel {
+        min-width: unset;
+        width: 100%;
+    }
+    
+    /* 确保单列布局下组件宽度正常 */
+    .responsive-two-column .file-drop-zone,
+    .responsive-two-column .decompile-options,
+    .responsive-two-column .btn-group,
+    .responsive-two-column .analysis-result {
+        width: 100%;
+        box-sizing: border-box;
+    }
+}
+
+/* 移动端优化 (768px以下) */
+@media (max-width: 768px) {
+    /* 通用section样式 */
+    .responsive-section {
+        padding: var(--spacing-md) !important;
+        margin-bottom: var(--spacing-md) !important;
+    }
+    
+    .responsive-section h2 {
+        font-size: var(--font-size-base) !important;
+        margin-bottom: var(--spacing-md) !important;
+    }
+    
+    /* 按钮组响应式 */
+    .responsive-btn-group {
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+        justify-content: center;
+    }
+    
+    .responsive-btn-group .btn {
+        flex: 1;
+        min-width: calc(50% - var(--spacing-xs));
+    }
+    
+    /* 信息网格响应式 */
+    .responsive-info-grid {
+        grid-template-columns: 1fr !important;
+    }
+    
+    /* 紧凑信息区域 */
+    .responsive-compact-info {
+        max-height: 400px !important;
+    }
+}
+
+/* 通用页面内容容器 */
+.page-content-responsive {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+}
+
+/* 两列布局的页面内容 */
+.page-content-two-column {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+}
+
+@media (min-width: 1000px) {
+    .page-content-two-column {
+        max-width: 1200px;
+        padding-top: var(--spacing-xl);
+    }
+}
+
+@media (max-width: 768px) {
+    .page-content-responsive,
+    .page-content-two-column {
+        padding: var(--spacing-md);
+    }
+}
+
+/* 工具类 */
+.flex-column-mobile {
+    display: flex;
+}
+
+@media (max-width: 768px) {
+    .flex-column-mobile {
+        flex-direction: column;
+    }
+}
+
+.hide-mobile {
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .hide-mobile {
+        display: none;
+    }
+}
+
+.show-mobile {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .show-mobile {
+        display: block;
+    }
+}
+
+/* 间距工具类 */
+.gap-lg-md-mobile {
+    gap: var(--spacing-lg);
+}
+
+@media (max-width: 768px) {
+    .gap-lg-md-mobile {
+        gap: var(--spacing-md);
+    }
+}
+
+.gap-md-sm-mobile {
+    gap: var(--spacing-md);
+}
+
+@media (max-width: 768px) {
+    .gap-md-sm-mobile {
+        gap: var(--spacing-sm);
+    }
+}

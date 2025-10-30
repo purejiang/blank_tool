@@ -1,0 +1,247 @@
+/**
+ * 工具服务 - 管理工具状态和操作
+ */
+import { useAppConfigStore } from '../stores'
+
+class ToolService {
+    constructor() {
+        this.tools = new Map();
+        this.appConfigStore = null;
+        this.isPolling = false;
+        this.pollingInterval = null;
+        this.pollingIntervalMs = 30000; // 30秒轮询间隔
+        this.maxRetries = 3;
+        this.retryDelay = 2000; // 2秒重试延迟
+        this.listeners = new Set();
+        // 不在构造函数中调用 initialize()，由 ServiceManager 调用
+    }
+
+    /**
+     * 初始化工具服务
+     */
+    async initialize() {
+        try {
+            console.log('初始化工具服务...');
+            this.appConfigStore = useAppConfigStore();
+            console.log('工具服务初始化成功');
+        } catch (error) {
+            console.error('工具服务初始化失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 加载工具状态
+     */
+    async checkTools() {
+        try {
+            console.log('正在检查工具状态...');
+
+            // 正确访问配置：先获取 tools 对象，然后访问 python 属性
+            const toolsConfig = this.appConfigStore.get('tools') || {};
+
+            console.log('toolsConfig:', toolsConfig);
+            const python_path = toolsConfig.python || '';
+            const response = await window.electronAPI.checkTool(python_path, 'adb');
+
+            if (!response || !response.success) {
+                throw new Error(response?.message || '获取工具状态失败');
+            }
+
+            const toolsData = response.data || {};
+
+            // 更新工具状态
+            this.tools.clear();
+            for (const [toolName, toolInfo] of Object.entries(toolsData)) {
+                this.tools.set(toolName, {
+                    name: toolName,
+                    status: toolInfo.status || 'unknown',
+                    version: toolInfo.version || 'unknown',
+                    path: toolInfo.path || '',
+                    lastChecked: new Date(),
+                    available: toolInfo.status === 'available',
+                    ...toolInfo
+                });
+            }
+
+            console.log(`成功加载 ${this.tools.size} 个工具的状态`);
+
+            // 通知监听器
+            this.notifyListeners('tools_updated', Array.from(this.tools.values()));
+
+            return Array.from(this.tools.values());
+        } catch (error) {
+            console.error('加载工具状态失败:', error);
+            // 通知监听器错误
+            this.notifyListeners('tools_error', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 获取特定工具的状态
+     * @param {string} toolName - 工具名称
+     */
+    getToolStatus(toolName) {
+        return this.tools.get(toolName) || null;
+    }
+
+    /**
+     * 获取所有工具状态
+     */
+    getAllToolsStatus() {
+        return Array.from(this.tools.values());
+    }
+
+    /**
+     * 检查工具是否可用
+     * @param {string} toolName - 工具名称
+     */
+    isToolAvailable(toolName) {
+        const tool = this.tools.get(toolName);
+        return tool ? tool.available : false;
+    }
+
+    /**
+     * 获取可用工具列表
+     */
+    getAvailableTools() {
+        return Array.from(this.tools.values()).filter(tool => tool.available);
+    }
+
+    /**
+     * 获取不可用工具列表
+     */
+    getUnavailableTools() {
+        return Array.from(this.tools.values()).filter(tool => !tool.available);
+    }
+
+    /**
+     * 开始轮询工具状态
+     */
+    startPolling() {
+        if (this.isPolling) {
+            console.log('工具状态轮询已在运行');
+            return;
+        }
+
+        console.log(`开始工具状态轮询，间隔: ${this.pollingIntervalMs / 1000}秒`);
+        this.isPolling = true;
+
+        this.pollingInterval = setInterval(async () => {
+            try {
+                await this.checkTools();
+            } catch (error) {
+                console.error('轮询工具状态时发生错误:', error);
+            }
+        }, this.pollingIntervalMs);
+    }
+
+    /**
+     * 停止轮询工具状态
+     */
+    stopPolling() {
+        if (!this.isPolling) {
+            return;
+        }
+
+        console.log('停止工具状态轮询');
+        this.isPolling = false;
+
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+    }
+
+    /**
+     * 设置轮询间隔
+     * @param {number} intervalMs - 轮询间隔（毫秒）
+     */
+    setPollingInterval(intervalMs) {
+        this.pollingIntervalMs = intervalMs;
+
+        if (this.isPolling) {
+            this.stopPolling();
+            this.startPolling();
+        }
+    }
+
+    /**
+     * 手动刷新工具状态
+     */
+    async refreshToolsStatus() {
+        try {
+            console.log('手动刷新工具状态...');
+            await this.checkTools();
+            return true;
+        } catch (error) {
+            console.error('刷新工具状态失败:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 添加事件监听器
+     * @param {Function} listener - 监听器函数
+     */
+    addListener(listener) {
+        this.listeners.add(listener);
+    }
+
+    /**
+     * 移除事件监听器
+     * @param {Function} listener - 监听器函数
+     */
+    removeListener(listener) {
+        this.listeners.delete(listener);
+    }
+
+    /**
+     * 通知所有监听器
+     * @param {string} event - 事件类型
+     * @param {any} data - 事件数据
+     */
+    notifyListeners(event, data) {
+        this.listeners.forEach(listener => {
+            try {
+                listener(event, data);
+            } catch (error) {
+                console.error('监听器执行错误:', error);
+            }
+        });
+    }
+
+    /**
+     * 延迟函数
+     * @param {number} ms - 延迟毫秒数
+     */
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * 销毁服务
+     */
+    destroy() {
+        this.stopPolling();
+        this.tools.clear();
+        this.listeners.clear();
+        console.log('工具服务已销毁');
+    }
+
+    /**
+     * 获取服务状态
+     */
+    getStatus() {
+        return {
+            initialized: this.tools.size > 0,
+            polling: this.isPolling,
+            toolsCount: this.tools.size,
+            availableToolsCount: this.getAvailableTools().length,
+            lastUpdate: this.tools.size > 0 ? Math.max(...Array.from(this.tools.values()).map(t => t.lastChecked?.getTime() || 0)) : null
+        };
+    }
+}
+
+export default ToolService;
