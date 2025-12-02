@@ -2,7 +2,8 @@
  * 错误服务 - 统一错误处理、日志记录和恢复机制
  */
 class ErrorService {
-    constructor() {
+    constructor(notificationService) {
+        this.notificationService = notificationService || null;
         this.errorHandlers = new Map();
         this.errorLog = [];
         this.maxLogSize = 1000;
@@ -32,6 +33,10 @@ class ErrorService {
         this.registerDefaultRecoveryStrategies();
         
         console.log('错误服务初始化成功');
+    }
+
+    async reportError(error, context = {}) {
+        return await this.handleError(error, context)
     }
 
     /**
@@ -175,6 +180,12 @@ class ErrorService {
 
         // 通知监听器
         this.notifyListeners('error_occurred', errorInfo);
+
+        if (this.notificationService && typeof this.notificationService.error === 'function') {
+            const title = '发生错误';
+            const message = errorInfo.message;
+            this.notificationService.error(title, message);
+        }
 
         // 尝试自动恢复
         const recoveryResult = await this.attemptRecovery(errorInfo);

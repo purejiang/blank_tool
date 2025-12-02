@@ -1,0 +1,4 @@
+# 测试相关
+/tests/
+/cache/
+**/__pycache__

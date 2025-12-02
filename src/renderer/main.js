@@ -4,13 +4,10 @@ import App from './App.vue';
 import router from './router';
 
 // 导入样式文件
-import './styles/main.css';
-import './styles/common/components.css';
-import './styles/themes.css';
-import './styles/common/responsive.css';
-
-// 导入mock ElectronAPI（用于浏览器环境）
-import './js/mock-electron-api.js';
+import './assets/styles/main.css';
+import './assets/styles/common/components.css';
+import './assets/styles/themes.css';
+import './assets/styles/common/responsive.css';
 
 // 创建Vue应用
 const app = createApp(App);

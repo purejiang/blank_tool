@@ -43,7 +43,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, inject } from 'vue'
 
 // 响应式数据
 const notifications = ref([])
@@ -113,26 +113,23 @@ const clearAllNotifications = () => {
 }
 
 // 生命周期钩子
+const notificationService = inject('notificationService', null)
 onMounted(() => {
-  // 监听通知服务的事件
-  // const notificationService = serviceManager.getService('notification')
-  // if (notificationService) {
-  //   notificationService.addListener('show', showNotification)
-  //   notificationService.addListener('hide', hideNotification)
-  //   notificationService.addListener('update', updateNotification)
-  //   notificationService.addListener('clear', clearAllNotifications)
-  // }
+  if (notificationService) {
+    notificationService.addListener('show', showNotification)
+    notificationService.addListener('hide', hideNotification)
+    notificationService.addListener('update', updateNotification)
+    notificationService.addListener('clear', clearAllNotifications)
+  }
 })
 
 onUnmounted(() => {
-  // 清理事件监听器
-  // const notificationService = serviceManager.getService('notification')
-  // if (notificationService) {
-  //   notificationService.removeListener('show', showNotification)
-  //   notificationService.removeListener('hide', hideNotification)
-  //   notificationService.removeListener('update', updateNotification)
-  //   notificationService.removeListener('clear', clearAllNotifications)
-  // }
+  if (notificationService) {
+    notificationService.removeListener('show', showNotification)
+    notificationService.removeListener('hide', hideNotification)
+    notificationService.removeListener('update', updateNotification)
+    notificationService.removeListener('clear', clearAllNotifications)
+  }
 })
 
 // 暴露方法给外部使用

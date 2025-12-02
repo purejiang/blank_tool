@@ -1,405 +1,269 @@
-/**
- * 设备管理服务
- * 提供设备连接、监控和管理功能
- */
-import { useDeviceStore } from '../stores'
+import unifiedAPI from '../api/unifiedApi.js'
 
 class DeviceService {
-  constructor() {
-    this.name = 'DeviceService'
-    this.deviceStore = null
-    this.listeners = new Set()
-    this.isMonitoring = false
-    this.monitoringInterval = null
-    this.backendAPI = null
-    
-    console.log('DeviceService 已初始化')
+  constructor(storeService) {
+    this.storeService = storeService
+    this.monitoringTimer = null
   }
 
-  /**
-   * 初始化服务
-   */
   async initialize() {
     try {
-      // 初始化设备 store
-      this.deviceStore = useDeviceStore()
-      
-      // 设置后端 API 引用
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        this.backendAPI = window.electronAPI
+      const deviceStore = await this.storeService.ensureDeviceStore()
+      const api = unifiedAPI.getAPI()
+      if (api && typeof api.onLogcatOutput === 'function') {
+        this.attachLogcatOutputListener(deviceStore, api)
       }
-      
-      console.log('DeviceService 初始化完成')
-      return { success: true }
-    } catch (error) {
-      console.error('DeviceService 初始化失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 初始化设备连接
-   */
-  async initializeDevices(autoDetect = true, startMonitoring = false) {
-    try {
-      console.log('初始化设备连接...')
-      
-      if (autoDetect) {
-        await this.getAdbDevices()
+      if (api && typeof api.onLogcatStarted === 'function') {
+        api.onLogcatStarted((event, payload) => {
+          const p = payload || {}
+          if (p.process_id) deviceStore.logcatProcessId = String(p.process_id)
+          deviceStore.isLogcatRunning = true
+        })
       }
-      
-      if (startMonitoring) {
-        await this.startDeviceMonitoring()
+      if (api && typeof api.onLogcatFinished === 'function') {
+        api.onLogcatFinished(() => {
+          deviceStore.isLogcatRunning = false
+        })
       }
-      
-      return { success: true, message: '设备初始化完成' }
-    } catch (error) {
-      console.error('设备初始化失败:', error)
-      return { success: false, error: error.message }
-    }
-  }
-
-  /**
-   * 获取 ADB 设备列表
-   */
-  async getAdbDevices() {
-    try {
-      const result = await this.callBackendAPI('device.list')
-      
-      if (result.success) {
-        this.deviceStore.updateDevices(result.devices || [])
-        this.notifyListeners('devices_updated', result.devices)
-        return result
-      } else {
-        throw new Error(result.error || '获取设备列表失败')
+      if (api && typeof api.onLogcatError === 'function') {
+        api.onLogcatError(() => {
+          deviceStore.isLogcatRunning = false
+        })
       }
-    } catch (error) {
-      console.error('获取设备列表失败:', error)
-      this.deviceStore.updateDevices([])
-      throw error
-    }
+    } catch {}
   }
 
-  /**
-   * 选择设备
-   */
-  async selectDevice(deviceId) {
+  attachLogcatOutputListener(deviceStore, api) {
     try {
-      const devices = this.deviceStore.devices.value
-      const device = devices.find(d => d.id === deviceId)
-      
-      if (!device) {
-        throw new Error(`设备不存在: ${deviceId}`)
+      if (api && typeof api.removeLogcatListener === 'function') {
+        api.removeLogcatListener()
       }
-      
-      this.deviceStore.selectDevice(device)
-      this.notifyListeners('device_selected', device)
-      
-      return { success: true, device }
-    } catch (error) {
-      console.error('选择设备失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 获取设备详细信息
-   */
-  async getDeviceInfo(deviceId) {
-    try {
-      const result = await this.callBackendAPI('device.info', { device_id: deviceId })
-      
-      if (result.success) {
-        this.deviceStore.updateDeviceInfo(result.device)
-        this.notifyListeners('device_info_updated', result.device)
-        return result
-      } else {
-        throw new Error(result.error || '获取设备信息失败')
-      }
-    } catch (error) {
-      console.error('获取设备信息失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 开始设备监控
-   */
-  async startDeviceMonitoring() {
-    if (this.isMonitoring) {
-      return { success: true, message: '设备监控已在运行' }
-    }
-    
-    try {
-      this.isMonitoring = true
-      this.deviceStore.setMonitoring(true)
-      
-      // 启动定期检查设备状态
-      this.monitoringInterval = setInterval(async () => {
-        try {
-          await this.getAdbDevices()
-        } catch (error) {
-          console.error('设备监控检查失败:', error)
-        }
-      }, 5000) // 每5秒检查一次
-      
-      this.notifyListeners('monitoring_started', { monitoring: true })
-      console.log('设备监控已启动')
-      
-      return { success: true, message: '设备监控已启动' }
-    } catch (error) {
-      console.error('启动设备监控失败:', error)
-      this.isMonitoring = false
-      this.deviceStore.setMonitoring(false)
-      throw error
-    }
-  }
-
-  /**
-   * 停止设备监控
-   */
-  async stopDeviceMonitoring() {
-    try {
-      this.isMonitoring = false
-      this.deviceStore.setMonitoring(false)
-      
-      if (this.monitoringInterval) {
-        clearInterval(this.monitoringInterval)
-        this.monitoringInterval = null
-      }
-      
-      this.notifyListeners('monitoring_stopped', { monitoring: false })
-      console.log('设备监控已停止')
-      
-      return { success: true, message: '设备监控已停止' }
-    } catch (error) {
-      console.error('停止设备监控失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 安装应用
-   */
-  async installApp(filePath, deviceId = null) {
-    try {
-      const params = { apk_path: filePath }
-      if (deviceId) {
-        params.device_id = deviceId
-      }
-      
-      const result = await this.callBackendAPI('device.install.apk', params)
-      
-      if (result.success) {
-        this.notifyListeners('app_installed', { filePath, deviceId })
-      }
-      
-      return result
-    } catch (error) {
-      console.error('安装应用失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 卸载应用
-   */
-  async uninstallApp(packageName, deviceId) {
-    try {
-      const result = await this.callBackendAPI('device.uninstall', {
-        package_name: packageName,
-        device_id: deviceId
-      })
-      
-      if (result.success) {
-        this.notifyListeners('app_uninstalled', { packageName, deviceId })
-      }
-      
-      return result
-    } catch (error) {
-      console.error('卸载应用失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 获取已安装应用列表
-   */
-  async getInstalledApps(deviceId, appType = 'all') {
-    try {
-      const result = await this.callBackendAPI('device.packages', {
-        device_id: deviceId,
-        app_type: appType
-      })
-      
-      return result
-    } catch (error) {
-      console.error('获取应用列表失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 导出 APK
-   */
-  async exportApk(packageName, deviceId, outputDir) {
-    try {
-      const result = await this.callBackendAPI('device.export', {
-        package_name: packageName,
-        device_id: deviceId,
-        output_dir: outputDir
-      })
-      
-      return result
-    } catch (error) {
-      console.error('导出APK失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 启动 Logcat
-   */
-  async startLogcat(options = {}) {
-    try {
-      const result = await this.callBackendAPI('logcat.start', options)
-      return result
-    } catch (error) {
-      console.error('启动Logcat失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 停止 Logcat
-   */
-  async stopLogcat() {
-    try {
-      const result = await this.callBackendAPI('logcat.stop')
-      return result
-    } catch (error) {
-      console.error('停止Logcat失败:', error)
-      throw error
-    }
-  }
-
-  /**
-   * 调用后端 API
-   */
-  async callBackendAPI(action, params = {}) {
-    try {
-      if (this.backendAPI && this.backendAPI.callPythonAPI) {
-        return await this.backendAPI.callPythonAPI(action, params)
-      } else {
-        // 在浏览器环境中返回模拟结果
-        console.log(`Mock API 调用: ${action}`, params)
-        return this.getMockResponse(action, params)
-      }
-    } catch (error) {
-      console.error(`API 调用失败 [${action}]:`, error)
-      throw error
-    }
-  }
-
-  /**
-   * 获取模拟响应（用于浏览器环境）
-   */
-  getMockResponse(action, params) {
-    switch (action) {
-      case 'device.list':
-        return {
-          success: true,
-          devices: [
-            {
-              id: 'mock_device_001',
-              status: 'device',
-              model: 'Mock Phone',
-              brand: 'MockBrand',
-              android_version: '12.0',
-              api_level: '31'
-            }
-          ],
-          count: 1
-        }
-      
-      case 'device.info':
-        return {
-          success: true,
-          device: {
-            id: params.device_id,
-            model: 'Mock Phone',
-            brand: 'MockBrand',
-            android_version: '12.0',
-            api_level: '31',
-            manufacturer: 'Mock Inc.',
-            build_id: 'MOCK123456'
+      if (api && typeof api.onLogcatOutput === 'function') {
+        api.onLogcatOutput((event, payload) => {
+          const p = payload || {}
+          if (p.process_id && !deviceStore.logcatProcessId) {
+            deviceStore.logcatProcessId = String(p.process_id)
           }
+          const line = p.line || ''
+          if (line) {
+            deviceStore.logcatOutput.push(line)
+          }
+        })
+      }
+    } catch {}
+  }
+
+  async refreshDevices() {
+    const store = await this.storeService.ensureDeviceStore()
+    const resp = await unifiedAPI.call('adb.devices')
+    if (resp && resp.type === 'success') {
+      const list = Array.isArray(resp.payload) ? resp.payload : []
+      store.updateDevices(list)
+      return { success: true, devices: list }
+    }
+    store.updateDevices([])
+    return { success: false }
+  }
+
+  async getDeviceInfo(deviceId) {
+    if (!deviceId) return { success: false }
+    const store = await this.storeService.ensureDeviceStore()
+    const resp = await unifiedAPI.call('device.info', { device_id: deviceId })
+    if (resp && resp.type === 'success') {
+      store.updateDeviceInfo(resp.payload)
+      return { success: true, device: resp.payload }
+    }
+    return { success: false }
+  }
+
+  async startMonitoring(intervalMs = 5000) {
+    if (this.monitoringTimer) return { success: true }
+    const store = await this.storeService.ensureDeviceStore()
+    store.isMonitoring = true
+    this.monitoringTimer = setInterval(async () => {
+      try {
+        await this.refreshDevices()
+        const dev = store.selectedDevice
+        if (dev && dev.id) {
+          await this.getDeviceInfo(dev.id)
         }
-      
-      default:
-        return {
-          success: true,
-          message: `模拟环境：${action} 操作完成`
-        }
+      } catch {}
+    }, intervalMs)
+    return { success: true }
+  }
+
+  async stopMonitoring() {
+    const store = await this.storeService.ensureDeviceStore()
+    store.isMonitoring = false
+    if (this.monitoringTimer) {
+      clearInterval(this.monitoringTimer)
+      this.monitoringTimer = null
+    }
+    return { success: true }
+  }
+
+  async toggleMonitoring() {
+    const store = await this.storeService.ensureDeviceStore()
+    if (store.isMonitoring) return await this.stopMonitoring()
+    return await this.startMonitoring()
+  }
+
+  async rebootDevice(mode = 'normal') {
+    const store = await this.storeService.ensureDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id) return { success: false, error: '未选择设备' }
+    return await unifiedAPI.call('device.reboot', { device_id: dev.id, mode })
+  }
+
+  async executeShell(command) {
+    const store = await this.storeService.ensureDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id || !command) return
+    const resp = await unifiedAPI.call('device.shell', { device_id: dev.id, command })
+    if (resp && resp.type === 'success') {
+      store.shellOutput = (resp.payload && resp.payload.output) || ''
+    } else {
+      store.shellOutput = (resp && resp.payload && resp.payload.message) || '执行失败'
     }
   }
 
-  /**
-   * 添加事件监听器
-   */
-  addListener(callback) {
-    this.listeners.add(callback)
+  async toggleLogcat() {
+    const store = await this.storeService.ensureDeviceStore()
+    if (store.isLogcatRunning) return await this.stopLogcat()
+    return await this.startLogcat()
   }
 
-  /**
-   * 移除事件监听器
-   */
-  removeListener(callback) {
-    this.listeners.delete(callback)
+  async startLogcat() {
+    const store = await this.storeService.ensureDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id) return false
+    const api = unifiedAPI.getAPI()
+    // 启动前清理旧输出，避免重复显示旧缓冲日志
+    store.logcatOutput = []
+    if (api && typeof api.onLogcatOutput === 'function') {
+      this.attachLogcatOutputListener(store, api)
+    }
+    // 统一走后端流式接口，并请求 fresh 启动（后端将清空 logcat 缓冲）
+    try {
+      unifiedAPI.call('adb.logcat', { device_id: dev.id })
+    } catch {}
+    // 状态由 onLogcatStarted 事件驱动；为避免等待阻塞，直接标记为运行中
+    store.isLogcatRunning = true
+    return true
   }
 
-  /**
-   * 设备变化监听器（兼容性方法）
-   */
-  onDeviceChange(callback) {
-    this.addListener((event, data) => {
-      if (event === 'devices_updated' || event === 'device_selected') {
-        callback({ event, data })
+  async stopLogcat() {
+    const store = await this.storeService.ensureDeviceStore()
+    const api = unifiedAPI.getAPI()
+    if (api && typeof api.stopLogcat === 'function' && store.logcatProcessId) {
+      await api.stopLogcat(store.logcatProcessId)
+    } else {
+      await unifiedAPI.call('device.logcat_stop', { process_id: store.logcatProcessId })
+    }
+    store.isLogcatRunning = false
+    store.logcatProcessId = ''
+    return true
+  }
+
+  clearLogcat() {
+    return this.storeService.ensureDeviceStore().then(store => { store.logcatOutput = [] })
+  }
+
+  async refreshAppList() {
+    const store = await this.storeService.ensureDeviceStore()
+    store.apps = []
+    const dev = store.selectedDevice
+    if (!dev || !dev.id) return
+    const resp = await unifiedAPI.call('device.list_apps', { device_id: dev.id, type: store.appType })
+    if (resp && resp.type === 'success') {
+      const list = Array.isArray(resp.payload) ? resp.payload : []
+      store.apps = list.map(item => (typeof item === 'string' ? { packageName: item } : { packageName: item.packageName || item.package_name || '' })).filter(a => a.packageName)
+    }
+  }
+
+  async exportAppList() {
+    const store = await this.storeService.ensureDeviceStore()
+    return store.apps && store.apps.length > 0
+  }
+
+  async exportLogcat() {
+    const store = await this.storeService.ensureDeviceStore()
+    const lines = Array.isArray(store.logcatOutput) ? store.logcatOutput : []
+    if (lines.length === 0) return false
+    const api = unifiedAPI.getAPI()
+    const now = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    const def = `logcat-${ts}.txt`
+    let filePath = ''
+    if (api && typeof api.showSaveDialog === 'function') {
+      const res = await api.showSaveDialog({ title: '导出 Logcat', defaultPath: def, filters: [{ name: 'Text', extensions: ['txt', 'log'] }] })
+      if (!res || res.canceled) return false
+      filePath = res.filePath || ''
+    }
+    if (!filePath) return false
+    const content = lines.join('\n')
+    if (api && typeof api.writeFile === 'function') {
+      await api.writeFile(filePath, content)
+      return true
+    }
+    return false
+  }
+
+  async copyPackageName(pkg) {
+    if (!pkg) return
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(pkg)
+      } else if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.writeClipboardText) {
+        await window.electronAPI.writeClipboardText(pkg)
       }
-    })
+    } catch {}
   }
 
-  /**
-   * Logcat 输出监听器（兼容性方法）
-   */
-  onLogcatOutput(callback) {
-    this.addListener((event, data) => {
-      if (event === 'logcat_output') {
-        callback(data)
-      }
-    })
+  async exportApp(pkg) {
+    const store = await this.storeService.ensureDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id || !pkg) return false
+    const resp = await unifiedAPI.call('device.export_app', { device_id: dev.id, package_name: pkg })
+    return !!resp
   }
 
-  /**
-   * 通知所有监听器
-   */
-  notifyListeners(event, data) {
-    this.listeners.forEach(callback => {
+  async uninstallApp(pkg) {
+    const store = await this.storeService.ensureDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id || !pkg) return false
+    const resp = await unifiedAPI.call('device.uninstall_app', { device_id: dev.id, package_name: pkg })
+    await this.refreshAppList()
+    return !!resp
+  }
+
+  async installApp(apkPath, options = {}) {
+    if (!apkPath) return { success: false, error: '未选择安装文件' }
+    const store = await this.storeService.ensureDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id) return { success: false, error: '未选择设备' }
+    const api = unifiedAPI.getAPI()
+    const isAab = /\.aab$/i.test(apkPath)
+    let resp = null
+    if (api) {
       try {
-        callback(event, data)
-      } catch (error) {
-        console.error('设备服务监听器错误:', error)
+        if (isAab && typeof api.installAab === 'function') {
+          resp = await api.installAab(apkPath, dev.id)
+        } else if (typeof api.installApk === 'function') {
+          resp = await api.installApk(apkPath, dev.id)
+        }
+      } catch {}
+    }
+    if (!resp) {
+      if (isAab) {
+        resp = await unifiedAPI.call('device.install_aab', { aab_path: apkPath, device_id: dev.id, options })
+      } else {
+        resp = await unifiedAPI.call('device.install_apk', { apk_path: apkPath, device_id: dev.id, options })
       }
-    })
-  }
-
-  /**
-   * 销毁服务
-   */
-  destroy() {
-    this.stopDeviceMonitoring()
-    this.listeners.clear()
-    console.log('DeviceService 已销毁')
+    }
+    if (resp && resp.type === 'success') return { success: true, payload: resp.payload }
+    return { success: false, error: (resp && resp.error) || (resp && resp.payload && resp.payload.message) || '安装失败' }
   }
 }
 

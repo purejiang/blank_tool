@@ -1,7 +1,5 @@
 /node_modules
-/python_runtime
-**/__pycache__
-assets/tools
-tools/
-cache/
-backend/logs/
+/runtime/
+/build/
+/cache/
+/.trae

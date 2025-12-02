@@ -1,12 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
+ 
 
-export const useDeviceStore = defineStore('device', () => {
+export const useDeviceStore = defineStore('deviceConfig', () => {
   // 设备列表
   const devices = ref([])
-  
-  // 当前选中的设备
-  const currentDevice = ref(null)
+  const selectedDeviceId = ref('')
+  const apps = ref([])
+  const appType = ref('all')
+  const isLogcatRunning = ref(false)
+  const logcatOutput = ref([])
   
   // 设备详细信息
   const deviceInfo = reactive({
@@ -23,113 +26,98 @@ export const useDeviceStore = defineStore('device', () => {
     screenResolution: '',
     density: ''
   })
-  
+
   // 监控状态
   const isMonitoring = ref(false)
-  
-  // 连接状态
-  const connectionStatus = reactive({
-    connected: false,
-    text: '未连接'
-  })
+  const monitoringInterval = ref(null)
+
+  const shellOutput = ref('')
+
+  // 计算属性
+  const deviceCount = computed(() => devices.value.length)
+  const selectedDevice = computed(() => devices.value.find(d => d.id === selectedDeviceId.value) || null)
+  const connectionStatus = computed(() => ({
+    connected: deviceCount.value > 0,
+    text: deviceCount.value > 0 ? `已连接 ${deviceCount.value} 个设备` : '未发现设备'
+  }))
 
   // 更新设备列表
   const updateDevices = (deviceList) => {
-    devices.value = deviceList || []
-    
+    const list = Array.isArray(deviceList) ? deviceList : []
+    devices.value = list.map(d => (typeof d === 'string' ? { id: d, name: d, status: 'online' } : d))
+
     // 如果当前选中的设备不在新列表中，清除选择
-    if (currentDevice.value && !deviceList.find(d => d.id === currentDevice.value.id)) {
-      currentDevice.value = null
-      clearDeviceInfo()
+    if (selectedDeviceId.value && !devices.value.find(d => d.id === selectedDeviceId.value)) {
+      selectedDeviceId.value = ''
+      Object.keys(deviceInfo).forEach(key => deviceInfo[key] = '')
     }
-    
-    // 更新连接状态
-    updateConnectionStatus()
   }
 
   // 选择设备
-  const selectDevice = (device) => {
-    currentDevice.value = device
+  const selectDevice = (deviceId) => {
+    selectedDeviceId.value = deviceId || ''
   }
 
   // 更新设备详细信息
   const updateDeviceInfo = (info) => {
-    Object.assign(deviceInfo, {
-      model: info.model || '',
-      brand: info.brand || '',
-      androidVersion: info.android_version || info.androidVersion || '',
-      apiLevel: info.api_level || info.apiLevel || '',
-      manufacturer: info.manufacturer || '',
-      buildId: info.build_id || info.buildId || '',
-      buildNumber: info.build_number || info.buildNumber || '',
-      totalStorage: info.total_storage || info.totalStorage || '',
-      availableStorage: info.available_storage || info.availableStorage || '',
-      batteryLevel: info.battery_level || info.batteryLevel || '',
-      screenResolution: info.screen_resolution || info.screenResolution || '',
-      density: info.density || ''
+    const newInfo = info || {}
+    Object.keys(deviceInfo).forEach(key => {
+      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
+      deviceInfo[key] = newInfo[key] || newInfo[snakeKey] || ''
     })
   }
 
-  // 清除设备信息
-  const clearDeviceInfo = () => {
-    Object.assign(deviceInfo, {
-      model: '',
-      brand: '',
-      androidVersion: '',
-      apiLevel: '',
-      manufacturer: '',
-      buildId: '',
-      buildNumber: '',
-      totalStorage: '',
-      availableStorage: '',
-      batteryLevel: '',
-      screenResolution: '',
-      density: ''
-    })
+  const clearLogcat = () => { logcatOutput.value = [] }
+
+  const stopDeviceMonitoring = async () => {
+    try {
+      isMonitoring.value = false
+      
+      if (monitoringInterval.value) {
+        clearInterval(monitoringInterval.value)
+        monitoringInterval.value = null
+      }
+      
+      console.log('设备监控已停止')
+      
+      return { success: true, message: '设备监控已停止' }
+    } catch (error) {
+      console.error('停止设备监控失败:', error)
+      throw error
+    }
   }
 
-  // 更新连接状态
-  const updateConnectionStatus = () => {
-    const deviceCount = devices.value.length
-    connectionStatus.connected = deviceCount > 0
-    connectionStatus.text = deviceCount > 0 
-      ? `已连接 ${deviceCount} 个设备` 
-      : '未发现设备'
-  }
-
-  // 设置监控状态
-  const setMonitoring = (status) => {
-    isMonitoring.value = status
-  }
-
-  // 获取设备数量
-  const getDeviceCount = () => {
-    return devices.value.length
-  }
-
-  // 根据ID查找设备
-  const findDeviceById = (deviceId) => {
-    return devices.value.find(device => device.id === deviceId)
-  }
+  // 监听设备选择变化，自动刷新详情
+  watch(selectedDeviceId, async (id) => {
+    if (!id) {
+      Object.keys(deviceInfo).forEach(key => deviceInfo[key] = '')
+      apps.value = []
+      return
+    }
+    
+  })
 
   return {
     // 状态
     devices,
-    currentDevice,
+    selectedDeviceId,
+    selectedDevice,
     deviceInfo,
     isMonitoring,
     connectionStatus,
-    
+    deviceCount,
+    shellOutput,
+    apps,
+    appType,
+    isLogcatRunning,
+    logcatOutput,
     // 方法
-    updateDevices,
     selectDevice,
+    updateDevices,
     updateDeviceInfo,
-    clearDeviceInfo,
-    updateConnectionStatus,
-    setMonitoring,
-    getDeviceCount,
-    findDeviceById
+    stopDeviceMonitoring,
+    clearLogcat
   }
-})
+}, { persist: true })
 
 // 导出 store 定义，实例化应该在组件中或 Pinia 初始化后进行

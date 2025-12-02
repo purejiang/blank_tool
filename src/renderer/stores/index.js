@@ -13,7 +13,11 @@ export const initializeStores = async () => {
     userConfigStore.initialize()
   ])
   
-  return { appConfigStore, userConfigStore, deviceStore }
+  return { 
+    appConfigStore, 
+    userConfigStore, 
+    deviceStore 
+  }
 }
 
 export { useAppConfigStore, useUserConfigStore, useDeviceStore }

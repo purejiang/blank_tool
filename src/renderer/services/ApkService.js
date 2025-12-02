@@ -1,12 +1,28 @@
 /**
  * APK服务 - 处理APK相关操作
  */
+import unifiedAPI from '../api/unifiedApi.js';
 
 class ApkService {
     constructor() {
         this.currentApk = null;
         this.analysisResults = new Map();
         this.listeners = new Set();
+        this.initialize();
+    }
+
+    /**
+     * 初始化
+     */
+    async initialize() {
+        try {
+            // 初始化APK服务
+
+            console.log('APK服务初始化完成');
+        } catch (error) {
+            console.error('APK服务初始化失败:', error);
+            throw error;
+        }
     }
 
     /**
@@ -15,26 +31,46 @@ class ApkService {
      */
     async analyzeApk(apkPath) {
         try {
-            const result = await window.electronAPI.analyzeApk(apkPath);
-            
+            const rawResult = await unifiedAPI.call('apk.analyze_apk', { apk_path: apkPath });
+
+            // Normalize response
+            let analysis = null;
+            if (rawResult && rawResult.type === 'success' && rawResult.payload) {
+                const p = rawResult.payload;
+                analysis = {
+                    packageName: p.package_name,
+                    versionCode: p.version_code,
+                    versionName: p.version_name,
+                    minSdkVersion: p.min_sdk_version,
+                    targetSdkVersion: p.target_sdk_version,
+                    permissions: p.permissions,
+                    applicationLabel: p.application_label,
+                    // Keep original payload just in case
+                    ...p
+                };
+            }
+
+            // Construct the result expected by UI
+            const result = {
+                success: rawResult && rawResult.type === 'success',
+                data: analysis,
+                error: rawResult && rawResult.type === 'error' ? (rawResult.payload ? rawResult.payload.message : '未知错误') : null
+            };
+
             if (result.success) {
-                const analysis = result.analysis;
-                
                 // 缓存分析结果
                 this.analysisResults.set(apkPath, {
                     analysis,
                     timestamp: Date.now(),
                     path: apkPath
                 });
-                
-                this.currentApk = apkPath;
+                this.currentApk = { analysis, path: apkPath };
                 this.notifyListeners('apk-analyzed', { apkPath, analysis });
-                
-                return analysis;
-            } else {
-                throw new Error(result.error);
             }
+
+            return result;
         } catch (error) {
+            console.error(`分析APK失败: ${apkPath}`, error);
             throw error;
         }
     }
@@ -46,13 +82,17 @@ class ApkService {
      */
     async extractApkResources(apkPath, outputDir) {
         try {
-            const result = await window.electronAPI.extractApkResources(apkPath, outputDir);
-            if (result.success) {
-                return result;
-            } else {
-                throw new Error(result.error);
-            }
+            const rawResult = await unifiedAPI.call('apk.extract_resources', { apk_path: apkPath, output_dir: outputDir });
+            
+            const result = {
+                success: rawResult && rawResult.type === 'success',
+                outputPath: rawResult && rawResult.payload ? rawResult.payload.output_dir : null,
+                error: rawResult && rawResult.type === 'error' ? (rawResult.payload ? rawResult.payload.message : '未知错误') : null
+            };
+            
+            return result;
         } catch (error) {
+            console.error(`提取APK资源失败: ${apkPath}`, error);
             throw error;
         }
     }
@@ -64,15 +104,15 @@ class ApkService {
         if (!analysis) return null;
 
         return {
-            packageName: analysis.package_name || 'Unknown',
-            versionName: analysis.version_name || 'Unknown',
-            versionCode: analysis.version_code || 'Unknown',
-            minSdkVersion: analysis.min_sdk_version || 'Unknown',
-            targetSdkVersion: analysis.target_sdk_version || 'Unknown',
-            compileSdkVersion: analysis.compile_sdk_version || 'Unknown',
-            applicationLabel: analysis.application_label || 'Unknown',
-            fileSize: analysis.file_size || 0,
-            installLocation: analysis.install_location || 'auto'
+            packageName: analysis.packageName || analysis.package_name || 'Unknown',
+            versionName: analysis.versionName || analysis.version_name || 'Unknown',
+            versionCode: analysis.versionCode || analysis.version_code || 'Unknown',
+            minSdkVersion: analysis.minSdkVersion || analysis.min_sdk_version || 'Unknown',
+            targetSdkVersion: analysis.targetSdkVersion || analysis.target_sdk_version || 'Unknown',
+            compileSdkVersion: analysis.compileSdkVersion || analysis.compile_sdk_version || 'Unknown',
+            applicationLabel: analysis.applicationLabel || analysis.application_label || 'Unknown',
+            fileSize: analysis.fileSize || analysis.file_size || 0,
+            installLocation: analysis.installLocation || analysis.install_location || 'auto'
         };
     }
 
@@ -311,11 +351,31 @@ class ApkService {
      */
     async decompileApk(filePath, options = {}) {
         try {
-            const result = await window.electronAPI.callBackendAPI('apk.decompile', {
-                filePath,
-                options
-            });
+            const rawResult = await unifiedAPI.safeCall('decompileApk', filePath, options);
             
+            // 如果safeCall返回失败，尝试直接调用callBackendAPI
+            if (rawResult && rawResult.success === false && rawResult.error && rawResult.error.includes('不可用')) {
+                 const fallbackResult = await unifiedAPI.call('apk.decompile', {
+                    file_path: filePath,
+                    options
+                });
+                
+                const result = {
+                    success: fallbackResult && fallbackResult.type === 'success',
+                    outputPath: fallbackResult && fallbackResult.payload ? fallbackResult.payload.output_dir : null,
+                    error: fallbackResult && fallbackResult.type === 'error' ? (fallbackResult.payload ? fallbackResult.payload.message : '未知错误') : null
+                };
+                
+                this.notifyListeners('decompile-progress', result);
+                return result;
+            }
+
+            const result = {
+                success: rawResult && rawResult.type === 'success',
+                outputPath: rawResult && rawResult.payload ? rawResult.payload.output_dir : null,
+                error: rawResult && rawResult.type === 'error' ? (rawResult.payload ? rawResult.payload.message : '未知错误') : null
+            };
+
             this.notifyListeners('decompile-progress', result);
             return result;
         } catch (error) {
@@ -329,11 +389,31 @@ class ApkService {
      */
     async recompileApk(projectPath, options = {}) {
         try {
-            const result = await window.electronAPI.callBackendAPI('apk.recompile', {
-                projectPath,
-                options
-            });
+             const rawResult = await unifiedAPI.safeCall('recompileApk', projectPath, options);
             
+             // 如果safeCall返回失败，尝试直接调用callBackendAPI
+             if (rawResult && rawResult.success === false && rawResult.error && rawResult.error.includes('不可用')) {
+                 const fallbackResult = await unifiedAPI.call('apk.recompile', {
+                    project_path: projectPath,
+                    options
+                });
+                
+                const result = {
+                    success: fallbackResult && fallbackResult.type === 'success',
+                    outputPath: fallbackResult && fallbackResult.payload ? fallbackResult.payload.output_apk : null,
+                    error: fallbackResult && fallbackResult.type === 'error' ? (fallbackResult.payload ? fallbackResult.payload.message : '未知错误') : null
+                };
+                
+                this.notifyListeners('recompile-progress', result);
+                return result;
+            }
+            
+            const result = {
+                success: rawResult && rawResult.type === 'success',
+                outputPath: rawResult && rawResult.payload ? rawResult.payload.output_apk : null,
+                error: rawResult && rawResult.type === 'error' ? (rawResult.payload ? rawResult.payload.message : '未知错误') : null
+            };
+
             this.notifyListeners('recompile-progress', result);
             return result;
         } catch (error) {
@@ -347,12 +427,32 @@ class ApkService {
      */
     async signApk(apkPath, keystore, options = {}) {
         try {
-            const result = await window.electronAPI.callBackendAPI('apk.sign', {
-                apkPath,
-                keystore,
-                options
-            });
+            const rawResult = await unifiedAPI.safeCall('signApk', apkPath, keystore, options);
             
+            // 如果safeCall返回失败，尝试直接调用callBackendAPI
+            if (rawResult && rawResult.success === false && rawResult.error && rawResult.error.includes('不可用')) {
+                 const fallbackResult = await unifiedAPI.call('apk.sign', {
+                    apk_path: apkPath,
+                    keystore,
+                    options
+                });
+                
+                 const result = {
+                    success: fallbackResult && fallbackResult.type === 'success',
+                    outputPath: fallbackResult && fallbackResult.payload ? fallbackResult.payload.apk_path : null,
+                    error: fallbackResult && fallbackResult.type === 'error' ? (fallbackResult.payload ? fallbackResult.payload.message : '未知错误') : null
+                };
+                
+                this.notifyListeners('sign-progress', result);
+                return result;
+            }
+
+             const result = {
+                success: rawResult && rawResult.type === 'success',
+                outputPath: rawResult && rawResult.payload ? rawResult.payload.apk_path : null,
+                error: rawResult && rawResult.type === 'error' ? (rawResult.payload ? rawResult.payload.message : '未知错误') : null
+            };
+
             this.notifyListeners('sign-progress', result);
             return result;
         } catch (error) {
@@ -366,7 +466,7 @@ class ApkService {
      */
     async getDecompileProgress(taskId) {
         try {
-            return await window.electronAPI.callBackendAPI('apk.getProgress', { taskId });
+            return await unifiedAPI.call('apk.get_progress', { task_id: taskId });
         } catch (error) {
             console.error('获取反编译进度失败:', error);
             throw error;
@@ -378,7 +478,7 @@ class ApkService {
      */
     async cancelDecompileTask(taskId) {
         try {
-            return await window.electronAPI.callBackendAPI('apk.cancelTask', { taskId });
+            return await unifiedAPI.call('apk.cancel_task', { task_id: taskId });
         } catch (error) {
             console.error('取消反编译任务失败:', error);
             throw error;

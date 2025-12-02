@@ -44,10 +44,21 @@
 
 <script>
 import { ref, onMounted, provide, getCurrentInstance } from 'vue'
-import AppHeader from './components/common/Header.vue'
-import StatusBar from './components/common/StatusBar.vue'
-import Notification from './components/common/Notification.vue'
+import AppHeader from '@components/common/Header.vue'
+import StatusBar from '@components/common/StatusBar.vue'
+import Notification from '@components/common/Notification.vue'
 import serviceManager from './services/ServiceManager.js'
+import { ThemeService } from './services/ThemeService.js'
+import ToolService from './services/ToolService.js'
+import NotificationService from './services/NotificationService.js'
+import unifiedAPI from './api/unifiedApi.js'
+import ErrorService from './services/ErrorService.js'
+import StoreService from './services/StoreService.js'
+import ApkService from './services/ApkService.js'
+import CacheService from './services/CacheService.js'
+import SettingsService from './services/SettingsService.js'
+import DeviceService from './services/DeviceService.js'
+
 
 export default {
   name: 'App',
@@ -67,8 +78,56 @@ export default {
     const retryCount = ref(0)
     const maxRetries = 3
 
-    // 提供服务管理器给子组件
-    provide('serviceManager', serviceManager)
+    /**
+     * 服务注册
+     */
+    function registerServices() {
+      serviceManager.register('store', StoreService)
+      serviceManager.register('theme', ThemeService)
+      serviceManager.register('tools', ToolService, ['store'])
+      serviceManager.register('notification', NotificationService)
+      serviceManager.register('error', ErrorService, ['notification'])
+
+
+      // 关键服务初始化
+      serviceManager.register('apk', ApkService, ['store'])
+      serviceManager.register('cache', CacheService, ['store'])
+      serviceManager.register('settings', SettingsService, ['store'])
+      serviceManager.register('device', DeviceService, ['store'])
+    }
+
+    async function provideInjectedServices() {
+      try {
+        const notificationSvc = await serviceManager.getService('notification')
+        provide('notificationService', notificationSvc)
+      } catch {}
+      try {
+        const errorSvc = await serviceManager.getService('error')
+        provide('errorService', errorSvc)
+      } catch {}
+    }
+
+    /**
+     * 创建错误处理器
+     */
+    function createErrorHandler() {
+      return (error, instance, info) => {
+        console.error('全局错误:', error)
+        console.error('错误实例:', instance)
+        console.error('错误信息:', info)
+
+        // 获取错误服务并报告错误
+        serviceManager.getService('error')
+          .then((errorService) => {
+            if (errorService && typeof errorService.reportError === 'function') {
+              errorService.reportError(error, { context: 'Vue全局错误处理', info })
+            }
+          })
+          .catch((serviceError) => {
+            console.error('获取错误服务失败:', serviceError)
+          })
+      }
+    }
 
     /**
      * 应用初始化流程 - 顺序执行，失败时抛出异常
@@ -80,10 +139,9 @@ export default {
 
         // 定义初始化任务，按依赖关系顺序执行
         const initTasks = [
-          { name: '初始化服务', task: initializeServices, weight: 25, critical: true },
-          { name: '工具检查', task: checkToolsStatus, weight: 25, critical: true },
-          { name: '设备连接', task: checkDeviceConnection, weight: 25, critical: false },
-          { name: '界面准备', task: prepareUI, weight: 25, critical: false }
+          { name: '初始化服务', task: initializeServices, weight: 60, critical: true },
+          { name: '工具检查', task: checkToolsStatus, weight: 40, critical: false },
+          { name: '界面准备', task: prepareUI, weight: 40, critical: true }
         ]
 
         let completedWeight = 0
@@ -91,7 +149,7 @@ export default {
         // 顺序执行所有初始化任务
         for (let i = 0; i < initTasks.length; i++) {
           const taskInfo = initTasks[i]
-          
+
           try {
             console.log(`开始执行: ${taskInfo.name}`)
             loadingStep.value = taskInfo.name
@@ -108,7 +166,7 @@ export default {
 
           } catch (error) {
             console.error(`${taskInfo.name} 执行失败:`, error)
-            
+
             // 如果是关键任务失败，立即抛出异常
             if (taskInfo.critical) {
               throw new Error(`关键任务 "${taskInfo.name}" 执行失败: ${error.message}`)
@@ -130,11 +188,11 @@ export default {
 
       } catch (error) {
         console.error('应用初始化失败:', error)
-        
+
         // 设置错误信息并显示重试按钮
         initError.value = error.message || '初始化失败，请重试'
         showRetryButton.value = true
-        
+
         // 抛出异常，让调用方知道初始化失败
         throw error
       }
@@ -150,37 +208,47 @@ export default {
     }
 
     /**
-     * 工具状态检查
+     * 工具状态检查 - 异步非阻塞
      */
     async function checkToolsStatus() {
       updateProgress('检查工具状态...', '正在检查开发工具可用性', 35)
 
-      const toolService = serviceManager.getService('tools')
+      const toolService = await serviceManager.getService('tools')
       if (!toolService) {
-        throw new Error('工具服务未初始化')
+        console.warn('工具服务未初始化，跳过工具检查')
+        return
       }
 
-      // 获取工具状态
-      toolService.checkTools()
-      const availableTools = toolService.getAvailableTools()
-      const unavailableTools = toolService.getUnavailableTools()
+      try {
+        // 异步检查工具状态，不等待完成
+        const checkPromise = toolService.checkTools()
 
-      console.log(`工具状态检查完成: ${availableTools.length}个可用, ${unavailableTools.length}个不可用`)
+        // 立即返回，让工具检查在后台进行
+        checkPromise.then(() => {
+          const availableTools = toolService.getAvailableTools()
+          const unavailableTools = toolService.getUnavailableTools()
 
-      if (unavailableTools.length > 0) {
-        console.warn('以下工具不可用:', unavailableTools.map(t => t.name))
+          console.log(`工具状态检查完成: ${availableTools.length}个可用, ${unavailableTools.length}个不可用`)
+
+          if (availableTools.length > 0) {
+            console.log('以下工具可用:', availableTools.map(t => t.name))
+          }
+          if (unavailableTools.length > 0) {
+            console.warn('以下工具不可用:', unavailableTools.map(t => t.name))
+          }
+
+        }).catch(error => {
+          console.warn('工具状态检查失败，但不影响应用启动:', error)
+        })
+
+        // 短暂延迟后立即返回，不等待工具检查完成
+        await new Promise(resolve => setTimeout(resolve, 100))
+        updateProgress('工具检查启动', '工具检查已在后台启动', 50)
+
+      } catch (error) {
+        console.warn('启动工具检查失败:', error)
+        // 不抛出异常，让应用继续启动
       }
-
-      // 开始工具状态轮询
-      //toolService.startPolling()
-
-      const performanceService = serviceManager.getService('performance')
-      if (performanceService) {
-        performanceService.mark('tools-check-end')
-        performanceService.measure('tools-check-duration', 'tools-check-start', 'tools-check-end')
-      }
-
-      updateProgress('工具检查完成', '开发工具状态检查完成', 50)
     }
 
     /**
@@ -190,8 +258,8 @@ export default {
       updateProgress('初始化服务...', '正在启动应用服务', 65)
 
       try {
-        // 使用ServiceManager初始化所有服务
-        await serviceManager.initialize()
+        // 注册服务
+        registerServices()
 
         // 在服务初始化完成后设置全局错误处理器
         const instance = getCurrentInstance()
@@ -200,11 +268,7 @@ export default {
           console.log('全局错误处理器已设置')
         }
 
-        // 提供服务给全局使用
-        const services = serviceManager.getAllServices()
-        for (const [name, service] of services) {
-          provide(`${name}Service`, service)
-        }
+        await provideInjectedServices()
 
         updateProgress('服务初始化完成', '所有应用服务已启动', 80)
         console.log('服务初始化完成')
@@ -213,26 +277,6 @@ export default {
         console.error('服务初始化失败:', error)
         throw new Error(`服务初始化失败: ${error.message}`)
       }
-    }
-
-    /**
-     * 设备连接检查
-     */
-    async function checkDeviceConnection() {
-      updateProgress('检查设备连接...', '检查设备服务状态', 85)
-
-      const deviceService = serviceManager.getService('device')
-
-      if (!deviceService) {
-        throw new Error('设备服务未初始化')
-      }
-
-      console.log('设备服务已初始化，跳过自动连接检查')
-
-      // 暂时跳过自动连接逻辑，直接完成设备检查
-      // TODO: 后续可以添加设置服务来支持自动连接配置
-
-      updateProgress('设备检查完成', '设备连接检查完成', 95)
     }
 
     /**
@@ -254,7 +298,7 @@ export default {
       await applyTheme()
 
       // 预加载关键数据
-      const cacheService = serviceManager.getService('cache')
+      const cacheService = await serviceManager.getService('cache')
       if (cacheService) {
         // 预热缓存
         await cacheService.getCacheInfo().catch(() => { })
@@ -302,13 +346,8 @@ export default {
      * 初始化工具提示
      */
     function initializeTooltips() {
-      console.log('初始化工具提示...')
-      // 为所有带有data-tooltip属性的元素添加工具提示
-      const tooltipElements = document.querySelectorAll('[data-tooltip]')
-      tooltipElements.forEach(element => {
-        element.addEventListener('mouseenter', showTooltip)
-        element.addEventListener('mouseleave', hideTooltip)
-      })
+      document.addEventListener('mouseover', showTooltip)
+      document.addEventListener('mouseout', hideTooltip)
     }
 
     /**
@@ -326,8 +365,9 @@ export default {
 
         // F12: 打开开发者工具
         if (event.key === 'F12') {
-          if (electronAPIService.isAvailable && electronAPIService.api.openDevTools) {
-            electronAPIService.api.openDevTools()
+          const api = unifiedAPI.getAPI()
+          if (api && typeof api.openDevTools === 'function') {
+            api.openDevTools()
           }
         }
       })
@@ -358,7 +398,7 @@ export default {
      */
     async function applyTheme() {
       console.log('应用主题...')
-      const themeService = serviceManager.getService('theme')
+      const themeService = await serviceManager.getService('theme')
       if (themeService) {
         // 应用当前主题
         await themeService.applyTheme()
@@ -377,39 +417,36 @@ export default {
      * 显示工具提示
      */
     function showTooltip(event) {
-      const tooltip = event.target.getAttribute('data-tooltip')
-      if (tooltip) {
-        // 创建工具提示元素
-        const tooltipElement = document.createElement('div')
-        tooltipElement.className = 'tooltip'
-        tooltipElement.textContent = tooltip
-        tooltipElement.style.position = 'absolute'
-        tooltipElement.style.zIndex = '9999'
-        tooltipElement.style.background = '#333'
-        tooltipElement.style.color = 'white'
-        tooltipElement.style.padding = '4px 8px'
-        tooltipElement.style.borderRadius = '4px'
-        tooltipElement.style.fontSize = '12px'
-        tooltipElement.style.pointerEvents = 'none'
-
-        // 定位工具提示
-        const rect = event.target.getBoundingClientRect()
-        tooltipElement.style.left = rect.left + 'px'
-        tooltipElement.style.top = (rect.top - 30) + 'px'
-
-        document.body.appendChild(tooltipElement)
-        event.target._tooltip = tooltipElement
-      }
+      const el = event.target && event.target.closest ? event.target.closest('[data-tooltip]') : null
+      if (!el || el._tooltip) return
+      const tooltip = el.getAttribute('data-tooltip')
+      if (!tooltip) return
+      const tooltipElement = document.createElement('div')
+      tooltipElement.className = 'tooltip show'
+      tooltipElement.textContent = tooltip
+      tooltipElement.style.position = 'absolute'
+      tooltipElement.style.zIndex = '9999'
+      tooltipElement.style.background = '#333'
+      tooltipElement.style.color = 'white'
+      tooltipElement.style.padding = '4px 8px'
+      tooltipElement.style.borderRadius = '4px'
+      tooltipElement.style.fontSize = '12px'
+      tooltipElement.style.pointerEvents = 'none'
+      const rect = el.getBoundingClientRect()
+      tooltipElement.style.left = rect.left + 'px'
+      tooltipElement.style.top = (rect.top - 30) + 'px'
+      document.body.appendChild(tooltipElement)
+      el._tooltip = tooltipElement
     }
 
     /**
      * 隐藏工具提示
      */
     function hideTooltip(event) {
-      if (event.target._tooltip) {
-        document.body.removeChild(event.target._tooltip)
-        delete event.target._tooltip
-      }
+      const el = event.target && event.target.closest ? event.target.closest('[data-tooltip]') : null
+      if (!el || !el._tooltip) return
+      document.body.removeChild(el._tooltip)
+      delete el._tooltip
     }
 
     /**
@@ -438,7 +475,7 @@ export default {
 
     // 组件挂载时开始初始化
     onMounted(() => {
-      console.log('App组件已挂载，开始初始化应用')
+      console.log('App已挂载，开始初始化应用')
       initializeApplication()
     })
 

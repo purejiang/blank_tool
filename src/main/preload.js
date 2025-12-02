@@ -1,8 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 // 统一的后端API调用函数
-const callBackendAPI = (action, params = {}, options = {}) => {
-  return ipcRenderer.invoke('call-backend-api', action, params, options);
+const callBackendAPI = (action, params = {}) => {
+  const requestId = `${Date.now()}-${Math.random()}`;
+  const request = {
+    id: requestId,
+    method: action,
+    params: params,
+  };
+  return ipcRenderer.invoke('call-backend-api', request);
 };
 
 // 统一的IPC调用函数 - 用于非后端API的系统调用
@@ -26,18 +32,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelApkTask: (taskId) => callBackendAPI('apk.cancelTask', { taskId }),
 
   // 设备相关API
-  getAdbDevices: () => callBackendAPI('device.list'),
+  getAdbDevices: () => callBackendAPI('device.get_devices'),
   startDeviceMonitoring: () => callBackendAPI('device.monitor.start'),
   startRealtimeDeviceMonitoring: () => callBackendAPI('device.monitor.realtime'),
   stopRealtimeDeviceMonitoring: () => callBackendAPI('device.monitor.stop'),
-  getDeviceInfo: (deviceId) => callBackendAPI('device.info', { device_id: deviceId }),
-  installApk: (apkPath, deviceId) => callBackendAPI('device.install.apk', { apk_path: apkPath, device_id: deviceId }),
-  installAab: (aabPath, deviceId) => callBackendAPI('device.install.aab', { aab_path: aabPath, device_id: deviceId }),
-  convertAabToApks: (aabPath, deviceId) => callBackendAPI('aab.convert', { aab_path: aabPath, device_id: deviceId }),
-  installApks: (apksPath, deviceId) => callBackendAPI('device.install.apks', { apks_path: apksPath, device_id: deviceId }),
-  uninstallApp: (packageName, deviceId) => callBackendAPI('device.uninstall', { package_name: packageName, device_id: deviceId }),
-  getInstalledApps: (deviceId, appType) => callBackendAPI('device.packages', { device_id: deviceId, app_type: appType }),
-  exportApk: (packageName, deviceId, outputDir) => callBackendAPI('device.export', {
+  getDeviceInfo: (deviceId) => callBackendAPI('device.get_device_info', { device_id: deviceId }),
+  installApk: (apkPath, deviceId) => callBackendAPI('device.install_apk', { apk_path: apkPath, device_id: deviceId }),
+  installAab: (aabPath, deviceId) => callBackendAPI('device.install_aab', { aab_path: aabPath, device_id: deviceId }),
+  convertAabToApks: (aabPath, deviceId) => callBackendAPI('device.convert_aab_to_apks', { aab_path: aabPath, device_id: deviceId }),
+  installApks: (apksPath, deviceId) => callBackendAPI('device.install_apks', { apks_path: apksPath, device_id: deviceId }),
+  uninstallApp: (packageName, deviceId) => callBackendAPI('device.uninstall_app', { package_name: packageName, device_id: deviceId }),
+  getInstalledApps: (deviceId, appType) => callBackendAPI('device.get_installed_packages', { device_id: deviceId, app_type: appType }),
+  exportApk: (packageName, deviceId, outputDir) => callBackendAPI('device.export_apk', {
     package_name: packageName,
     device_id: deviceId,
     output_dir: outputDir
@@ -53,13 +59,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     get: (key) => ipcRenderer.invoke('get-app-config', key),
     set: (key, value) => ipcRenderer.invoke('set-app-config', key, value),
     getAll: () => ipcRenderer.invoke('app-config-getAll'),
-    reset: () => ipcRenderer.invoke('app-config-reset')
+    reset: () => ipcRenderer.invoke('reset-app-config')
   },
   userConfig: {
-    get: (key) => ipcRenderer.invoke('user-config-get', key),
-    set: (key, value) => ipcRenderer.invoke('user-config-set', key, value),
+    get: (key) => ipcRenderer.invoke('get-user-config', key),
+    set: (key, value) => ipcRenderer.invoke('set-user-config', key, value),
     getAll: () => ipcRenderer.invoke('user-config-getAll'),
-    reset: () => ipcRenderer.invoke('user-config-reset')
+    reset: () => ipcRenderer.invoke('reset-user-config')
   },
   // 监听配置变化
   onAppConfigChange: (callback) => {
@@ -86,11 +92,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showSaveDialog: (options) => callSystemAPI('show-save-dialog', options),
   showMessageBox: (options) => callSystemAPI('show-message-box', options),
 
+  // 便捷封装 - 文件/目录选择
+  selectFile: (options = {}) => {
+    const props = Array.isArray(options.properties) ? [...options.properties] : []
+    if (!props.includes('openFile')) props.push('openFile')
+    const opts = { ...options, properties: props }
+    return callSystemAPI('show-open-dialog', opts)
+  },
+  selectDirectory: (options = {}) => {
+    const props = Array.isArray(options.properties) ? [...options.properties] : []
+    if (!props.includes('openDirectory')) props.push('openDirectory')
+    const opts = { ...options, properties: props }
+    return callSystemAPI('show-open-dialog', opts)
+  },
+
   // 文件系统相关 - 系统调用
   getFileStats: (filePath) => callSystemAPI('get-file-stats', filePath),
   writeFile: (filePath, content) => callSystemAPI('write-file', filePath, content),
   readFile: (filePath) => callSystemAPI('read-file', filePath),
   openDirectory: (filePath) => callSystemAPI('open-directory', filePath),
+  openPath: (filePath) => callSystemAPI('open-directory', filePath),
 
   // 开发者工具 - 系统调用
   toggleDevTools: () => callSystemAPI('toggle-dev-tools'),
@@ -102,12 +123,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopDeviceMonitoring: () => callBackendAPI('device.monitor.stop'),
   exportAppList: (deviceId, outputPath) => callBackendAPI('device.export.applist', { device_id: deviceId, output_path: outputPath }),
 
-  // 日志相关 - 系统调用
-  startDeviceLogging: (deviceId, logLevel) => callSystemAPI('start-device-logging', deviceId, logLevel),
-  stopDeviceLogging: () => callSystemAPI('stop-device-logging'),
+  // 日志相关 - 后端统一API
+  startLogcat: (deviceId) => callBackendAPI('adb.logcat', { device_id: deviceId }),
+  stopLogcat: (processId) => callBackendAPI('adb.stop_logcat', { process_id: processId }),
 
   // 工具检测相关 - 使用统一后端API
-  checkTool: (python_path, toolName) => callBackendAPI('tool.check', { tool_name: toolName }, { python_path: python_path }),
+  checkTool: (toolName, refresh = true) => callBackendAPI('tool.get_tools', { tool_name: toolName, refresh }),
 
   // 更新相关 - 系统调用
   checkForUpdates: () => callSystemAPI('check-for-updates'),
@@ -116,10 +137,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   restart: () => callSystemAPI('restart'),
   openExternal: (url) => callSystemAPI('open-external', url),
 
-  // 设备日志相关 (adb logcat) - 特殊处理，保持原有调用方式
-  // startLogcat: (params) => callSystemAPI('start-logcat', params),
-  // stopLogcat: (processId) => callSystemAPI('stop-logcat', processId),
-  // exportDeviceLog: (params) => callBackendAPI('log.export', params),
+  
+  exportDeviceLog: (params) => callBackendAPI('log.export', params),
 
   // 事件监听 - 保持原有实现
   onDeviceChange: (callback) => {
@@ -127,17 +146,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('device-change', callback);
   },
 
-  // onLogUpdate: (callback) => {
-  //   ipcRenderer.on('log-update', callback);
-  //   return () => ipcRenderer.removeListener('log-update', callback);
-  // },
+  onLogUpdate: (callback) => {
+    ipcRenderer.on('log-update', callback);
+    return () => ipcRenderer.removeListener('log-update', callback);
+  },
 
-  // onLogcatOutput: (callback) => {
-  //   ipcRenderer.on('logcat-output', callback);
-  //   return () => ipcRenderer.removeListener('logcat-output', callback);
-  // },
+  onLogcatOutput: (callback) => {
+    ipcRenderer.on('logcat-output', callback);
+    return () => ipcRenderer.removeListener('logcat-output', callback);
+  },
+  onLogcatStarted: (callback) => {
+    ipcRenderer.on('logcat-started', callback);
+    return () => ipcRenderer.removeListener('logcat-started', callback);
+  },
+  onLogcatFinished: (callback) => {
+    ipcRenderer.on('logcat-finished', callback);
+    return () => ipcRenderer.removeListener('logcat-finished', callback);
+  },
+  onLogcatError: (callback) => {
+    ipcRenderer.on('logcat-error', callback);
+    return () => ipcRenderer.removeListener('logcat-error', callback);
+  },
 
-  // removeLogcatListener: () => {
-  //   ipcRenderer.removeAllListeners('logcat-output');
-  // }
+  removeLogcatListener: () => {
+    ipcRenderer.removeAllListeners('logcat-output');
+  }
 });

@@ -15,7 +15,11 @@ export function setupAppConfigHandlers() {
 
     ipcMain.handle('set-app-config', (event, key, value) => {
         console.log(`[IPC] 接收到set-app-config: key=${key}, value=${value}`);
-        appStore.set(key, value);
+        if (typeof value === 'undefined') {
+            appStore.delete(key);
+        } else {
+            appStore.set(key, value);
+        }
          // 通知所有窗口配置已变更
         BrowserWindow.getAllWindows().forEach(win => {
             win.webContents.send('app-config-changed', key, value);
@@ -43,7 +47,11 @@ export function setupUserConfigHandlers() {
 
     ipcMain.handle('set-user-config', (event, key, value) => {
         console.log(`[IPC] 接收到set-user-config: key=${key}, value=${value}`);
-        userStore.set(key, value);
+        if (typeof value === 'undefined') {
+            userStore.delete(key);
+        } else {
+            userStore.set(key, value);
+        }
         // 通知所有窗口配置已变更
         BrowserWindow.getAllWindows().forEach(win => {
             win.webContents.send('user-config-changed', key, value);

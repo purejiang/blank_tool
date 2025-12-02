@@ -1,0 +1,605 @@
+/* 明亮主题（默认） */
+:root,
+[data-theme="light"] {
+    /* 颜色变量 */
+    --primary-color: #007bff;
+    --primary-hover: #0056b3;
+    --secondary-color: #6c757d;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #17a2b8;
+    --light-color: #f8f9fa;
+    --dark-color: #343a40;
+    
+    /* 背景颜色 */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #e9ecef;
+    --bg-dark: #343a40;
+    
+    /* 文本颜色 */
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #868e96;
+    --text-light: #ffffff;
+    
+    /* 边框颜色 */
+    --border-color: #dee2e6;
+    --border-light: #e9ecef;
+    --border-dark: #adb5bd;
+    
+    /* 阴影 */
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, 0.175);
+    
+    /* 特殊背景 */
+    --code-bg: #f8f9fa;
+    --pre-bg: #f8f9fa;
+    --mark-bg: #fcf8e3;
+    --kbd-bg: #212529;
+    --kbd-color: #ffffff;
+    
+    /* 输入框样式 */
+    --input-bg: #ffffff;
+    --input-border: #ced4da;
+    --input-focus-border: #80bdff;
+    --input-focus-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    
+    /* 表格样式 */
+    --table-bg: transparent;
+    --table-accent-bg: rgba(0, 0, 0, 0.05);
+    --table-hover-bg: rgba(0, 0, 0, 0.075);
+    --table-border-color: #dee2e6;
+    
+    /* 模态框样式 */
+    --modal-backdrop-bg: rgba(0, 0, 0, 0.5);
+    --modal-content-bg: #ffffff;
+    --modal-header-border: #dee2e6;
+    --modal-footer-border: #dee2e6;
+    
+    /* 下拉菜单样式 */
+    --dropdown-bg: #ffffff;
+    --dropdown-border: rgba(0, 0, 0, 0.15);
+    --dropdown-divider-bg: #e9ecef;
+    --dropdown-link-color: #212529;
+    --dropdown-link-hover-color: #16181b;
+    --dropdown-link-hover-bg: #f8f9fa;
+    
+    /* 导航样式 */
+    --nav-link-color: #007bff;
+    --nav-link-hover-color: #0056b3;
+    --nav-tabs-border-color: #dee2e6;
+    --nav-tabs-link-hover-border-color: #e9ecef #e9ecef #dee2e6;
+    --nav-tabs-link-active-color: #495057;
+    --nav-tabs-link-active-bg: #ffffff;
+    --nav-tabs-link-active-border-color: #dee2e6 #dee2e6 #ffffff;
+    
+    /* 进度条样式 */
+    --progress-bg: #e9ecef;
+    --progress-bar-bg: #007bff;
+    
+    /* 列表组样式 */
+    --list-group-bg: #ffffff;
+    --list-group-border-color: rgba(0, 0, 0, 0.125);
+    --list-group-hover-bg: #f8f9fa;
+    --list-group-active-color: #ffffff;
+    --list-group-active-bg: #007bff;
+    --list-group-active-border-color: #007bff;
+    
+    /* 工具提示样式 */
+    --tooltip-bg: #000000;
+    --tooltip-color: #ffffff;
+    --tooltip-opacity: 0.9;
+    
+    /* 弹出框样式 */
+    --popover-bg: #ffffff;
+    --popover-border-color: rgba(0, 0, 0, 0.2);
+    --popover-header-bg: #f7f7f7;
+    --popover-header-color: #212529;
+    --popover-body-color: #212529;
+    --popover-arrow-color: #ffffff;
+    --popover-arrow-outer-color: rgba(0, 0, 0, 0.25);
+}
+
+/* 暗黑主题 */
+[data-theme="dark"] {
+    /* 颜色变量 */
+    --primary-color: #0d6efd;
+    --primary-hover: #0b5ed7;
+    --secondary-color: #6c757d;
+    --success-color: #198754;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #0dcaf0;
+    --light-color: #f8f9fa;
+    --dark-color: #212529;
+    
+    /* 背景颜色 */
+    --bg-primary: #212529;
+    --bg-secondary: #343a40;
+    --bg-tertiary: #495057;
+    --bg-dark: #000000;
+    
+    /* 文本颜色 */
+    --text-primary: #ffffff;
+    --text-secondary: #adb5bd;
+    --text-muted: #6c757d;
+    --text-light: #ffffff;
+    
+    /* 边框颜色 */
+    --border-color: #495057;
+    --border-light: #343a40;
+    --border-dark: #6c757d;
+    
+    /* 阴影 */
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.3);
+    --shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, 0.5);
+    
+    /* 特殊背景 */
+    --code-bg: #343a40;
+    --pre-bg: #343a40;
+    --mark-bg: #fcf8e3;
+    --kbd-bg: #ffffff;
+    --kbd-color: #212529;
+    
+    /* 输入框样式 */
+    --input-bg: #343a40;
+    --input-border: #495057;
+    --input-focus-border: #86b7fe;
+    --input-focus-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    
+    /* 表格样式 */
+    --table-bg: transparent;
+    --table-accent-bg: rgba(255, 255, 255, 0.05);
+    --table-hover-bg: rgba(255, 255, 255, 0.075);
+    --table-border-color: #495057;
+    
+    /* 模态框样式 */
+    --modal-backdrop-bg: rgba(0, 0, 0, 0.7);
+    --modal-content-bg: #343a40;
+    --modal-header-border: #495057;
+    --modal-footer-border: #495057;
+    
+    /* 下拉菜单样式 */
+    --dropdown-bg: #343a40;
+    --dropdown-border: rgba(255, 255, 255, 0.15);
+    --dropdown-divider-bg: #495057;
+    --dropdown-link-color: #ffffff;
+    --dropdown-link-hover-color: #ffffff;
+    --dropdown-link-hover-bg: #495057;
+    
+    /* 导航样式 */
+    --nav-link-color: #0d6efd;
+    --nav-link-hover-color: #3d8bfd;
+    --nav-tabs-border-color: #495057;
+    --nav-tabs-link-hover-border-color: #495057 #495057 #495057;
+    --nav-tabs-link-active-color: #ffffff;
+    --nav-tabs-link-active-bg: #212529;
+    --nav-tabs-link-active-border-color: #495057 #495057 #212529;
+    
+    /* 进度条样式 */
+    --progress-bg: #495057;
+    --progress-bar-bg: #0d6efd;
+    
+    /* 列表组样式 */
+    --list-group-bg: #343a40;
+    --list-group-border-color: rgba(255, 255, 255, 0.125);
+    --list-group-hover-bg: #495057;
+    --list-group-active-color: #ffffff;
+    --list-group-active-bg: #0d6efd;
+    --list-group-active-border-color: #0d6efd;
+    
+    /* 工具提示样式 */
+    --tooltip-bg: #000000;
+    --tooltip-color: #ffffff;
+    --tooltip-opacity: 0.9;
+    
+    /* 弹出框样式 */
+    --popover-bg: #343a40;
+    --popover-border-color: rgba(255, 255, 255, 0.2);
+    --popover-header-bg: #495057;
+    --popover-header-color: #ffffff;
+    --popover-body-color: #ffffff;
+    --popover-arrow-color: #343a40;
+    --popover-arrow-outer-color: rgba(255, 255, 255, 0.25);
+}
+
+/* 主题切换动画 */
+* {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* 暗黑主题特殊样式调整 */
+[data-theme="dark"] .log-output {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+    border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] .log-line.verbose {
+    color: #888888;
+}
+
+[data-theme="dark"] .log-line.debug {
+    color: #4dd0e1;
+}
+
+[data-theme="dark"] .log-line.info {
+    color: #66bb6a;
+}
+
+[data-theme="dark"] .log-line.warn {
+    color: #ffb74d;
+}
+
+[data-theme="dark"] .log-line.error {
+    color: #ef5350;
+}
+
+[data-theme="dark"] .log-line.fatal {
+    color: #ec407a;
+    font-weight: bold;
+}
+
+[data-theme="dark"] .log-timestamp {
+    color: #757575;
+}
+
+[data-theme="dark"] .log-tag {
+    color: #ba68c8;
+}
+
+[data-theme="dark"] .log-pid {
+    color: #90a4ae;
+}
+
+/* 暗黑主题下的文件拖放区域 */
+[data-theme="dark"] .file-drop-zone {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .file-drop-zone:hover,
+[data-theme="dark"] .file-drop-zone.drag-over {
+    border-color: var(--primary-color);
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+/* 暗黑主题下的设备列表 */
+[data-theme="dark"] .device-item {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .device-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2);
+}
+
+[data-theme="dark"] .device-item.selected {
+    border-color: var(--primary-color);
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+[data-theme="dark"] .device-icon {
+    background-color: var(--bg-secondary);
+}
+
+/* 暗黑主题下的状态栏 */
+[data-theme="dark"] .status-bar {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .status-item:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* 暗黑主题下的头部导航 */
+[data-theme="dark"] .header-nav {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .header-tab:hover {
+    background-color: var(--bg-secondary);
+}
+
+[data-theme="dark"] .header-tab.active {
+    background-color: rgba(13, 110, 253, 0.2);
+}
+
+[data-theme="dark"] .header-action:hover {
+    background-color: var(--bg-secondary);
+}
+
+[data-theme="dark"] .header-action.active {
+    background-color: rgba(13, 110, 253, 0.2);
+}
+
+/* 暗黑主题下的工具栏 */
+[data-theme="dark"] .toolbar {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+/* 暗黑主题下的标签页 */
+[data-theme="dark"] .tab-nav {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .tab-button:hover {
+    background-color: var(--bg-tertiary);
+}
+
+[data-theme="dark"] .tab-button.active {
+    background-color: var(--bg-primary);
+    border-bottom-color: var(--primary-color);
+}
+
+/* 暗黑主题下的表格 */
+[data-theme="dark"] .table th {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .table tbody tr:hover {
+    background-color: var(--bg-secondary);
+}
+
+[data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .table-bordered,
+[data-theme="dark"] .table-bordered th,
+[data-theme="dark"] .table-bordered td {
+    border-color: var(--border-color);
+}
+
+/* 暗黑主题下的列表组 */
+[data-theme="dark"] .list-group-item {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .list-group-item:hover {
+    background-color: var(--bg-secondary);
+}
+
+[data-theme="dark"] .list-group-item.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* 暗黑主题下的警告框 */
+[data-theme="dark"] .alert-primary {
+    color: #6ea8fe;
+    background-color: rgba(13, 110, 253, 0.2);
+    border-color: rgba(13, 110, 253, 0.3);
+}
+
+[data-theme="dark"] .alert-secondary {
+    color: #adb5bd;
+    background-color: rgba(108, 117, 125, 0.2);
+    border-color: rgba(108, 117, 125, 0.3);
+}
+
+[data-theme="dark"] .alert-success {
+    color: #75b798;
+    background-color: rgba(25, 135, 84, 0.2);
+    border-color: rgba(25, 135, 84, 0.3);
+}
+
+[data-theme="dark"] .alert-danger {
+    color: #ea868f;
+    background-color: rgba(220, 53, 69, 0.2);
+    border-color: rgba(220, 53, 69, 0.3);
+}
+
+[data-theme="dark"] .alert-warning {
+    color: #ffda6a;
+    background-color: rgba(255, 193, 7, 0.2);
+    border-color: rgba(255, 193, 7, 0.3);
+}
+
+[data-theme="dark"] .alert-info {
+    color: #6edff6;
+    background-color: rgba(13, 202, 240, 0.2);
+    border-color: rgba(13, 202, 240, 0.3);
+}
+
+/* 暗黑主题下的上下文菜单 */
+[data-theme="dark"] .context-menu {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .context-menu-item:hover {
+    background-color: var(--bg-secondary);
+}
+
+[data-theme="dark"] .context-menu-divider {
+    border-color: var(--border-color);
+}
+
+/* 暗黑主题下的工具提示 */
+[data-theme="dark"] .tooltip-inner {
+    background-color: rgba(0, 0, 0, 0.9);
+    color: var(--text-light);
+}
+
+/* 暗黑主题下的进度条 */
+[data-theme="dark"] .progress {
+    background-color: var(--bg-tertiary);
+}
+
+/* 暗黑主题下的徽章 */
+[data-theme="dark"] .badge-light {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .badge-dark {
+    background-color: var(--text-light);
+    color: var(--bg-primary);
+}
+
+/* 暗黑主题下的卡片 */
+[data-theme="dark"] .card {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .card-header,
+[data-theme="dark"] .card-footer {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+/* 暗黑主题下的模态框 */
+[data-theme="dark"] .modal {
+    background-color: var(--modal-backdrop-bg);
+}
+
+[data-theme="dark"] .modal-content {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer {
+    border-color: var(--border-color);
+}
+
+/* 暗黑主题下的表单控件 */
+[data-theme="dark"] .form-control {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .form-control:focus {
+    background-color: var(--bg-secondary);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+[data-theme="dark"] .form-control:disabled {
+    background-color: var(--bg-tertiary);
+}
+
+[data-theme="dark"] .form-control::placeholder {
+    color: var(--text-muted);
+}
+
+[data-theme="dark"] select.form-control {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+}
+
+/* 暗黑主题下的设备选择下拉框 */
+[data-theme="dark"] #deviceSelect {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%9ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+}
+
+[data-theme="dark"] #deviceSelect:disabled {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%6b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+}
+
+[data-theme="dark"] #deviceSelect option {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+/* 暗黑主题下的按钮 */
+[data-theme="dark"] .btn {
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .btn:hover {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-dark);
+}
+
+/* 主题切换按钮样式 */
+.theme-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--border-radius);
+    transition: var(--transition-base);
+    font-size: 1.2rem;
+}
+
+.theme-toggle:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-secondary);
+}
+
+.theme-toggle.active {
+    color: var(--primary-color);
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+/* 主题切换图标动画 */
+.theme-toggle-icon {
+    transition: transform 0.3s ease;
+}
+
+[data-theme="dark"] .theme-toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* 高对比度主题支持 */
+@media (prefers-contrast: high) {
+    :root {
+        --border-color: #000000;
+        --text-secondary: #000000;
+        --bg-secondary: #ffffff;
+    }
+    
+    [data-theme="dark"] {
+        --border-color: #ffffff;
+        --text-secondary: #ffffff;
+        --bg-secondary: #000000;
+    }
+}
+
+/* 减少动画主题支持 */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* 系统主题偏好检测 */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        /* 如果用户偏好暗黑主题且未手动设置主题，则应用暗黑主题变量 */
+        --primary-color: #0d6efd;
+        --primary-hover: #0b5ed7;
+        --bg-primary: #212529;
+        --bg-secondary: #343a40;
+        --bg-tertiary: #495057;
+        --text-primary: #ffffff;
+        --text-secondary: #adb5bd;
+        --text-muted: #6c757d;
+        --border-color: #495057;
+        --border-light: #343a40;
+        --border-dark: #6c757d;
+    }
+}

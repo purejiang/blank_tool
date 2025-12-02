@@ -7,11 +7,11 @@
           <div class="section-header">
             <h2><span class="section-icon">⚙️</span>常规设置</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveGeneralSettings">
-                <span>💾</span>保存
+              <button class="btn btn-sm btn-primary" @click="saveGeneralSettings" data-tooltip="保存当前设置">
+                <span>💾</span>
               </button>
-              <button class="btn btn-sm btn-secondary" @click="resetGeneralSettings">
-                <span>🔄</span>重置
+              <button class="btn btn-sm btn-secondary" @click="resetGeneralSettings" data-tooltip="重置为默认值">
+                <span>🔄</span>
               </button>
             </div>
           </div>
@@ -76,99 +76,56 @@
           </div>
         </div>
 
-        <!-- 工具路径设置 -->
+        <!-- 开发工具 -->
         <div class="section">
           <div class="section-header">
-            <h2><span class="section-icon">🛠️</span>工具路径设置</h2>
+            <h2><span class="section-icon">🛠️</span>开发工具</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveToolSettings">
-                <span>💾</span>保存
-              </button>
-              <button class="btn btn-sm btn-secondary" @click="resetToolSettings">
-                <span>🔄</span>重置
+              <span class="toggle-desc">系统查找</span>
+              <div class="toggle-switch-container" :data-tooltip="systemSearchEnabled ? '关闭系统查找' : '开启系统查找'">
+                <label class="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    :checked="systemSearchEnabled" 
+                    @change="toggleSystemSearch"
+                  >
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <button class="btn btn-sm btn-secondary" @click="refreshTools" :disabled="isLoadingTools" data-tooltip="重新检测工具">
+                <span>🔄</span>
               </button>
             </div>
           </div>
-          <div class="settings-group">
-            <div class="form-group">
-              <label class="form-label" for="adbPath">ADB 路径</label>
-              <div class="path-input-group">
-                <input 
-                  type="text" 
-                  id="adbPath" 
-                  class="form-control"
-                  v-model="settings.adbPath"
-                  placeholder="Android Debug Bridge 工具路径"
-                  @change="onSettingChange"
-                >
-                <button 
-                  class="btn btn-secondary path-browse-btn" 
-                  @click="browseToolPath('adbPath')"
-                >
-                  浏览
-                </button>
+          <div class="tool-grid">
+            <div class="tool-card" v-for="tool in tools" :key="tool.key">
+              <div class="tool-card-header">
+                <div class="tool-name">{{ tool.fullName }}</div>
+                <div class="tool-status">
+                  <span :class="['status-badge', tool.status === 'available' ? 'status-ok' : 'status-bad']">
+                    {{ tool.status === 'available' ? '可用' : '不可用' }}
+                  </span>
+                  <span v-if="tool.needsUpdate" class="update-badge">需要更新</span>
+                </div>
               </div>
-              <p class="form-text">Android Debug Bridge 工具的完整路径</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="aaptPath">AAPT 路径</label>
-              <div class="path-input-group">
-                <input 
-                  type="text" 
-                  id="aaptPath" 
-                  class="form-control"
-                  v-model="settings.aaptPath"
-                  placeholder="Android Asset Packaging Tool 路径"
-                  @change="onSettingChange"
-                >
-                <button 
-                  class="btn btn-secondary path-browse-btn" 
-                  @click="browseToolPath('aaptPath')"
-                >
-                  浏览
-                </button>
+              <div class="tool-card-body">
+                <div class="tool-field">
+                  <span class="field-label">版本</span>
+                  <span class="field-value">{{ tool.version || '未知' }}</span>
+                  <button class="btn btn-sm btn-secondary" @click="checkVersion(tool.key)" data-tooltip="手动刷新">🔄</button>
+                </div>
+                <div class="tool-field">
+                  <span class="field-label">路径</span>
+                  <span 
+                    class="field-value path-text" 
+                    :title="tool.path || '未配置'"
+                  >
+                    {{ tool.path || '未配置' }}
+                  </span>
+                  <button class="btn btn-sm btn-secondary" @click="copyText(tool.path)" :disabled="!tool.path">复制</button>
+                  <button class="btn btn-sm btn-secondary" @click="browseToolExecutable(tool.key)">更改</button>
+                </div>
               </div>
-              <p class="form-text">Android Asset Packaging Tool 的完整路径</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="apktoolPath">APKTool 路径</label>
-              <div class="path-input-group">
-                <input 
-                  type="text" 
-                  id="apktoolPath" 
-                  class="form-control"
-                  v-model="settings.apktoolPath"
-                  placeholder="APKTool JAR 文件路径"
-                  @change="onSettingChange"
-                >
-                <button 
-                  class="btn btn-secondary path-browse-btn" 
-                  @click="browseToolPath('apktoolPath')"
-                >
-                  浏览
-                </button>
-              </div>
-              <p class="form-text">APKTool JAR 文件的完整路径</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="javaPath">Java 路径</label>
-              <div class="path-input-group">
-                <input 
-                  type="text" 
-                  id="javaPath" 
-                  class="form-control"
-                  v-model="settings.javaPath"
-                  placeholder="Java 可执行文件路径"
-                  @change="onSettingChange"
-                >
-                <button 
-                  class="btn btn-secondary path-browse-btn" 
-                  @click="browseToolPath('javaPath')"
-                >
-                  浏览
-                </button>
-              </div>
-              <p class="form-text">Java 可执行文件的完整路径</p>
             </div>
           </div>
         </div>
@@ -178,11 +135,11 @@
           <div class="section-header">
             <h2><span class="section-icon">📁</span>输出设置</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveOutputSettings">
-                <span>💾</span>保存
+              <button class="btn btn-sm btn-primary" @click="saveOutputSettings" data-tooltip="保存输出设置">
+                <span>💾</span>
               </button>
-              <button class="btn btn-sm btn-secondary" @click="resetOutputSettings">
-                <span>🔄</span>重置
+              <button class="btn btn-sm btn-secondary" @click="resetOutputSettings" data-tooltip="重置输出设置">
+                <span>🔄</span>
               </button>
             </div>
           </div>
@@ -219,7 +176,7 @@
                 <label class="form-check-label" for="keepOriginalStructure">
                   保持原始目录结构
                 </label>
-              </div>
+          </div>
               <p class="form-text">在输出时保持APK的原始目录结构</p>
             </div>
             <div class="form-group">
@@ -245,11 +202,11 @@
           <div class="section-header">
             <h2><span class="section-icon">📱</span>设备连接设置</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveDeviceSettings">
-                <span>💾</span>保存
+              <button class="btn btn-sm btn-primary" @click="saveDeviceSettings" data-tooltip="保存设备连接设置">
+                <span>💾</span>
               </button>
-              <button class="btn btn-sm btn-secondary" @click="resetDeviceSettings">
-                <span>🔄</span>重置
+              <button class="btn btn-sm btn-secondary" @click="resetDeviceSettings" data-tooltip="重置设备连接设置">
+                <span>🔄</span>
               </button>
             </div>
           </div>
@@ -378,11 +335,11 @@
           <div class="section-header">
             <h2><span class="section-icon">⏱️</span>工具超时设置</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveTimeoutSettings">
-                <span>💾</span>保存
+              <button class="btn btn-sm btn-primary" @click="saveTimeoutSettings" data-tooltip="保存超时设置">
+                <span>💾</span>
               </button>
-              <button class="btn btn-sm btn-secondary" @click="resetTimeoutSettings">
-                <span>🔄</span>重置
+              <button class="btn btn-sm btn-secondary" @click="resetTimeoutSettings" data-tooltip="重置超时设置">
+                <span>🔄</span>
               </button>
             </div>
           </div>
@@ -400,7 +357,7 @@
                 @change="onSettingChange"
               >
               <p class="form-text">ADB操作的超时时间</p>
-            </div>
+              </div>
             <div class="form-group">
               <label class="form-label" for="apktoolTimeout">APKTool 超时时间 (毫秒)</label>
               <input 
@@ -428,7 +385,7 @@
                 @change="onSettingChange"
               >
               <p class="form-text">BundleTool操作的超时时间</p>
-            </div>
+          </div>
             <div class="form-group">
               <label class="form-label" for="javaHeapSize">Java 堆内存大小</label>
               <select 
@@ -452,11 +409,11 @@
           <div class="section-header">
             <h2><span class="section-icon">🔍</span>分析设置</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveAnalysisSettings">
-                <span>💾</span>保存
+              <button class="btn btn-sm btn-primary" @click="saveAnalysisSettings" data-tooltip="保存分析设置">
+                <span>💾</span>
               </button>
-              <button class="btn btn-sm btn-secondary" @click="resetAnalysisSettings">
-                <span>🔄</span>重置
+              <button class="btn btn-sm btn-secondary" @click="resetAnalysisSettings" data-tooltip="重置分析设置">
+                <span>🔄</span>
               </button>
             </div>
           </div>
@@ -529,11 +486,11 @@
           <div class="section-header">
             <h2><span class="section-icon">⚡</span>性能设置</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="savePerformanceSettings">
-                <span>💾</span>保存
+              <button class="btn btn-sm btn-primary" @click="savePerformanceSettings" data-tooltip="保存性能设置">
+                <span>💾</span>
               </button>
-              <button class="btn btn-sm btn-secondary" @click="resetPerformanceSettings">
-                <span>🔄</span>重置
+              <button class="btn btn-sm btn-secondary" @click="resetPerformanceSettings" data-tooltip="重置性能设置">
+                <span>🔄</span>
               </button>
             </div>
           </div>
@@ -600,11 +557,11 @@
           <div class="section-header">
             <h2><span class="section-icon">🔬</span>高级设置</h2>
             <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveAdvancedSettings">
-                <span>💾</span>保存
+              <button class="btn btn-sm btn-primary" @click="saveAdvancedSettings" data-tooltip="保存高级设置">
+                <span>💾</span>
               </button>
-              <button class="btn btn-sm btn-secondary" @click="resetAdvancedSettings">
-                <span>🔄</span>重置
+              <button class="btn btn-sm btn-secondary" @click="resetAdvancedSettings" data-tooltip="重置高级设置">
+                <span>🔄</span>
               </button>
             </div>
           </div>
@@ -666,16 +623,17 @@
                 class="btn btn-sm btn-secondary" 
                 @click="refreshSystemInfo"
                 :disabled="isLoadingSystemInfo"
+                data-tooltip="刷新系统信息"
               >
                 <span v-if="isLoadingSystemInfo">🔄</span>
                 <span v-else>🔄</span>
-                {{ isLoadingSystemInfo ? '刷新中...' : '刷新' }}
               </button>
               <button 
                 class="btn btn-sm btn-secondary" 
                 @click="exportSystemInfo"
+                data-tooltip="导出系统信息"
               >
-                <span>📤</span>导出
+                <span>📤</span>
               </button>
             </div>
           </div>
@@ -800,31 +758,35 @@
 
 <script>
 import { ref, reactive, inject, onMounted } from 'vue'
+import serviceManager from '../services/ServiceManager.js'
+ 
 
 export default {
   name: 'SettingsPage',
   setup() {
     // 注入服务
-    const notificationService = inject('notificationService')
-    const settingsService = inject('settingsService')
+    const notificationService = inject('notificationService', null)
+    const errorService = inject('errorService', null)
+    const settingsServiceRef = ref(null)
 
     // 响应式数据
     const hasUnsavedChanges = ref(false)
     const isLoadingSystemInfo = ref(false)
+    const isLoadingTools = ref(false)
     
     const settings = reactive({
       // 常规设置
-      language: 'zh-CN',
-      theme: 'auto',
-      autoSave: true,
-      enableNotifications: true,
+  language: 'zh-CN',
+  theme: 'auto',
+  autoSave: true,
+  enableNotifications: true,
       
       // 工具路径设置
-      adbPath: '',
-      aaptPath: '',
-      apktoolPath: '',
+  adbPath: '',
+  aaptPath: '',
+  apktoolPath: '',
       bundletoolPath: '',
-      javaPath: '',
+  javaPath: '',
       
       // 工具超时设置
       adbTimeout: 30000,
@@ -889,6 +851,16 @@ export default {
       apktoolVersion: ''
     })
 
+    const tools = reactive([])
+    const systemSearchEnabled = ref(false)
+    const recommendedVersions = {
+      java: '11',
+      adb: '1.0.41',
+      aapt: '30.0.3',
+      apktool: '2.7.0',
+      bundletool: '1.15.5'
+    }
+
     // 设置变更处理
     const onSettingChange = () => {
       hasUnsavedChanges.value = true
@@ -897,7 +869,9 @@ export default {
     // 加载设置
     const loadSettings = async () => {
       try {
-        const result = await settingsService.loadSettings()
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const result = await svc.loadSettings()
         
         if (result) {
           // 更新设置对象
@@ -916,7 +890,9 @@ export default {
     // 保存设置
     const saveSettings = async () => {
       try {
-        await settingsService.saveSettings(settings)
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        await svc.saveSettings(settings)
         hasUnsavedChanges.value = false
         showSuccess('设置保存成功')
       } catch (error) {
@@ -932,7 +908,9 @@ export default {
       }
 
       try {
-        await settingsService.resetSettings()
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        await svc.resetSettings()
         await loadSettings() // 重新加载设置
         hasUnsavedChanges.value = false
         showSuccess('设置已重置为默认值')
@@ -945,8 +923,21 @@ export default {
     // 导出设置
     const exportSettings = async () => {
       try {
-        const result = await settingsService.exportSettings()
-        showSuccess('设置导出成功', `文件保存至: ${result.filePath}`)
+        const exportData = {
+          timestamp: new Date().toISOString(),
+          settings: { ...settings }
+        }
+        const dataStr = JSON.stringify(exportData, null, 2)
+        const blob = new Blob([dataStr], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `settings-${new Date().toISOString().split('T')[0]}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        showSuccess('设置导出成功')
       } catch (error) {
         console.error('导出设置失败:', error)
         showError('导出设置失败', error.message)
@@ -956,10 +947,14 @@ export default {
     // 导入设置
     const importSettings = async () => {
       try {
-        await settingsService.importSettings()
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const result = await svc.selectFile({ filters: [{ name: 'JSON', extensions: ['json'] }] })
+        if (result && result.filePath) {
+          showSuccess('设置导入成功')
+        }
         await loadSettings() // 重新加载设置
         hasUnsavedChanges.value = false
-        showSuccess('设置导入成功')
       } catch (error) {
         console.error('导入设置失败:', error)
         showError('导入设置失败', error.message)
@@ -969,7 +964,9 @@ export default {
     // 浏览工具路径
     const browseToolPath = async (target) => {
       try {
-        const result = await settingsService.selectFile({
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const result = await svc.selectFile({
           title: '选择工具文件',
           filters: [
             { name: '可执行文件', extensions: ['exe', 'jar'] },
@@ -990,7 +987,9 @@ export default {
     // 浏览目录
     const browseDirectory = async (target) => {
       try {
-        const result = await settingsService.selectDirectory({
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const result = await svc.selectDirectory({
           title: '选择目录'
         })
         
@@ -1008,8 +1007,9 @@ export default {
     const loadSystemInfo = async () => {
       try {
         isLoadingSystemInfo.value = true
-        // 获取系统信息
-        const systemResult = await settingsService.getSystemInfo()
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const systemResult = await svc.getSystemInfo()
         if (systemResult && systemResult.system_info) {
           const sysInfo = systemResult.system_info
           
@@ -1035,7 +1035,7 @@ export default {
           // 磁盘信息处理
           if (sysInfo.diskTotal) {
             systemInfo.diskTotal = formatFileSize(sysInfo.diskTotal)
-          }
+  }
           if (sysInfo.diskUsed) {
             systemInfo.diskUsed = formatFileSize(sysInfo.diskUsed)
           }
@@ -1052,8 +1052,7 @@ export default {
           }
         }
         
-        // 获取构建信息
-        const buildResult = await settingsService.getBuildInfo()
+        const buildResult = await svc.getBuildInfo()
         if (buildResult && buildResult.build_info) {
           const build = buildResult.build_info
           
@@ -1081,6 +1080,175 @@ export default {
       showSuccess('系统信息已刷新')
     }
 
+    const toolServiceRef = ref(null)
+    const mapToolsFromCache = (list) => {
+      const fullNameMap = {
+        adb: 'Android Debug Bridge',
+        aapt: 'Android Asset Packaging Tool',
+        apktool: 'APKTool',
+        java: 'Java',
+        bundletool: 'BundleTool',
+        apksigner: 'Apk Signer',
+        zipalign: 'Zipalign',
+        jarsigner: 'JAR Signer'
+      }
+      tools.splice(0, tools.length)
+      list.forEach(item => {
+        const key = item.name || item.key
+        const fullName = fullNameMap[key] || key
+        const version = item.version || ''
+        const needsUpdate = checkNeedsUpdate(key, version)
+        tools.push({
+          key,
+          fullName,
+          status: item.status || (item.available ? 'available' : 'unavailable'),
+          version,
+          path: item.path || item.tool_path || '',
+          source: item.source || 'unknown',
+          needsUpdate
+        })
+      })
+    }
+
+    const initializeToolView = async () => {
+      try {
+        isLoadingTools.value = true
+        toolServiceRef.value = await serviceManager.getService('tools')
+        const cached = toolServiceRef.value.getAllToolsStatus()
+        if (cached && cached.length) {
+          mapToolsFromCache(cached)
+        }
+        toolServiceRef.value.addListener((event, data) => {
+          if (event === 'tools_updated' && Array.isArray(data)) {
+            mapToolsFromCache(data)
+          }
+        })
+      } catch (e) {
+        console.error('初始化工具视图失败:', e)
+        showError('初始化工具视图失败')
+      } finally {
+        isLoadingTools.value = false
+      }
+    }
+
+    const refreshTools = async () => {
+      try {
+        console.log('refreshTools函数被调用')
+        isLoadingTools.value = true
+        if (!toolServiceRef.value) {
+          toolServiceRef.value = await serviceManager.getService('tools')
+        }
+        await toolServiceRef.value.refreshToolsStatus()
+        showSuccess('工具状态已刷新')
+      } catch (e) {
+        console.error('刷新工具状态失败:', e)
+        showError('刷新工具状态失败')
+      } finally {
+        isLoadingTools.value = false
+      }
+    }
+
+    const toggleSystemSearch = async () => {
+      try {
+        const next = !systemSearchEnabled.value
+        if (!toolServiceRef.value) {
+          toolServiceRef.value = await serviceManager.getService('tools')
+        }
+        const payload = await toolServiceRef.value.setSystemSearchMode(next)
+        if (payload) {
+          systemSearchEnabled.value = !!payload.system_search
+          showSuccess(`系统查找已${next ? '开启' : '关闭'}`)
+        }
+      } catch (e) {
+        console.error('切换系统工具优先失败:', e)
+        showError('切换系统工具优先失败')
+      }
+    }
+
+    const checkNeedsUpdate = (key, version) => {
+      if (!version) return false
+      const min = recommendedVersions[key]
+      if (!min) return false
+      const normalize = v => String(v).replace(/[^0-9.]/g, '')
+      const cmp = (a, b) => {
+        const pa = normalize(a).split('.').map(n => parseInt(n || '0', 10))
+        const pb = normalize(b).split('.').map(n => parseInt(n || '0', 10))
+        const len = Math.max(pa.length, pb.length)
+        for (let i = 0; i < len; i++) {
+          const da = pa[i] || 0
+          const db = pb[i] || 0
+          if (da < db) return -1
+          if (da > db) return 1
+        }
+        return 0
+      }
+      return cmp(version, min) < 0
+    }
+
+    const checkVersion = async (key) => {
+      try {
+        if (!toolServiceRef.value) {
+          toolServiceRef.value = await serviceManager.getService('tools')
+        }
+        const info = await toolServiceRef.value.checkTool(key, true)
+        if (info) {
+          const ver = info.version || ''
+          const t = tools.find(t => t.key === key)
+          if (t) {
+            t.version = ver || t.version
+            t.status = info.status || t.status
+            t.path = info.path || t.path
+            t.needsUpdate = checkNeedsUpdate(key, t.version)
+          }
+          showSuccess('版本检测完成')
+        } else {
+          showError('版本检测失败')
+        }
+      } catch (e) {
+        console.error('版本检测失败:', e)
+        showError('版本检测失败')
+      }
+    }
+
+    const copyText = async (text) => {
+      try {
+        if (!text) return
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const ok = await svc.copyText(text)
+        if (ok) showSuccess('已复制到剪贴板')
+        else showError('复制失败')
+      } catch (e) {
+        showError('复制失败')
+      }
+    }
+
+    const browseToolExecutable = async (key) => {
+      try {
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const result = await svc.selectFile({
+          title: '选择工具文件',
+          filters: [
+            { name: '可执行文件', extensions: ['exe', 'jar'] },
+            { name: '所有文件', extensions: ['*'] }
+          ]
+        })
+        if (result && result.filePath) {
+          const path = result.filePath
+          const t = tools.find(t => t.key === key)
+          if (t) t.path = path
+          const dotKey = `tools.${key}`
+          await svc.saveSettings({ [dotKey]: path })
+          showSuccess('工具路径已保存')
+          await refreshTools()
+        }
+      } catch (e) {
+        console.error('选择工具文件失败:', e)
+        showError('选择工具文件失败')
+      }
+    }
+
     // 导出系统信息
     const exportSystemInfo = async () => {
       try {
@@ -1093,7 +1261,7 @@ export default {
         const dataStr = JSON.stringify(exportData, null, 2)
         const blob = new Blob([dataStr], { type: 'application/json' })
         const url = URL.createObjectURL(blob)
-        
+
         const a = document.createElement('a')
         a.href = url
         a.download = `system-info-${new Date().toISOString().split('T')[0]}.json`
@@ -1158,7 +1326,7 @@ export default {
         console.error('保存常规设置失败:', error)
         showError('保存常规设置失败', error.message)
       }
-    }
+}
 
     const resetGeneralSettings = async () => {
       if (!confirm('确定要重置常规设置为默认值吗？')) return
@@ -1174,7 +1342,7 @@ export default {
       } catch (error) {
         showError('重置常规设置失败', error.message)
       }
-    }
+}
 
     const saveToolPathSettings = async () => {
       try {
@@ -1190,7 +1358,7 @@ export default {
         console.error('保存工具路径设置失败:', error)
         showError('保存工具路径设置失败', error.message)
       }
-    }
+}
 
     const resetToolPathSettings = async () => {
       if (!confirm('确定要重置工具路径设置为默认值吗？')) return
@@ -1221,7 +1389,7 @@ export default {
         console.error('保存输出设置失败:', error)
         showError('保存输出设置失败', error.message)
       }
-    }
+}
 
     const resetOutputSettings = async () => {
       if (!confirm('确定要重置输出设置为默认值吗？')) return
@@ -1312,7 +1480,7 @@ export default {
         console.error('保存分析设置失败:', error)
         showError('保存分析设置失败', error.message)
       }
-    }
+}
 
     const resetAnalysisSettings = async () => {
       if (!confirm('确定要重置分析设置为默认值吗？')) return
@@ -1404,21 +1572,32 @@ export default {
     }
 
     const showError = (title, message = '') => {
-      if (notificationService) {
+      if (errorService) {
+        const err = new Error(message || title || '未知错误')
+        errorService.reportError(err, { category: 'service', context: title || '操作失败' })
+      } else if (notificationService) {
         notificationService.error(title, message)
       }
     }
 
     // 生命周期
     onMounted(async () => {
+      console.log('SettingsPage组件已挂载')
+      try {
+        settingsServiceRef.value = await serviceManager.getService('settings')
+      } catch {}
       await loadSettings()
       await loadSystemInfo()
+      await initializeToolView()
     })
 
     return {
       settings,
       systemInfo,
       buildInfo,
+      tools,
+      systemSearchEnabled,
+      isLoadingTools,
       hasUnsavedChanges,
       isLoadingSystemInfo,
       onSettingChange,
@@ -1430,6 +1609,11 @@ export default {
       browseDirectory,
       refreshSystemInfo,
       exportSystemInfo,
+      refreshTools,
+      toggleSystemSearch,
+      copyText,
+      checkVersion,
+      browseToolExecutable,
       getMemoryUsageClass,
       getDiskUsageClass,
       // 分类级别的方法
@@ -1478,6 +1662,103 @@ export default {
   white-space: nowrap;
 }
 
+/* 开发工具卡片 */
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.tool-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.tool-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--text-color);
+  font-size: 14px;
+}
+
+.tool-status {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.status-ok {
+  background: #e6fffb;
+  color: #08979c;
+  border: 1px solid #87e8de;
+}
+
+.status-bad {
+  background: #fff1f0;
+  color: #cf1322;
+  border: 1px solid #ffa39e;
+}
+
+.update-badge {
+  background: #fffbe6;
+  color: #d48806;
+  border: 1px solid #ffe58f;
+  border-radius: 12px;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.tool-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.field-label {
+  color: var(--text-color-secondary);
+  font-size: 12px;
+  min-width: 72px;
+}
+
+.field-value {
+  color: var(--text-color);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.path-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  max-width: none;
+}
+
 .info-category {
   margin-bottom: 20px;
 }
@@ -1518,13 +1799,17 @@ export default {
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 20px;
+  position: relative;
 }
 
 .section-actions {
   display: flex;
   gap: 8px;
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .section-actions .btn {
@@ -1534,6 +1819,7 @@ export default {
   font-size: 12px;
   padding: 6px 12px;
 }
+
 
 .info-category {
   margin-bottom: 24px;
@@ -1619,6 +1905,9 @@ export default {
   .info-grid {
     grid-template-columns: 1fr;
   }
+  .tool-grid {
+    grid-template-columns: 1fr;
+  }
   
   .info-item {
     flex-direction: column;
@@ -1631,4 +1920,6 @@ export default {
     text-align: left;
   }
 }
+
+
 </style>

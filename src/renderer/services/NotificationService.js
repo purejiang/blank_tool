@@ -7,6 +7,7 @@ class NotificationService {
         this.nextId = 1;
         this.notifications = new Map(); // 存储通知数据，用于状态管理
         this.isInitialized = false;
+        this.initialize();
     }
 
     /**

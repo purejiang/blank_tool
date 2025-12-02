@@ -20,16 +20,23 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 
 export default {
   name: 'Header',
   setup() {
-    const tabs = ref([
-      { route: '/apk', icon: '📦', title: 'APK 工具' },
-      { route: '/device', icon: '📱', title: '设备管理' },
-      { route: '/settings', icon: '⚙️', title: '设置' }
-    ])
+    const router = useRouter()
+    const tabs = computed(() =>
+      router
+        .getRoutes()
+        .filter((route) => route.meta && route.meta.title && route.meta.icon)
+        .map((route) => ({
+          route: route.path,
+          icon: route.meta.icon,
+          title: route.meta.title
+        }))
+    )
 
     return {
       tabs

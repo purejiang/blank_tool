@@ -1,19 +1,17 @@
 /**
  * 工具服务 - 管理工具状态和操作
  */
-import { useAppConfigStore } from '../stores'
+import unifiedAPI from '../api/unifiedApi.js';
 
 class ToolService {
     constructor() {
         this.tools = new Map();
-        this.appConfigStore = null;
         this.isPolling = false;
         this.pollingInterval = null;
         this.pollingIntervalMs = 30000; // 30秒轮询间隔
         this.maxRetries = 3;
         this.retryDelay = 2000; // 2秒重试延迟
         this.listeners = new Set();
-        // 不在构造函数中调用 initialize()，由 ServiceManager 调用
     }
 
     /**
@@ -22,7 +20,6 @@ class ToolService {
     async initialize() {
         try {
             console.log('初始化工具服务...');
-            this.appConfigStore = useAppConfigStore();
             console.log('工具服务初始化成功');
         } catch (error) {
             console.error('工具服务初始化失败:', error);
@@ -30,49 +27,61 @@ class ToolService {
         }
     }
 
+    async checkTool(toolName, refresh = true) {
+        return this.checkTools({ toolName, refresh });
+    }
+
     /**
      * 加载工具状态
      */
-    async checkTools() {
+    async checkTools(params = {}) {
         try {
-            console.log('正在检查工具状态...');
-
-            // 正确访问配置：先获取 tools 对象，然后访问 python 属性
-            const toolsConfig = this.appConfigStore.get('tools') || {};
-
-            console.log('toolsConfig:', toolsConfig);
-            const python_path = toolsConfig.python || '';
-            const response = await window.electronAPI.checkTool(python_path, 'adb');
-
-            if (!response || !response.success) {
-                throw new Error(response?.message || '获取工具状态失败');
-            }
-
-            const toolsData = response.data || {};
-
-            // 更新工具状态
-            this.tools.clear();
-            for (const [toolName, toolInfo] of Object.entries(toolsData)) {
-                this.tools.set(toolName, {
-                    name: toolName,
-                    status: toolInfo.status || 'unknown',
-                    version: toolInfo.version || 'unknown',
-                    path: toolInfo.path || '',
+            const { toolName, refresh } = params || {};
+            if (toolName) {
+                const response = await unifiedAPI.call('tool.get_tools', { tool_name: toolName, refresh });
+                const isWrapped = response && typeof response === 'object' && ('type' in response || 'payload' in response);
+                const success = isWrapped ? (response.type ? response.type === 'success' : true) : true;
+                const data = isWrapped ? (response.payload || {}) : (response.data || response);
+                if (!success) {
+                    throw new Error('工具状态请求失败');
+                }
+                const info = {
+                    name: data.name || toolName,
+                    status: data.status || 'unknown',
+                    version: data.version || 'unknown',
+                    path: data.path || '',
+                    source: data.source || 'none',
                     lastChecked: new Date(),
-                    available: toolInfo.status === 'available',
-                    ...toolInfo
+                    available: data.status === 'available',
+                    ...data
+                };
+                this.tools.set(info.name, info);
+                this.notifyListeners('tool_updated', info);
+                return info;
+            }
+            const response = await unifiedAPI.call('tool.get_tools', { refresh });
+            const isWrapped = response && typeof response === 'object' && ('type' in response || 'payload' in response);
+            const success = isWrapped ? (response.type ? response.type === 'success' : true) : true;
+            const toolsData = isWrapped ? (response.payload || {}) : (response.data || response);
+            if (!success) {
+                throw new Error('工具状态请求失败');
+            }
+            this.tools.clear();
+            for (const [name, info] of Object.entries(toolsData)) {
+                this.tools.set(name, {
+                    name,
+                    status: info.status || 'unknown',
+                    version: info.version || 'unknown',
+                    path: info.path || '',
+                    source: info.source || 'none',
+                    lastChecked: new Date(),
+                    available: info.status === 'available',
+                    ...info
                 });
             }
-
-            console.log(`成功加载 ${this.tools.size} 个工具的状态`);
-
-            // 通知监听器
             this.notifyListeners('tools_updated', Array.from(this.tools.values()));
-
             return Array.from(this.tools.values());
         } catch (error) {
-            console.error('加载工具状态失败:', error);
-            // 通知监听器错误
             this.notifyListeners('tools_error', error);
             throw error;
         }
@@ -178,6 +187,17 @@ class ToolService {
         } catch (error) {
             console.error('刷新工具状态失败:', error);
             return false;
+        }
+    }
+
+    async setSystemSearchMode(systemSearch) {
+        try {
+            const resp = await unifiedAPI.call('tool.set_search_mode', { system_search: systemSearch });
+            const isWrapped = resp && typeof resp === 'object' && ('type' in resp || 'payload' in resp);
+            const payload = isWrapped ? (resp.payload || {}) : resp;
+            return payload;
+        } catch (error) {
+            throw error;
         }
     }
 

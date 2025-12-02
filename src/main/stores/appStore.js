@@ -31,52 +31,22 @@ const schema = {
             minimizeToTray: false
         }
     },
-    // 工具配置
-    tools: {
+    // 环境配置
+    runtime: {
         type: 'object',
         properties: {
-            adb: {
-                type: 'string',
-                default: './tools/adb'
-            },
-            aapt: {
-                type: 'string',
-                default: './tools/aapt'
-            },
-            apktool: {
-                type: 'string',
-                default: './tools/apktool'
-            },
-            bundletool: {
-                type: 'string',
-                default: './tools/bundletool'
-            },
             java: {
                 type: 'string',
-                default: './tools/jre'
+                default: '\.\\tools\\jre'
             },
             python: {
                 type: 'string',
-                default: './tools/python_runtime'
-            },
-            zipalign: {
-                type: 'string',
-                default: './tools/android'
-            },
-            apksigner: {
-                type: 'string',
-                default: './tools/android'
+                default: '\.\\tools\\python_runtime'
             }
         },
         default: {
-            adb: './tools/adb',
-            aapt: './tools/aapt',
-            apktool: './tools/apktool',
-            bundletool: './tools/bundletool',
-            java: './tools/jre',
-            python: './tools/python_runtime',
-            zipalign: './tools/android',
-            apksigner: './tools/android'
+            java: '\.\\runtime\\jre',
+            python: '\.\\runtime\\python'
         }
     },
     // 命令配置

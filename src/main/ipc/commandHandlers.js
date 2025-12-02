@@ -1,34 +1,65 @@
-import { ipcMain } from 'electron';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { CommandService } from '../services/commandService.js';
+import { ipcMain, BrowserWindow } from 'electron';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+export function setupCommandHandlers(pythonProcess) {
+    const requestCallbacks = new Map();
 
-export function setupCommandHandlers() {
-    const commandService = new CommandService({
-        timeout: 10000, // 10秒超时
-        cwd: process.cwd()
+    pythonProcess.stdout.on('data', (data) => {
+        const messages = data.toString().split('\n').filter(msg => msg.trim() !== '');
+        messages.forEach(message => {
+            const msg = message.trim();
+            if (!msg.startsWith('{')) return;
+            try {
+                const response = JSON.parse(msg);
+                if (response && response.type === 'event' && response.event) {
+                    const broadcast = (channel, payload) => {
+                        BrowserWindow.getAllWindows().forEach(win => {
+                            if (!win.isDestroyed()) {
+                                win.webContents.send(channel, payload);
+                            }
+                        });
+                    };
+
+                    if (response.event === 'stream.event' && response.data) {
+                        const { stream_id, data: inner } = response.data;
+                        if (inner && inner.type) {
+                            if (inner.type === 'log') {
+                                broadcast('logcat-output', { stream_id, ...inner.payload });
+                            } else if (inner.type === 'started') {
+                                broadcast('logcat-started', { stream_id, ...inner.payload });
+                            } else if (inner.type === 'process_finished') {
+                                broadcast('logcat-finished', { stream_id, ...inner.payload });
+                            } else if (inner.type === 'error') {
+                                broadcast('logcat-error', { stream_id, ...inner.payload });
+                            } else {
+                                broadcast(response.event, response.data);
+                            }
+                        } else {
+                            broadcast(response.event, response.data);
+                        }
+                    } else {
+                        broadcast(response.event, response.data);
+                    }
+                    return;
+                }
+                if (response && typeof response.id !== 'undefined' && requestCallbacks.has(response.id)) {
+                    const { resolve, reject } = requestCallbacks.get(response.id);
+                    if (response.error) {
+                        reject(new Error(response.error.message));
+                    } else {
+                        resolve(response.result);
+                    }
+                    requestCallbacks.delete(response.id);
+                }
+            } catch (e) {
+                console.error('Error parsing JSON from Python:', e);
+            }
+        });
     });
-    // 统一的后端API调用处理器
-    ipcMain.handle('call-backend-api', async (event, action, params = {}, options = {}) => {
-        console.log(`[IPC] 执行call-backend-api: action=${action}, params= ${JSON.stringify(params)}, options= ${JSON.stringify(options)}`);
-        const projectRoot = path.resolve(__dirname, '../../..');
-        const backendMainPath = path.join(projectRoot, 'backend', 'main.py');
-        const pythonPath = options.python_path+"\\python.exe";
-        const command = `${pythonPath} ${backendMainPath} --action=${action} --params=${JSON.stringify(params)}`;
 
-        const result = await commandService.execute(command, options);
-        console.log(`[IPC] call-backend-api 执行结果: ${JSON.stringify(result)}`);
-        return result;       
-    });
-
-    // 统一的命令行调用处理器
-    ipcMain.handle('call-command', async (event, command, options = {}) => {
-        console.log(`[IPC] 执行call-command: command=${command}, options=`, options);
-        const result = await commandService.execute(command, options);
-        console.log(`[IPC] call-command 执行结果: ${JSON.stringify(result)}`);
-        return result;
+    ipcMain.handle('call-backend-api', async (event, request) => {
+        return new Promise((resolve, reject) => {
+            requestCallbacks.set(request.id, { resolve, reject });
+            pythonProcess.stdin.write(JSON.stringify(request) + '\n');
+        });
     });
 }

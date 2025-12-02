@@ -21,30 +21,28 @@
 
     <!-- 右侧：版本信息 -->
     <div class="status-right">
-      <span class="version-info">v{{ appVersion }}</span>
+      <span class="version-info">前端 v{{ frontendVersion }} | 后端 v{{ backendVersion || '未知' }}</span>
     </div>
   </div>
 </template>
 
 <script>
-import { computed, onMounted } from 'vue'
-import { useDeviceStore } from '../../stores'
+import { computed, onMounted, ref } from 'vue'
+import { useDeviceStore } from '@/stores'
+import { storeToRefs } from 'pinia'
+import serviceManager from '../../services/ServiceManager.js'
 
 export default {
   name: 'StatusBar',
   setup() {
-    // 注入服务
 
     const deviceStore = useDeviceStore()
 
     // 使用全局设备状态
-    const connectedDevice = computed(() => {
-      if (!deviceStore.currentDevice) {
-        return {}
-      }
-      return deviceStore.currentDevice.value
-  })
-    const appVersion = computed(() => '1.0.0') // 可以后续从设置中获取
+    const { selectedDevice } = storeToRefs(deviceStore)
+    const connectedDevice = computed(() => selectedDevice.value || null)
+    const frontendVersion = ref('1.0.0')
+    const backendVersion = ref('')
 
     // 计算设备状态
     const deviceStatus = computed(() => {
@@ -72,11 +70,19 @@ export default {
     })
 
     // 获取应用版本信息
-    const getAppVersion = async () => {
+    const settingsServiceRef = ref(null)
+    const getVersions = async () => {
       try {
-        const buildInfo = await settingsService.getBuildInfo()
-        if (buildInfo && buildInfo.build_info) {
-          appVersion.value = buildInfo.build_info.app_version || '1.0.0'
+        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
+        settingsServiceRef.value = svc
+        const direct = await svc.getAppVersion()
+        if (direct && typeof direct === 'string') frontendVersion.value = direct
+        else if (direct && typeof direct === 'object' && direct.version) frontendVersion.value = String(direct.version)
+        const buildResult = await svc.getBuildInfo()
+        if (buildResult && buildResult.build_info) {
+          const build = buildResult.build_info
+          const v = build.app_version || ''
+          if (typeof v === 'string' && v) backendVersion.value = v
         }
       } catch (error) {
         console.error('获取版本信息失败:', error)
@@ -84,25 +90,21 @@ export default {
     }
 
     // 获取当前设备信息
-    const getConnectedDevice = async () => {
-      try {
-        const device = await settingsService.getConnectedDevice()
-        if (device) {
-          connectedDevice.value = device
-        }
-      } catch (error) {
-        console.error('获取设备信息失败:', error)
-      }
-    }
+    
 
     // 生命周期
     onMounted(async () => {
-      await getAppVersion()
+      console.log('StatusBar组件已挂载，开始初始化应用')
+      try {
+        settingsServiceRef.value = await serviceManager.getService('settings')
+      } catch {}
+      await getVersions()
     })
 
     return {
       connectedDevice,
-      appVersion,
+      frontendVersion,
+      backendVersion,
       deviceStatus,
       deviceStatusClass
     }
