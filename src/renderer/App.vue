@@ -43,21 +43,22 @@
 </template>
 
 <script>
-import { ref, onMounted, provide, getCurrentInstance } from 'vue'
+import { ref, shallowRef, onMounted, provide, getCurrentInstance } from 'vue'
 import AppHeader from '@components/common/Header.vue'
 import StatusBar from '@components/common/StatusBar.vue'
 import Notification from '@components/common/Notification.vue'
-import serviceManager from './services/ServiceManager.js'
-import { ThemeService } from './services/ThemeService.js'
-import ToolService from './services/ToolService.js'
-import NotificationService from './services/NotificationService.js'
+import serviceManager from '@services/ServiceManager.js'
+import { ThemeService } from '@services/ThemeService.js'
+import ToolService from '@services/ToolService.js'
+import NotificationService from '@services/NotificationService.js'
 import unifiedAPI from './api/unifiedApi.js'
-import ErrorService from './services/ErrorService.js'
-import StoreService from './services/StoreService.js'
-import ApkService from './services/ApkService.js'
-import CacheService from './services/CacheService.js'
-import SettingsService from './services/SettingsService.js'
-import DeviceService from './services/DeviceService.js'
+import ErrorService from '@services/ErrorService.js'
+import StoreService from '@services/StoreService.js'
+import ApkService from '@services/ApkService.js'
+import CacheService from '@services/CacheService.js'
+import SettingsService from '@services/SettingsService.js'
+import DeviceService from '@services/DeviceService.js'
+import SystemService from '@services/SystemService.js'
 
 
 export default {
@@ -78,32 +79,40 @@ export default {
     const retryCount = ref(0)
     const maxRetries = 3
 
+    // Provide services using refs to handle async initialization
+    const notificationServiceRef = shallowRef(null)
+    provide('notificationService', notificationServiceRef)
+
+    const errorServiceRef = shallowRef(null)
+    provide('errorService', errorServiceRef)
+
     /**
      * 服务注册
      */
     function registerServices() {
+      // 关键服务初始化
       serviceManager.register('store', StoreService)
+      serviceManager.register('notification', NotificationService)
+      
+      // 功能服务初始化
+      serviceManager.register('device', DeviceService, ['store'])
+      serviceManager.register('settings', SettingsService, ['store'])
       serviceManager.register('theme', ThemeService)
       serviceManager.register('tools', ToolService, ['store'])
-      serviceManager.register('notification', NotificationService)
       serviceManager.register('error', ErrorService, ['notification'])
-
-
-      // 关键服务初始化
+      serviceManager.register('system', SystemService)
       serviceManager.register('apk', ApkService, ['store'])
       serviceManager.register('cache', CacheService, ['store'])
-      serviceManager.register('settings', SettingsService, ['store'])
-      serviceManager.register('device', DeviceService, ['store'])
     }
 
     async function provideInjectedServices() {
       try {
         const notificationSvc = await serviceManager.getService('notification')
-        provide('notificationService', notificationSvc)
+        notificationServiceRef.value = notificationSvc
       } catch {}
       try {
         const errorSvc = await serviceManager.getService('error')
-        provide('errorService', errorSvc)
+        errorServiceRef.value = errorSvc
       } catch {}
     }
 

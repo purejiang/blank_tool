@@ -30,7 +30,8 @@ export default defineConfig({
       '@services': resolve(__dirname, 'src/renderer/services'),
       '@utils': resolve(__dirname, 'src/renderer/utils'),
       '@stores': resolve(__dirname, 'src/renderer/stores'),
-      '@assets': resolve(__dirname, 'src/renderer/assets')
+      '@assets': resolve(__dirname, 'src/renderer/assets'),
+      '@composables': resolve(__dirname, 'src/renderer/composables'),
     }
   },
   define: {

@@ -49,6 +49,14 @@ class UnifiedApi {
           window.open('about:blank', '_blank', 'width=800,height=600')
         }
       },
+      writeClipboardText: async (text) => {
+        console.log('Mock: 写入剪贴板', text)
+        return { success: true, message: '模拟环境：已写入剪贴板' }
+      },
+      getFileStats: async (path) => {
+        console.log('Mock: 获取文件统计信息', path)
+        return { success: true, size: 1024 * 1024, message: '模拟环境：文件大小为 1MB' }
+      },
       getAppVersion: async () => '1.0.0-mock',
       getSystemInfo: async () => ({ platform: 'mock', arch: 'x64', version: '1.0.0' })
     }
@@ -76,6 +84,6 @@ class UnifiedApi {
   }
 }
 
-const unifiedAPI = new UnifiedApi()
-export default unifiedAPI
+const api = new UnifiedApi()
+export default api
 export { UnifiedApi }

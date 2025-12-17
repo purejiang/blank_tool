@@ -6,11 +6,7 @@
         <span class="toggle-desc">自动监听</span>
         <div class="toggle-switch-container" :data-tooltip="isMonitoring ? '关闭自动监听' : '开启自动监听'">
           <label class="toggle-switch">
-            <input 
-              type="checkbox" 
-              :checked="isMonitoring" 
-              @change="toggleMonitoring"
-            >
+            <input type="checkbox" :checked="isMonitoring" @change="toggleMonitoring">
             <span class="toggle-slider"></span>
           </label>
         </div>
@@ -22,32 +18,22 @@
     <div class="form-group">
       <label>连接状态</label>
       <div class="status-row">
-        <span 
-          class="status-indicator" 
-          :class="connectionStatus.connected ? 'status-connected' : 'status-disconnected'"
-        ></span>
+        <span class="status-indicator"
+          :class="connectionStatus.connected ? 'status-connected' : 'status-disconnected'"></span>
         <span>{{ connectionStatus.text }}</span>
       </div>
     </div>
     <div class="form-group">
       <label>选择设备</label>
-      <select 
-        class="form-control" 
-        v-model="selectedDeviceId"
-        :disabled="devices.length === 0"
-        @change="handleDeviceSelection"
-      >
+      <select class="form-control" v-model="selectedDeviceId" :disabled="devices.length === 0"
+        @change="handleDeviceSelection">
         <option value="">{{ devices.length === 0 ? '请先刷新设备列表' : '请选择设备' }}</option>
-        <option 
-          v-for="device in devices" 
-          :key="device.id" 
-          :value="device.id"
-        >
-          {{ device.name}} ({{ device.id }}) - {{ device.status }}
+        <option v-for="device in devices" :key="device.id" :value="device.id">
+          {{ device.name }} ({{ device.id }}) - {{ device.status }}
         </option>
       </select>
     </div>
-    
+
     <!-- 设备信息 -->
     <div class="form-group">
       <label>设备信息</label>
@@ -89,6 +75,18 @@
               <span class="info-label">API级别:</span>
               <span class="info-value">{{ deviceInfo.apiLevel }}</span>
             </div>
+            <div class="info-item" v-if="deviceInfo.architecture">
+              <span class="info-label">架构:</span>
+              <span class="info-value">{{ deviceInfo.architecture }}</span>
+            </div>
+            <div class="info-item" v-if="deviceInfo.systemActivationDate">
+              <span class="info-label">激活日期:</span>
+              <span class="info-value">{{ deviceInfo.systemActivationDate }}</span>
+            </div>
+            <div class="info-item" v-if="deviceInfo.pageSize">
+              <span class="info-label">Page Size:</span>
+              <span class="info-value">{{ deviceInfo.pageSize }}</span>
+            </div>
             <div class="info-item" v-if="deviceInfo.batteryLevel !== undefined">
               <span class="info-label">电池电量:</span>
               <span class="info-value">{{ deviceInfo.batteryLevel }}%</span>
@@ -101,21 +99,17 @@
               <span class="info-label">屏幕密度:</span>
               <span class="info-value">{{ deviceInfo.density }}</span>
             </div>
-            <div class="info-item" v-if="deviceInfo.architecture">
-              <span class="info-label">架构:</span>
-              <span class="info-value">{{ deviceInfo.architecture }}</span>
-            </div>
             <div class="info-item" v-if="deviceInfo.totalMemory">
               <span class="info-label">总内存:</span>
               <span class="info-value">{{ deviceInfo.totalMemory }}</span>
             </div>
-            <div class="info-item" v-if="deviceInfo.totalStorage">
-              <span class="info-label">总存储:</span>
-              <span class="info-value">{{ deviceInfo.totalStorage }}</span>
-            </div>
             <div class="info-item" v-if="deviceInfo.availableStorage">
               <span class="info-label">可用存储:</span>
               <span class="info-value">{{ deviceInfo.availableStorage }}</span>
+            </div>
+            <div class="info-item" v-if="deviceInfo.totalStorage">
+              <span class="info-label">总存储:</span>
+              <span class="info-value">{{ deviceInfo.totalStorage }}</span>
             </div>
             <div class="info-item" v-if="deviceInfo.buildId">
               <span class="info-label">构建ID:</span>
@@ -134,20 +128,20 @@
 
 <script>
 import { useDeviceStore } from '@stores/deviceStore.js'
-import serviceManager from '../services/ServiceManager.js'
+import serviceManager from '@services/ServiceManager.js'
 import { storeToRefs } from 'pinia'
 
 export default {
   name: 'DeviceManager',
   setup() {
     const deviceStore = useDeviceStore()
-    const { 
-      devices, 
-      selectedDeviceId, 
-      selectedDevice, 
-      deviceInfo, 
-      isMonitoring, 
-      connectionStatus 
+    const {
+      devices,
+      selectedDeviceId,
+      selectedDevice,
+      deviceInfo,
+      isMonitoring,
+      connectionStatus
     } = storeToRefs(deviceStore)
 
     const refreshDevices = async () => {

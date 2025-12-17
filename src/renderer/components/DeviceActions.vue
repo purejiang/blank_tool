@@ -58,24 +58,46 @@
 <script>
 import { ref } from 'vue'
 import { useDeviceStore } from '@stores/deviceStore.js'
-import serviceManager from '../services/ServiceManager.js'
+import  serviceManager  from '@services/serviceManager.js'
+import { useNotification } from '@composables/useNotification.js'
 import { storeToRefs } from 'pinia'
 
 export default {
   name: 'DeviceActions',
   setup() {
+    const { showSuccess, showError, showLoading, completeLoading, failLoading } = useNotification()
     const deviceStore = useDeviceStore()
     const { selectedDevice, shellOutput } = storeToRefs(deviceStore)
     const shellCommand = ref('')
 
     const rebootDevice = async (mode) => {
-      const svc = await serviceManager.getService('device')
-      await svc.rebootDevice(mode)
+
+      const loadingId = showLoading('正在重启设备', `正在将设备重启到 ${mode} 模式...`)
+      
+      try {
+        const svc = await serviceManager.getService('device')
+        await svc.rebootDevice(mode)
+        
+        completeLoading(loadingId, '重启指令已发送', `设备正在重启到 ${mode} 模式`)
+      } catch (error) {
+        failLoading(loadingId, '重启失败', error.message || '未知错误')
+      }
     }
     const executeShellCommand = async () => {
-      const svc = await serviceManager.getService('device')
-      await svc.executeShell(shellCommand.value)
-      shellCommand.value = ''
+      if (!shellCommand.value.trim()) return
+      // 对于耗时较短的 shell 命令，也许不需要 loading，或者给一个短的延迟显示？
+      // 这里为了统一体验，加上 loading，因为 adb 命令有时候会卡住
+      const loadingId = showLoading('执行命令', `正在执行: ${shellCommand.value}`)
+      
+      try {
+        const svc = await serviceManager.getService('device')
+        await svc.executeShell(shellCommand.value)
+        shellCommand.value = ''
+        
+        completeLoading(loadingId, '执行完成', '命令执行成功')
+      } catch (error) {
+        failLoading(loadingId, '执行失败', error.message || '未知错误')
+      }
     }
 
     return {

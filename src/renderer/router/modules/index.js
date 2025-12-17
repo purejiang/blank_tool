@@ -1,17 +1,17 @@
-import apkRoutes from './apk.js'
+import packageRoutes from './package.js'
 import deviceRoutes from './device.js'
 import settingsRoutes from './settings.js'
-import testRoutes from './test.js'
+import otherToolsRoutes from './otherTools.js'
 
 const routes = [
   {
     path: '/',
-    redirect: '/apk'
+    redirect: '/package'
   },
-  ...apkRoutes,
+  ...packageRoutes,
   ...deviceRoutes,
-  ...settingsRoutes,
-  ...testRoutes
+  ...otherToolsRoutes,
+  ...settingsRoutes
 ]
 
 export default routes

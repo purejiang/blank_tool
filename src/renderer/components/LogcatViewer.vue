@@ -39,7 +39,7 @@
 <script>
 import { computed, ref, watch } from 'vue'
 import { useDeviceStore } from '@stores/deviceStore.js'
-import serviceManager from '../services/ServiceManager.js'
+import serviceManager from '@services/ServiceManager.js'
 import { storeToRefs } from 'pinia'
 
 export default {

@@ -30,7 +30,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores'
 import { storeToRefs } from 'pinia'
-import serviceManager from '../../services/ServiceManager.js'
+import serviceManager from '@services/ServiceManager.js'
 
 export default {
   name: 'StatusBar',
@@ -95,9 +95,7 @@ export default {
     // 生命周期
     onMounted(async () => {
       console.log('StatusBar组件已挂载，开始初始化应用')
-      try {
-        settingsServiceRef.value = await serviceManager.getService('settings')
-      } catch {}
+      // getVersions 将在内部处理服务获取
       await getVersions()
     })
 

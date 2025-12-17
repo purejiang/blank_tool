@@ -70,7 +70,7 @@
 
 <script>
 import { useDeviceStore } from '@stores/deviceStore.js'
-import serviceManager from '../services/ServiceManager.js'
+import serviceManager from '@services/ServiceManager.js'
 import { storeToRefs } from 'pinia'
 import { ref, computed } from 'vue'
 
@@ -90,7 +90,7 @@ export default {
       if (!q) return apps.value
       return apps.value.filter(a => String(a.packageName || '').toLowerCase().includes(q))
     })
-
+    
     const refreshAppList = async () => {
       const svc = await serviceManager.getService('device')
       await svc.refreshAppList()

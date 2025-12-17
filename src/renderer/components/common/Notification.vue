@@ -113,22 +113,43 @@ const clearAllNotifications = () => {
 }
 
 // 生命周期钩子
-const notificationService = inject('notificationService', null)
+const notificationServiceRef = inject('notificationService', null)
+
 onMounted(() => {
-  if (notificationService) {
-    notificationService.addListener('show', showNotification)
-    notificationService.addListener('hide', hideNotification)
-    notificationService.addListener('update', updateNotification)
-    notificationService.addListener('clear', clearAllNotifications)
+  // 如果服务已就绪，直接添加监听器
+  if (notificationServiceRef && notificationServiceRef.value) {
+    setupListeners(notificationServiceRef.value)
+  }
+  
+  // 监听服务变化（处理异步初始化）
+  if (notificationServiceRef) {
+    // Watch effect will run immediately and whenever the ref changes
+    import('vue').then(({ watch }) => {
+      watch(() => notificationServiceRef.value, (newVal, oldVal) => {
+        if (oldVal) removeListeners(oldVal)
+        if (newVal) setupListeners(newVal)
+      }, { immediate: true })
+    })
   }
 })
 
+const setupListeners = (service) => {
+  service.addListener('show', showNotification)
+  service.addListener('hide', hideNotification)
+  service.addListener('update', updateNotification)
+  service.addListener('clear', clearAllNotifications)
+}
+
+const removeListeners = (service) => {
+  service.removeListener('show', showNotification)
+  service.removeListener('hide', hideNotification)
+  service.removeListener('update', updateNotification)
+  service.removeListener('clear', clearAllNotifications)
+}
+
 onUnmounted(() => {
-  if (notificationService) {
-    notificationService.removeListener('show', showNotification)
-    notificationService.removeListener('hide', hideNotification)
-    notificationService.removeListener('update', updateNotification)
-    notificationService.removeListener('clear', clearAllNotifications)
+  if (notificationServiceRef && notificationServiceRef.value) {
+    removeListeners(notificationServiceRef.value)
   }
 })
 

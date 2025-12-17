@@ -14,6 +14,9 @@
 </template>
 
 <script>
+import { onMounted, ref } from 'vue'
+import serviceManager from '@/services/ServiceManager'
+
 import DeviceManager from '@components/DeviceManager.vue'
 import DeviceActions from '@components/DeviceActions.vue'
 import AppManager from '@components/AppManager.vue'
@@ -28,8 +31,14 @@ export default {
     LogcatViewer
   }
 }
+  onMounted(async () => {
+      console.log('DevicePage 组件已挂载')
+      try {
+        deviceServiceRef.value = await serviceManager.getService('device')
+      } catch {}
+    })
 </script>
 
 <style scoped>
-/* Page-specific styles */
+
 </style>

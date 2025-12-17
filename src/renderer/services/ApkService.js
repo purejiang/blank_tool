@@ -287,7 +287,6 @@ class ApkService {
         if (!this.currentApk) {
             throw new Error('没有可导出的分析结果');
         }
-
         try {
             const report = this.generateAnalysisReport(this.currentApk.analysis);
             let content;
@@ -351,33 +350,20 @@ class ApkService {
      */
     async decompileApk(filePath, options = {}) {
         try {
-            const rawResult = await unifiedAPI.safeCall('decompileApk', filePath, options);
+            // 直接调用 callBackendAPI
+            const result = await unifiedAPI.call('apk.decompile', {
+                file_path: filePath,
+                options
+            });
             
-            // 如果safeCall返回失败，尝试直接调用callBackendAPI
-            if (rawResult && rawResult.success === false && rawResult.error && rawResult.error.includes('不可用')) {
-                 const fallbackResult = await unifiedAPI.call('apk.decompile', {
-                    file_path: filePath,
-                    options
-                });
-                
-                const result = {
-                    success: fallbackResult && fallbackResult.type === 'success',
-                    outputPath: fallbackResult && fallbackResult.payload ? fallbackResult.payload.output_dir : null,
-                    error: fallbackResult && fallbackResult.type === 'error' ? (fallbackResult.payload ? fallbackResult.payload.message : '未知错误') : null
-                };
-                
-                this.notifyListeners('decompile-progress', result);
-                return result;
-            }
-
-            const result = {
-                success: rawResult && rawResult.type === 'success',
-                outputPath: rawResult && rawResult.payload ? rawResult.payload.output_dir : null,
-                error: rawResult && rawResult.type === 'error' ? (rawResult.payload ? rawResult.payload.message : '未知错误') : null
+            const normalizedResult = {
+                success: result && result.type === 'success',
+                outputPath: result && result.payload ? result.payload.output_dir : null,
+                error: result && result.type === 'error' ? (result.payload ? result.payload.message : '未知错误') : null
             };
 
-            this.notifyListeners('decompile-progress', result);
-            return result;
+            this.notifyListeners('decompile-progress', normalizedResult);
+            return normalizedResult;
         } catch (error) {
             console.error('反编译APK失败:', error);
             throw error;

@@ -24,7 +24,10 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     availableStorage: '',
     batteryLevel: '',
     screenResolution: '',
-    density: ''
+    density: '',
+    architecture: '',
+    systemActivationDate: '',
+    pageSize: ''
   })
 
   // 监控状态

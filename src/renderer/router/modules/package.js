@@ -1,9 +1,9 @@
 import PackagePage from '@views/PackagePage.vue'
 
-const apkRoutes = [
+const packageRoutes = [
   {
-    path: '/apk',
-    name: 'apk',
+    path: '/package',
+    name: 'package',
     component: PackagePage,
     meta: {
       title: '包体工具',
@@ -12,4 +12,4 @@ const apkRoutes = [
   }
 ]
 
-export default apkRoutes
+export default packageRoutes
