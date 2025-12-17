@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
-from app.utils.env import get_env
+from app.utils.env import get_env, load_dotenv
 
 # Thread-safe lock for writing to stdout
 stdout_lock = threading.Lock()
@@ -27,16 +27,19 @@ def send_event(event_name: str, data: Any):
     send_json({"type": "event", "event": event_name, "data": data})
 
 def bootstrap():
+    # Load .env file
+    load_dotenv()
+    
     logs_file_path = Path(__file__).parent / "cache" / "logs"
     log_level = get_env('BT_LOG_LEVEL', 'DEBUG')
     Logger.initialize(log_dir=logs_file_path, log_level=log_level)
 
-    resources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    java_bin = os.path.join(resources_dir, 'runtime', 'jre', 'bin', 'java.exe' if os.name == 'nt' else 'java')
-    if os.path.exists(java_bin):
-        os.environ['BT_JAVA_BIN'] = java_bin
-        bin_dir = os.path.dirname(java_bin)
-        os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')
+    # resources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    # java_bin = os.path.join(resources_dir, 'runtime', 'jre', 'bin', 'java.exe' if os.name == 'nt' else 'java')
+    # if os.path.exists(java_bin):
+    #     os.environ['BT_JAVA_BIN'] = java_bin
+    #     bin_dir = os.path.dirname(java_bin)
+    #     os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')
 
 def main():
     """Main loop to read requests from stdin and process them."""
@@ -45,11 +48,14 @@ def main():
         bootstrap()
         api_handler = ApiHandler(send_event=send_event)
     except Exception as e:
+        error_msg = f"Initialization failed: {e}"
+        sys.stderr.write(error_msg + "\n")
+        sys.stderr.flush()
         send_json({
             "id": None,
-            "error": {"code": -32603, "message": f"Initialization failed: {e}"}
+            "error": {"code": -32603, "message": error_msg}
         })
-        return
+        sys.exit(1)
 
     for line in sys.stdin:
         request_id = None
