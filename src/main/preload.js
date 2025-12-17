@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+// preload.js 运行在渲染进程中
 
 // 统一的后端API调用函数
 const callBackendAPI = (action, params = {}) => {
@@ -8,20 +9,20 @@ const callBackendAPI = (action, params = {}) => {
     method: action,
     params: params,
   };
-  return ipcRenderer.invoke('call-backend-api', request);
+  return ipcInvoke('call-backend-api', request);
 };
 
-// 统一的IPC调用函数 - 用于非后端API的系统调用
-const callSystemAPI = (channel, ...args) => {
+// 统一的IPC调用函数 - 用于非后端API的调用
+const ipcInvoke = (channel, ...args) => {
   return ipcRenderer.invoke(channel, ...args);
 };
 
 // 预加载，暴露安全的API给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
-  // 统一的后端API调用接口
+  // 统一的Ipc调用接口
+  ipcInvoke,
   callBackendAPI,
-
-  // APK相关API
+  // 后端相关API
   analyzeApk: (filePath) => callBackendAPI('apk.analyze', { filePath }),
   extractApkResources: (filePath, outputDir) => callBackendAPI('apk.extractResources', { filePath, outputDir }),
   getApkInfo: (filePath) => callBackendAPI('apk.getInfo', { filePath }),
@@ -30,6 +31,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   signApk: (apkPath, keystore, options) => callBackendAPI('apk.sign', { apkPath, keystore, options }),
   getApkProgress: (taskId) => callBackendAPI('apk.getProgress', { taskId }),
   cancelApkTask: (taskId) => callBackendAPI('apk.cancelTask', { taskId }),
+  // 系统相关API
+
 
   // 设备相关API
   getAdbDevices: () => callBackendAPI('device.get_devices'),
@@ -50,7 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }),
 
   // 日志相关 - 混合调用
-  logMessage: (level, message, category) => callSystemAPI('log-message', level, message, category),
+  logMessage: (level, message, category) => ipcInvoke('log-message', level, message, category),
   getLogPreview: (lines) => callBackendAPI('log.preview', { lines: lines }),
 
   // 存储相关API - 为electron-store提供支持
@@ -82,60 +85,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearCache: (cacheTypes, confirm) => callBackendAPI('cache.clear', { cache_types: cacheTypes, confirm: confirm }),
 
   // 系统相关 - 使用统一后端API
-  getSystemInfo: () => callBackendAPI('system.info'),
-  getVersionInfo: () => callSystemAPI('get-version-info'),
+  getSystemInfo: () => callBackendAPI('app.system'),
+  getBackendVersion: () => callBackendAPI('app.version'),
+  getBuildInfo: () => callBackendAPI('app.build'),
+  getAppVersion: () => process.env.npm_package_version || 'Unknown',
+  getElectronVersion: () => process.versions.electron,
   getStatus: () => callBackendAPI('system.status'),
-  getDiskUsage: () => callSystemAPI('get-disk-usage'),
+  getDiskUsage: () => ipcInvoke('get-disk-usage'),
 
   // 对话框相关 - 系统调用
-  showOpenDialog: (options) => callSystemAPI('show-open-dialog', options),
-  showSaveDialog: (options) => callSystemAPI('show-save-dialog', options),
-  showMessageBox: (options) => callSystemAPI('show-message-box', options),
+  showOpenDialog: (options) => ipcInvoke('show-open-dialog', options),
+  showSaveDialog: (options) => ipcInvoke('show-save-dialog', options),
+  showMessageBox: (options) => ipcInvoke('show-message-box', options),
 
   // 便捷封装 - 文件/目录选择
   selectFile: (options = {}) => {
     const props = Array.isArray(options.properties) ? [...options.properties] : []
     if (!props.includes('openFile')) props.push('openFile')
     const opts = { ...options, properties: props }
-    return callSystemAPI('show-open-dialog', opts)
+    return ipcInvoke('show-open-dialog', opts)
   },
   selectDirectory: (options = {}) => {
     const props = Array.isArray(options.properties) ? [...options.properties] : []
     if (!props.includes('openDirectory')) props.push('openDirectory')
     const opts = { ...options, properties: props }
-    return callSystemAPI('show-open-dialog', opts)
+    return ipcInvoke('show-open-dialog', opts)
   },
 
   // 文件系统相关 - 系统调用
-  getFileStats: (filePath) => callSystemAPI('get-file-stats', filePath),
-  writeFile: (filePath, content) => callSystemAPI('write-file', filePath, content),
-  readFile: (filePath) => callSystemAPI('read-file', filePath),
-  openDirectory: (filePath) => callSystemAPI('open-directory', filePath),
-  openPath: (filePath) => callSystemAPI('open-directory', filePath),
+  getFileStats: (filePath) => ipcInvoke('get-file-stats', filePath),
+  writeFile: (filePath, content) => ipcInvoke('write-file', filePath, content),
+  readFile: (filePath) => ipcInvoke('read-file', filePath),
+  openDirectory: (filePath) => ipcInvoke('open-directory', filePath),
+  openPath: (filePath) => ipcInvoke('open-directory', filePath),
 
   // 开发者工具 - 系统调用
-  toggleDevTools: () => callSystemAPI('toggle-dev-tools'),
-  openDevTools: () => callSystemAPI('open-dev-tools'),
-
-  // 设备操作相关 - 使用统一后端API
-  rebootDevice: (deviceId, mode) => callBackendAPI('device.reboot', { device_id: deviceId, mode: mode }),
-  executeShellCommand: (deviceId, command) => callBackendAPI('device.shell', { device_id: deviceId, command: command }),
-  stopDeviceMonitoring: () => callBackendAPI('device.monitor.stop'),
-  exportAppList: (deviceId, outputPath) => callBackendAPI('device.export.applist', { device_id: deviceId, output_path: outputPath }),
-
-  // 日志相关 - 后端统一API
-  startLogcat: (deviceId) => callBackendAPI('adb.logcat', { device_id: deviceId }),
-  stopLogcat: (processId) => callBackendAPI('adb.stop_logcat', { process_id: processId }),
-
-  // 工具检测相关 - 使用统一后端API
-  checkTool: (toolName, refresh = true) => callBackendAPI('tool.get_tools', { tool_name: toolName, refresh }),
-
+  toggleDevTools: () => ipcInvoke('toggle-dev-tools'),
+  openDevTools: () => ipcInvoke('open-dev-tools'),
+  
   // 更新相关 - 系统调用
-  checkForUpdates: () => callSystemAPI('check-for-updates'),
+  checkForUpdates: () => ipcInvoke('check-for-updates'),
 
   // 系统相关 - 系统调用
-  restart: () => callSystemAPI('restart'),
-  openExternal: (url) => callSystemAPI('open-external', url),
+  restart: () => ipcInvoke('restart'),
+  openExternal: (url) => ipcInvoke('open-external', url),
 
   
   exportDeviceLog: (params) => callBackendAPI('log.export', params),

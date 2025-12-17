@@ -1,12 +1,10 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, dialog } from 'electron';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { appStore } from './stores/index.js';
-import { setupAppConfigHandlers, setupUserConfigHandlers } from './ipc/configHandlers.js';
-import { setupCommandHandlers } from './ipc/commandHandlers.js';
-import { setupSystemHandlers } from './ipc/systemHandlers.js';
+import { setupAllHandlers } from './ipc/index.js';
 
 
 let mainWindow;
@@ -15,6 +13,7 @@ let pythonProcess = null;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const __iconPath = path.join(__dirname, 'assets', 'images', 'icon.png');
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,7 +28,7 @@ function createWindow() {
       sandbox: false,
       preload: path.join(__dirname, 'preload.js')
     },
-    icon: path.join(__dirname, '../assets/images', 'icon.png')
+    icon: __iconPath
   });
 
   Menu.setApplicationMenu(null);
@@ -43,14 +42,40 @@ function createWindow() {
 
   createTray();
 
+  // 处理关闭事件
+  mainWindow.on('close', (e) => {
+    // 阻止默认关闭行为
+    e.preventDefault();
+
+    dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      buttons: ['最小化到托盘', '退出程序', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      title: '确认退出',
+      message: '确定要退出程序吗？',
+      detail: '您可以选择最小化到系统托盘，以便在后台继续运行服务。'
+    }).then(({ response }) => {
+      if (response === 0) {
+        // 最小化到托盘
+        mainWindow.hide();
+      } else if (response === 1) {
+        // 退出程序 - 销毁窗口会触发 closed 事件，不会再次触发 close
+        mainWindow.destroy();
+        app.quit();
+      }
+      // response === 2 (取消) - 什么都不做，因为已经 preventDefault 了
+    });
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '../renderer/assets/images', 'icon.png');
-  const iconImage = nativeImage.createFromPath(iconPath);
+  const iconImage = nativeImage.createFromPath(__iconPath);
+
   tray = new Tray(iconImage.isEmpty() ? nativeImage.createEmpty() : iconImage);
   tray.setToolTip('Blank Tool - Android开发工具');
 
@@ -129,7 +154,19 @@ async function startPythonService() {
   });
 
   pythonProcess.stderr.on('data', (data) => {
-    console.error(`Python Error: ${data}`);
+    const errorMsg = data.toString();
+    // 只有当包含真正的错误关键词时才作为错误处理，否则视为普通日志
+    const isError = /error|exception|traceback|fail/i.test(errorMsg);
+    
+    if (isError) {
+        console.error(`Python Stderr: ${errorMsg}`);
+        // 尝试将错误广播给所有窗口
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('python-error', errorMsg);
+        }
+    } else {
+        console.log(`Python Out: ${errorMsg}`);
+    }
   });
 
   pythonProcess.on('close', (code) => {
@@ -141,16 +178,10 @@ async function startPythonService() {
 
 
 app.whenReady().then(async () => {
-  setupAppConfigHandlers();
-  setupUserConfigHandlers();
-
   const proc = await startPythonService();
-  if (proc) {
-    setupCommandHandlers(proc);
-  }
+  setupAllHandlers(proc);
 
   createWindow();
-  setupSystemHandlers(mainWindow);
 });
 
 app.on('window-all-closed', () => {
