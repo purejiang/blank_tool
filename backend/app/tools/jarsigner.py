@@ -2,26 +2,25 @@ import os
 import platform
 from typing import List
 
-from app.tools.base_tool import CommandTool
-from app.common.base_executor import CommandExecutionContext
+from app.tools.base_tool import BinaryTool
 
 
-class Jarsigner(CommandTool):
+class Jarsigner(BinaryTool):
     """jarsigner 封装"""
 
-    def validate_tool(self) -> bool:
+    def _validate_tool(self) -> bool:
         if not self.tool_path or not os.path.exists(self.tool_path):
             return False
-        result = super().execute([self.tool_path, "-h"])
+        result = self.execute(["-h"])
         output = result.get("stdout", "") if isinstance(result, dict) else ""
         return "jarsigner" in output.lower()
 
-    def get_possible_tool_names(self) -> List[str]:
+    def _get_possible_tool_names(self) -> List[str]:
         if platform.system() == "Windows":
             return ["jarsigner.exe", "jarsigner.bat"]
         return ["jarsigner"]
 
-    def get_tool_version(self) -> str:
-        result = super().execute([self.tool_path])
+    def _get_tool_version(self) -> str:
+        result = self.execute([])
         output = result.get("stdout", "") if isinstance(result, dict) else ""
         return "未知"

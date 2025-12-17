@@ -1,5 +1,3 @@
-import os
-import platform
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -7,7 +5,7 @@ from typing import List, Dict, Any
 
 from app.common.base_executor import CommandExecutor, CommandExecutionContext
 from app.utils.logger import Logger
-from app.utils.env import get_java_bin
+from app.utils.env import get_java_bin, get_python_bin, get_node_bin
 
 
 class BaseTool(ABC):
@@ -15,12 +13,12 @@ class BaseTool(ABC):
 
     def __init__(self, name: str = None, path: str = None, search_system: bool = True):
         self.name = name or self.__class__.__name__
-        self.logger = Logger.get_logger(self.__class__.__name__)
-        self.tool_path = path or (self.find_tool_path_in_system() if search_system else "")
-        self.is_valid = self.validate_tool()
-        self.version = "" if not self.tool_path or not self.is_valid else self.get_tool_version()
+        self._logger = Logger.get_logger(self.__class__.__name__)
+        self.tool_path = path or (self._find_tool_path_in_system() if search_system else "")
+        self.is_valid = self._validate_tool()
+        self.version = "" if not self.tool_path or not self.is_valid else self._get_tool_version()
 
-    def find_tool_path_in_system(self) -> str:
+    def _find_tool_path_in_system(self) -> str:
         """
         在系统的PATH环境变量中查找工具
         
@@ -30,32 +28,29 @@ class BaseTool(ABC):
         Returns:
             str: 工具的完整路径，如果未找到则返回空字符串
         """
-        possible_names = self.get_possible_tool_names()
+        possible_names = self._get_possible_tool_names()
         for name in possible_names:
             path = shutil.which(name)
             if path:
-                self.logger.info(f"在 {path} 找到工具: {self.name}")
+                self._logger.info(f"在 {path} 找到工具: {self.name}")
                 return path
-        self.logger.warning(f"在系统中未找到工具: {self.name}")
+        self._logger.warning(f"在系统中未找到工具: {self.name}")
         return ""
 
     @abstractmethod
-    def validate_tool(self) -> bool:
+    def _validate_tool(self) -> bool:
         """验证工具是否有效"""
         pass
 
     @abstractmethod
-    def get_possible_tool_names(self) -> List[str]:
+    def _get_possible_tool_names(self) -> List[str]:
         """获取可能的工具名称列表"""
         pass
 
     @abstractmethod
-    def get_tool_version(self) -> str:
+    def _get_tool_version(self) -> str:
         """获取工具版本"""
         pass
-    
-    def get_java_path(self) -> str:
-        return get_java_bin()
 
 
 
@@ -63,11 +58,11 @@ class CommandTool(BaseTool):
     """命令行工具基类"""
 
     def __init__(self, name: str = None, path: str = None, search_system: bool = True):
-        self.command_executor = CommandExecutor()
-        self.running_processes = {}
+        self._command_executor = CommandExecutor()
+        self._running_processes = {}
         super().__init__(name, path, search_system=search_system)
 
-    def is_process_running(self, process_id: str) -> bool:
+    def _is_process_running(self, process_id: str) -> bool:
         """
         检查指定ID的进程是否仍在运行
         
@@ -79,10 +74,10 @@ class CommandTool(BaseTool):
         Returns:
             bool: 如果进程存在且未结束，则返回 True，否则返回 False
         """
-        process = self.running_processes.get(process_id)
+        process = self._running_processes.get(process_id)
         return process is not None and process.poll() is None
     
-    def execute_stream(self, command: List[str], context: CommandExecutionContext = None, callback=None):
+    def _execute_stream(self, command: List[str], context: CommandExecutionContext = None, callback=None):
         """
         执行流式命令
         
@@ -96,21 +91,21 @@ class CommandTool(BaseTool):
         """
         # 将工具的完整路径添加到命令的最前面
         context = context or CommandExecutionContext()
-        if not self.command_executor:
-            self.logger.error("CommandExecutor 未初始化")
+        if not self._command_executor:
+            self._logger.error("CommandExecutor 未初始化")
             return
-        process = self.command_executor.execute(command, context)
+        process = self._command_executor._execute(command, context)
         process_id = f"{process.pid}"
-        self.running_processes[process_id] = process
+        self._running_processes[process_id] = process
         if callback:
             callback({"type": "started", "payload": {"process_id": process_id}})
-        while self.is_process_running(process_id):
+        while self._is_process_running(process_id):
             # 读取进程的输出
             line = process.stdout.readline()
             if line and callback:
                 callback({"type": "output", "payload": line.strip()})
-    
-    def execute(self, command: List[str], context: CommandExecutionContext = None)->Dict[str, Any]:
+
+    def _execute(self, command: List[str], context: CommandExecutionContext = None)->Dict[str, Any]:
         """
         执行命令，并根据上下文管理流式进程
         
@@ -127,11 +122,11 @@ class CommandTool(BaseTool):
         # 将工具的完整路径添加到命令的最前面
         context = context or CommandExecutionContext()
 
-        if not self.command_executor:
-            self.logger.error("CommandExecutor 未初始化")
+        if not self._command_executor:
+            self._logger.error("CommandExecutor 未初始化")
             return
         # 对于非流式命令，直接返回结果
-        return self.command_executor.execute(command, context)
+        return self._command_executor.execute(command, context)
 
     def stop_process(self, process_id: str) -> bool:
         """
@@ -147,39 +142,39 @@ class CommandTool(BaseTool):
         Returns:
             bool: 如果进程成功停止或不存在，则返回 True；否则返回 False
         """
-        process = self.running_processes.get(process_id)
+        process = self._running_processes.get(process_id)
         if not process:
-            self.logger.warning(f"尝试停止一个不存在的进程: {process_id}")
+            self._logger.warning(f"尝试停止一个不存在的进程: {process_id}")
             return False
 
         if process.poll() is not None:
-            self.logger.info(f"进程 {process_id} 已经停止。")
+            self._logger.info(f"进程 {process_id} 已经停止。")
             if process.stdout:
                 process.stdout.close()
             if process.stderr:
                 process.stderr.close()
-            del self.running_processes[process_id]
+            del self._running_processes[process_id]
             return True
 
         try:
-            self.logger.info(f"正在终止进程: {process_id} (PID: {process.pid})")
+            self._logger.info(f"正在终止进程: {process_id} (PID: {process.pid})")
             process.terminate() # 尝试优雅地终止
             process.wait(timeout=5) # 等待5秒
-            self.logger.info(f"进程 {process_id} 已成功终止。")
+            self._logger.info(f"进程 {process_id} 已成功终止。")
         except subprocess.TimeoutExpired:
-            self.logger.warning(f"优雅终止超时，强制杀死进程: {process_id}")
+            self._logger.warning(f"优雅终止超时，强制杀死进程: {process_id}")
             process.kill() # 如果失败，则强制杀死
             process.wait()
         except Exception as e:
-            self.logger.error(f"停止进程 {process_id} 时发生错误: {e}")
+            self._logger.error(f"停止进程 {process_id} 时发生错误: {e}")
             return False
         finally:
             if process.stdout:
                 process.stdout.close()
             if process.stderr:
                 process.stderr.close()
-            if process_id in self.running_processes:
-                del self.running_processes[process_id]
+            if process_id in self._running_processes:
+                del self._running_processes[process_id]
         
         return True
 
@@ -190,6 +185,116 @@ class CommandTool(BaseTool):
         遍历运行中的进程字典，对每个进程调用 stop_process 方法进行停止。
         最后，清空运行中的进程字典。
         """
-        self.logger.info(f"正在停止所有由 {self.name} 启动的进程...")
-        for process_id in list(self.running_processes.keys()):
+        self._logger.info(f"正在停止所有由 {self.name} 启动的进程...")
+        for process_id in list(self._running_processes.keys()):
             self.stop_process(process_id)
+
+class BinaryTool(CommandTool):
+    """二进制工具基类"""
+
+    def execute(self, command: List[str], context: CommandExecutionContext = None) -> Dict[str, Any]:
+        """
+        执行命令
+        
+        默认实现：自动在命令前添加工具路径。
+        """
+        # 将工具的完整路径添加到命令的最前面
+        context = context or CommandExecutionContext()
+        
+        if not command:
+            cmd_list = [self.tool_path]
+        elif command[0] != self.tool_path:
+            cmd_list = [self.tool_path] + command
+        else:
+            cmd_list = command
+            
+        return self._execute(cmd_list, context)
+
+class ScriptTool(CommandTool):
+    """脚本工具基类"""
+
+    @abstractmethod
+    def _get_interpreter(self) -> str:
+        """获取解释器路径"""
+        pass
+
+    @abstractmethod
+    def _get_script_extensions(self) -> List[str]:
+        """获取脚本文件扩展名列表"""
+        pass
+    
+    def _get_interpreter_args(self) -> List[str]:
+        """获取解释器参数"""
+        return []
+        
+    def execute(self, command: List[str], context: CommandExecutionContext = None) -> Dict[str, Any]:
+        """
+        执行脚本命令
+        
+        自动处理解释器前缀。
+        如果工具路径符合脚本扩展名，使用解释器执行；否则直接执行。
+        """
+        if context is None:
+            context = CommandExecutionContext()
+
+        cmd_prefix = []
+        is_script = False
+        if self.tool_path:
+             for ext in self._get_script_extensions():
+                 if self.tool_path.lower().endswith(ext):
+                     is_script = True
+                     break
+        
+        if is_script:
+            interpreter = self._get_interpreter()
+            args = self._get_interpreter_args()
+            cmd_prefix = [interpreter] + args + [self.tool_path]
+        else:
+            raise 
+        
+        is_prefixed = False
+        if len(command) >= len(cmd_prefix) and cmd_prefix:
+             if command[:len(cmd_prefix)] == cmd_prefix:
+                 is_prefixed = True
+        
+        if is_prefixed:
+            final_command = command
+        else:
+            final_command = cmd_prefix + command
+
+        return self._execute(final_command, context=context)
+
+
+class JavaTool(ScriptTool):
+    """Java Jar 工具"""
+    
+    def _get_interpreter(self) -> str:
+        return get_java_bin()
+    
+    def _get_script_extensions(self) -> List[str]:
+        return [".jar"]
+        
+    def _get_interpreter_args(self) -> List[str]:
+        return ["-jar"]
+
+
+class PythonTool(ScriptTool):
+    """Python 脚本工具"""
+    
+    def _get_interpreter(self) -> str:
+        return get_python_bin()
+    
+    def _get_script_extensions(self) -> List[str]:
+        return [".py"]
+
+
+class NodeTool(ScriptTool):
+    """Node.js 脚本工具"""
+    
+    def _get_interpreter(self) -> str:
+        return get_node_bin()
+    
+    def _get_script_extensions(self) -> List[str]:
+        return [".js"]
+
+

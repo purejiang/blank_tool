@@ -64,9 +64,6 @@ def get_tools(params, stream_handler):
         logger.error(f"工具检查失败: {e}")
         return _error(str(e))
 
-
-check_tool_availability = get_tools
-
 def tool_version(params, stream_handler):
     try:
         global manager
@@ -96,72 +93,7 @@ def set_search_mode(params, stream_handler):
 
 
 API_MAP = {
-    "tool.check_tool_availability": get_tools,
     "tool.version": tool_version,
     "tool.get_tools": get_tools,
-    "tool.set_search_mode": set_search_mode,
+    "tool.set_search_mode": set_search_mode
 }
-
-def system_info(params, stream_handler):
-    try:
-        import platform
-        info = {
-            "platform": platform.system(),
-            "platform_release": platform.release(),
-            "platform_version": platform.version(),
-            "architecture": platform.machine(),
-            "python_version": platform.python_version(),
-        }
-        return _success({"system_info": info})
-    except Exception as e:
-        logger.error(f"获取系统信息失败: {e}")
-        return _error(str(e))
-
-def build_info(params, stream_handler):
-    try:
-        global manager
-        names = ["adb", "aapt", "apktool"]
-        versions = {}
-        for name in names:
-            tool = manager.get_tool(name)
-            versions[f"{name}Version"] = getattr(tool, "version", "") if tool else ""
-        payload = {"build_info": versions}
-        # 尝试获取应用版本（开发环境）
-        try:
-            import json, os
-            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            pkg_path = os.path.join(root, "package.json")
-            if os.path.exists(pkg_path):
-                with open(pkg_path, "r", encoding="utf-8") as f:
-                    pj = json.load(f)
-                    v = pj.get("version")
-                    if isinstance(v, str) and v:
-                        payload["build_info"]["app_version"] = v
-        except Exception:
-            pass
-        return _success(payload)
-    except Exception as e:
-        logger.error(f"获取构建信息失败: {e}")
-        return _error(str(e))
-
-def app_version(params, stream_handler):
-    try:
-        import json, os
-        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        pkg_path = os.path.join(root, "package.json")
-        version = ""
-        if os.path.exists(pkg_path):
-            with open(pkg_path, "r", encoding="utf-8") as f:
-                pj = json.load(f)
-                v = pj.get("version")
-                if isinstance(v, str):
-                    version = v
-        return _success({"version": version})
-    except Exception as e:
-        logger.error(f"获取应用版本失败: {e}")
-        return _error(str(e))
-
-# 映射新增 API
-API_MAP["system.info"] = system_info
-API_MAP["build.info"] = build_info
-API_MAP["app.version"] = app_version

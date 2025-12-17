@@ -2,13 +2,13 @@ import os
 import platform
 import re
 from typing import List, Dict
-from app.tools.base_tool import CommandTool
+from app.tools.base_tool import BinaryTool
 from app.common.base_executor import CommandExecutionContext
 
-class Adb(CommandTool):
+class Adb(BinaryTool):
     """ADB工具类"""
 
-    def validate_tool(self) -> bool:
+    def _validate_tool(self) -> bool:
         """
         验证 adb 工具是否有效
         
@@ -20,14 +20,14 @@ class Adb(CommandTool):
         if not self.tool_path or not os.path.exists(self.tool_path):
             return False
         # 可以通过执行 adb version 命令来验证工具是否有效
-        command = [self.tool_path, "version"]
-        result = super().execute(command)
+        command = ["version"]
+        result = self.execute(command)
         output = result.get("stdout", "")
         is_valid = "Android Debug Bridge" in output
-        self.logger.info(f"adb is_valid: {is_valid}")
+        self._logger.info(f"adb is_valid: {is_valid}")
         return is_valid
 
-    def get_possible_tool_names(self) -> List[str]:
+    def _get_possible_tool_names(self) -> List[str]:
         """
         获取可能的 adb 工具名称列表
         
@@ -41,7 +41,7 @@ class Adb(CommandTool):
         else:
             return ["adb"]
 
-    def get_tool_version(self) -> str:
+    def _get_tool_version(self) -> str:
         """
         获取 adb 工具版本
         
@@ -50,11 +50,11 @@ class Adb(CommandTool):
         Returns:
             str: adb 工具版本号，如 "1.0.41"，如果无法获取则返回空字符串
         """
-        command = [self.tool_path, "version"]
-        result = super().execute(command)
+        command = ["version"]
+        result = self.execute(command)
         output = result.get("stdout", "")
         match = re.search(r"version (\S+)", output)
-        self.logger.info(f"adb version output: {output}")
+        self._logger.info(f"adb version output: {output}")
         if match:
             return match.group(1)
         return ""
@@ -68,8 +68,8 @@ class Adb(CommandTool):
         Returns:
             List[str]: 连接的设备ID列表，如 ["emulator-5554", "0123456789ABCDEF"]
         """
-        command = [self.tool_path, "devices"]
-        result = super().execute(command)
+        command = ["devices"]
+        result = self.execute(command)
         output = result.get("stdout", "")
         lines = output.strip().splitlines()
         devices = []
@@ -77,7 +77,7 @@ class Adb(CommandTool):
             if line.strip():
                 device_id = line.split("\t")[0]
                 devices.append(device_id)
-        self.logger.info(f"adb devices: {devices}")
+        self._logger.info(f"adb devices: {devices}")
         return devices
 
     def get_devices_detail(self) -> List[Dict[str, str]]:
@@ -89,8 +89,8 @@ class Adb(CommandTool):
         Returns:
             List[Dict[str, str]]: 连接的设备详细信息列表，每个元素为 {"id": str, "name": str, "status": str}
         """
-        command = [self.tool_path, "devices", "-l"]
-        result = super().execute(command)
+        command = ["devices", "-l"]
+        result = self.execute(command)
         output = result.get("stdout", "")
         lines = output.strip().splitlines()
         devices: List[Dict[str, str]] = []
@@ -107,7 +107,7 @@ class Adb(CommandTool):
                     k, v = tok.split(":", 1)
                     extras[k] = v
             ctx = CommandExecutionContext()
-            props = super().execute([self.tool_path, "-s", dev_id, "shell", "getprop"], ctx)
+            props = self.execute(["-s", dev_id, "shell", "getprop"], ctx)
             prop_text = props.get("stdout", "") or ""
             kv = {}
             for ln in prop_text.splitlines():
@@ -118,26 +118,26 @@ class Adb(CommandTool):
             model = kv.get("ro.product.model", extras.get("model", ""))
             name = (brand + "-" + model).strip("-") if (brand or model) else (extras.get("device") or dev_id)
             devices.append({"id": dev_id, "name": name, "status": status})
-        self.logger.info(f"adb devices detail: {devices}")
+        self._logger.info(f"adb devices detail: {devices}")
         return devices
 
     def start_logcat(self, stream_callback, device_id: str = None):
-        command = [self.tool_path]
+        command = []
         if device_id:
             command += ["-s", device_id]
         command += ["logcat", "-v", "threadtime"]
         context = CommandExecutionContext(stream=True)
-        process = super().execute(command, context)
+        process = self.execute(command, context)
         process_id = f"{process.pid}"
-        self.running_processes[process_id] = process
+        self._running_processes[process_id] = process
         try:
             stream_callback({"type": "started", "payload": {"process_id": process_id}})
-            self.logger.info(f"adb logcat started: {process_id}")
+            self._logger.info(f"adb logcat started: {process_id}")
             for line in iter(process.stdout.readline, ''):
                 if not line:
                     break
                 stream_callback({"type": "log", "payload": {"process_id": process_id, "line": line.strip()}})
-                self.logger.info(f"adb logcat log: {line.strip()}")
+                self._logger.info(f"adb logcat log: {line.strip()}")
         except Exception:
             pass
         finally:
@@ -149,7 +149,7 @@ class Adb(CommandTool):
             except Exception:
                 pass
             rc = process.wait()
-            self.logger.info(f"adb logcat finished: {process_id}, return code: {rc}")
+            self._logger.info(f"adb logcat finished: {process_id}, return code: {rc}")
             stream_callback({"type": "process_finished", "payload": {"process_id": process_id, "return_code": rc}})
     
     def stop_logcat(self, process_id: str):

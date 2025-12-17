@@ -72,16 +72,6 @@ def adb_stop_logcat(params, stream_handler):
         logger.error(f"停止 logcat 进程时出错: {e}")
         return {"type": "error", "payload": {"message": f"停止进程时出错: {e}"}}
 
-API_MAP = {
-    "adb.devices": adb_devices,
-    "adb.logcat": adb_logcat,
-    "adb.stop_logcat": adb_stop_logcat,
-    "device.info": None,
-    "device.get_device_info": None,
-    "device.shell": None,
-    "device.reboot": None,
-}
-
 def device_info(params, stream_handler):
     device_id = params.get("device_id")
     if not device_id:
@@ -93,7 +83,7 @@ def device_info(params, stream_handler):
             raise Exception("未找到或无效的 adb 工具")
 
         ctx = CommandExecutionContext()
-        rp = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "getprop"], ctx)
+        rp = adb_tool.execute(["-s", device_id, "shell", "getprop"], ctx)
         props_text = rp.get("stdout", "") or ""
         props = {}
         for line in props_text.splitlines():
@@ -104,13 +94,13 @@ def device_info(params, stream_handler):
         def gp(name):
             return props.get(name, "")
 
-        rs = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "get-serialno"], ctx)
+        rs = adb_tool.execute(["-s", device_id, "get-serialno"], ctx)
         serial = (rs.get("stdout", "") or "").strip()
 
-        rst = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "get-state"], ctx)
+        rst = adb_tool.execute(["-s", device_id, "get-state"], ctx)
         state = (rst.get("stdout", "") or "").strip()
 
-        sz = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "wm", "size"], ctx)
+        sz = adb_tool.execute(["-s", device_id, "shell", "wm", "size"], ctx)
         size_text = sz.get("stdout", "") or ""
         screen_size = ""
         for line in size_text.splitlines():
@@ -118,7 +108,7 @@ def device_info(params, stream_handler):
                 screen_size = line.split(":", 1)[1].strip()
                 break
 
-        dn = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "wm", "density"], ctx)
+        dn = adb_tool.execute(["-s", device_id, "shell", "wm", "density"], ctx)
         density_text = dn.get("stdout", "") or ""
         density = ""
         for line in density_text.splitlines():
@@ -126,7 +116,7 @@ def device_info(params, stream_handler):
                 density = line.split(":", 1)[1].strip()
                 break
 
-        ipr = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "ip", "-f", "inet", "addr", "show", "wlan0"], ctx)
+        ipr = adb_tool.execute(["-s", device_id, "shell", "ip", "-f", "inet", "addr", "show", "wlan0"], ctx)
         ip_text = ipr.get("stdout", "") or ""
         ip_addr = ""
         for line in ip_text.splitlines():
@@ -137,7 +127,7 @@ def device_info(params, stream_handler):
                     ip_addr = parts[1].split("/")[0]
                     break
 
-        br = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "dumpsys", "battery"], ctx)
+        br = adb_tool.execute(["-s", device_id, "shell", "dumpsys", "battery"], ctx)
         battery_text = br.get("stdout", "") or ""
         battery_level = ""
         battery_status = ""
@@ -150,7 +140,7 @@ def device_info(params, stream_handler):
                 s = t.split(":", 1)[1].strip()
                 battery_status = status_map.get(s, s)
 
-        mr = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "cat", "/proc/meminfo"], ctx)
+        mr = adb_tool.execute(["-s", device_id, "shell", "cat", "/proc/meminfo"], ctx)
         mem_text = mr.get("stdout", "") or ""
         ram_total = ""
         for line in mem_text.splitlines():
@@ -160,7 +150,7 @@ def device_info(params, stream_handler):
                     ram_total = parts[1] + (" " + parts[2] if len(parts) >= 3 else "")
                 break
 
-        dfr = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "df", "-h", "/data"], ctx)
+        dfr = adb_tool.execute(["-s", device_id, "shell", "df", "-h", "/data"], ctx)
         df_text = dfr.get("stdout", "") or ""
         storage_total = ""
         storage_available = ""
@@ -188,7 +178,7 @@ def device_info(params, stream_handler):
             "fingerprint": gp("ro.build.fingerprint"),
             "securityPatch": gp("ro.build.version.security_patch"),
             "hardware": gp("ro.hardware"),
-            "abi": gp("ro.product.cpu.abi"),
+            "architecture": gp("ro.product.cpu.abi"),
             "abiList": gp("ro.product.cpu.abilist"),
             "locale": gp("persist.sys.locale") or gp("ro.product.locale"),
             "screenSize": screen_size,
@@ -202,16 +192,14 @@ def device_info(params, stream_handler):
             "storageAvailable": storage_available,
             "totalStorage": storage_total,
             "availableStorage": storage_available,
+            "systemActivationDate": gp("persist.vivo.initial_system_time_millis"),
+            "pageSize": gp("ro.product.cpu.pagesize.max")
         }
 
         return {"type": "success", "payload": info}
     except Exception as e:
         logger.error(f"获取设备信息失败: {e}")
         return {"type": "error", "payload": {"message": str(e)}}
-
-# 更新 API_MAP 映射
-API_MAP["device.info"] = device_info
-API_MAP["device.get_device_info"] = device_info
 
 def device_list_apps(params, stream_handler):
     device_id = params.get("device_id")
@@ -231,7 +219,7 @@ def device_list_apps(params, stream_handler):
             pm_args = ["-3"]
 
         ctx = CommandExecutionContext()
-        r = adb_tool.execute([adb_tool.tool_path, "-s", device_id, "shell", "pm", "list", "packages"] + pm_args, ctx)
+        r = adb_tool.execute(["-s", device_id, "shell", "pm", "list", "packages"] + pm_args, ctx)
         stdout = r.get("stdout", "") or ""
         if r.get("returncode", 0) != 0:
             return {"type": "error", "payload": {"message": r.get("stderr", "获取已安装应用失败")}}
@@ -289,7 +277,14 @@ def device_reboot(params, stream_handler):
         logger.error(f"重启设备失败: {e}")
         return {"type": "error", "payload": {"message": str(e)}}
 
-API_MAP["device.shell"] = device_shell
-API_MAP["device.reboot"] = device_reboot
-API_MAP["device.list_apps"] = device_list_apps
-API_MAP["device.get_installed_packages"] = device_list_apps
+API_MAP = {
+    "adb.devices": adb_devices,
+    "adb.logcat": adb_logcat,
+    "adb.stop_logcat": adb_stop_logcat,
+    "device.info": device_info,
+    "device.list_apps": device_list_apps,
+    "device.get_device_info": device_info,
+    "device.shell": device_shell,
+    "device.reboot": device_reboot,
+    "device.get_installed_packages": device_list_apps
+}

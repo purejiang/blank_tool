@@ -41,9 +41,10 @@ def apk_analyze(params, stream_handler):
         if app_label:
             info["application_label"] = app_label.group(1)
 
-        sdk_match = re.search(r"sdkVersion:'([^']+)'", output)
+        sdk_match = re.search(r"minSdkVersion:'([^']+)'", output)
         if sdk_match:
             info["min_sdk_version"] = sdk_match.group(1)
+
         target_sdk = re.search(r"targetSdkVersion:'([^']+)'", output)
         if target_sdk:
             info["target_sdk_version"] = target_sdk.group(1)
@@ -69,7 +70,7 @@ def apk_decompile(params, stream_handler):
         if not apktool or not apktool.is_valid:
             return _error("未找到或无效的 apktool 工具")
 
-        context = CommandExecutionContext(cwd=options.get("cwd"))
+        context = CommandExecutionContext(cwd=options.get("cwd"), timeout=600)
         result = apktool.execute(["d", file_path, "-f", "-o", output_dir], context)
         if result.get("returncode", 1) != 0:
             return _error(result.get("stderr", "反编译失败"))
@@ -165,11 +166,9 @@ def apk_sign(params, stream_handler):
         logger.error(f"签名失败: {e}")
         return _error(str(e))
 
-
 def apk_getinfo(params, stream_handler):
     # 与 analyze 类似，保留别名以兼容不同调用名
     return apk_analyze(params, stream_handler)
-
 
 def apk_extract_resources(params, stream_handler):
     apk_path = params.get("apk_path")
