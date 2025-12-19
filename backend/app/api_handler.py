@@ -38,12 +38,19 @@ class ApiHandler:
             if method in streaming_methods:
                 result = self.stream_handler(handler)(params)
             else:
-                result = handler(params, None)
+                raw_result = handler(params, None)
+                # 自动封装：如果返回的不是标准格式，则封装为 success
+                if isinstance(raw_result, dict) and "type" in raw_result:
+                    result = raw_result
+                else:
+                    result = {"type": "success", "payload": raw_result}
+            
             response['result'] = result
             return response
         except Exception as e:
             self.logger.error(f"Error handling request (method={method}): {e}")
-            response['error'] = {"code": -32000, "message": str(e)}
+            # 将异常统一转换为标准的 error 响应，而不是 JSON-RPC 错误，方便前端统一处理
+            response['result'] = {"type": "error", "payload": {"message": str(e)}}
             return response
 
     def stream_handler(self, handler: Callable[[dict, Callable], None]):
