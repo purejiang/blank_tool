@@ -7,14 +7,6 @@ logger = Logger.get_logger("ToolHandler")
 manager = ToolManager.instance()
 
 
-def _success(payload):
-    return {"type": "success", "payload": payload}
-
-
-def _error(message):
-    return {"type": "error", "payload": {"message": message}}
-
-
 def _source_for(manager: ToolManager, name: str, path: str):
     try:
         default_path = manager._default_tool_path(name)
@@ -37,7 +29,7 @@ def get_tools(params, stream_handler):
         if tool_name:
             tool = manager.get_tool(tool_name)
             if not tool:
-                return _error("未找到该工具")
+                raise Exception("未找到该工具")
             info = {
                 "name": tool_name,
                 "is_valid": bool(getattr(tool, "is_valid", False)),
@@ -46,7 +38,7 @@ def get_tools(params, stream_handler):
             }
             info["source"] = _source_for(manager, tool_name, info["path"]) 
             info["status"] = "available" if info["is_valid"] else "unavailable"
-            return _success(info)
+            return info
         names = ["adb", "apktool", "apksigner", "zipalign", "aapt", "bundletool", "jarsigner"]
         report = {}
         for name in names:
@@ -59,21 +51,21 @@ def get_tools(params, stream_handler):
             item["source"] = _source_for(manager, name, item["path"]) if tool else "none"
             item["status"] = "available" if item["is_valid"] else "unavailable"
             report[name] = item
-        return _success(report)
+        return report
     except Exception as e:
         logger.error(f"工具检查失败: {e}")
-        return _error(str(e))
+        raise e
 
 def tool_version(params, stream_handler):
     try:
         global manager
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
-            return _error("未找到或无效的 aapt 工具")
-        return _success({"version": getattr(aapt, "version", "")})
+            raise Exception("未找到或无效的 aapt 工具")
+        return {"version": getattr(aapt, "version", "")}
     except Exception as e:
         logger.error(f"获取 aapt 版本失败: {e}")
-        return _error(str(e))
+        raise e
 
 
 def set_search_mode(params, stream_handler):
@@ -86,10 +78,10 @@ def set_search_mode(params, stream_handler):
                 del os.environ["BT_SEARCH_SYSTEM_TOOLS"]
         global manager
         manager.refresh_tools()
-        return _success({"system_search": enabled})
+        return {"system_search": enabled}
     except Exception as e:
         logger.error(f"设置系统工具查找开关失败: {e}")
-        return _error(str(e))
+        raise e
 
 
 API_MAP = {

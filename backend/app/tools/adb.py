@@ -137,7 +137,7 @@ class Adb(BinaryTool):
                 if not line:
                     break
                 stream_callback({"type": "log", "payload": {"process_id": process_id, "line": line.strip()}})
-                self._logger.info(f"adb logcat log: {line.strip()}")
+                # self._logger.info(f"adb logcat log: {line.strip()}")
         except Exception:
             pass
         finally:

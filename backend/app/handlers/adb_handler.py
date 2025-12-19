@@ -1,9 +1,11 @@
+import os
 import traceback
 import re
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.utils.logger import Logger
 from app.tools.adb import Adb
+from app.utils.env import get_output_dir
 
 logger = Logger.get_logger("AdbHandler")
 manager = ToolManager.instance()
@@ -14,17 +16,16 @@ def adb_devices(params, stream_handler):
         if not adb_tool or not adb_tool.is_valid:
             raise Exception("未找到或无效的 adb 工具")
 
-        devices = adb_tool.get_devices_detail()
-
-        return {"type": "success", "payload": devices}
+        return adb_tool.get_devices_detail()
     except Exception as e:
         logger.error(f"执行 adb devices 时出错: {e}")
-        return {"type": "error", "payload": {"message": str(e)}}
+        raise e
 
 def adb_logcat(params, stream_handler):
     device_id = params.get("device_id")
     if not device_id:
-        return stream_handler({"type": "error", "payload": {"message": "请求中未包含 device_id"}})
+        stream_handler({"type": "error", "payload": {"message": "请求中未包含 device_id"}})
+        return
 
     try:
         adb_tool:Adb = manager.get_tool("adb")
@@ -56,7 +57,7 @@ def _stream_logcat_output(process, process_id, stream_handler):
 def adb_stop_logcat(params, stream_handler):
     process_id = params.get("process_id")
     if not process_id:
-        return {"type": "error", "payload": {"message": "请求中未包含 process_id"}}
+        raise Exception("请求中未包含 process_id")
 
     try:
         adb_tool = manager.get_tool("adb")
@@ -65,17 +66,17 @@ def adb_stop_logcat(params, stream_handler):
         
         success = adb_tool.stop_process(process_id)
         if success:
-            return {"type": "success", "payload": {"message": f"已成功请求停止进程 {process_id}"}}
+            return {"message": f"已成功请求停止进程 {process_id}"}
         else:
             return {"type": "warning", "payload": {"message": f"未找到或无法停止进程 {process_id}"}}
     except Exception as e:
         logger.error(f"停止 logcat 进程时出错: {e}")
-        return {"type": "error", "payload": {"message": f"停止进程时出错: {e}"}}
+        raise e
 
 def device_info(params, stream_handler):
     device_id = params.get("device_id")
     if not device_id:
-        return {"type": "error", "payload": {"message": "请求中未包含 device_id"}}
+        raise Exception("请求中未包含 device_id")
 
     try:
         adb_tool = manager.get_tool("adb")
@@ -196,16 +197,16 @@ def device_info(params, stream_handler):
             "pageSize": gp("ro.product.cpu.pagesize.max")
         }
 
-        return {"type": "success", "payload": info}
+        return info
     except Exception as e:
         logger.error(f"获取设备信息失败: {e}")
-        return {"type": "error", "payload": {"message": str(e)}}
+        raise e
 
 def device_list_apps(params, stream_handler):
     device_id = params.get("device_id")
     app_type = (params.get("type") or params.get("app_type") or "all").strip().lower()
     if not device_id:
-        return {"type": "error", "payload": {"message": "缺少 device_id"}}
+        raise Exception("缺少 device_id")
 
     try:
         adb_tool = manager.get_tool("adb")
@@ -222,7 +223,7 @@ def device_list_apps(params, stream_handler):
         r = adb_tool.execute(["-s", device_id, "shell", "pm", "list", "packages"] + pm_args, ctx)
         stdout = r.get("stdout", "") or ""
         if r.get("returncode", 0) != 0:
-            return {"type": "error", "payload": {"message": r.get("stderr", "获取已安装应用失败")}}
+            raise Exception(r.get("stderr", "获取已安装应用失败"))
 
         packages = []
         for line in stdout.splitlines():
@@ -234,32 +235,32 @@ def device_list_apps(params, stream_handler):
                 if pkg:
                     packages.append(pkg)
 
-        return {"type": "success", "payload": packages}
+        return packages
     except Exception as e:
         logger.error(f"列出设备应用失败: {e}")
-        return {"type": "error", "payload": {"message": str(e)}}
+        raise e
 
 def device_shell(params, stream_handler):
     device_id = params.get("device_id")
     command = params.get("command")
     if not device_id or not command:
-        return {"type": "error", "payload": {"message": "缺少 device_id 或 command"}}
+        raise Exception("缺少 device_id 或 command")
     try:
         adb_tool = manager.get_tool("adb")
         if not adb_tool or not adb_tool.is_valid:
             raise Exception("未找到或无效的 adb 工具")
         ctx = CommandExecutionContext()
         r = adb_tool.execute(["-s", device_id, "shell", command], ctx)
-        return {"type": "success", "payload": {"output": r.get("stdout", ""), "returncode": r.get("returncode", 0)}}
+        return {"output": r.get("stdout", ""), "returncode": r.get("returncode", 0)}
     except Exception as e:
         logger.error(f"执行 shell 命令失败: {e}")
-        return {"type": "error", "payload": {"message": str(e)}}
+        raise e
 
 def device_reboot(params, stream_handler):
     device_id = params.get("device_id")
     mode = params.get("mode", "normal")
     if not device_id:
-        return {"type": "error", "payload": {"message": "缺少 device_id"}}
+        raise Exception("缺少 device_id")
     try:
         adb_tool = manager.get_tool("adb")
         if not adb_tool or not adb_tool.is_valid:
@@ -271,11 +272,72 @@ def device_reboot(params, stream_handler):
         r = adb_tool.execute(args, ctx)
         success = r.get("returncode", 1) == 0
         if not success:
-            return {"type": "error", "payload": {"message": r.get("stderr", "重启失败")}}
-        return {"type": "success", "payload": {"device_id": device_id, "mode": mode}}
+            raise Exception(r.get("stderr", "重启失败"))
+        return {"device_id": device_id, "mode": mode}
     except Exception as e:
         logger.error(f"重启设备失败: {e}")
-        return {"type": "error", "payload": {"message": str(e)}}
+        raise e
+
+def device_export_apk(params, stream_handler):
+    device_id = params.get("device_id")
+    package_name = params.get("package_name")
+    
+    if not device_id or not package_name:
+        raise Exception("缺少 device_id 或 package_name")
+
+    # Use unified output directory if not specified
+    if not params.get("output_dir"):
+         output_dir = os.path.join(get_output_dir(), "exported_apks", package_name)
+         os.makedirs(output_dir, exist_ok=True)
+    else:
+         output_dir = params.get("output_dir")
+
+    try:
+        adb_tool = manager.get_tool("adb")
+        if not adb_tool or not adb_tool.is_valid:
+            raise Exception("未找到或无效的 adb 工具")
+
+        # 1. 获取APK路径
+        ctx = CommandExecutionContext()
+        res = adb_tool.execute(["-s", device_id, "shell", "pm", "path", package_name], ctx)
+        output = res.get("stdout", "")
+        
+        # Output format: package:/data/app/com.example.app/base.apk
+        paths = []
+        for line in output.splitlines():
+            if line.startswith("package:"):
+                paths.append(line[8:].strip())
+        
+        if not paths:
+             raise Exception(f"未找到应用 {package_name} 的安装路径")
+
+        # 2. 导出APK
+        exported_files = []
+        for remote_path in paths:
+            filename = os.path.basename(remote_path)
+            # 如果是 base.apk，重命名为 package_name.apk
+            if filename == "base.apk":
+                filename = f"{package_name}.apk"
+            elif filename == "split_config.arm64_v8a.apk": # Example split apk
+                 pass # keep original name or rename
+            
+            local_path = os.path.join(output_dir, filename)
+            
+            pull_res = adb_tool.execute(["-s", device_id, "pull", remote_path, local_path], ctx)
+            if pull_res.get("returncode", 1) != 0:
+                 logger.warning(f"导出文件 {remote_path} 失败: {pull_res.get('stderr')}")
+                 continue
+            
+            exported_files.append(local_path)
+
+        if not exported_files:
+             raise Exception("导出 APK 失败")
+
+        return {"success": True, "exported_files": exported_files, "output_dir": output_dir}
+
+    except Exception as e:
+        logger.error(f"导出 APK 失败: {e}")
+        raise e
 
 API_MAP = {
     "adb.devices": adb_devices,
@@ -286,5 +348,6 @@ API_MAP = {
     "device.get_device_info": device_info,
     "device.shell": device_shell,
     "device.reboot": device_reboot,
-    "device.get_installed_packages": device_list_apps
+    "device.get_installed_packages": device_list_apps,
+    "device.export_apk": device_export_apk
 }

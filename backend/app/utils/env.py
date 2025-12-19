@@ -73,6 +73,13 @@ def get_bool_env(key: str, default: bool = False) -> bool:
         return default
     return str(val).strip().lower() in ('1', 'true', 'yes', 'on')
 
+def get_output_dir() -> str:
+    """
+    Get the unified output directory.
+    """
+    output_dir = get_env("BT_OUTPUT_DIR", "./output")
+    return resolve_path(output_dir)
+
 def get_java_bin() -> str:
     override = os.environ.get(ENV_BT_JAVA_BIN)
     if override:
