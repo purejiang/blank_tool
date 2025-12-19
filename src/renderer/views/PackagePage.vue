@@ -20,11 +20,11 @@
           </div>
           <div class="actions-bottom-right">
             <div class="btn-group">
-              <button class="btn btn-primary" :disabled="!selectedAnalysisFile" @click="analyzeApk">
-                <span>🔍</span>解析 APK
-              </button>
-              <button class="btn btn-secondary" :disabled="!selectedAnalysisFile" @click="extractApk">
-                <span>📂</span>提取资源
+              <button class="btn btn-primary" :class="{ 'loading': isAnalyzing }"
+                :disabled="!selectedAnalysisFile || isAnalyzing" @click="analyzeApk">
+                <span v-if="!isAnalyzing">🔍</span>
+                <span v-if="isAnalyzing" class="btn-spinner"></span>
+                {{ isAnalyzing ? '解析中...' : '解析 APK' }}
               </button>
             </div>
           </div>
@@ -158,8 +158,25 @@ export default {
     const isAnalyzing = ref(false)
 
     // Notification composable
-    const { showSuccess, showError, showLoading, completeLoading, failLoading } = useNotification()
-    const errorService = inject('errorService', null)
+    const { showLoading, completeLoading, failLoading } = useNotification()
+    const errorServiceRef = ref(null)
+    const apkServiceRef = ref(null)
+
+    // Helper to get error service
+    const getErrorService = async () => {
+      if (!errorServiceRef.value) {
+        errorServiceRef.value = await serviceManager.getService('error')
+      }
+      return errorServiceRef.value
+    }
+
+    // Helper to get apk service
+    const getApkService = async () => {
+      if (!apkServiceRef.value) {
+        apkServiceRef.value = await serviceManager.getService('apk')
+      }
+      return apkServiceRef.value
+    }
 
     // 文件处理方法
     const handleDrop = (event, callback) => {
@@ -177,21 +194,27 @@ export default {
       }
     }
 
-    const handleApkFileSelect = (file) => {
+    const handleApkFileSelect = async (file) => {
       if (file && file.name.endsWith('.apk')) {
         selectedAnalysisFile.value = file
         console.log('选择APK文件:', file.name)
       } else {
-        showError('文件格式错误', '请选择有效的APK文件')
+        const svc = await getErrorService()
+        if (svc) {
+          svc.reportError(new Error('请选择有效的APK文件'), { category: 'ui', severity: 'low' })
+        }
       }
     }
 
-    const handleInstallFileSelect = (file) => {
+    const handleInstallFileSelect = async (file) => {
       if (file && (file.name.endsWith('.apk') || file.name.endsWith('.aab'))) {
         selectedInstallFile.value = file
         console.log('选择安装文件:', file.name)
       } else {
-        showError('文件格式错误', '请选择有效的APK或AAB文件')
+        const svc = await getErrorService()
+        if (svc) {
+          svc.reportError(new Error('请选择有效的APK或AAB文件'), { category: 'ui', severity: 'low' })
+        }
       }
     }
 
@@ -222,119 +245,73 @@ export default {
             try {
               const stats = await systemSvc.getFileStats(p)
               if (stats && stats.size) size = stats.size
-            } catch { }
+            } catch (error) {
+              console.error('获取文件信息错误:', error)
+            }
             targetRef.value = { name, path: p, size }
           }
         }
       } catch (error) {
-        console.error('选择文件错误:', error)
-        showError('选择文件失败', error.message || '')
+        const svc = await getErrorService()
+        if (svc) svc.reportError(error)
       }
     }
 
-    const handleDecompileFileSelect = (file) => {
+    const handleDecompileFileSelect = async (file) => {
       if (file && file.name.endsWith('.apk')) {
         selectedDecompileFile.value = file
-        console.log('选择反编译文件:', file.name)
       } else {
-        showError('文件格式错误', '请选择有效的APK文件')
+        const svc = await getErrorService()
+        if (svc) svc.reportError(new Error('请选择有效的APK文件'), { category: 'ui', severity: 'low' })
       }
     }
 
     // APK操作方法
-    const apkServiceRef = ref(null)
+    // const apkServiceRef = ref(null)
 
     const analyzeApk = async () => {
       if (!selectedAnalysisFile.value) return
-
+      let loadingId = null
       try {
-        const loadingId = showLoading('正在解析APK...')
-        const apkService = apkServiceRef.value || await serviceManager.getService('apk')
-        apkServiceRef.value = apkService
-        console.log('分析APK:', selectedAnalysisFile.value)
-        const result = await apkService.analyzeApk(selectedAnalysisFile.value.path)
+        loadingId = showLoading('正在解析APK...')
+        const apkService = await getApkService()
 
+        const result = await apkService.analyzeApk(selectedAnalysisFile.value.path)
         if (result.success) {
           apkAnalysisResult.value = displayApkAnalysisResult(result.data)
-          if (loadingId) {
-            completeLoading(loadingId, 'APK解析完成', '')
-            return
-          }
-          showSuccess('APK解析完成')
+          if (loadingId) completeLoading(loadingId, 'APK解析完成', '')
         } else {
-          if (loadingId) {
-            failLoading(loadingId, 'APK解析失败', String(result.error || ''))
-            return
-          }
-          showError('APK解析失败', result.error)
+          if (loadingId) failLoading(loadingId, 'APK解析失败', String(result.error || ''))
         }
       } catch (error) {
-        const es = errorService && errorService.value
-        if (es) es.reportError(error, { category: 'tool', context: 'apk.analyze' })
+        if (loadingId) failLoading(loadingId, 'APK解析失败', String(result.error || ''))
+        const svc = await getErrorService()
+        if (svc) svc.reportError(error, { category: 'ui', severity: 'low' })
+      } finally {
 
-        if (loadingId) {
-          failLoading(loadingId, 'APK解析失败', error.message || '')
-          return
-        }
-        showError('APK解析失败', error.message)
-      }
-    }
-
-    const extractApk = async () => {
-      if (!selectedAnalysisFile.value) return
-
-      try {
-        const loadingId = showLoading('正在提取APK资源...')
-        const apkService = apkServiceRef.value || await serviceManager.getService('apk')
-        apkServiceRef.value = apkService
-        const result = await apkService.extractApkResources(selectedAnalysisFile.value.path)
-
-        if (result.success) {
-          showSuccess('APK资源提取完成', `输出目录: ${result.outputPath}`)
-          if (loadingId) completeLoading(loadingId, '提取完成', `输出目录: ${result.outputPath}`)
-        } else {
-          showError('APK资源提取失败', result.error)
-          if (loadingId) failLoading(loadingId, '提取失败', String(result.error || ''))
-        }
-      } catch (error) {
-        console.error('APK提取错误:', error)
-        showError('APK提取失败', error.message)
-        const es = errorService && errorService.value
-        if (es) es.reportError(error, { category: 'tool', context: 'apk.extract' })
       }
     }
 
     const installApp = async () => {
       if (!selectedInstallFile.value) return
-
+      let loadingId = null
       try {
         isInstalling.value = true
-        const loadingId = showLoading('正在安装应用...')
+        loadingId = showLoading('正在安装应用...')
 
         const deviceSvc = await serviceManager.getService('device')
         console.log('installApp', selectedInstallFile.value)
         const result = await deviceSvc.installApp(selectedInstallFile.value.path)
 
         if (result.success) {
-          console.log('应用安装成功:', result)
-          if (loadingId) {
-            completeLoading(loadingId, '安装完成', '')
-            return
-          } else {
-            showSuccess('应用安装完成')
-          }
+          if (loadingId) completeLoading(loadingId, '安装完成', '')
         } else {
-          if (loadingId) {
-            failLoading(loadingId, '安装失败', String(result.error || ''))
-            return
-          }
-          showError('应用安装失败', result.error)
+          if (loadingId) failLoading(loadingId, '安装失败', String(result.error || ''))
         }
       } catch (error) {
-
-        showError('应用安装失败', error.message)
-        const es = errorService && errorService.value
-        if (es) es.reportError(error, { category: 'device', context: 'device.install' })
+        if (loadingId) failLoading(loadingId, '安装失败', String(result.error || ''))
+        const svc = await getErrorService()
+        if (svc) svc.reportError(error, { category: 'device', context: 'device.install' })
       } finally {
         isInstalling.value = false
       }
@@ -342,14 +319,14 @@ export default {
 
     const startDecompile = async () => {
       if (!selectedDecompileFile.value) return
-
+      let loadingId = null
       try {
         isDecompiling.value = true
         if (decompileProgress && decompileProgress.value) {
-            decompileProgress.value.show = true
-            decompileProgress.value.value = 0
+          decompileProgress.value.show = true
+          decompileProgress.value.value = 0
         }
-        const loadingId = showLoading('正在反编译APK...')
+        loadingId = showLoading('正在反编译APK...')
 
         const options = {
           resources: decompileOptions.value.resources,
@@ -363,7 +340,7 @@ export default {
 
         if (result.success) {
           if (decompileProgress && decompileProgress.value) {
-              decompileProgress.value.value = 100
+            decompileProgress.value.value = 100
           }
           decompileOutputPath.value = result.outputPath
 
@@ -391,23 +368,14 @@ export default {
             </div>
           `
 
-          if (loadingId) {
-            completeLoading(loadingId, '反编译完成', `输出目录: ${result.outputPath}`)
-            return
-          }
-          showSuccess('APK反编译完成')
+          if (loadingId) completeLoading(loadingId, '反编译完成', `输出目录: ${result.outputPath}`)
         } else {
-          if (loadingId) {
-            failLoading(loadingId, '反编译失败', String(result.error || ''))
-            return
-          }
-          showError('APK反编译失败', result.error)
+          if (loadingId) failLoading(loadingId, '反编译失败', String(result.error || ''))
         }
       } catch (error) {
-        console.error('APK反编译错误:', error)
-        showError('APK反编译失败', error.message)
-        const es = errorService && errorService.value
-        if (es) es.reportError(error, { category: 'tool', context: 'apk.decompile' })
+        if (loadingId) failLoading(loadingId, '反编译失败', String(error || ''))
+        const svc = await getErrorService()
+        if (svc) svc.reportError(error, { category: 'tool', context: 'apk.decompile' })
       } finally {
         isDecompiling.value = false
         setTimeout(() => {
@@ -421,31 +389,32 @@ export default {
 
     const openDecompileOutput = async () => {
       if (decompileOutputPath.value) {
-        const svc = await serviceManager.getService('system')
-        await svc.openPath(decompileOutputPath.value)
+        const systemSvc = await serviceManager.getService('system')
+        await systemSvc.openPath(decompileOutputPath.value)
       }
     }
 
     const selectProjectDir = async () => {
       try {
-        const svc = await serviceManager.getService('system')
-        const result = await svc.selectDirectory()
+        const systemSvc = await serviceManager.getService('system')
+        const result = await systemSvc.selectDirectory()
         if (result && !result.canceled) {
           selectedProjectDir.value = result.filePaths[0]
         }
       } catch (error) {
-        console.error('选择目录错误:', error)
-        showError('选择目录失败', error.message)
+        const svc = await getErrorService()
+        if (svc) svc.reportError(error, { category: 'system', context: 'system.selectDirectory' })
       }
     }
 
     const startRecompile = async () => {
       if (!selectedProjectDir.value) return
-
+      let loadingId = null
       try {
         recompileProgress.show = true
         recompileProgress.value = 0
 
+        loadingId = showLoading('正在回编译APK...')
         const options = {
           sign: recompileOptions.value.sign,
           align: recompileOptions.value.align,
@@ -460,16 +429,14 @@ export default {
           recompileProgress.value = 100
           recompileOutputPath.value = result.outputPath
           recompileResult.value = `<p>回编译完成！输出文件: ${result.outputPath}</p>`
-          showSuccess('APK回编译完成')
-          console.log('APK回编译成功:', result)
           if (loadingId) completeLoading(loadingId, '回编译完成', `输出文件: ${result.outputPath}`)
         } else {
-          showError('APK回编译失败', result.error)
-          console.error('APK回编译失败:', result.error)
+          if (loadingId) failLoading(loadingId, '回编译失败', String(result.error || ''))
         }
       } catch (error) {
-        console.error('APK回编译错误:', error)
-        showError('APK回编译失败', error.message)
+        if (loadingId) failLoading(loadingId, '回编译失败', String(error || ''))
+        const svc = await getErrorService()
+        if (svc) svc.reportError(error, { category: 'tool', context: 'apk.recompile' })
       } finally {
         setTimeout(() => {
           recompileProgress.show = false
@@ -592,7 +559,6 @@ export default {
       selectDecompileFile,
       handleDecompileFileSelect,
       analyzeApk,
-      extractApk,
       installApp,
       startDecompile,
       openDecompileOutput,

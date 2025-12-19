@@ -1,4 +1,4 @@
-import unifiedAPI from '../api/unifiedApi.js'
+import unifiedAPI from '../api/unifiedAPI.js'
 
 class SettingsService {
   constructor(storeService) {
@@ -38,28 +38,6 @@ class SettingsService {
       try { await api.appConfig.reset() } catch {}
     }
     return await appStore.reset()
-  }
-
-  async getAppVersion() {
-    const api = unifiedAPI.getAPI()
-    if (api && typeof api.getAppVersion === 'function') {
-      try {
-        const v = await api.getAppVersion()
-        return v
-      } catch {
-        return '1.0.0'
-      }
-    }
-    return '1.0.0'
-  }
-
-  async getBuildInfo() {
-    try {
-      const resp = await unifiedAPI.call('app.build')
-      return resp && resp.type === 'success' ? resp.payload : {}
-    } catch {
-      return {}
-    }
   }
 }
 

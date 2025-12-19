@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed, watch } from 'vue'
- 
+
 
 export const useDeviceStore = defineStore('deviceConfig', () => {
   // 设备列表
@@ -10,7 +10,7 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
   const appType = ref('all')
   const isLogcatRunning = ref(false)
   const logcatOutput = ref([])
-  
+
   // 设备详细信息
   const deviceInfo = reactive({
     model: '',
@@ -75,14 +75,14 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
   const stopDeviceMonitoring = async () => {
     try {
       isMonitoring.value = false
-      
+
       if (monitoringInterval.value) {
         clearInterval(monitoringInterval.value)
         monitoringInterval.value = null
       }
-      
+
       console.log('设备监控已停止')
-      
+
       return { success: true, message: '设备监控已停止' }
     } catch (error) {
       console.error('停止设备监控失败:', error)
@@ -97,7 +97,7 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
       apps.value = []
       return
     }
-    
+
   })
 
   return {

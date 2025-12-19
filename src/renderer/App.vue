@@ -4,8 +4,9 @@
     <div v-if="isLoading" id="loading-screen" class="loading-screen">
       <div class="loading-container">
         <div class="loading-logo">
-          <div class="logo-icon">📱</div>
-          <h1>Android开发工具</h1>
+          <!-- <div class="logo-icon">📱</div> -->
+          <img src="@assets/images/icon.png" alt="Logo" class="logo-icon-img" />
+          <h1>Blank Tool</h1>
         </div>
         <div class="loading-progress">
           <div class="progress-bar">
@@ -14,8 +15,8 @@
           <div class="loading-text">{{ loadingStep }}</div>
           <div v-if="loadingMessage" class="loading-detail">{{ loadingMessage }}</div>
         </div>
-        <div class="loading-version">
-          版本 1.0.0
+        <div class="loading-timer">
+          已耗时: {{ loadingTime }}s
         </div>
         <!-- 错误信息显示 -->
         <div v-if="initError" class="loading-error">
@@ -43,7 +44,7 @@
 </template>
 
 <script>
-import { ref, shallowRef, onMounted, provide, getCurrentInstance } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, provide, getCurrentInstance } from 'vue'
 import AppHeader from '@components/common/Header.vue'
 import StatusBar from '@components/common/StatusBar.vue'
 import Notification from '@components/common/Notification.vue'
@@ -51,7 +52,7 @@ import serviceManager from '@services/ServiceManager.js'
 import { ThemeService } from '@services/ThemeService.js'
 import ToolService from '@services/ToolService.js'
 import NotificationService from '@services/NotificationService.js'
-import unifiedAPI from './api/unifiedApi.js'
+import unifiedAPI from './api/unifiedAPI.js'
 import ErrorService from '@services/ErrorService.js'
 import StoreService from '@services/StoreService.js'
 import ApkService from '@services/ApkService.js'
@@ -59,6 +60,7 @@ import CacheService from '@services/CacheService.js'
 import SettingsService from '@services/SettingsService.js'
 import DeviceService from '@services/DeviceService.js'
 import SystemService from '@services/SystemService.js'
+import { useToolStore, useAppConfigStore, useSystemStore } from '@stores'
 
 
 export default {
@@ -78,6 +80,11 @@ export default {
     const showRetryButton = ref(false)
     const retryCount = ref(0)
     const maxRetries = 3
+    
+    // 计时器相关
+    const loadingTime = ref('0.0')
+    let timerInterval = null
+    const startTime = ref(0)
 
     // Provide services using refs to handle async initialization
     const notificationServiceRef = shallowRef(null)
@@ -139,18 +146,43 @@ export default {
     }
 
     /**
+     * 启动计时器
+     */
+    function startTimer() {
+      startTime.value = Date.now()
+      if (timerInterval) clearInterval(timerInterval)
+      
+      timerInterval = setInterval(() => {
+        const diff = Date.now() - startTime.value
+        loadingTime.value = (diff / 1000).toFixed(1)
+      }, 100)
+    }
+
+    /**
+     * 停止计时器
+     */
+    function stopTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval)
+        timerInterval = null
+      }
+    }
+
+    /**
      * 应用初始化流程 - 顺序执行，失败时抛出异常
      */
     async function initializeApplication() {
+      startTimer()
       try {
         initError.value = ''
         loadingProgress.value = 0
 
         // 定义初始化任务，按依赖关系顺序执行
         const initTasks = [
-          { name: '初始化服务', task: initializeServices, weight: 60, critical: true },
-          { name: '工具检查', task: checkToolsStatus, weight: 40, critical: false },
-          { name: '界面准备', task: prepareUI, weight: 40, critical: true }
+          { name: '加载服务', task: initializeServices, weight: 40, critical: true },
+          { name: '加载配置', task: loadApplicationData, weight: 30, critical: true },
+          { name: '工具检查', task: checkToolsStatus, weight: 20, critical: false },
+          { name: '界面准备', task: prepareUI, weight: 10, critical: true }
         ]
 
         let completedWeight = 0
@@ -193,10 +225,12 @@ export default {
         await new Promise(resolve => setTimeout(resolve, 500))
 
         isLoading.value = false
+        stopTimer()
         console.log('应用初始化完成')
 
       } catch (error) {
         console.error('应用初始化失败:', error)
+        stopTimer()
 
         // 设置错误信息并显示重试按钮
         initError.value = error.message || '初始化失败，请重试'
@@ -217,47 +251,57 @@ export default {
     }
 
     /**
-     * 工具状态检查 - 异步非阻塞
+     * 加载应用数据
+     */
+    async function loadApplicationData() {
+      updateProgress('加载配置...', '正在加载应用配置和系统信息', 45)
+      
+      const appConfigStore = useAppConfigStore()
+      const systemStore = useSystemStore()
+
+      try {
+        await Promise.all([
+          appConfigStore.initialize(),
+          systemStore.fetchSystemInfo(),
+          systemStore.fetchBuildInfo()
+        ])
+        console.log('应用数据加载完成')
+      } catch (error) {
+        console.error('应用数据加载失败:', error)
+        // 非关键错误，继续执行
+      }
+    }
+
+    /**
+     * 工具状态检查 - 同步阻塞
      */
     async function checkToolsStatus() {
       updateProgress('检查工具状态...', '正在检查开发工具可用性', 35)
 
-      const toolService = await serviceManager.getService('tools')
-      if (!toolService) {
-        console.warn('工具服务未初始化，跳过工具检查')
-        return
-      }
+      const toolStore = useToolStore()
 
       try {
-        // 异步检查工具状态，不等待完成
-        const checkPromise = toolService.checkTools()
+        // 同步等待检查结果，force=true 确保启动时刷新
+        await toolStore.fetchTools(true)
+        
+        const availableTools = toolStore.availableTools
+        const tools = toolStore.tools
+        const unavailableTools = tools.filter(t => t.status !== 'available')
 
-        // 立即返回，让工具检查在后台进行
-        checkPromise.then(() => {
-          const availableTools = toolService.getAvailableTools()
-          const unavailableTools = toolService.getUnavailableTools()
+        console.log(`工具状态检查完成: ${availableTools.length}个可用, ${unavailableTools.length}个不可用`)
 
-          console.log(`工具状态检查完成: ${availableTools.length}个可用, ${unavailableTools.length}个不可用`)
-
-          if (availableTools.length > 0) {
-            console.log('以下工具可用:', availableTools.map(t => t.name))
-          }
-          if (unavailableTools.length > 0) {
-            console.warn('以下工具不可用:', unavailableTools.map(t => t.name))
-          }
-
-        }).catch(error => {
-          console.warn('工具状态检查失败，但不影响应用启动:', error)
-        })
-
-        // 短暂延迟后立即返回，不等待工具检查完成
-        await new Promise(resolve => setTimeout(resolve, 100))
-        updateProgress('工具检查启动', '工具检查已在后台启动', 50)
+        if (availableTools.length > 0) {
+          console.log('以下工具可用:', availableTools.map(t => t.name))
+        }
+        if (unavailableTools.length > 0) {
+          console.warn('以下工具不可用:', unavailableTools.map(t => t.name))
+        }
 
       } catch (error) {
-        console.warn('启动工具检查失败:', error)
-        // 不抛出异常，让应用继续启动
+        console.warn('工具状态检查失败，但不影响应用启动:', error)
       }
+      
+      updateProgress('工具检查完成', '工具检查已完成', 50)
     }
 
     /**
@@ -488,6 +532,10 @@ export default {
       initializeApplication()
     })
 
+    onUnmounted(() => {
+      stopTimer()
+    })
+
     return {
       isLoading,
       loadingProgress,
@@ -498,7 +546,8 @@ export default {
       showRetryButton,
       retryCount,
       maxRetries,
-      retryInitialization
+      retryInitialization,
+      loadingTime
     }
   }
 }
@@ -530,8 +579,9 @@ export default {
   margin-bottom: 2rem;
 }
 
-.logo-icon {
-  font-size: 4rem;
+.logo-icon-img {
+  width: 80px; /* Adjust size as needed */
+  height: 80px;
   margin-bottom: 1rem;
   animation: pulse 2s infinite;
 }
@@ -574,7 +624,7 @@ export default {
   opacity: 0.7;
 }
 
-.loading-version {
+.loading-timer {
   font-size: 0.8rem;
   opacity: 0.6;
 }

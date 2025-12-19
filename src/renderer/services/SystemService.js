@@ -1,33 +1,69 @@
-import unifiedAPI from '../api/unifiedApi.js'
+import unifiedAPI from '../api/unifiedAPI.js'
 
 class SystemService {
-    constructor() {
-
-    }
+    constructor() { }
 
     async getSystemInfo() {
-        const direct = await unifiedAPI.safeCall('getSystemInfo')
-        if (direct && direct.platform) return { system_info: direct }
-        const resp = await unifiedAPI.call('system.info')
-        return resp || { system_info: {} }
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.getSystemInfo === 'function') {
+            console.log('getSystemInfo')
+            return await api.getSystemInfo()
+        }
+        throw new Error('getSystemInfo 方法未实现')
+    }
+
+    async getBackendBuildInfo() {
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.getBackendBuildInfo === 'function') {
+            console.log('getBackendBuildInfo')
+            return await api.getBackendBuildInfo()
+        }
+        throw new Error('getBackendBuildInfo 方法未实现')
     }
 
     async getBuildInfo() {
-        const resp = await unifiedAPI.call('build.info')
-        return resp || { build_info: {} }
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.getBuildInfo === 'function') {
+            console.log('getBuildInfo')
+            return await api.getBuildInfo()
+        }
+        throw new Error('getBuildInfo 方法未实现')
     }
 
-    async getAppVersion() {
-        const direct = await unifiedAPI.safeCall('getAppVersion')
-        return direct
+    async getAppInfo() {
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.getAppInfo === 'function') {
+            console.log('getAppInfo')
+            return await api.getAppInfo()
+        }
+        throw new Error('getAppInfo 方法未实现')
     }
 
-    async getElectronVersion() {
-        return await unifiedAPI.safeCall('getElectronVersion')
+    async getBackendInfo() {
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.getBackendInfo === 'function') {
+            console.log('getBackendInfo')
+            return await api.getBackendInfo()
+        }
+        throw new Error('getBackendInfo 方法未实现')
+    }
+
+    async getFontendBuildInfo() {
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.getFontendBuildInfo === 'function') {
+            console.log('getFontendBuildInfo')
+            return await api.getFontendBuildInfo()
+        }
+        throw new Error('getFontendBuildInfo 方法未实现')
     }
 
     async selectDirectory(options = {}) {
-        return await unifiedAPI.safeCall('selectDirectory', options)
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.selectDirectory === 'function') {
+            console.log('selectDirectory', options)
+            return await api.selectDirectory(options)
+        }
+        throw new Error('selectDirectory 方法未实现')
     }
 
     async selectFile(options = {}) {
@@ -37,45 +73,40 @@ class SystemService {
             console.log('selectFile', options)
             return await api.selectFile(options)
         }
-        if (api && typeof api.showOpenDialog === 'function') {
-            console.log('showOpenDialog', api.showOpenDialog)
-            const dialogOptions = {
-                title: (options && options.title) || '选择文件',
-                properties: ['openFile'],
-                filters: options && options.filters ? options.filters : undefined
-            }
-            try {
-                const res = await api.showOpenDialog(dialogOptions)
-                return res
-            } catch (e) {
-                return { canceled: true }
-            }
-        }
-        return { canceled: true }
+        throw new Error('selectFile 方法未实现')
     }
 
     async openPath(path) {
-        return await unifiedAPI.safeCall('openPath', path)
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.openPath === 'function') {
+            console.log('openPath', path)
+            return await api.openPath(path)
+        }
+        throw new Error('openPath 方法未实现')
     }
 
     async copyText(text) {
         if (!text) return false
-        try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(text)
-                return true
-            }
-            const api = unifiedAPI.getAPI()
-            if (api && typeof api.writeClipboardText === 'function') {
-                await api.writeClipboardText(text)
-                return true
-            }
-        } catch { }
-        return false
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text)
+            return true
+        }
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.writeClipboardText === 'function') {
+            console.log('writeClipboardText', text)
+            return await api.writeClipboardText(text)
+        }
+        throw new Error('writeClipboardText 方法未实现')
     }
 
     async getFileStats(path) {
-        return await unifiedAPI.safeCall('getFileStats', path)
+        const api = unifiedAPI.getAPI()
+        if (api && typeof api.getFileStats === 'function') {
+            console.log('getFileStats', path)
+            return await api.getFileStats(path)
+        }
+        throw new Error('getFileStats 方法未实现')
     }
 }
 

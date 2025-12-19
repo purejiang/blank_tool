@@ -1,4 +1,4 @@
-import unifiedAPI from '../api/unifiedApi.js'
+import unifiedAPI from '../api/unifiedAPI.js'
 
 class DeviceService {
   constructor(storeService) {
@@ -55,25 +55,35 @@ class DeviceService {
 
   async refreshDevices() {
     const store = await this.storeService.ensureDeviceStore()
-    const resp = await unifiedAPI.call('adb.devices')
-    if (resp && resp.type === 'success') {
-      const list = Array.isArray(resp.payload) ? resp.payload : []
-      store.updateDevices(list)
-      return { success: true, devices: list }
+    try {
+      const api = unifiedAPI.getAPI()
+      if (api && typeof api.getAdbDevices === 'function') {
+        const list = await api.getAdbDevices()
+        const safeList = Array.isArray(list) ? list : []
+        store.updateDevices(safeList)
+        return { success: true, devices: safeList }
+      }
+      throw new Error('getAdbDevices API not implemented')
+    } catch (e) {
+      store.updateDevices([])
+      return { success: false, error: e.message }
     }
-    store.updateDevices([])
-    return { success: false }
   }
 
   async getDeviceInfo(deviceId) {
     if (!deviceId) return { success: false }
     const store = await this.storeService.ensureDeviceStore()
-    const resp = await unifiedAPI.call('device.info', { device_id: deviceId })
-    if (resp && resp.type === 'success') {
-      store.updateDeviceInfo(resp.payload)
-      return { success: true, device: resp.payload }
+    try {
+      const api = unifiedAPI.getAPI()
+      if (api && typeof api.getDeviceInfo === 'function') {
+        const info = await api.getDeviceInfo(deviceId)
+        store.updateDeviceInfo(info)
+        return { success: true, device: info }
+      }
+      throw new Error('getDeviceInfo API not implemented')
+    } catch (e) {
+      return { success: false, error: e.message }
     }
-    return { success: false }
   }
 
   async startMonitoring(intervalMs = 5000) {
@@ -112,18 +122,32 @@ class DeviceService {
     const store = await this.storeService.ensureDeviceStore()
     const dev = store.selectedDevice
     if (!dev || !dev.id) return { success: false, error: '未选择设备' }
-    return await unifiedAPI.call('device.reboot', { device_id: dev.id, mode })
+    try {
+      const api = unifiedAPI.getAPI()
+      if (api && typeof api.rebootDevice === 'function') {
+        await api.rebootDevice(dev.id, mode)
+        return { success: true }
+      }
+      throw new Error('rebootDevice API not implemented')
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
   }
 
   async executeShell(command) {
     const store = await this.storeService.ensureDeviceStore()
     const dev = store.selectedDevice
     if (!dev || !dev.id || !command) return
-    const resp = await unifiedAPI.call('device.shell', { device_id: dev.id, command })
-    if (resp && resp.type === 'success') {
-      store.shellOutput = (resp.payload && resp.payload.output) || ''
-    } else {
-      store.shellOutput = (resp && resp.payload && resp.payload.message) || '执行失败'
+    try {
+      const api = unifiedAPI.getAPI()
+      if (api && typeof api.executeShell === 'function') {
+        const result = await api.executeShell(dev.id, command)
+        store.shellOutput = (result && result.output) || ''
+        return
+      }
+      throw new Error('executeShell API not implemented')
+    } catch (e) {
+      store.shellOutput = e.message || '执行失败'
     }
   }
 
@@ -145,7 +169,11 @@ class DeviceService {
     }
     // 统一走后端流式接口，并请求 fresh 启动（后端将清空 logcat 缓冲）
     try {
-      unifiedAPI.call('adb.logcat', { device_id: dev.id })
+      if (api && typeof api.startLogcat === 'function') {
+        api.startLogcat(dev.id)
+      } else {
+        throw new Error('startLogcat API not implemented')
+      }
     } catch {}
     // 状态由 onLogcatStarted 事件驱动；为避免等待阻塞，直接标记为运行中
     store.isLogcatRunning = true
@@ -158,7 +186,8 @@ class DeviceService {
     if (api && typeof api.stopLogcat === 'function' && store.logcatProcessId) {
       await api.stopLogcat(store.logcatProcessId)
     } else {
-      await unifiedAPI.call('device.logcat_stop', { process_id: store.logcatProcessId })
+      // 抛出异常或仅记录错误
+      console.error('stopLogcat API not implemented or process ID missing')
     }
     store.isLogcatRunning = false
     store.logcatProcessId = ''
@@ -174,10 +203,25 @@ class DeviceService {
     store.apps = []
     const dev = store.selectedDevice
     if (!dev || !dev.id) return
-    const resp = await unifiedAPI.call('device.list_apps', { device_id: dev.id, type: store.appType })
-    if (resp && resp.type === 'success') {
-      const list = Array.isArray(resp.payload) ? resp.payload : []
+
+    try {
+      const api = unifiedAPI.getAPI()
+      let list = []
+      
+      if (api && typeof api.getInstalledApps === 'function') {
+        const resp = await api.getInstalledApps(dev.id, store.appType)
+        // preload.js 已经解包，resp 应该直接是列表
+        if (Array.isArray(resp)) {
+          list = resp
+        }
+      } else {
+         throw new Error('getInstalledApps API not implemented')
+      }
+
       store.apps = list.map(item => (typeof item === 'string' ? { packageName: item } : { packageName: item.packageName || item.package_name || '' })).filter(a => a.packageName)
+    } catch (e) {
+      console.error('刷新应用列表失败:', e)
+      store.apps = []
     }
   }
 
@@ -225,17 +269,42 @@ class DeviceService {
     const store = await this.storeService.ensureDeviceStore()
     const dev = store.selectedDevice
     if (!dev || !dev.id || !pkg) return false
-    const resp = await unifiedAPI.call('device.export_app', { device_id: dev.id, package_name: pkg })
-    return !!resp
+    
+    // 需要先让用户选择保存目录
+    const api = unifiedAPI.getAPI()
+    let outputDir = ''
+    if (api && typeof api.selectDirectory === 'function') {
+      const res = await api.selectDirectory({ title: '选择导出目录' })
+      if (!res || res.canceled) return false
+      outputDir = res.directoryPath || (res.filePaths && res.filePaths[0]) || ''
+    }
+
+    if (!outputDir) return false
+
+    if (api && typeof api.exportApk === 'function') {
+      const resp = await api.exportApk(pkg, dev.id, outputDir)
+      // preload.js 已解包，如果没报错就是成功
+      return !!resp
+    }
+    
+    // throw new Error('exportApk API not implemented')
+    // 为了不破坏现有逻辑，如果 API 不存在，暂时返回 false，或者抛出异常
+    // 根据用户指令 "如果没有方法就抛出异常"
+    throw new Error('exportApk API not implemented')
   }
 
   async uninstallApp(pkg) {
     const store = await this.storeService.ensureDeviceStore()
     const dev = store.selectedDevice
     if (!dev || !dev.id || !pkg) return false
-    const resp = await unifiedAPI.call('device.uninstall_app', { device_id: dev.id, package_name: pkg })
-    await this.refreshAppList()
-    return !!resp
+    const api = unifiedAPI.getAPI()
+    if (api && typeof api.uninstallApp === 'function') {
+      const resp = await api.uninstallApp(pkg, dev.id)
+      await this.refreshAppList()
+      // preload.js 已解包
+      return !!resp
+    }
+    throw new Error('uninstallApp API not implemented')
   }
 
   async installApp(apkPath, options = {}) {
@@ -246,24 +315,27 @@ class DeviceService {
     const api = unifiedAPI.getAPI()
     const isAab = /\.aab$/i.test(apkPath)
     let resp = null
+    
     if (api) {
-      try {
-        if (isAab && typeof api.installAab === 'function') {
-          resp = await api.installAab(apkPath, dev.id)
-        } else if (typeof api.installApk === 'function') {
-          resp = await api.installApk(apkPath, dev.id)
-        }
-      } catch {}
-    }
-    if (!resp) {
       if (isAab) {
-        resp = await unifiedAPI.call('device.install_aab', { aab_path: apkPath, device_id: dev.id, options })
+        if (typeof api.installAab === 'function') {
+          resp = await api.installAab(apkPath, dev.id)
+        } else {
+           throw new Error('installAab API not implemented')
+        }
       } else {
-        resp = await unifiedAPI.call('device.install_apk', { apk_path: apkPath, device_id: dev.id, options })
+        if (typeof api.installApk === 'function') {
+          resp = await api.installApk(apkPath, dev.id)
+        } else {
+           throw new Error('installApk API not implemented')
+        }
       }
+    } else {
+       throw new Error('Unified API not available')
     }
-    if (resp && resp.type === 'success') return { success: true, payload: resp.payload }
-    return { success: false, error: (resp && resp.error) || (resp && resp.payload && resp.payload.message) || '安装失败' }
+
+    if (resp) return { success: true, payload: resp }
+    return { success: false, error: '安装失败' }
   }
 }
 

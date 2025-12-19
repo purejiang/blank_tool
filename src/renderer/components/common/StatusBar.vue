@@ -21,7 +21,7 @@
 
     <!-- 右侧：版本信息 -->
     <div class="status-right">
-      <span class="version-info">前端 v{{ frontendVersion }} | 后端 v{{ backendVersion || '未知' }}</span>
+      <span class="version-info">frontend {{ frontendVersion }} | backend {{ backendVersion || '未知' }}</span>
     </div>
   </div>
 </template>
@@ -49,7 +49,7 @@ export default {
       if (!connectedDevice.value) {
         return 'offline'
       }
-      
+
       // 根据设备状态判断
       if (connectedDevice.value.status === 'device') {
         return 'online'
@@ -70,28 +70,20 @@ export default {
     })
 
     // 获取应用版本信息
-    const settingsServiceRef = ref(null)
+    const systemServiceRef = ref(null)
     const getVersions = async () => {
       try {
-        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
-        settingsServiceRef.value = svc
-        const direct = await svc.getAppVersion()
-        if (direct && typeof direct === 'string') frontendVersion.value = direct
-        else if (direct && typeof direct === 'object' && direct.version) frontendVersion.value = String(direct.version)
-        const buildResult = await svc.getBuildInfo()
-        if (buildResult && buildResult.build_info) {
-          const build = buildResult.build_info
-          const v = build.app_version || ''
-          if (typeof v === 'string' && v) backendVersion.value = v
-        }
+        const systemSvc = systemServiceRef.value || await serviceManager.getService('system')
+        systemServiceRef.value = systemSvc
+        const appInfoResult = await systemSvc.getAppInfo()
+        frontendVersion.value = appInfoResult?.version || '未知'
+        const backendVersionResult = await systemSvc.getBackendInfo()
+        backendVersion.value = backendVersionResult?.version || '未知'
+
       } catch (error) {
         console.error('获取版本信息失败:', error)
       }
     }
-
-    // 获取当前设备信息
-    
-
     // 生命周期
     onMounted(async () => {
       console.log('StatusBar组件已挂载，开始初始化应用')
@@ -197,9 +189,12 @@ export default {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }

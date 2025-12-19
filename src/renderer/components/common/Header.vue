@@ -2,7 +2,7 @@
   <div class="header-nav">
     <div class="header-logo">
       <span class="header-logo-icon">🤖</span>
-      Android 开发工具
+      Blank Tool
     </div>
     <div class="header-tabs">
       <router-link 

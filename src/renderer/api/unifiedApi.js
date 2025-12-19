@@ -1,10 +1,10 @@
 /**
- * 统一的 Electron API 服务
+ *   统一的 API 服务
  * - 初始化并暴露 window.electronAPI
  * - 提供 safeCall 与后端 call(action, params)
  * - 在非 Electron 环境提供 Mock
  */
-class UnifiedApi {
+class UnifiedAPI {
   constructor() {
     this.api = null
     this.isAvailable = false
@@ -80,10 +80,18 @@ class UnifiedApi {
   }
 
   async call(action, params = {}) {
-    return this.safeCall('callBackendAPI', action, params)
+    const resp = await this.safeCall('callBackendAPI', action, params)
+    
+    // 1. 处理 IPC 调用失败或 safeCall 捕获的异常（包括后端抛出的错误）
+    if (resp && resp.success === false && resp.error) {
+      throw new Error(resp.error)
+    }
+
+    // 2. preload.js 已经处理了解包，这里直接返回数据
+    return resp
   }
 }
 
-const api = new UnifiedApi()
+const api = new UnifiedAPI()
 export default api
-export { UnifiedApi }
+export { UnifiedAPI }

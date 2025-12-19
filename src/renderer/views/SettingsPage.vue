@@ -106,6 +106,52 @@
           </div>
         </div>
 
+        <!-- 存储管理 -->
+        <div class="section">
+          <div class="section-header">
+            <h2><span class="section-icon">🧹</span>存储管理</h2>
+            <div class="section-actions">
+              <button class="btn btn-sm btn-secondary" @click="refreshCacheInfo" :disabled="isLoadingCacheInfo" data-tooltip="刷新存储信息">
+                <span v-if="!isLoadingCacheInfo">🔄</span>
+                <span v-else class="btn-spinner"></span>
+              </button>
+            </div>
+          </div>
+          <div class="settings-group">
+             <div class="info-grid" style="margin-bottom: 15px;">
+                <div class="info-item">
+                  <p class="info-label">缓存大小</p>
+                  <span class="info-value">{{ formatFileSize(cacheInfo.cache.size) }} ({{ cacheInfo.cache.files }} 文件)</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">输出大小</p>
+                  <span class="info-value">{{ formatFileSize(cacheInfo.output.size) }} ({{ cacheInfo.output.files }} 文件)</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">总计占用</p>
+                  <span class="info-value">{{ formatFileSize(cacheInfo.total.size) }}</span>
+                </div>
+             </div>
+             <div class="form-group">
+                <p class="form-text">管理应用产生的临时文件和输出文件。</p>
+                <div class="btn-group">
+                  <button class="btn btn-warning" :class="{ 'loading': isClearingCache }" @click="clearStorage('cache')" 
+                    :disabled="isClearingCache || isLoadingCacheInfo">
+                    <span v-if="!isClearingCache">🗑️</span>
+                    <span v-if="isClearingCache" class="btn-spinner"></span>
+                    {{ isClearingCache ? '正在清理...' : '清理缓存' }}
+                  </button>
+                  <button class="btn btn-warning" :class="{ 'loading': isClearingOutput }" @click="clearStorage('output')" 
+                    :disabled="isClearingOutput || isLoadingCacheInfo">
+                    <span v-if="!isClearingOutput">📂</span>
+                    <span v-if="isClearingOutput" class="btn-spinner"></span>
+                    {{ isClearingOutput ? '正在清理...' : '清理输出' }}
+                  </button>
+                </div>
+             </div>
+          </div>
+        </div>
+
         <!-- 输出设置 -->
         <div class="section">
           <div class="section-header">
@@ -429,6 +475,56 @@
           </div>
         </div>
 
+        <!-- 构建信息 -->
+        <div class="section">
+          <h2><span class="section-icon">🔧</span>构建信息</h2>
+          <div class="settings-group">
+            <div class="info-category">
+              <h3>应用信息</h3>
+              <div class="info-grid">
+                <div class="info-item">
+                  <p class="info-label">应用名称</p>
+                  <span class="info-value">{{ buildInfo.appName || '加载中...' }}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">应用版本</p>
+                  <span class="info-value">{{ buildInfo.appVersion || '加载中...' }}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">应用描述</p>
+                  <span class="info-value">{{ buildInfo.appDescription || '加载中...' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="info-category">
+              <h3>运行环境</h3>
+              <div class="info-grid">
+                <div class="info-item">
+                  <p class="info-label">Electron版本</p>
+                  <span class="info-value">{{ buildInfo.electronVersion}}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">Node.js版本</p>
+                  <span class="info-value">{{ buildInfo.nodeVersion}}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">Chrome版本</p>
+                  <span class="info-value">{{ buildInfo.chromeVersion }}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">Java版本</p>
+                  <span class="info-value">{{ buildInfo.javaVersion}}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">Python版本</p>
+                  <span class="info-value">{{ buildInfo.pythonVersion}}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 系统信息 -->
         <div class="section">
           <div class="section-header">
@@ -494,65 +590,16 @@
             </div>
           </div>
         </div>
-
-        <!-- 构建信息 -->
-        <div class="section">
-          <h2><span class="section-icon">🔧</span>构建信息</h2>
-          <div class="settings-group">
-            <div class="info-category">
-              <h3>应用信息</h3>
-              <div class="info-grid">
-                <div class="info-item">
-                  <p class="info-label">应用名称</p>
-                  <span class="info-value">{{ buildInfo.appName || '加载中...' }}</span>
-                </div>
-                <div class="info-item">
-                  <p class="info-label">应用版本</p>
-                  <span class="info-value">{{ buildInfo.appVersion || '加载中...' }}</span>
-                </div>
-                <div class="info-item">
-                  <p class="info-label">应用描述</p>
-                  <span class="info-value">{{ buildInfo.appDescription || '加载中...' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="info-category">
-              <h3>运行环境</h3>
-              <div class="info-grid">
-                <div class="info-item">
-                  <p class="info-label">Electron版本</p>
-                  <span class="info-value">{{ buildInfo.electronVersion || '加载中...' }}</span>
-                </div>
-                <div class="info-item">
-                  <p class="info-label">Node.js版本</p>
-                  <span class="info-value">{{ buildInfo.nodeVersion || '加载中...' }}</span>
-                </div>
-                <div class="info-item">
-                  <p class="info-label">Chrome版本</p>
-                  <span class="info-value">{{ buildInfo.chromeVersion || '加载中...' }}</span>
-                </div>
-                 <div class="info-item">
-                  <p class="info-label">Java版本</p>
-                  <span class="info-value">{{ buildInfo.javaVersion || '加载中...' }}</span>
-                </div>
-                 <div class="info-item">
-                  <p class="info-label">Python版本</p>
-                  <span class="info-value">{{ buildInfo.javaVersion || '加载中...' }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, reactive, inject, onMounted } from 'vue'
+import { ref, reactive, inject, onMounted, watch, computed } from 'vue'
 import serviceManager from '@services/ServiceManager.js'
 import { useNotification } from '@composables/useNotification.js'
+import { useToolStore, useAppConfigStore, useSystemStore } from '@stores'
 
 export default {
   name: 'SettingsPage',
@@ -563,6 +610,10 @@ export default {
     const settingsServiceRef = ref(null)
     const systemServiceRef = ref(null)
 
+    const toolStore = useToolStore()
+    const appConfigStore = useAppConfigStore()
+    const systemStore = useSystemStore()
+    
     // 响应式数据
     const hasUnsavedChanges = ref(false)
     const isLoadingSystemInfo = ref(false)
@@ -622,28 +673,18 @@ export default {
       cacheExpiry: 24
     })
 
-    const systemInfo = reactive({
-      platform: '',
-      platform_version: '',
-      platform_release: '',
-      architecture: '',
-      hostname: '',
-      cpuCount: '',
-      processor: ''
-    })
-    const buildInfo = reactive({
-      appName: '',
-      appVersion: '',
-      appDescription: '',
-      electronVersion: '',
-      nodeVersion: '',
-      chromeVersion: '',
-      javaVersion: '',
-      pythonVersion: ''
-    })
-
-    const tools = reactive([])
+    const systemInfo = systemStore.systemInfo
+    const buildInfo = systemStore.buildInfo
+    
     const systemSearchEnabled = ref(false)
+    const isClearingCache = ref(false)
+    const isClearingOutput = ref(false)
+    const isLoadingCacheInfo = ref(false)
+    const cacheInfo = ref({
+      cache: { size: 0, files: 0 },
+      output: { size: 0, files: 0 },
+      total: { size: 0, files: 0 }
+    })
     const recommendedVersions = {
       java: '11',
       adb: '1.0.41',
@@ -651,6 +692,55 @@ export default {
       apktool: '2.7.0',
       bundletool: '1.15.5'
     }
+
+    const checkNeedsUpdate = (key, version) => {
+      if (!version) return false
+      const min = recommendedVersions[key]
+      if (!min) return false
+      const normalize = v => String(v).replace(/[^0-9.]/g, '')
+      const cmp = (a, b) => {
+        const pa = normalize(a).split('.').map(n => parseInt(n || '0', 10))
+        const pb = normalize(b).split('.').map(n => parseInt(n || '0', 10))
+        const len = Math.max(pa.length, pb.length)
+        for (let i = 0; i < len; i++) {
+          const da = pa[i] || 0
+          const db = pb[i] || 0
+          if (da < db) return -1
+          if (da > db) return 1
+        }
+        return 0
+      }
+      return cmp(version, min) < 0
+    }
+
+    const tools = computed(() => {
+      const fullNameMap = {
+        adb: 'Android Debug Bridge',
+        aapt: 'Android Asset Packaging Tool',
+        apktool: 'APKTool',
+        java: 'Java',
+        bundletool: 'BundleTool',
+        apksigner: 'Apk Signer',
+        zipalign: 'Zipalign',
+        jarsigner: 'JAR Signer'
+      }
+      
+      return toolStore.tools.map(item => {
+        const key = item.name || item.key
+        const fullName = fullNameMap[key] || key
+        const version = item.version || ''
+        const needsUpdate = checkNeedsUpdate(key, version)
+        return {
+          key,
+          fullName,
+          status: item.status || (item.available ? 'available' : 'unavailable'),
+          version,
+          path: item.path || item.tool_path || '',
+          source: item.source || 'unknown',
+          needsUpdate
+        }
+      })
+    })
 
     // 设置变更处理
     const onSettingChange = () => {
@@ -660,9 +750,13 @@ export default {
     // 加载设置
     const loadSettings = async () => {
       try {
-        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
-        settingsServiceRef.value = svc
-        const result = await svc.loadSettings()
+        // 从 store 中获取配置，如果没有则初始化
+        // (App初始化时已经加载过，这里可以直接使用)
+        if (Object.keys(appConfigStore.config).length === 0) {
+          await appConfigStore.initialize()
+        }
+        
+        const result = appConfigStore.config
 
         if (result) {
           // 更新设置对象
@@ -752,6 +846,41 @@ export default {
       }
     }
 
+    const refreshCacheInfo = async () => {
+      isLoadingCacheInfo.value = true
+      try {
+        const svc = await serviceManager.getService('cache')
+        const info = await svc.getCacheInfo(true)
+        if (info) {
+          cacheInfo.value = info
+        }
+      } catch (error) {
+        console.error('刷新存储信息失败:', error)
+      } finally {
+        isLoadingCacheInfo.value = false
+      }
+    }
+
+    const clearStorage = async (target) => {
+      if (target === 'cache') isClearingCache.value = true
+      if (target === 'output') isClearingOutput.value = true
+      
+      try {
+        const svc = await serviceManager.getService('cache')
+        const result = await svc.clearStorage(target)
+        if (result.success) {
+          showSuccess('存储清理成功')
+        } else {
+          showError('存储清理失败', result.error)
+        }
+      } catch (error) {
+        showError('存储清理失败', error.message)
+      } finally {
+        if (target === 'cache') isClearingCache.value = false
+        if (target === 'output') isClearingOutput.value = false
+      }
+    }
+
     // 浏览工具路径
     const browseToolPath = async (target) => {
       try {
@@ -793,73 +922,34 @@ export default {
         showError('选择目录失败', error.message)
       }
     }
+    
+    // 声明 loadBuildInfo 和 loadSystemInfo 之前，确保 store 已经定义
+    // 在 setup 顶部已经定义了 toolStore, appConfigStore, systemStore
+    
+    const loadBuildInfo = async () => {
+      try {
+        // 从 store 获取
+        if (!systemStore.buildInfo.appName) {
+          await systemStore.fetchBuildInfo()
+        }
+      } catch (error) {
+        console.error('加载构建信息失败:', error)
+        showError('加载构建信息失败', error.message)
+      }
+    }
 
     // 加载系统信息
-    const loadSystemInfo = async () => {
+    const loadSystemInfo = async (forceRefresh = false) => {
       try {
         isLoadingSystemInfo.value = true
-        const svc = systemServiceRef.value || await serviceManager.getService('system')
-        systemServiceRef.value = svc
-        const systemResult = await svc.getSystemInfo()
-        if (systemResult && systemResult.system_info) {
-          const sysInfo = systemResult.system_info
-
-          systemInfo.platform = sysInfo.platform || '未知'
-          systemInfo.platform_version = sysInfo.platform_version || '未知'
-          systemInfo.platform_release = sysInfo.platform_release || '未知'
-          systemInfo.architecture = sysInfo.architecture || '未知'
-          systemInfo.hostname = sysInfo.hostname || '未知'
-          systemInfo.cpuCount = sysInfo.cpu_count || '未知'
-          systemInfo.processor = sysInfo.processor || '未知'
-
-          // 内存信息处理
-          if (sysInfo.memoryTotal) {
-            systemInfo.memoryTotal = formatFileSize(sysInfo.memoryTotal)
-          }
-          if (sysInfo.memoryUsed) {
-            systemInfo.memoryUsed = formatFileSize(sysInfo.memoryUsed)
-          }
-          if (sysInfo.memoryPercent !== undefined) {
-            systemInfo.memoryPercent = `${sysInfo.memoryPercent.toFixed(1)}%`
-          }
-
-          // 磁盘信息处理
-          if (sysInfo.diskTotal) {
-            systemInfo.diskTotal = formatFileSize(sysInfo.diskTotal)
-          }
-          if (sysInfo.diskUsed) {
-            systemInfo.diskUsed = formatFileSize(sysInfo.diskUsed)
-          }
-          if (sysInfo.diskPercent !== undefined) {
-            systemInfo.diskPercent = `${sysInfo.diskPercent.toFixed(1)}%`
-          }
-
-          // 系统状态信息
-          if (sysInfo.uptime) {
-            systemInfo.uptime = formatUptime(sysInfo.uptime)
-          }
-          if (sysInfo.loadAverage && Array.isArray(sysInfo.loadAverage)) {
-            systemInfo.loadAverage = sysInfo.loadAverage.map(avg => avg.toFixed(2)).join(', ')
-          }
-        }
-
-        const buildResult = await svc.getBuildInfo()
-        const electronVer = await svc.getElectronVersion()
-
-        if (buildResult && buildResult.build_info) {
-          const build = buildResult.build_info
-
-          buildInfo.appName = build.app_name || '未知'
-          buildInfo.appVersion = build.app_version || '未知'
-          buildInfo.appDescription = build.app_description || '无描述'
-          buildInfo.electronVersion = electronVer || build.electron_version || '未知'
-          buildInfo.nodeVersion = build.node_version || '未知'
-          buildInfo.chromeVersion = build.chrome_version || '未知'
-          buildInfo.javaVersion = build.java_version || '未知'
-          buildInfo.pythonVersion = build.python_version || '未知'
+        
+        // 如果是强制刷新，或者 store 中没有数据，则调用接口获取
+        if (forceRefresh || !systemStore.systemInfo.platform) {
+          await systemStore.fetchSystemInfo()
         }
       } catch (error) {
         console.error('加载系统信息失败:', error)
+        showError('加载系统信息失败', error.message)
       } finally {
         isLoadingSystemInfo.value = false
       }
@@ -867,53 +957,17 @@ export default {
 
     // 刷新系统信息
     const refreshSystemInfo = async () => {
-      await loadSystemInfo()
+      await loadSystemInfo(true)
       showSuccess('系统信息已刷新')
     }
 
     const toolServiceRef = ref(null)
-    const mapToolsFromCache = (list) => {
-      const fullNameMap = {
-        adb: 'Android Debug Bridge',
-        aapt: 'Android Asset Packaging Tool',
-        apktool: 'APKTool',
-        java: 'Java',
-        bundletool: 'BundleTool',
-        apksigner: 'Apk Signer',
-        zipalign: 'Zipalign',
-        jarsigner: 'JAR Signer'
-      }
-      tools.splice(0, tools.length)
-      list.forEach(item => {
-        const key = item.name || item.key
-        const fullName = fullNameMap[key] || key
-        const version = item.version || ''
-        const needsUpdate = checkNeedsUpdate(key, version)
-        tools.push({
-          key,
-          fullName,
-          status: item.status || (item.available ? 'available' : 'unavailable'),
-          version,
-          path: item.path || item.tool_path || '',
-          source: item.source || 'unknown',
-          needsUpdate
-        })
-      })
-    }
 
     const initializeToolView = async () => {
       try {
         isLoadingTools.value = true
-        toolServiceRef.value = await serviceManager.getService('tools')
-        const cached = toolServiceRef.value.getAllToolsStatus()
-        if (cached && cached.length) {
-          mapToolsFromCache(cached)
-        }
-        toolServiceRef.value.addListener((event, data) => {
-          if (event === 'tools_updated' && Array.isArray(data)) {
-            mapToolsFromCache(data)
-          }
-        })
+        // 初始加载，如果已有数据则不强制刷新
+        await toolStore.fetchTools(false)
       } catch (e) {
         console.error('初始化工具视图失败:', e)
         showError('初始化工具视图失败')
@@ -926,10 +980,7 @@ export default {
       try {
         console.log('refreshTools函数被调用')
         isLoadingTools.value = true
-        if (!toolServiceRef.value) {
-          toolServiceRef.value = await serviceManager.getService('tools')
-        }
-        await toolServiceRef.value.refreshToolsStatus()
+        await toolStore.fetchTools(true)
         showSuccess('工具状态已刷新')
       } catch (e) {
         console.error('刷新工具状态失败:', e)
@@ -942,13 +993,12 @@ export default {
     const toggleSystemSearch = async () => {
       try {
         const next = !systemSearchEnabled.value
-        if (!toolServiceRef.value) {
-          toolServiceRef.value = await serviceManager.getService('tools')
-        }
-        const payload = await toolServiceRef.value.setSystemSearchMode(next)
+        const toolService = await serviceManager.getService('tools')
+        const payload = await toolService.setSystemSearchMode(next)
         if (payload) {
           systemSearchEnabled.value = !!payload.system_search
           showSuccess(`系统查找已${next ? '开启' : '关闭'}`)
+          await toolStore.fetchTools(true)
         }
       } catch (e) {
         console.error('切换系统工具优先失败:', e)
@@ -956,41 +1006,12 @@ export default {
       }
     }
 
-    const checkNeedsUpdate = (key, version) => {
-      if (!version) return false
-      const min = recommendedVersions[key]
-      if (!min) return false
-      const normalize = v => String(v).replace(/[^0-9.]/g, '')
-      const cmp = (a, b) => {
-        const pa = normalize(a).split('.').map(n => parseInt(n || '0', 10))
-        const pb = normalize(b).split('.').map(n => parseInt(n || '0', 10))
-        const len = Math.max(pa.length, pb.length)
-        for (let i = 0; i < len; i++) {
-          const da = pa[i] || 0
-          const db = pb[i] || 0
-          if (da < db) return -1
-          if (da > db) return 1
-        }
-        return 0
-      }
-      return cmp(version, min) < 0
-    }
-
     const checkVersion = async (key) => {
       try {
-        if (!toolServiceRef.value) {
-          toolServiceRef.value = await serviceManager.getService('tools')
-        }
-        const info = await toolServiceRef.value.checkTool(key, true)
+        const toolService = await serviceManager.getService('tools')
+        const info = await toolService.checkTool(key, true)
         if (info) {
-          const ver = info.version || ''
-          const t = tools.find(t => t.key === key)
-          if (t) {
-            t.version = ver || t.version
-            t.status = info.status || t.status
-            t.path = info.path || t.path
-            t.needsUpdate = checkNeedsUpdate(key, t.version)
-          }
+          toolStore.updateTool(info)
           showSuccess('版本检测完成')
         } else {
           showError('版本检测失败')
@@ -1026,9 +1047,12 @@ export default {
           ]
         })
         if (result && result.filePath) {
-          const path = result.filePath
-          const t = tools.find(t => t.key === key)
-          if (t) t.path = path
+            const path = result.filePath
+            const t = tools.value.find(t => t.key === key)
+            if (t) {
+            // 通过 computed 自动更新，无需手动修改
+            // t.path = path 
+          }
           const dotKey = `tools.${key}`
           // 这里仍然使用 settingsService 保存设置
           const settingsSvc = settingsServiceRef.value || await serviceManager.getService('settings')
@@ -1393,7 +1417,9 @@ export default {
       } catch { }
       await loadSettings()
       await loadSystemInfo()
+      await loadBuildInfo()
       await initializeToolView()
+      refreshCacheInfo()
     })
 
     return {
@@ -1437,7 +1463,14 @@ export default {
       savePerformanceSettings,
       resetPerformanceSettings,
       saveAdvancedSettings,
-      resetAdvancedSettings
+      resetAdvancedSettings,
+      clearStorage,
+      isClearingCache,
+      isClearingOutput,
+      cacheInfo,
+      isLoadingCacheInfo,
+      refreshCacheInfo,
+      formatFileSize
     }
   }
 }
@@ -1562,42 +1595,6 @@ export default {
   white-space: nowrap;
   font-family: monospace;
   max-width: none;
-}
-
-.info-category {
-  margin-bottom: 20px;
-}
-
-.info-category h3 {
-  margin-bottom: 10px;
-  color: #666;
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.info-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-}
-
-.info-label {
-  font-weight: bold;
-  color: #666;
-  margin: 0;
-}
-
-.info-value {
-  color: #333;
-  font-family: monospace;
-  font-size: 12px;
 }
 
 /* 系统信息样式 */

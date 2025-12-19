@@ -1,7 +1,7 @@
 /**
  * 工具服务 - 管理工具状态和操作
  */
-import unifiedAPI from '../api/unifiedApi.js';
+import unifiedAPI from '../api/unifiedAPI.js';
 
 class ToolService {
     constructor() {
@@ -37,50 +37,48 @@ class ToolService {
     async checkTools(params = {}) {
         try {
             const { toolName, refresh } = params || {};
+            const api = unifiedAPI.getAPI();
+
             if (toolName) {
-                const response = await unifiedAPI.call('tool.get_tools', { tool_name: toolName, refresh });
-                const isWrapped = response && typeof response === 'object' && ('type' in response || 'payload' in response);
-                const success = isWrapped ? (response.type ? response.type === 'success' : true) : true;
-                const data = isWrapped ? (response.payload || {}) : (response.data || response);
-                if (!success) {
-                    throw new Error('工具状态请求失败');
+                if (api && typeof api.checkTool === 'function') {
+                    const data = await api.checkTool(toolName, refresh);
+                    const info = {
+                        name: data.name || toolName,
+                        status: data.status || 'unknown',
+                        version: data.version || 'unknown',
+                        path: data.path || '',
+                        source: data.source || 'none',
+                        lastChecked: new Date(),
+                        available: data.status === 'available',
+                        ...data
+                    };
+                    this.tools.set(info.name, info);
+                    this.notifyListeners('tool_updated', info);
+                    return info;
                 }
-                const info = {
-                    name: data.name || toolName,
-                    status: data.status || 'unknown',
-                    version: data.version || 'unknown',
-                    path: data.path || '',
-                    source: data.source || 'none',
-                    lastChecked: new Date(),
-                    available: data.status === 'available',
-                    ...data
-                };
-                this.tools.set(info.name, info);
-                this.notifyListeners('tool_updated', info);
-                return info;
+                throw new Error('checkTool API not implemented');
             }
-            const response = await unifiedAPI.call('tool.get_tools', { refresh });
-            const isWrapped = response && typeof response === 'object' && ('type' in response || 'payload' in response);
-            const success = isWrapped ? (response.type ? response.type === 'success' : true) : true;
-            const toolsData = isWrapped ? (response.payload || {}) : (response.data || response);
-            if (!success) {
-                throw new Error('工具状态请求失败');
+            
+            if (api && typeof api.getTools === 'function') {
+                const toolsData = await api.getTools({ refresh });
+                
+                this.tools.clear();
+                for (const [name, info] of Object.entries(toolsData || {})) {
+                    this.tools.set(name, {
+                        name,
+                        status: info.status || 'unknown',
+                        version: info.version || 'unknown',
+                        path: info.path || '',
+                        source: info.source || 'none',
+                        lastChecked: new Date(),
+                        available: info.status === 'available',
+                        ...info
+                    });
+                }
+                this.notifyListeners('tools_refreshed', this.tools);
+                return Array.from(this.tools.values());
             }
-            this.tools.clear();
-            for (const [name, info] of Object.entries(toolsData)) {
-                this.tools.set(name, {
-                    name,
-                    status: info.status || 'unknown',
-                    version: info.version || 'unknown',
-                    path: info.path || '',
-                    source: info.source || 'none',
-                    lastChecked: new Date(),
-                    available: info.status === 'available',
-                    ...info
-                });
-            }
-            this.notifyListeners('tools_updated', Array.from(this.tools.values()));
-            return Array.from(this.tools.values());
+            throw new Error('getTools API not implemented');
         } catch (error) {
             this.notifyListeners('tools_error', error);
             throw error;
@@ -192,10 +190,13 @@ class ToolService {
 
     async setSystemSearchMode(systemSearch) {
         try {
-            const resp = await unifiedAPI.call('tool.set_search_mode', { system_search: systemSearch });
-            const isWrapped = resp && typeof resp === 'object' && ('type' in resp || 'payload' in resp);
-            const payload = isWrapped ? (resp.payload || {}) : resp;
-            return payload;
+            const api = unifiedAPI.getAPI()
+            if (api && typeof api.setToolSearchMode === 'function') {
+                const resp = await api.setToolSearchMode(systemSearch)
+                // preload.js 已解包
+                return resp;
+            }
+            throw new Error('setToolSearchMode API not implemented');
         } catch (error) {
             throw error;
         }

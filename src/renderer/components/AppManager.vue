@@ -56,7 +56,10 @@
         <span class="app-package-name">{{ app.packageName }}</span>
         <div class="app-actions">
           <button class="btn btn-sm btn-secondary" @click="copyPackageName(app.packageName)" data-tooltip="复制包名">📄</button>
-          <button class="btn btn-sm btn-primary" @click="exportApp(app.packageName)" data-tooltip="导出应用">⏏</button>
+          <button class="btn btn-sm btn-primary" :class="{ 'loading': isExporting && isExporting(app.packageName) }" @click="exportApp(app.packageName)" data-tooltip="导出应用">
+            <span v-if="!isExporting || !isExporting(app.packageName)">⏏</span>
+            <span v-if="isExporting && isExporting(app.packageName)" class="btn-spinner"></span>
+          </button>
           <button class="btn btn-sm btn-danger" @click="uninstallApp(app.packageName)" data-tooltip="卸载应用">🗑</button>
         </div>
       </div>
@@ -91,24 +94,43 @@ export default {
       return apps.value.filter(a => String(a.packageName || '').toLowerCase().includes(q))
     })
     
+    const deviceSvcRef = ref(null)
+    const exportingPackages = ref(new Set())
+
+    const isExporting = (packageName) => {
+      return exportingPackages.value.has(packageName)
+    }
+
     const refreshAppList = async () => {
-      const svc = await serviceManager.getService('device')
+      const svc = deviceSvcRef.value || await serviceManager.getService('device')
+      deviceSvcRef.value = svc
       await svc.refreshAppList()
     }
     const exportAppList = async () => {
-      const svc = await serviceManager.getService('device')
+      const svc = deviceSvcRef.value || await serviceManager.getService('device')
+      deviceSvcRef.value = svc
       await svc.exportAppList()
     }
     const copyPackageName = async (packageName) => {
-      const svc = await serviceManager.getService('device')
+      const svc = deviceSvcRef.value || await serviceManager.getService('device')
+      deviceSvcRef.value = svc
       await svc.copyPackageName(packageName)
     }
     const exportApp = async (packageName) => {
-      const svc = await serviceManager.getService('device')
-      await svc.exportApp(packageName)
+      if (exportingPackages.value.has(packageName)) return
+      
+      exportingPackages.value.add(packageName)
+      try {
+        const svc = deviceSvcRef.value || await serviceManager.getService('device')
+        deviceSvcRef.value = svc
+        await svc.exportApp(packageName)
+      } finally {
+        exportingPackages.value.delete(packageName)
+      }
     }
     const uninstallApp = async (packageName) => {
-      const svc = await serviceManager.getService('device')
+      const svc = deviceSvcRef.value || await serviceManager.getService('device')
+      deviceSvcRef.value = svc
       await svc.uninstallApp(packageName)
     }
 
@@ -122,7 +144,8 @@ export default {
       exportAppList,
       copyPackageName,
       exportApp,
-      uninstallApp
+      uninstallApp,
+      isExporting
     }
   }
 }

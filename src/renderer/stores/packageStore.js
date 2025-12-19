@@ -117,5 +117,5 @@ export const usePackageStore = defineStore('package', () => {
     reset
   }
 }, {
-  persist: true // 启用持久化
+  persist: false // 启用持久化
 })

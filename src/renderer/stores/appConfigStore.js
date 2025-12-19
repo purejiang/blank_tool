@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, readonly } from 'vue'
 import path from 'path'
+import serviceManager from '../services/ServiceManager'
 
 export const useAppConfigStore = defineStore('appConfig', () => {
   const config = ref({})
@@ -13,7 +14,20 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     loading.value = true
     error.value = null
     try {
-      config.value = {}
+      const settingsService = await serviceManager.getService('settings')
+      if (settingsService) {
+          const result = await settingsService.loadSettings()
+          if (result) {
+            config.value = result
+          } else {
+            config.value = {}
+          }
+      } else {
+        config.value = {}
+      }
+    } catch (err) {
+      console.error('Failed to initialize app config:', err)
+      error.value = err.message
     } finally {
       loading.value = false
     }
