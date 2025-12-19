@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, app, clipboard } from 'electron'
 import { promises as fs } from 'fs'
 
 export function setupElectronHandlers() {
@@ -50,8 +50,9 @@ export function setupElectronHandlers() {
       return { success: false, error: error.message }
     }
   })
-
-  ipcMain.handle('open-directory', async (event, targetPath) => {
+  
+  // 文件/目录打开
+  ipcMain.handle('open-path', async (event, targetPath) => {
     if (!targetPath) return { success: false, error: 'Path is required' }
     try {
       const stat = await fs.stat(targetPath).catch(() => null)
@@ -87,5 +88,28 @@ export function setupElectronHandlers() {
       return true
     }
     return false
+  })
+
+  ipcMain.handle('get-app-info', async (event) => {
+    return { version: app.getVersion() }
+  })
+
+  // 构建信息的获取
+  ipcMain.handle('get-fontend-build-info', async (event) => {
+    return {
+      nodeVersion: process.versions.node,
+      chromeVersion: process.versions.chrome,
+      electronVersion: process.versions.electron
+    }
+  })
+
+  // 剪贴板处理
+  ipcMain.handle('read-clipboard-text', async () => {
+    return clipboard.readText()
+  })
+
+  ipcMain.handle('write-clipboard-text', async (event, text) => {
+    clipboard.writeText(text || '')
+    return true
   })
 }

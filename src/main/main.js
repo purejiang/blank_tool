@@ -77,7 +77,7 @@ function createTray() {
   const iconImage = nativeImage.createFromPath(__iconPath);
 
   tray = new Tray(iconImage.isEmpty() ? nativeImage.createEmpty() : iconImage);
-  tray.setToolTip('Blank Tool - Android开发工具');
+  tray.setToolTip('Blank Tool');
 
   const contextMenu = Menu.buildFromTemplate([
     {
