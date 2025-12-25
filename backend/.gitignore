@@ -1,4 +1,5 @@
 # 测试相关
 /tests/
 /cache/
+/output/
 **/__pycache__
