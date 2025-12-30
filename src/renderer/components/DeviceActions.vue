@@ -31,7 +31,7 @@
     </div>
     <div class="form-group">
       <label>Shell 命令</label>
-      <div class="shell-input-group">
+      <div class="input-group">
         <input 
           type="text" 
           class="form-control" 
@@ -49,7 +49,7 @@
         </button>
       </div>
     </div>
-    <div v-if="shellOutput" class="shell-output">
+    <div v-if="shellOutput" class="code-output">
       <pre>{{ shellOutput }}</pre>
     </div>
   </div>
@@ -113,27 +113,5 @@ export default {
 
 <style scoped>
 /* Component-specific styles */
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-  position: relative;
-}
 
-.section-actions {
-  display: flex;
-  gap: 8px;
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
-.section-actions .btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 6px 12px;
-}
 </style>

@@ -77,29 +77,34 @@
           <div class="tool-grid">
             <div class="tool-card" v-for="tool in tools" :key="tool.key">
               <div class="tool-card-header">
-                <div class="tool-name">{{ tool.fullName }}</div>
-                <div class="tool-status">
-                  <span :class="['status-badge', tool.status === 'available' ? 'status-ok' : 'status-bad']">
-                    {{ tool.status === 'available' ? '可用' : '不可用' }}
-                  </span>
-                  <span v-if="tool.needsUpdate" class="update-badge">需要更新</span>
+                <div class="tool-header-left">
+                  <div class="tool-name">{{ tool.fullName }}</div>
+                  <div class="tool-status">
+                    <span :class="['status-badge', tool.status === 'available' ? 'status-ok' : 'status-bad']">
+                      {{ tool.status === 'available' ? '可用' : '不可用' }}
+                    </span>
+                    <span v-if="tool.needsUpdate" class="update-badge">需要更新</span>
+                  </div>
+                </div>
+                <div class="tool-header-right">
+                  <span class="version-text" v-if="tool.version">{{ tool.version }}</span>
+                  <span class="version-text text-muted" v-else>未知版本</span>
                 </div>
               </div>
               <div class="tool-card-body">
-                <div class="tool-field">
-                  <span class="field-label">版本</span>
-                  <span class="field-value">{{ tool.version || '未知' }}</span>
-                  <button class="btn btn-sm btn-secondary" @click="checkVersion(tool.key)"
-                    data-tooltip="手动刷新">🔄</button>
-                </div>
-                <div class="tool-field">
-                  <span class="field-label">路径</span>
-                  <span class="field-value path-text" :title="tool.path || '未配置'">
-                    {{ tool.path || '未配置' }}
-                  </span>
-                  <button class="btn btn-sm btn-secondary" @click="copyText(tool.path)"
-                    :disabled="!tool.path">复制</button>
-                  <button class="btn btn-sm btn-secondary" @click="browseToolExecutable(tool.key)">更改</button>
+                <div class="tool-field path-field">
+                  <div class="path-input-wrapper">
+                    <span class="path-label">路径：</span>
+                    <input type="text" class="form-control path-input" :value="tool.path || '未配置'" readonly :title="tool.path || '未配置'">
+                    <div class="action-buttons">
+                      <button class="btn btn-sm btn-secondary btn-icon" @click="browseToolExecutable(tool.key)" data-tooltip="更改路径">
+                        <span>✏️</span>
+                      </button>
+                      <button class="btn btn-sm btn-secondary btn-icon" @click="checkVersion(tool.key)" data-tooltip="刷新状态">
+                        <span>🔄</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -168,7 +173,7 @@
           <div class="settings-group">
             <div class="form-group">
               <label class="form-label" for="outputDirectory">输出目录</label>
-              <div class="path-input-group">
+              <div class="input-group">
                 <input type="text" id="outputDirectory" class="form-control" v-model="settings.outputDirectory"
                   placeholder="选择输出目录" @change="onSettingChange">
                 <button class="btn btn-secondary path-browse-btn" @click="browseDirectory('outputDirectory')">
@@ -596,7 +601,7 @@
 </template>
 
 <script>
-import { ref, reactive, inject, onMounted, watch, computed } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import serviceManager from '@services/ServiceManager.js'
 import { useNotification } from '@composables/useNotification.js'
 import { useToolStore, useAppConfigStore, useSystemStore } from '@stores'
@@ -606,7 +611,7 @@ export default {
   setup() {
     // 注入服务
     const { showSuccess, showError: showNotifyError } = useNotification()
-    const errorService = inject('errorService', null)
+    const errorService = serviceManager.getServiceSync('error')
     const settingsServiceRef = ref(null)
     const systemServiceRef = ref(null)
 
@@ -870,6 +875,7 @@ export default {
         const result = await svc.clearStorage(target)
         if (result.success) {
           showSuccess('存储清理成功')
+          await refreshCacheInfo()
         } else {
           showError('存储清理失败', result.error)
         }
@@ -1009,10 +1015,15 @@ export default {
     const checkVersion = async (key) => {
       try {
         const toolService = await serviceManager.getService('tools')
+        // 只检查单个工具，不要触发全局列表的重新渲染
         const info = await toolService.checkTool(key, true)
         if (info) {
-          toolStore.updateTool(info)
-          showSuccess('版本检测完成')
+          // 只更新 store 中对应工具的状态，而不触发整个列表的重新计算
+          toolStore.updateTool({
+            ...info,
+            key: info.name // 确保 key 字段存在
+          })
+          showSuccess(`${info.name} 状态已更新`)
         } else {
           showError('版本检测失败')
         }
@@ -1486,14 +1497,7 @@ export default {
   padding: 0 20px;
 }
 
-.path-input-group {
-  display: flex;
-  gap: 8px;
-}
 
-.path-input-group input {
-  flex: 1;
-}
 
 .path-browse-btn {
   flex-shrink: 0;
@@ -1526,6 +1530,17 @@ export default {
   font-weight: 600;
   color: var(--text-color);
   font-size: 14px;
+}
+
+.tool-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.tool-header-right {
+  margin-left: 8px;
 }
 
 .tool-status {
@@ -1563,64 +1578,75 @@ export default {
 }
 
 .tool-card-body {
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .tool-field {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
 }
 
-.field-label {
-  color: var(--text-color-secondary);
-  font-size: 12px;
-  min-width: 72px;
+.path-field {
+  width: 100%;
 }
 
-.field-value {
-  color: var(--text-color);
-  font-weight: 600;
-  font-size: 12px;
-}
-
-.path-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: monospace;
-  max-width: none;
-}
-
-/* 系统信息样式 */
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-  position: relative;
-}
-
-.section-actions {
-  display: flex;
-  gap: 8px;
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
-.section-actions .btn {
+.path-input-wrapper {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 6px 12px;
+  gap: 8px;
+  width: 100%;
 }
+
+.path-label {
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.path-input {
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  height: 28px;
+  background-color: var(--bg-color);
+  color: var(--text-color-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.version-text {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--primary-color);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.text-muted {
+  opacity: 0.7;
+}
+
+.btn-icon {
+  padding: 4px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
 
 
 .info-category {

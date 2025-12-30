@@ -4,8 +4,7 @@
     <div v-if="isLoading" id="loading-screen" class="loading-screen">
       <div class="loading-container">
         <div class="loading-logo">
-          <!-- <div class="logo-icon">📱</div> -->
-          <img src="@assets/images/icon.png" alt="Logo" class="logo-icon-img" />
+          <img :src="logoIcon" alt="Logo" class="logo-icon-img" />
           <h1>Blank Tool</h1>
         </div>
         <div class="loading-progress">
@@ -36,15 +35,15 @@
         <router-view />
       </main>
       <StatusBar />
+      
+      <!-- 全局通知组件 -->
+      <Notification />
     </div>
-
-    <!-- 全局通知组件 -->
-    <Notification />
   </div>
 </template>
 
 <script>
-import { ref, shallowRef, onMounted, onUnmounted, provide, getCurrentInstance } from 'vue'
+import { ref, onMounted, onUnmounted, getCurrentInstance } from 'vue'
 import AppHeader from '@components/common/Header.vue'
 import StatusBar from '@components/common/StatusBar.vue'
 import Notification from '@components/common/Notification.vue'
@@ -62,6 +61,11 @@ import DeviceService from '@services/DeviceService.js'
 import SystemService from '@services/SystemService.js'
 import { useToolStore, useAppConfigStore, useSystemStore } from '@stores'
 
+
+// const logoIcon = 'images/icon.png'
+import logoUrl from '@/assets/images/icon.png';
+// 然后在模板或响应式数据中使用
+const logoIcon = ref(logoUrl);
 
 export default {
   name: 'App',
@@ -86,13 +90,6 @@ export default {
     let timerInterval = null
     const startTime = ref(0)
 
-    // Provide services using refs to handle async initialization
-    const notificationServiceRef = shallowRef(null)
-    provide('notificationService', notificationServiceRef)
-
-    const errorServiceRef = shallowRef(null)
-    provide('errorService', errorServiceRef)
-
     /**
      * 服务注册
      */
@@ -112,21 +109,9 @@ export default {
       serviceManager.register('cache', CacheService, ['store'])
     }
 
-    async function provideInjectedServices() {
-      try {
-        const notificationSvc = await serviceManager.getService('notification')
-        notificationServiceRef.value = notificationSvc
-      } catch {}
-      try {
-        const errorSvc = await serviceManager.getService('error')
-        errorServiceRef.value = errorSvc
-      } catch {}
-    }
-
     /**
      * 创建错误处理器
-     */
-    function createErrorHandler() {
+     */    function createErrorHandler() {
       return (error, instance, info) => {
         console.error('全局错误:', error)
         console.error('错误实例:', instance)
@@ -321,7 +306,6 @@ export default {
           console.log('全局错误处理器已设置')
         }
 
-        await provideInjectedServices()
 
         updateProgress('服务初始化完成', '所有应用服务已启动', 80)
         console.log('服务初始化完成')
@@ -401,6 +385,7 @@ export default {
     function initializeTooltips() {
       document.addEventListener('mouseover', showTooltip)
       document.addEventListener('mouseout', hideTooltip)
+      document.addEventListener('mousedown', hideTooltip)
     }
 
     /**
@@ -479,8 +464,9 @@ export default {
       tooltipElement.textContent = tooltip
       tooltipElement.style.position = 'absolute'
       tooltipElement.style.zIndex = '9999'
-      tooltipElement.style.background = '#333'
-      tooltipElement.style.color = 'white'
+      tooltipElement.style.background = 'var(--tooltip-bg, #000000)'
+      tooltipElement.style.color = 'var(--tooltip-color, #ffffff)'
+      tooltipElement.style.opacity = 'var(--tooltip-opacity, 0.9)'
       tooltipElement.style.padding = '4px 8px'
       tooltipElement.style.borderRadius = '4px'
       tooltipElement.style.fontSize = '12px'
@@ -540,14 +526,14 @@ export default {
       isLoading,
       loadingProgress,
       loadingStep,
-      loadingDetail,
       loadingMessage,
       initError,
       showRetryButton,
       retryCount,
       maxRetries,
+      loadingTime,
       retryInitialization,
-      loadingTime
+      logoIcon
     }
   }
 }

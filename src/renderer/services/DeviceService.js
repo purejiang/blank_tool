@@ -39,14 +39,35 @@ class DeviceService {
         api.removeLogcatListener()
       }
       if (api && typeof api.onLogcatOutput === 'function') {
+        console.log("api.onLogcatOutput")
         api.onLogcatOutput((event, payload) => {
+          // 如果 Logcat 已停止，直接忽略后续到达的日志包
+          if (!deviceStore.isLogcatRunning) return
+
           const p = payload || {}
           if (p.process_id && !deviceStore.logcatProcessId) {
             deviceStore.logcatProcessId = String(p.process_id)
           }
           const line = p.line || ''
-          if (line) {
+          const lines = p.lines || []
+          
+          if (lines && lines.length > 0) {
+            // Batch update for better performance
+            deviceStore.logcatOutput.push(...lines)
+            
+            // Limit buffer size to prevent memory issues (keep last 5000 lines)
+            const maxLines = 5000
+            const excess = deviceStore.logcatOutput.length - maxLines
+            if (excess > 0) {
+               // Use splice to remove from start (modify in place)
+               deviceStore.logcatOutput.splice(0, excess)
+            }
+          } else if (line) {
             deviceStore.logcatOutput.push(line)
+             // Limit buffer size
+            if (deviceStore.logcatOutput.length > 5000) {
+               deviceStore.logcatOutput.shift()
+            }
           }
         })
       }
@@ -232,8 +253,9 @@ class DeviceService {
 
   async exportLogcat() {
     const store = await this.storeService.ensureDeviceStore()
-    const lines = Array.isArray(store.logcatOutput) ? store.logcatOutput : []
-    if (lines.length === 0) return false
+    const dev = store.selectedDevice
+    if (!dev || !dev.id) return false
+
     const api = unifiedAPI.getAPI()
     const now = new Date()
     const pad = (n) => String(n).padStart(2, '0')
@@ -246,10 +268,15 @@ class DeviceService {
       filePath = res.filePath || ''
     }
     if (!filePath) return false
-    const content = lines.join('\n')
-    if (api && typeof api.writeFile === 'function') {
-      await api.writeFile(filePath, content)
-      return true
+
+    if (api && typeof api.callBackendAPI === 'function') {
+      try {
+        const result = await api.callBackendAPI('adb.export_logcat', { device_id: dev.id, file_path: filePath })
+        return result && result.success
+      } catch (e) {
+        console.error('Export logcat failed:', e)
+        return false
+      }
     }
     return false
   }

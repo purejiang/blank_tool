@@ -174,29 +174,7 @@ export default {
 </script>
 
 <style scoped>
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-  position: relative;
-}
 
-.section-actions {
-  display: flex;
-  gap: 8px;
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
-.section-actions .btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 6px 12px;
-}
 
 .device-info {
   height: 260px;

@@ -134,12 +134,17 @@ import { usePackageStore } from '@stores/packageStore.js'
 export default {
   name: 'PackagePage',
   setup() {
-    const packageStore = usePackageStore()
+   const packageStore = usePackageStore()
+    // 从 store 中获取状态
     const {
       selectedAnalysisFile,
       selectedInstallFile,
       selectedDecompileFile,
       selectedProjectDir,
+      isInstalling,
+      isDecompiling,
+      isRecompiling,
+      isAnalyzing,
       apkAnalysisResult,
       decompileResult,
       recompileResult,
@@ -152,10 +157,6 @@ export default {
       recompileOptions
     } = storeToRefs(packageStore)
 
-    const isInstalling = ref(false)
-    const isDecompiling = ref(false)
-    const isRecompiling = ref(false)
-    const isAnalyzing = ref(false)
 
     // Notification composable
     const { showLoading, completeLoading, failLoading } = useNotification()
@@ -169,7 +170,7 @@ export default {
       }
       return errorServiceRef.value
     }
-
+    
     // Helper to get apk service
     const getApkService = async () => {
       if (!apkServiceRef.value) {
@@ -177,57 +178,22 @@ export default {
       }
       return apkServiceRef.value
     }
-
-    // 文件处理方法
+    
+    // Event Handlers
     const handleDrop = (event, callback) => {
       event.preventDefault()
-      const files = event.dataTransfer.files
-      if (files.length > 0) {
-        callback(files[0])
+      if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+        const file = event.dataTransfer.files[0]
+        callback(file)
       }
     }
 
     const handleFileInputChange = (event, callback) => {
-      const files = event.target.files
-      if (files.length > 0) {
-        callback(files[0])
+      const file = event.target.files[0]
+      if (file) {
+        callback(file)
       }
-    }
-
-    const handleApkFileSelect = async (file) => {
-      if (file && file.name.endsWith('.apk')) {
-        selectedAnalysisFile.value = file
-        console.log('选择APK文件:', file.name)
-      } else {
-        const svc = await getErrorService()
-        if (svc) {
-          svc.reportError(new Error('请选择有效的APK文件'), { category: 'ui', severity: 'low' })
-        }
-      }
-    }
-
-    const handleInstallFileSelect = async (file) => {
-      if (file && (file.name.endsWith('.apk') || file.name.endsWith('.aab'))) {
-        selectedInstallFile.value = file
-        console.log('选择安装文件:', file.name)
-      } else {
-        const svc = await getErrorService()
-        if (svc) {
-          svc.reportError(new Error('请选择有效的APK或AAB文件'), { category: 'ui', severity: 'low' })
-        }
-      }
-    }
-
-    const selectApkFile = async () => {
-      await selectFileWithStats(selectedAnalysisFile)
-    }
-
-    const selectInstallFile = async () => {
-      await selectFileWithStats(selectedInstallFile, ['apk', 'aab'])
-    }
-
-    const selectDecompileFile = async () => {
-      await selectFileWithStats(selectedDecompileFile)
+      event.target.value = ''
     }
 
     const selectFileWithStats = async (targetRef, extensions = ['apk']) => {
@@ -257,8 +223,39 @@ export default {
       }
     }
 
+    const selectApkFile = async () => {
+      await selectFileWithStats(selectedAnalysisFile)
+    }
+
+    const selectInstallFile = async () => {
+      await selectFileWithStats(selectedInstallFile, ['apk', 'aab'])
+    }
+
+    const selectDecompileFile = async () => {
+      await selectFileWithStats(selectedDecompileFile)
+    }
+
+    const handleApkFileSelect = async (file) => {
+      if (file && file.name.toLowerCase().endsWith('.apk')) {
+        selectedAnalysisFile.value = file
+      } else {
+        const svc = await getErrorService()
+        if (svc) svc.reportError(new Error('请选择有效的APK文件'), { category: 'ui', severity: 'low' })
+      }
+    }
+
+    const handleInstallFileSelect = async (file) => {
+      const name = file.name.toLowerCase()
+      if (file && (name.endsWith('.apk') || name.endsWith('.aab'))) {
+        selectedInstallFile.value = file
+      } else {
+        const svc = await getErrorService()
+        if (svc) svc.reportError(new Error('请选择有效的APK或AAB文件'), { category: 'ui', severity: 'low' })
+      }
+    }
+
     const handleDecompileFileSelect = async (file) => {
-      if (file && file.name.endsWith('.apk')) {
+      if (file && file.name.toLowerCase().endsWith('.apk')) {
         selectedDecompileFile.value = file
       } else {
         const svc = await getErrorService()
@@ -273,6 +270,7 @@ export default {
       if (!selectedAnalysisFile.value) return
       let loadingId = null
       try {
+        isAnalyzing.value = true
         loadingId = showLoading('正在解析APK...')
         const apkService = await getApkService()
 
@@ -288,8 +286,48 @@ export default {
         const svc = await getErrorService()
         if (svc) svc.reportError(error, { category: 'ui', severity: 'low' })
       } finally {
-
+        isAnalyzing.value = false
       }
+    }
+    
+    // 恢复状态检查
+    const checkRunningTasks = async () => {
+        // 这里可以添加逻辑来检查是否有后台任务正在运行
+        // 目前主要依靠 store 中的状态保持
+        const notificationService = serviceManager.getServiceSync('notification')
+        if (notificationService) {
+            const notifications = notificationService.getAllNotifications()
+            
+            // 检查是否有对应的 loading 通知
+            const hasInstallLoading = notifications.some(n => n.type === 'loading' && n.title.includes('安装'))
+            if (hasInstallLoading && !isInstalling.value) {
+                isInstalling.value = true
+            } else if (!hasInstallLoading && isInstalling.value) {
+                 // 如果没有通知但状态是 installing，说明可能异常退出了或者通知没了，重置状态
+                 isInstalling.value = false
+            }
+            
+            const hasAnalyzeLoading = notifications.some(n => n.type === 'loading' && n.title.includes('解析'))
+            if (hasAnalyzeLoading && !isAnalyzing.value) {
+                isAnalyzing.value = true
+            } else if (!hasAnalyzeLoading && isAnalyzing.value) {
+                 isAnalyzing.value = false
+            }
+            
+            const hasDecompileLoading = notifications.some(n => n.type === 'loading' && n.title.includes('反编译'))
+            if (hasDecompileLoading && !isDecompiling.value) {
+                isDecompiling.value = true
+            } else if (!hasDecompileLoading && isDecompiling.value) {
+                isDecompiling.value = false
+            }
+
+            const hasRecompileLoading = notifications.some(n => n.type === 'loading' && n.title.includes('回编译'))
+            if (hasRecompileLoading && !isRecompiling.value) {
+                isRecompiling.value = true
+            } else if (!hasRecompileLoading && isRecompiling.value) {
+                isRecompiling.value = false
+            }
+        }
     }
 
     const installApp = async () => {
@@ -530,6 +568,9 @@ export default {
       try {
         apkServiceRef.value = await serviceManager.getService('apk')
       } catch { }
+      
+      // 检查并同步状态
+      checkRunningTasks()
     })
     return {
       selectedAnalysisFile,

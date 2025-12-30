@@ -30,14 +30,14 @@
         </button>
       </div>
     </div>
-    <div class="logcat-output">
-      <pre ref="logcatContainer">{{ formattedLogcatOutput }}</pre>
+    <div class="logcat-output" ref="logcatContainer">
+      <div v-for="(line, index) in logcatOutput" :key="index" class="log-line">{{ line }}</div>
     </div>
   </div>
 </template>
 
 <script>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useDeviceStore } from '@stores/deviceStore.js'
 import serviceManager from '@services/ServiceManager.js'
 import { storeToRefs } from 'pinia'
@@ -74,13 +74,20 @@ export default {
       await svc.exportLogcat()
     }
 
-    const formattedLogcatOutput = computed(() => logcatOutput.value.join('\n'))
-
-    watch(logcatOutput, () => {
-      const container = logcatContainer.value
-      if (container) {
-        container.scrollTop = container.scrollHeight
-      }
+    // Auto-scroll logic
+    watch(() => logcatOutput.value.length, () => {
+      nextTick(() => {
+        const container = logcatContainer.value
+        if (container) {
+          // Only auto-scroll if user is already near the bottom (allow manual review of history)
+          const threshold = 100 // pixels
+          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+          
+          if (isNearBottom || logcatOutput.value.length < 100) {
+             container.scrollTop = container.scrollHeight
+          }
+        }
+      })
     })
 
     return {
@@ -91,41 +98,18 @@ export default {
       toggling,
       toggleLogcat,
       clearLogcat,
-      exportLogcat,
-      formattedLogcatOutput
+      exportLogcat
     }
   }
 }
 </script>
 
 <style scoped>
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-  position: relative;
-}
 
-.section-actions {
-  display: flex;
-  gap: 8px;
-  position: absolute;
-  top: 0;
-  right: 0;
-}
 
-.section-actions .btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 6px 12px;
-}
 
-.logcat-output pre {
-  height: 320px;
-  overflow: auto;
-  font-size: 11px;
+
+.log-line:hover {
+  background-color: #e0e0e0;
 }
 </style>

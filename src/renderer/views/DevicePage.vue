@@ -29,14 +29,22 @@ export default {
     DeviceActions,
     AppManager,
     LogcatViewer
-  }
-}
-  onMounted(async () => {
+  },
+  setup() {
+    const deviceServiceRef = ref(null)
+
+    onMounted(async () => {
       console.log('DevicePage 组件已挂载')
       try {
         deviceServiceRef.value = await serviceManager.getService('device')
       } catch {}
     })
+
+    return {
+      deviceServiceRef
+    }
+  }
+}
 </script>
 
 <style scoped>

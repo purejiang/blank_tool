@@ -2,15 +2,24 @@ import { ipcMain, BrowserWindow } from 'electron';
 
 export function setupCommandHandlers(pythonProcess) {
     const requestCallbacks = new Map();
+    let dataBuffer = '';
 
     pythonProcess.stdout.on('data', (data) => {
-        const messages = data.toString().split('\n').filter(msg => msg.trim() !== '');
-        messages.forEach(message => {
+        dataBuffer += data.toString();
+        const lines = dataBuffer.split('\n');
+        
+        // The last part might be incomplete, keep it in the buffer
+        dataBuffer = lines.pop();
+
+        lines.forEach(message => {
             const msg = message.trim();
+            if (!msg) return;
             if (!msg.startsWith('{')) return;
             try {
                 const response = JSON.parse(msg);
-                if (response && response.type === 'event' && response.event) {
+                
+                // Handle global events (without ID or with special type)
+                if (response.type === 'event') {
                     const broadcast = (channel, payload) => {
                         BrowserWindow.getAllWindows().forEach(win => {
                             if (!win.isDestroyed()) {
@@ -18,37 +27,60 @@ export function setupCommandHandlers(pythonProcess) {
                             }
                         });
                     };
-
-                    if (response.event === 'stream.event' && response.data) {
-                        const { stream_id, data: inner } = response.data;
-                        if (inner && inner.type) {
-                            if (inner.type === 'log') {
-                                broadcast('logcat-output', { stream_id, ...inner.payload });
-                            } else if (inner.type === 'started') {
-                                broadcast('logcat-started', { stream_id, ...inner.payload });
-                            } else if (inner.type === 'process_finished') {
-                                broadcast('logcat-finished', { stream_id, ...inner.payload });
-                            } else if (inner.type === 'error') {
-                                broadcast('logcat-error', { stream_id, ...inner.payload });
-                            } else {
-                                broadcast(response.event, response.data);
-                            }
-                        } else {
-                            broadcast(response.event, response.data);
-                        }
-                    } else {
-                        broadcast(response.event, response.data);
-                    }
+                    broadcast(response.event, response.data);
                     return;
                 }
-                if (response && typeof response.id !== 'undefined' && requestCallbacks.has(response.id)) {
-                    const { resolve, reject } = requestCallbacks.get(response.id);
-                    if (response.error) {
-                        reject(new Error(response.error.message));
-                    } else {
-                        resolve(response.result);
+
+                // Handle Responses (Sync or Stream)
+                if (response && typeof response.id !== 'undefined') {
+                    if (requestCallbacks.has(response.id)) {
+                        const callbackInfo = requestCallbacks.get(response.id);
+                        const { resolve, reject, sender } = callbackInfo;
+                        
+                        if (response.error) {
+                            reject(new Error(response.error.message));
+                            requestCallbacks.delete(response.id);
+                        } else if (response.finished === false) {
+                            // Stream Chunk
+                            const result = response.result || {};
+                            
+                            // Map result type to IPC channel if possible
+                            if (result.type && sender && !sender.isDestroyed()) {
+                                const channelMap = {
+                                    'log': 'logcat-output',
+                                    'started': 'logcat-started',
+                                    'process_finished': 'logcat-finished',
+                                    'error': 'logcat-error'
+                                };
+
+                                const channel = channelMap[result.type];
+                                if (channel) {
+                                    const payload = { 
+                                        stream_id: response.stream_id, 
+                                        ...result.payload 
+                                    };
+                                    sender.send(channel, payload);
+                                } else {
+                                    sender.send('stream-event', { 
+                                        stream_id: response.stream_id, 
+                                        data: result 
+                                    });
+                                }
+                            }
+                            
+                            // If this is the first chunk/response, resolve the promise so the caller isn't blocked
+                            if (!callbackInfo.resolved) {
+                                resolve(response.result);
+                                callbackInfo.resolved = true;
+                            }
+                        } else {
+                            // Finished = True
+                            if (!callbackInfo.resolved) {
+                                resolve(response.result);
+                            }
+                            requestCallbacks.delete(response.id);
+                        }
                     }
-                    requestCallbacks.delete(response.id);
                 }
             } catch (e) {
                 console.error('Error parsing JSON from Python:', e);
@@ -58,7 +90,8 @@ export function setupCommandHandlers(pythonProcess) {
 
     ipcMain.handle('call-backend-api', async (event, request) => {
         return new Promise((resolve, reject) => {
-            requestCallbacks.set(request.id, { resolve, reject });
+            // Store sender to send stream updates back to the caller
+            requestCallbacks.set(request.id, { resolve, reject, sender: event.sender });
             pythonProcess.stdin.write(JSON.stringify(request) + '\n');
         });
     });

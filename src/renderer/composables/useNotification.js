@@ -1,11 +1,9 @@
-import { inject } from 'vue'
+import serviceManager from '@services/ServiceManager.js'
 
 export function useNotification() {
-  const notificationServiceRef = inject('notificationService', null)
-
   // Helper to access the service instance safely
   const getService = () => {
-    return notificationServiceRef ? notificationServiceRef.value : null
+    return serviceManager.getServiceSync('notification')
   }
 
   const showSuccess = (title, message = '', duration = 3000) => {

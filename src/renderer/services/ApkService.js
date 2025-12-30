@@ -290,9 +290,12 @@ class ApkService {
                     throw new Error('不支持的导出格式');
             }
 
-            import('fs').then(fs => {
-                fs.writeFileSync(filePath, content, 'utf8');
-            });
+            const api = unifiedAPI.getAPI()
+            if (api && api.writeFile) {
+                await api.writeFile(filePath, content)
+            } else {
+                throw new Error('File system API not available')
+            }
             
             return true;
         } catch (error) {

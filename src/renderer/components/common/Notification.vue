@@ -43,7 +43,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, inject } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import serviceManager from '@services/ServiceManager.js'
 
 // 响应式数据
 const notifications = ref([])
@@ -113,24 +114,25 @@ const clearAllNotifications = () => {
 }
 
 // 生命周期钩子
-const notificationServiceRef = inject('notificationService', null)
+let notificationService = null
 
-onMounted(() => {
-  // 如果服务已就绪，直接添加监听器
-  if (notificationServiceRef && notificationServiceRef.value) {
-    setupListeners(notificationServiceRef.value)
+onMounted(async () => {
+  try {
+    // 尝试同步获取
+    notificationService = serviceManager.getServiceSync('notification')
+    
+    // 如果同步获取失败，尝试异步获取
+    if (!notificationService) {
+      notificationService = await serviceManager.getService('notification')
+    }
+    
+    if (notificationService) {
+      setupListeners(notificationService)
+    }
+  } catch (error) {
+    console.error('获取通知服务失败:', error)
   }
-  
-  // 监听服务变化（处理异步初始化）
-  if (notificationServiceRef) {
-    // Watch effect will run immediately and whenever the ref changes
-    import('vue').then(({ watch }) => {
-      watch(() => notificationServiceRef.value, (newVal, oldVal) => {
-        if (oldVal) removeListeners(oldVal)
-        if (newVal) setupListeners(newVal)
-      }, { immediate: true })
-    })
-  }
+  console.log('Notification 组件已挂载')
 })
 
 const setupListeners = (service) => {
@@ -148,8 +150,8 @@ const removeListeners = (service) => {
 }
 
 onUnmounted(() => {
-  if (notificationServiceRef && notificationServiceRef.value) {
-    removeListeners(notificationServiceRef.value)
+  if (notificationService) {
+    removeListeners(notificationService)
   }
 })
 
@@ -165,7 +167,7 @@ defineExpose({
 <style scoped>
 .notification-container {
   position: fixed;
-  top: 20px;
+  top: 60px;
   right: 20px;
   z-index: 9999;
   pointer-events: none;

@@ -49,14 +49,19 @@
   <div class="app-list" v-if="apps.length > 0">
     <div class="app-list-header">
       <span>包名</span>
-      <span>操作</span>
+      <span></span>
     </div>
     <div class="app-list-content">
       <div v-for="app in filteredApps" :key="app.packageName" class="app-item">
-        <span class="app-package-name">{{ app.packageName }}</span>
+        <input 
+          type="text" 
+          class="form-control app-package-input" 
+          :value="app.packageName" 
+          readonly 
+          :title="app.packageName"
+        >
         <div class="app-actions">
-          <button class="btn btn-sm btn-secondary" @click="copyPackageName(app.packageName)" data-tooltip="复制包名">📄</button>
-          <button class="btn btn-sm btn-primary" :class="{ 'loading': isExporting && isExporting(app.packageName) }" @click="exportApp(app.packageName)" data-tooltip="导出应用">
+            <button class="btn btn-sm btn-primary" :class="{ 'loading': isExporting && isExporting(app.packageName) }" @click="exportApp(app.packageName)" data-tooltip="导出应用">
             <span v-if="!isExporting || !isExporting(app.packageName)">⏏</span>
             <span v-if="isExporting && isExporting(app.packageName)" class="btn-spinner"></span>
           </button>
@@ -152,29 +157,7 @@ export default {
 </script>
 
 <style scoped>
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-  position: relative;
-}
 
-.section-actions {
-  display: flex;
-  gap: 8px;
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
-.section-actions .btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 6px 12px;
-}
 
 .app-list {
   margin-top: 8px;
@@ -189,6 +172,10 @@ export default {
   border-radius: 8px 8px 0 0;
   background: var(--card-bg, #f8f8f8);
 }
+.app-list-header span:last-child {
+  text-align: right;
+  padding-right: 8px;
+}
 .app-list-content {
   max-height: 320px;
   overflow-y: auto;
@@ -198,9 +185,10 @@ export default {
 }
 .app-item {
   display: grid;
-  grid-template-columns: 1fr 120px;
+  grid-template-columns: 1fr 100px;
+  gap: 16px;
   align-items: center;
-  padding: 8px 12px;
+  padding: 4px 12px;
   border-bottom: 1px solid #eee;
 }
 .app-item:last-child {
@@ -210,5 +198,10 @@ export default {
   font-family: monospace;
   font-size: 13px;
 }
-.app-actions .btn { margin-left: 4px; }
+.app-actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.app-actions .btn { margin-left: 0; }
 </style>

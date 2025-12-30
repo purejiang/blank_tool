@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, readonly } from 'vue'
-import path from 'path'
 import serviceManager from '../services/ServiceManager'
 
 export const useAppConfigStore = defineStore('appConfig', () => {

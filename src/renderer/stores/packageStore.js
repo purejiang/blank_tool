@@ -17,6 +17,11 @@ export const usePackageStore = defineStore('package', () => {
   const recompileOutputPath = ref(null)
 
   // 进度状态 (通常不需要持久化，但为了保持视图状态也可以保留)
+  const isAnalyzing = ref(false)
+  const isInstalling = ref(false)
+  const isDecompiling = ref(false)
+  const isRecompiling = ref(false)
+  
   const installProgress = reactive({ show: false, value: 0 })
   const decompileProgress = reactive({ show: false, value: 0 })
   const recompileProgress = reactive({ show: false, value: 0 })
@@ -100,6 +105,10 @@ export const usePackageStore = defineStore('package', () => {
     recompileResult,
     decompileOutputPath,
     recompileOutputPath,
+    isAnalyzing,
+    isInstalling,
+    isDecompiling,
+    isRecompiling,
     installProgress,
     decompileProgress,
     recompileProgress,

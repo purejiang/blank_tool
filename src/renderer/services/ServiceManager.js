@@ -36,6 +36,15 @@ class ServiceManager {
     return service;
   }
 
+  /**
+   * 同步获取已初始化的服务
+   * @param {string} name - 服务名称
+   * @returns {Object|undefined} 服务实例
+   */
+  getServiceSync(name) {
+    return this.services.get(name);
+  }
+  
   async initialize() {
     // The initialize method is now much simpler.
     // We can pre-initialize some services if needed, or just let them be lazy-loaded.

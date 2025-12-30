@@ -25,6 +25,7 @@ app.use(router);
 async function launchApp() {
   try {
     // 挂载Vue应用（App.vue会处理服务初始化和错误处理器设置）
+    console.log('Vue应用启动');
     app.mount('#app');
     
     console.log('Vue应用启动完成');
