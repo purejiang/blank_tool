@@ -1,12 +1,13 @@
-from typing import Callable
+from typing import Callable, Any
 import threading
 import importlib
 import pkgutil
+import uuid
 from app.utils.logger import Logger
 
 class ApiHandler:
-    def __init__(self, send_event: Callable[[str, dict], None]):
-        self.send_event = send_event
+    def __init__(self, send_response: Callable[[dict], None]):
+        self.send_response = send_response
         self.streaming_threads = {}
         self.logger = Logger.get_logger(self.__class__.__name__)
         self.api_map = self.load_handlers()
@@ -26,47 +27,68 @@ class ApiHandler:
         method = request_data.get("method")
         params = request_data.get("params", {})
 
-        response = {"id": req_id}
         handler = self.api_map.get(method)
 
         if not handler:
-            response['error'] = {"code": -32601, "message": f"Method '{method}' not found"}
-            return response
+            return {
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Method '{method}' not found"}
+            }
 
         try:
-            streaming_methods = {"adb.logcat"}
-            if method in streaming_methods:
-                result = self.stream_handler(handler)(params)
+            # Check if handler is marked as streaming (via decorator) or is in legacy hardcoded list
+            is_streaming = getattr(handler, 'is_streaming', False)
+            
+            if is_streaming:
+                # Pass request_id to stream_handler
+                result = self.stream_handler(handler, req_id)(params)
+                # Return initial response indicating stream started
+                return {"id": req_id, "result": result, "finished": False}
             else:
                 raw_result = handler(params, None)
-                # 自动封装：如果返回的不是标准格式，则封装为 success
+                # Automatic wrapping
                 if isinstance(raw_result, dict) and "type" in raw_result:
                     result = raw_result
                 else:
                     result = {"type": "success", "payload": raw_result}
-            
-            response['result'] = result
-            return response
+                
+                return {"id": req_id, "result": result, "finished": True}
         except Exception as e:
             self.logger.error(f"Error handling request (method={method}): {e}")
-            # 将异常统一转换为标准的 error 响应，而不是 JSON-RPC 错误，方便前端统一处理
-            response['result'] = {"type": "error", "payload": {"message": str(e)}}
-            return response
+            return {
+                "id": req_id, 
+                "result": {"type": "error", "payload": {"message": str(e)}},
+                "finished": True
+            }
 
-    def stream_handler(self, handler: Callable[[dict, Callable], None]):
+    def stream_handler(self, handler: Callable[[dict, Callable], None], request_id: Any):
         def wrapper(params):
-            stream_id = f"{handler.__name__}-{len(self.streaming_threads) + 1}"
+            stream_id = f"{handler.__name__}-{str(uuid.uuid4())}"
             stop_event = threading.Event()
 
             def stream_callback(data):
-                self.send_event("stream.event", {"stream_id": stream_id, "data": data})
+                # Send stream data associated with request_id
+                response = {
+                    "id": request_id,
+                    "result": data,
+                    "stream_id": stream_id,
+                    "finished": False
+                }
+                self.send_response(response)
 
             def stream_wrapper(stop_event:threading.Event, stream_callback: Callable[[dict], None], params_dict:dict):
                 try:
                     handler(params_dict, stream_callback)
                 except Exception as e:
-                    self.logger.error(f"流处理线程中发生错误: {e}")
+                    self.logger.error(f"Error in stream thread: {e}")
                     stream_callback({"type": "error", "payload": {"message": str(e)}})
+                finally:
+                    # Send finished signal when thread exits
+                    self.send_response({
+                        "id": request_id,
+                        "stream_id": stream_id,
+                        "finished": True
+                    })
 
             thread = threading.Thread(target=stream_wrapper, args=(stop_event, stream_callback, params))
             thread.start()

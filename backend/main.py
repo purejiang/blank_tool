@@ -4,14 +4,14 @@ import json
 from pathlib import Path
 import threading
 from typing import Dict, Any
-
+from concurrent.futures import ThreadPoolExecutor
 
 # 将backend目录添加到sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
-from app.utils.env import get_env, load_dotenv
+from app.utils.env import get_env, load_dotenv, resolve_path
 
 # Thread-safe lock for writing to stdout
 stdout_lock = threading.Lock()
@@ -22,31 +22,27 @@ def send_json(data: Dict[str, Any]):
         sys.stdout.write(json.dumps(data) + '\n')
         sys.stdout.flush()
 
-def send_event(event_name: str, data: Any):
-    """Sends an event to the frontend."""
-    send_json({"type": "event", "event": event_name, "data": data})
+# Legacy send_event function is no longer needed by ApiHandler but might be used elsewhere?
+# ApiHandler now uses send_json directly.
 
 def bootstrap():
     # Load .env file
     load_dotenv()
     
-    logs_file_path = Path(__file__).parent / "cache" / "logs"
+    # Use environment variable for cache directory
+    cache_dir = get_env('BT_CACHE_DIR', './cache')
+    resolved_cache_dir = resolve_path(cache_dir)
+    logs_file_path = Path(resolved_cache_dir) / "logs"
+    
     log_level = get_env('BT_LOG_LEVEL', 'DEBUG')
     Logger.initialize(log_dir=logs_file_path, log_level=log_level)
 
-    # resources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    # java_bin = os.path.join(resources_dir, 'runtime', 'jre', 'bin', 'java.exe' if os.name == 'nt' else 'java')
-    # if os.path.exists(java_bin):
-    #     os.environ['BT_JAVA_BIN'] = java_bin
-    #     bin_dir = os.path.dirname(java_bin)
-    #     os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')
-
 def main():
     """Main loop to read requests from stdin and process them."""
-    api_handler = None
     try:
         bootstrap()
-        api_handler = ApiHandler(send_event=send_event)
+        # ApiHandler now takes send_json directly
+        api_handler = ApiHandler(send_response=send_json)
     except Exception as e:
         error_msg = f"Initialization failed: {e}"
         sys.stderr.write(error_msg + "\n")
@@ -57,15 +53,20 @@ def main():
         })
         sys.exit(1)
 
-    for line in sys.stdin:
+    executor = ThreadPoolExecutor(max_workers=4)
+
+    def process_request(line):
         request_id = None
         try:
             request = json.loads(line)
             request_id = request.get("id")
+            
+            # handle_request now returns the response structure directly
             response = api_handler.handle_request(request)
-            # Notifications do not have a response, so we only send if one exists.
+            
             if response:
                 send_json(response)
+                
         except json.JSONDecodeError:
             send_json({
                 "id": None,
@@ -76,6 +77,9 @@ def main():
                 "id": request_id,
                 "error": {"code": -32603, "message": f"Internal error: {e}"}
             })
+
+    for line in sys.stdin:
+        executor.submit(process_request, line)
 
 if __name__ == "__main__":
     main()

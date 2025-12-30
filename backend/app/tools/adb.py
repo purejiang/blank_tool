@@ -1,6 +1,7 @@
 import os
 import platform
 import re
+import datetime
 from typing import List, Dict
 from app.tools.base_tool import BinaryTool
 from app.common.base_executor import CommandExecutionContext
@@ -125,7 +126,12 @@ class Adb(BinaryTool):
         command = []
         if device_id:
             command += ["-s", device_id]
-        command += ["logcat", "-v", "threadtime"]
+        
+        # Add timestamp to only show logs from now
+        now = datetime.datetime.now()
+        time_str = now.strftime("%m-%d %H:%M:%S.%f")[:-3]
+        command += ["logcat", "-v", "threadtime", "-T", time_str]
+
         context = CommandExecutionContext(stream=True)
         process = self.execute(command, context)
         process_id = f"{process.pid}"
@@ -162,3 +168,26 @@ class Adb(BinaryTool):
             process_id (str): 要停止的 logcat 进程ID
         """
         super().stop_process(process_id)
+
+    def export_logcat(self, device_id: str, file_path: str) -> bool:
+        """
+        导出完整 logcat 日志到文件
+        """
+        command = []
+        if device_id:
+            command += ["-s", device_id]
+        command += ["logcat", "-d", "-v", "threadtime"]
+        
+        context = CommandExecutionContext(capture_output=True, encoding='utf-8', errors='ignore', log_output=False)
+        result = self.execute(command, context)
+        
+        if result.get("returncode") == 0:
+            content = result.get("stdout", "")
+            try:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                return True
+            except Exception as e:
+                self._logger.error(f"Failed to write logcat export: {e}")
+                return False
+        return False

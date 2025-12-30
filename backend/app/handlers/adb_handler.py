@@ -6,6 +6,7 @@ from app.common.base_executor import CommandExecutionContext
 from app.utils.logger import Logger
 from app.tools.adb import Adb
 from app.utils.env import get_output_dir
+from app.common.decorators import streaming
 
 logger = Logger.get_logger("AdbHandler")
 manager = ToolManager.instance()
@@ -21,6 +22,7 @@ def adb_devices(params, stream_handler):
         logger.error(f"执行 adb devices 时出错: {e}")
         raise e
 
+@streaming
 def adb_logcat(params, stream_handler):
     device_id = params.get("device_id")
     if not device_id:
@@ -39,12 +41,36 @@ def adb_logcat(params, stream_handler):
         stream_handler({"type": "error", "payload": {"message": f"启动 adb logcat 失败: {traceback.format_exc()}"}})
 
 def _stream_logcat_output(process, process_id, stream_handler):
+    import time
+    buffer = []
+    last_flush_time = time.time()
+    BATCH_SIZE = 100
+    FLUSH_INTERVAL = 0.1  # 100ms
+
     try:
+        # 使用 iter(process.stdout.readline, b'') 会在没有数据时阻塞，直到有新行或 EOF
+        # 这对于实时流是合适的
         for line in iter(process.stdout.readline, b''):
+            decoded_line = line.decode('utf-8', errors='ignore').strip()
+            if decoded_line:
+                buffer.append(decoded_line)
+
+            current_time = time.time()
+            if len(buffer) >= BATCH_SIZE or (current_time - last_flush_time >= FLUSH_INTERVAL and buffer):
+                stream_handler({
+                    "type": "log",
+                    "payload": {"process_id": process_id, "lines": buffer}
+                })
+                buffer = []  # create new list
+                last_flush_time = current_time
+
+        # Flush remaining
+        if buffer:
             stream_handler({
                 "type": "log",
-                "payload": {"process_id": process_id, "line": line.decode('utf-8', errors='ignore').strip()}
+                "payload": {"process_id": process_id, "lines": buffer}
             })
+
     except Exception as e:
         logger.error(f"读取 logcat 输出时出错 (Process ID: {process_id}): {e}")
     finally:
@@ -52,7 +78,6 @@ def _stream_logcat_output(process, process_id, stream_handler):
         return_code = process.wait()
         logger.info(f"Logcat 进程已终止 (Process ID: {process_id}, Return Code: {return_code})")
         stream_handler({"type": "process_finished", "payload": {"process_id": process_id, "return_code": return_code}})
-        # 工具类会自动清理进程，这里不需要手动删除
 
 def adb_stop_logcat(params, stream_handler):
     process_id = params.get("process_id")
@@ -71,6 +96,27 @@ def adb_stop_logcat(params, stream_handler):
             return {"type": "warning", "payload": {"message": f"未找到或无法停止进程 {process_id}"}}
     except Exception as e:
         logger.error(f"停止 logcat 进程时出错: {e}")
+        raise e
+
+def adb_export_logcat(params, stream_handler):
+    device_id = params.get("device_id")
+    file_path = params.get("file_path")
+    
+    if not device_id or not file_path:
+        raise Exception("Missing device_id or file_path")
+
+    try:
+        adb_tool: Adb = manager.get_tool("adb")
+        if not adb_tool or not adb_tool.is_valid:
+            raise Exception("ADB tool not found or invalid")
+            
+        success = adb_tool.export_logcat(device_id, file_path)
+        if success:
+            return {"success": True, "file_path": file_path}
+        else:
+            raise Exception("Export failed")
+    except Exception as e:
+        logger.error(f"Export logcat failed: {e}")
         raise e
 
 def device_info(params, stream_handler):
@@ -343,6 +389,7 @@ API_MAP = {
     "adb.devices": adb_devices,
     "adb.logcat": adb_logcat,
     "adb.stop_logcat": adb_stop_logcat,
+    "adb.export_logcat": adb_export_logcat,
     "device.info": device_info,
     "device.list_apps": device_list_apps,
     "device.get_device_info": device_info,

@@ -24,7 +24,8 @@ class CommandExecutionContext:
                  shell: bool = False,
                  capture_output: bool = True,
                  env: Dict[str, str] = None,
-                 stream: bool = False):
+                 stream: bool = False,
+                 log_output: bool = True):
         self.cwd = cwd
         self.timeout = timeout
         self.encoding = encoding
@@ -34,6 +35,7 @@ class CommandExecutionContext:
         self.capture_output = capture_output
         self.env = env
         self.stream = stream
+        self.log_output = log_output
 
 class BaseCommandExecutor(ABC):
     """命令执行器抽象基类"""
@@ -122,16 +124,18 @@ class CommandExecutor(BaseCommandExecutor):
             
             if not success:
                 self._log_warning(f"[COMMAND] 返回码: {result.returncode}")
-                if result.stdout:
-                    self._log_warning(f"[STDOUT] {result.stdout.strip()}")
-                if result.stderr:
-                    self._log_warning(f"[STDERR] {result.stderr.strip()}")
+                if context.log_output:
+                    if result.stdout:
+                        self._log_warning(f"[STDOUT] {result.stdout.strip()}")
+                    if result.stderr:
+                        self._log_warning(f"[STDERR] {result.stderr.strip()}")
             else:
                 self._log_debug(f"[COMMAND] 返回码: {result.returncode}")
-                if result.stdout:
-                    self._log_debug(f"[STDOUT] {result.stdout.strip()}")
-                if result.stderr:
-                    self._log_debug(f"[STDERR] {result.stderr.strip()}")
+                if context.log_output:
+                    if result.stdout:
+                        self._log_debug(f"[STDOUT] {result.stdout.strip()}")
+                    if result.stderr:
+                        self._log_debug(f"[STDERR] {result.stderr.strip()}")
                 
             return {
                 "success": success,
