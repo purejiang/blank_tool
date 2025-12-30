@@ -33,8 +33,8 @@
     },
     "files": [
       "src/**/*",
-      "src/renderer/assets/images/**/*",
-      "src/dist/renderer/**/*",
+      "src/main/assets/images/**/*",
+      "dist/renderer/**/*",
       "package.json"
     ],
     "extraResources": [
@@ -43,12 +43,13 @@
         "to": "backend"
       },
       {
-        "from": "tools",
-        "to": "tools"
+        "from": "runtime",
+        "to": "runtime"
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "src/main/assets/images/icon.ico"
     },
     "nsis": {
       "oneClick": false,

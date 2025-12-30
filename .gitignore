@@ -2,7 +2,7 @@
 /runtime/
 /build/
 /cache/
-/aap/cache/
-src/dist/
+/output/
+dist/
 .trae/
 .vscode/

@@ -1,13 +1,18 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 export default defineConfig({
   root: 'src',
+  publicDir: 'renderer/public',
   plugins: [vue()],
   base: './',
   build: {
-    outDir: 'dist/renderer', // 调整输出目录
+    outDir: '../dist/renderer', // 调整输出目录
     emptyOutDir: true,
     rollupOptions: {
       input: {
@@ -31,7 +36,7 @@ export default defineConfig({
       '@utils': resolve(__dirname, 'src/renderer/utils'),
       '@stores': resolve(__dirname, 'src/renderer/stores'),
       '@assets': resolve(__dirname, 'src/renderer/assets'),
-      '@composables': resolve(__dirname, 'src/renderer/composables'),
+      '@composables': resolve(__dirname, 'src/renderer/composables')
     }
   },
   define: {
