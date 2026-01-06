@@ -282,7 +282,7 @@ export default {
           if (loadingId) failLoading(loadingId, 'APK解析失败', String(result.error || ''))
         }
       } catch (error) {
-        if (loadingId) failLoading(loadingId, 'APK解析失败', String(result.error || ''))
+        if (loadingId) failLoading(loadingId, 'APK解析失败', error.message || String(error))
         const svc = await getErrorService()
         if (svc) svc.reportError(error, { category: 'ui', severity: 'low' })
       } finally {
@@ -347,7 +347,7 @@ export default {
           if (loadingId) failLoading(loadingId, '安装失败', String(result.error || ''))
         }
       } catch (error) {
-        if (loadingId) failLoading(loadingId, '安装失败', String(result.error || ''))
+        if (loadingId) failLoading(loadingId, '安装失败', error.message || String(error))
         const svc = await getErrorService()
         if (svc) svc.reportError(error, { category: 'device', context: 'device.install' })
       } finally {
