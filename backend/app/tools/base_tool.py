@@ -270,6 +270,10 @@ class JavaTool(ScriptTool):
     
     def _get_interpreter(self) -> str:
         return get_java_bin()
+
+    def get_java_path(self) -> str:
+        """获取 Java 路径 (兼容性方法)"""
+        return self._get_interpreter()
     
     def _get_script_extensions(self) -> List[str]:
         return [".jar"]

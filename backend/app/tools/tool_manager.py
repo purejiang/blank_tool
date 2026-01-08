@@ -6,6 +6,7 @@ import threading
 from typing import Dict, Optional
 from app.tools.base_tool import BaseTool
 from app.utils.logger import Logger
+from app.utils.env import get_runtime_dir
 
 class ToolManager:
     _instance: Optional["ToolManager"] = None
@@ -92,8 +93,16 @@ class ToolManager:
         return base
 
     def _tools_base_dir(self) -> str:
-        # 假设工具目录结构为：backend/app/tools
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "runtime"))
+        # 优先使用环境变量中传入的 BT_RUNTIME_DIR
+        runtime_dir = get_runtime_dir()
+        if runtime_dir and os.path.exists(runtime_dir):
+            return runtime_dir
+            
+        # 如果没有配置环境变量，或者路径不存在，直接抛出异常
+        raise RuntimeError(
+            f"Environment variable 'BT_RUNTIME_DIR' is missing or invalid: {runtime_dir}. "
+            "Please configure the runtime path in application settings."
+        )
 
     def _default_tool_path(self, key: str) -> str:
         base = self._tools_base_dir()

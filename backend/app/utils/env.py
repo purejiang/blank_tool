@@ -1,15 +1,26 @@
 import os
+import sys
 import platform
 import shutil
 
+# JAVA 环境变量
 ENV_BT_JAVA_BIN = 'BT_JAVA_BIN'
+# Python 环境变量
 ENV_BT_PYTHON_BIN = 'BT_PYTHON_BIN'
+# Node.js 环境变量
 ENV_BT_NODE_BIN = 'BT_NODE_BIN'
+# 日志级别环境变量
 ENV_BT_LOG_LEVEL = 'BT_LOG_LEVEL'
-ENV_BT_SEARCH_SYSTEM_TOOLS = 'BT_SEARCH_SYSTEM_TOOLS'
-
+# 是否自动搜索运行环境的变量
+ENV_BT_SEARCH_SYSTEM_REQUIREMENTS = 'BT_SEARCH_SYSTEM_REQUIREMENTS'
+# 运行时目录环境变量
+ENV_BT_RUNTIME_DIR = 'BT_RUNTIME_DIR'
+# 应用版本环境变量
 ENV_APP_VERSION = 'APP_VERSION'
+# 项目名称环境变量
 ENV_PROJECT_NAME = 'PROJECT_NAME'
+# 输出目录环境变量
+ENV_BT_OUTPUT_DIR = 'BT_OUTPUT_DIR'
 
 
 # Backend root directory (absolute path)
@@ -77,8 +88,17 @@ def get_output_dir() -> str:
     """
     Get the unified output directory.
     """
-    output_dir = get_env("BT_OUTPUT_DIR", "./output")
+    output_dir = get_env(ENV_BT_OUTPUT_DIR, "./output")
     return resolve_path(output_dir)
+
+def get_runtime_dir() -> str:
+    """
+    Get the runtime directory.
+    """
+    runtime_dir = get_env(ENV_BT_RUNTIME_DIR)
+    if runtime_dir:
+        return resolve_path(runtime_dir)
+    return ""
 
 def get_java_bin() -> str:
     override = os.environ.get(ENV_BT_JAVA_BIN)
@@ -103,7 +123,6 @@ def get_python_bin() -> str:
         if os.path.exists(resolved):
             return resolved
             
-    import sys
     return sys.executable or 'python'
 
 def get_node_bin() -> str:

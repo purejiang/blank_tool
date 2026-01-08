@@ -50,7 +50,7 @@ def device_install_apks(params, stream_handler):
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
             raise Exception("未找到或无效的 Java 运行环境")
-        result = bundletool.execute([java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path, "--device-id", device_id], context)
+        result = bundletool.execute([java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path], context)
         success = result.get("returncode", 1) == 0
         if not success:
             raise Exception(result.get("stderr", "安装APKS失败"))

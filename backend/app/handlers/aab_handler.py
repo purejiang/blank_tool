@@ -57,8 +57,6 @@ def convert_aab_to_apks(params, stream_handler):
             "--bundle", aab_path,
             "--output", output_path,
         ]
-        if device_id:
-            args += ["--device-id", device_id]
         if keystore.get("path"):
             args += [
                 "--ks", keystore.get("path", ""),
@@ -114,7 +112,7 @@ def install_aab(params, stream_handler):
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
             raise Exception("未找到或无效的 Java 运行环境")
-        result = bundletool.execute([java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path, "--device-id", device_id], context)
+        result = bundletool.execute([java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path], context)
         if result.get("returncode", 1) != 0:
             raise Exception(result.get("stderr", "安装失败"))
         return {"device_id": device_id, "apks_path": apks_path}
