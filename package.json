@@ -71,6 +71,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^5.2.4",
+    "electron-log": "^5.4.3",
     "electron-store": "^11.0.2",
     "pinia": "^3.0.3",
     "vite": "^6.4.1",

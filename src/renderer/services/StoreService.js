@@ -4,7 +4,7 @@
  * 不再直接调用 electronAPI，而是通过 store 作为中介层
  */
 
-import { useAppConfigStore, useUserConfigStore, useDeviceStore, initializeStores } from '../stores'
+import { useAppConfigStore, useDeviceStore, initializeStores } from '../stores'
 
 class ConfigStoreService {
     constructor() {
@@ -40,19 +40,7 @@ class ConfigStoreService {
         }
         return this.appConfigStore
     }
-    /**
-     * 确保 user config store 实例可用
-     */
-    async ensureUserConfigStore() {
-        if (!this.userConfigStore) {
-            try {
-                this.userConfigStore = useUserConfigStore()
-            } catch (error) {
-                throw new Error('无法获取 user config store 实例')
-            }
-        }
-        return this.userConfigStore
-    }
+
     /**
      * 确保 device store 实例可用
      */
@@ -89,19 +77,6 @@ class ConfigStoreService {
             return store
         } catch (error) {
             console.error('获取 app config 失败:', error)
-            throw error
-        }
-    }
-    /**
-     * 获取用户配置（从 app store 的 config 中提取用户相关配置）
-     */
-    async getUserConfigStore() {
-        try {
-            const store = await this.getAppConfigStore()
-            // 提取用户相关配置
-            return store
-        } catch (error) {
-            console.error('获取用户配置失败:', error)
             throw error
         }
     }

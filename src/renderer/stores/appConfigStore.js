@@ -65,26 +65,6 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     return true
   }
 
-  // 添加最近项目
-  const addRecentProject = async (projectPath) => {
-    const recentProjects = config.value.recentProjects || []
-
-    // 移除重复项
-    const filtered = recentProjects.filter(p => p.path !== projectPath)
-
-    // 添加到开头
-    filtered.unshift({
-      path: projectPath,
-      name: path.basename(projectPath),
-      lastOpened: new Date().toISOString()
-    })
-
-    // 限制数量
-    const limited = filtered.slice(0, 10)
-
-    await set('recentProjects', limited)
-  }
-
   // 监听应用配置变化
   const onConfigChange = () => () => {}
 
@@ -105,7 +85,6 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     set,
     update,
     reset,
-    addRecentProject,
     onConfigChange,
     replaceAll
   }

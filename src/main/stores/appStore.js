@@ -33,21 +33,13 @@ const schema = {
     },
     // 环境配置
     runtime: {
-        type: 'object',
-        properties: {
-            java: {
-                type: 'string',
-                default: '\.\\tools\\jre'
-            },
-            python: {
-                type: 'string',
-                default: '\.\\tools\\python_runtime'
-            }
-        },
-        default: {
-            java: '\.\\runtime\\jre',
-            python: '\.\\runtime\\python'
-        }
+        type: 'string',
+        default: '.\\runtime'
+    },
+    // 服务端配置
+    server: {
+        type: 'string',
+        default: '.\\backend'
     },
     // 命令配置
     commands: {

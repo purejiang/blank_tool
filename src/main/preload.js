@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBackendInfo: () => callBackendAPI('app.info'),
 
   // ==================== electron API ====================
+  // ========== 路径处理 ==========
+  resolvePath: (pathStr) => ipcInvoke('path-resolve', pathStr),
   // ========== 应用相关 ==========
   // 应用（前端）信息获取
   getAppInfo: () => ipcInvoke('get-app-info'),

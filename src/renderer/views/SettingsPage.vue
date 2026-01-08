@@ -56,6 +56,45 @@
           </div>
         </div>
 
+        <!-- 环境设置 -->
+        <div class="section responsive-section">
+          <div class="section-header">
+            <h2><span class="section-icon">🔧</span>环境设置</h2>
+            <div class="section-actions">
+              <button class="btn btn-sm btn-primary" @click="saveEnvironmentSettings" data-tooltip="保存环境设置">
+                <span>💾</span>
+              </button>
+              <button class="btn btn-sm btn-secondary" @click="resetEnvironmentSettings" data-tooltip="重置为默认值">
+                <span>🔄</span>
+              </button>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="form-group">
+              <label class="form-label" for="runtime">Python 运行时路径 (Runtime)</label>
+              <div class="input-group">
+                <input type="text" id="runtime" class="form-control" :value="displayPaths.runtime" readonly
+                  placeholder="默认: .\runtime" :title="settings.runtime">
+                <button class="btn btn-secondary path-browse-btn" @click="browseDirectory('runtime')">
+                  浏览
+                </button>
+              </div>
+              <p class="form-text">指定 Python 运行时环境目录。当前配置: {{ settings.runtime }}</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="server">服务端入口路径 (Server)</label>
+              <div class="input-group">
+                <input type="text" id="server" class="form-control" :value="displayPaths.server" readonly
+                  placeholder="默认: .\backend" :title="settings.server">
+                <button class="btn btn-secondary path-browse-btn" @click="browseDirectory('server')">
+                  浏览
+                </button>
+              </div>
+              <p class="form-text">指定后端服务代码目录 (包含 main.py)。当前配置: {{ settings.server }}</p>
+            </div>
+          </div>
+        </div>
+
         <!-- 开发工具 -->
         <div class="section">
           <div class="section-header">
@@ -156,330 +195,9 @@
              </div>
           </div>
         </div>
-
-        <!-- 输出设置 -->
-        <div class="section">
-          <div class="section-header">
-            <h2><span class="section-icon">📁</span>输出设置</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveOutputSettings" data-tooltip="保存输出设置">
-                <span>💾</span>
-              </button>
-              <button class="btn btn-sm btn-secondary" @click="resetOutputSettings" data-tooltip="重置输出设置">
-                <span>🔄</span>
-              </button>
-            </div>
-          </div>
-          <div class="settings-group">
-            <div class="form-group">
-              <label class="form-label" for="outputDirectory">输出目录</label>
-              <div class="input-group">
-                <input type="text" id="outputDirectory" class="form-control" v-model="settings.outputDirectory"
-                  placeholder="选择输出目录" @change="onSettingChange">
-                <button class="btn btn-secondary path-browse-btn" @click="browseDirectory('outputDirectory')">
-                  浏览
-                </button>
-              </div>
-              <p class="form-text">APK分析和处理结果的输出目录</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="keepOriginalStructure" class="form-check-input"
-                  v-model="settings.keepOriginalStructure" @change="onSettingChange">
-                <label class="form-check-label" for="keepOriginalStructure">
-                  保持原始目录结构
-                </label>
-              </div>
-              <p class="form-text">在输出时保持APK的原始目录结构</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="compressOutput" class="form-check-input" v-model="settings.compressOutput"
-                  @change="onSettingChange">
-                <label class="form-check-label" for="compressOutput">
-                  压缩输出文件
-                </label>
-              </div>
-              <p class="form-text">自动压缩输出的文件和目录</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 设备连接设置 -->
-        <div class="section">
-          <div class="section-header">
-            <h2><span class="section-icon">📱</span>设备连接设置</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveDeviceSettings" data-tooltip="保存设备连接设置">
-                <span>💾</span>
-              </button>
-              <button class="btn btn-sm btn-secondary" @click="resetDeviceSettings" data-tooltip="重置设备连接设置">
-                <span>🔄</span>
-              </button>
-            </div>
-          </div>
-          <div class="settings-group">
-            <div class="form-group">
-              <label class="form-label" for="connectionTimeout">连接超时时间 (毫秒)</label>
-              <input type="number" id="connectionTimeout" class="form-control"
-                v-model.number="settings.connectionTimeout" min="1000" max="60000" step="1000"
-                @change="onSettingChange">
-              <p class="form-text">ADB设备连接的超时时间，建议设置为10-30秒</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="commandTimeout">命令超时时间 (毫秒)</label>
-              <input type="number" id="commandTimeout" class="form-control" v-model.number="settings.commandTimeout"
-                min="5000" max="120000" step="5000" @change="onSettingChange">
-              <p class="form-text">ADB命令执行的超时时间，建议设置为30-60秒</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="retryCount">重试次数</label>
-              <input type="number" id="retryCount" class="form-control" v-model.number="settings.retryCount" min="0"
-                max="10" @change="onSettingChange">
-              <p class="form-text">连接失败时的重试次数，0表示不重试</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="retryDelay">重试间隔 (毫秒)</label>
-              <input type="number" id="retryDelay" class="form-control" v-model.number="settings.retryDelay" min="500"
-                max="10000" step="500" @change="onSettingChange">
-              <p class="form-text">重试之间的等待时间</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="monitorInterval">监控间隔 (毫秒)</label>
-              <input type="number" id="monitorInterval" class="form-control" v-model.number="settings.monitorInterval"
-                min="1000" max="30000" step="1000" @change="onSettingChange">
-              <p class="form-text">设备状态监控的刷新间隔</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="autoDetectDevices" class="form-check-input"
-                  v-model="settings.autoDetectDevices" @change="onSettingChange">
-                <label class="form-check-label" for="autoDetectDevices">
-                  自动检测设备
-                </label>
-              </div>
-              <p class="form-text">启动时自动检测并连接ADB设备</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="enableDeviceMonitoring" class="form-check-input"
-                  v-model="settings.enableDeviceMonitoring" @change="onSettingChange">
-                <label class="form-check-label" for="enableDeviceMonitoring">
-                  启用设备监控
-                </label>
-              </div>
-              <p class="form-text">实时监控设备连接状态变化</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="autoReconnect" class="form-check-input" v-model="settings.autoReconnect"
-                  @change="onSettingChange">
-                <label class="form-check-label" for="autoReconnect">
-                  自动重连
-                </label>
-              </div>
-              <p class="form-text">设备断开连接时自动尝试重新连接</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div class="right-panel">
-        <!-- 工具超时设置 -->
-        <div class="section">
-          <div class="section-header">
-            <h2><span class="section-icon">⏱️</span>工具超时设置</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveTimeoutSettings" data-tooltip="保存超时设置">
-                <span>💾</span>
-              </button>
-              <button class="btn btn-sm btn-secondary" @click="resetTimeoutSettings" data-tooltip="重置超时设置">
-                <span>🔄</span>
-              </button>
-            </div>
-          </div>
-          <div class="settings-group">
-            <div class="form-group">
-              <label class="form-label" for="adbTimeout">ADB 超时时间 (毫秒)</label>
-              <input type="number" id="adbTimeout" class="form-control" v-model.number="settings.adbTimeout" min="10000"
-                max="300000" step="5000" @change="onSettingChange">
-              <p class="form-text">ADB操作的超时时间</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="apktoolTimeout">APKTool 超时时间 (毫秒)</label>
-              <input type="number" id="apktoolTimeout" class="form-control" v-model.number="settings.apktoolTimeout"
-                min="30000" max="600000" step="10000" @change="onSettingChange">
-              <p class="form-text">APKTool反编译/重打包的超时时间</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="bundletoolTimeout">BundleTool 超时时间 (毫秒)</label>
-              <input type="number" id="bundletoolTimeout" class="form-control"
-                v-model.number="settings.bundletoolTimeout" min="30000" max="600000" step="10000"
-                @change="onSettingChange">
-              <p class="form-text">BundleTool操作的超时时间</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="javaHeapSize">Java 堆内存大小</label>
-              <select id="javaHeapSize" class="form-control" v-model="settings.javaHeapSize" @change="onSettingChange">
-                <option value="1g">1GB</option>
-                <option value="2g">2GB</option>
-                <option value="4g">4GB</option>
-                <option value="8g">8GB</option>
-              </select>
-              <p class="form-text">Java工具使用的最大堆内存</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 分析设置 -->
-        <div class="section">
-          <div class="section-header">
-            <h2><span class="section-icon">🔍</span>分析设置</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveAnalysisSettings" data-tooltip="保存分析设置">
-                <span>💾</span>
-              </button>
-              <button class="btn btn-sm btn-secondary" @click="resetAnalysisSettings" data-tooltip="重置分析设置">
-                <span>🔄</span>
-              </button>
-            </div>
-          </div>
-          <div class="settings-group">
-            <div class="form-group">
-              <label class="form-label" for="maxFileSize">最大文件大小</label>
-              <select id="maxFileSize" class="form-control" v-model="settings.maxFileSize" @change="onSettingChange">
-                <option value="200MB">200MB</option>
-                <option value="500MB">500MB</option>
-                <option value="1GB">1GB</option>
-                <option value="2GB">2GB</option>
-              </select>
-              <p class="form-text">允许分析的最大APK文件大小</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="enableDeepScan" class="form-check-input" v-model="settings.enableDeepScan"
-                  @change="onSettingChange">
-                <label class="form-check-label" for="enableDeepScan">
-                  启用深度扫描
-                </label>
-              </div>
-              <p class="form-text">进行更详细的APK内容分析（耗时较长）</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="extractResources" class="form-check-input"
-                  v-model="settings.extractResources" @change="onSettingChange">
-                <label class="form-check-label" for="extractResources">
-                  提取资源文件
-                </label>
-              </div>
-              <p class="form-text">分析时提取APK中的资源文件</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="analyzePermissions" class="form-check-input"
-                  v-model="settings.analyzePermissions" @change="onSettingChange">
-                <label class="form-check-label" for="analyzePermissions">
-                  分析权限使用
-                </label>
-              </div>
-              <p class="form-text">详细分析APK的权限声明和使用情况</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 性能设置 -->
-        <div class="section">
-          <div class="section-header">
-            <h2><span class="section-icon">⚡</span>性能设置</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="savePerformanceSettings" data-tooltip="保存性能设置">
-                <span>💾</span>
-              </button>
-              <button class="btn btn-sm btn-secondary" @click="resetPerformanceSettings" data-tooltip="重置性能设置">
-                <span>🔄</span>
-              </button>
-            </div>
-          </div>
-          <div class="settings-group">
-            <div class="form-group">
-              <label class="form-label" for="maxConcurrentTasks">最大并发任务数</label>
-              <input type="number" id="maxConcurrentTasks" class="form-control"
-                v-model.number="settings.maxConcurrentTasks" min="1" max="10" @change="onSettingChange">
-              <p class="form-text">同时执行的最大任务数量</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="enableCache" class="form-check-input" v-model="settings.enableCache"
-                  @change="onSettingChange">
-                <label class="form-check-label" for="enableCache">
-                  启用缓存
-                </label>
-              </div>
-              <p class="form-text">缓存分析结果以提高性能</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="cacheExpiry">缓存过期时间 (小时)</label>
-              <input type="number" id="cacheExpiry" class="form-control" v-model.number="settings.cacheExpiry" min="1"
-                max="168" @change="onSettingChange">
-              <p class="form-text">缓存数据的有效期</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="maxLogSize">最大日志大小 (MB)</label>
-              <input type="number" id="maxLogSize" class="form-control" v-model.number="settings.maxLogSize" min="1"
-                max="100" @change="onSettingChange">
-              <p class="form-text">单个日志文件的最大大小</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 高级设置 -->
-        <div class="section">
-          <div class="section-header">
-            <h2><span class="section-icon">🔬</span>高级设置</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-primary" @click="saveAdvancedSettings" data-tooltip="保存高级设置">
-                <span>💾</span>
-              </button>
-              <button class="btn btn-sm btn-secondary" @click="resetAdvancedSettings" data-tooltip="重置高级设置">
-                <span>🔄</span>
-              </button>
-            </div>
-          </div>
-          <div class="settings-group">
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="enableDevTools" class="form-check-input" v-model="settings.enableDevTools"
-                  @change="onSettingChange">
-                <label class="form-check-label" for="enableDevTools">
-                  启用开发者工具
-                </label>
-              </div>
-              <p class="form-text">允许打开开发者工具进行调试</p>
-            </div>
-            <div class="form-group">
-              <div class="form-check">
-                <input type="checkbox" id="enableLogging" class="form-check-input" v-model="settings.enableLogging"
-                  @change="onSettingChange">
-                <label class="form-check-label" for="enableLogging">
-                  启用日志记录
-                </label>
-              </div>
-              <p class="form-text">记录应用运行日志用于调试</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="logLevel">日志级别</label>
-              <select id="logLevel" class="form-control" v-model="settings.logLevel" @change="onSettingChange">
-                <option value="error">错误</option>
-                <option value="warn">警告</option>
-                <option value="info">信息</option>
-                <option value="debug">调试</option>
-              </select>
-              <p class="form-text">设置记录日志的详细程度</p>
-            </div>
-          </div>
-        </div>
-
         <!-- 构建信息 -->
         <div class="section">
           <h2><span class="section-icon">🔧</span>构建信息</h2>
@@ -623,6 +341,12 @@ export default {
     const hasUnsavedChanges = ref(false)
     const isLoadingSystemInfo = ref(false)
     const isLoadingTools = ref(false)
+    
+    // 显示用的路径数据（绝对路径）
+    const displayPaths = reactive({
+      runtime: '',
+      server: ''
+    })
 
     const settings = reactive({
       // 常规设置
@@ -631,51 +355,16 @@ export default {
       autoSave: true,
       enableNotifications: true,
 
+      // 环境设置
+      runtime: '.\\runtime',
+      server: '.\\backend',
+
       // 工具路径设置
       adbPath: '',
       aaptPath: '',
       apktoolPath: '',
       bundletoolPath: '',
-      javaPath: '',
-
-      // 工具超时设置
-      adbTimeout: 30000,
-      apktoolTimeout: 60000,
-      bundletoolTimeout: 60000,
-      javaHeapSize: '2g',
-
-      // 输出设置
-      outputDirectory: '',
-      exportApkDirectory: '',
-      keepOriginalStructure: true,
-      compressOutput: false,
-
-      // 分析设置
-      maxFileSize: '100MB',
-      enableDeepScan: false,
-      extractResources: true,
-      analyzePermissions: true,
-
-      // 设备设置
-      connectionTimeout: 10000,
-      commandTimeout: 30000,
-      retryCount: 3,
-      retryDelay: 1000,
-      monitorInterval: 5000,
-      autoDetectDevices: true,
-      enableDeviceMonitoring: true,
-      autoReconnect: true,
-
-      // 高级设置
-      enableDevTools: false,
-      enableLogging: true,
-      logLevel: 'info',
-      maxLogSize: 10,
-
-      // 性能设置
-      maxConcurrentTasks: 3,
-      enableCache: true,
-      cacheExpiry: 24
+      javaPath: ''
     })
 
     const systemInfo = systemStore.systemInfo
@@ -752,6 +441,20 @@ export default {
       hasUnsavedChanges.value = true
     }
 
+    // 更新显示路径
+    const updateDisplayPaths = async () => {
+      try {
+        if (settings.runtime) {
+          displayPaths.runtime = await window.electronAPI.resolvePath(settings.runtime)
+        }
+        if (settings.server) {
+          displayPaths.server = await window.electronAPI.resolvePath(settings.server)
+        }
+      } catch (e) {
+        console.error('解析路径失败:', e)
+      }
+    }
+
     // 加载设置
     const loadSettings = async () => {
       try {
@@ -770,6 +473,8 @@ export default {
               settings[key] = result[key]
             }
           })
+          // 更新显示路径
+          await updateDisplayPaths()
         }
       } catch (error) {
         console.error('加载设置失败:', error)
@@ -922,6 +627,7 @@ export default {
         if (result && result.directoryPath) {
           settings[target] = result.directoryPath
           onSettingChange()
+          await updateDisplayPaths()
         }
       } catch (error) {
         console.error('选择目录失败:', error)
@@ -1106,39 +812,6 @@ export default {
       }
     }
 
-    // 格式化运行时间
-    const formatUptime = (seconds) => {
-      const days = Math.floor(seconds / 86400)
-      const hours = Math.floor((seconds % 86400) / 3600)
-      const minutes = Math.floor((seconds % 3600) / 60)
-
-      if (days > 0) {
-        return `${days}天 ${hours}小时 ${minutes}分钟`
-      } else if (hours > 0) {
-        return `${hours}小时 ${minutes}分钟`
-      } else {
-        return `${minutes}分钟`
-      }
-    }
-
-    // 获取内存使用率样式类
-    const getMemoryUsageClass = (percent) => {
-      if (!percent) return ''
-      const value = parseFloat(percent)
-      if (value >= 90) return 'usage-critical'
-      if (value >= 70) return 'usage-warning'
-      return 'usage-normal'
-    }
-
-    // 获取磁盘使用率样式类
-    const getDiskUsageClass = (percent) => {
-      if (!percent) return ''
-      const value = parseFloat(percent)
-      if (value >= 95) return 'usage-critical'
-      if (value >= 80) return 'usage-warning'
-      return 'usage-normal'
-    }
-
     // 分类级别的保存和重置方法
     const saveGeneralSettings = async () => {
       try {
@@ -1175,228 +848,32 @@ export default {
       }
     }
 
-    const saveToolPathSettings = async () => {
+    const saveEnvironmentSettings = async () => {
       try {
-        const toolPathSettings = {
-          adbPath: settings.adbPath,
-          apktoolPath: settings.apktoolPath,
-          javaPath: settings.javaPath,
-          aaptPath: settings.aaptPath
+        const environmentSettings = {
+          runtime: settings.runtime,
+          server: settings.server
         }
         const svc = settingsServiceRef.value || await serviceManager.getService('settings')
         settingsServiceRef.value = svc
-        await svc.saveSettings(toolPathSettings)
-        showSuccess('工具路径设置保存成功')
+        await svc.saveSettings(environmentSettings)
+        showSuccess('环境设置保存成功')
       } catch (error) {
-        console.error('保存工具路径设置失败:', error)
-        showError('保存工具路径设置失败', error.message)
+        console.error('保存环境设置失败:', error)
+        showError('保存环境设置失败', error.message)
       }
     }
 
-    const resetToolPathSettings = async () => {
-      if (!confirm('确定要重置工具路径设置为默认值吗？')) return
+    const resetEnvironmentSettings = async () => {
+      if (!confirm('确定要重置环境设置为默认值吗？')) return
 
       try {
-        settings.adbPath = ''
-        settings.apktoolPath = ''
-        settings.javaPath = ''
-        settings.aaptPath = ''
-        await saveToolPathSettings()
-        showSuccess('工具路径设置已重置')
+        settings.runtime = '.\\runtime'
+        settings.server = '.\\backend'
+        await saveEnvironmentSettings()
+        showSuccess('环境设置已重置')
       } catch (error) {
-        showError('重置工具路径设置失败', error.message)
-      }
-    }
-
-    const saveOutputSettings = async () => {
-      try {
-        const outputSettings = {
-          outputDirectory: settings.outputDirectory,
-          keepOriginalStructure: settings.keepOriginalStructure,
-          compressOutput: settings.compressOutput,
-          includeMetadata: settings.includeMetadata
-        }
-        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
-        settingsServiceRef.value = svc
-        await svc.saveSettings(outputSettings)
-        showSuccess('输出设置保存成功')
-      } catch (error) {
-        console.error('保存输出设置失败:', error)
-        showError('保存输出设置失败', error.message)
-      }
-    }
-
-    const resetOutputSettings = async () => {
-      if (!confirm('确定要重置输出设置为默认值吗？')) return
-
-      try {
-        settings.outputDirectory = ''
-        settings.keepOriginalStructure = true
-        settings.compressOutput = false
-        settings.includeMetadata = true
-        await saveOutputSettings()
-        showSuccess('输出设置已重置')
-      } catch (error) {
-        showError('重置输出设置失败', error.message)
-      }
-    }
-
-    const saveDeviceSettings = async () => {
-      try {
-        const deviceSettings = {
-          retryDelay: settings.retryDelay,
-          monitorInterval: settings.monitorInterval,
-          autoDetectDevices: settings.autoDetectDevices,
-          enableDeviceMonitoring: settings.enableDeviceMonitoring,
-          autoReconnect: settings.autoReconnect
-        }
-        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
-        settingsServiceRef.value = svc
-        await svc.saveSettings(deviceSettings)
-        showSuccess('设备连接设置保存成功')
-      } catch (error) {
-        console.error('保存设备连接设置失败:', error)
-        showError('保存设备连接设置失败', error.message)
-      }
-    }
-
-    const resetDeviceSettings = async () => {
-      if (!confirm('确定要重置设备连接设置为默认值吗？')) return
-
-      try {
-        settings.retryDelay = 3000
-        settings.monitorInterval = 5000
-        settings.autoDetectDevices = true
-        settings.enableDeviceMonitoring = true
-        settings.autoReconnect = true
-        await saveDeviceSettings()
-        showSuccess('设备连接设置已重置')
-      } catch (error) {
-        showError('重置设备连接设置失败', error.message)
-      }
-    }
-
-    const saveTimeoutSettings = async () => {
-      try {
-        const timeoutSettings = {
-          adbTimeout: settings.adbTimeout,
-          apktoolTimeout: settings.apktoolTimeout
-        }
-        await settingsService.saveSettings(timeoutSettings)
-        showSuccess('工具超时设置保存成功')
-      } catch (error) {
-        console.error('保存工具超时设置失败:', error)
-        showError('保存工具超时设置失败', error.message)
-      }
-    }
-
-    const resetTimeoutSettings = async () => {
-      if (!confirm('确定要重置工具超时设置为默认值吗？')) return
-
-      try {
-        settings.adbTimeout = 30000
-        settings.apktoolTimeout = 300000
-        await saveTimeoutSettings()
-        showSuccess('工具超时设置已重置')
-      } catch (error) {
-        showError('重置工具超时设置失败', error.message)
-      }
-    }
-
-    const saveAnalysisSettings = async () => {
-      try {
-        const analysisSettings = {
-          maxFileSize: settings.maxFileSize,
-          enableDeepScan: settings.enableDeepScan,
-          extractResources: settings.extractResources,
-          analyzePermissions: settings.analyzePermissions
-        }
-        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
-        settingsServiceRef.value = svc
-        await svc.saveSettings(analysisSettings)
-        showSuccess('分析设置保存成功')
-      } catch (error) {
-        console.error('保存分析设置失败:', error)
-        showError('保存分析设置失败', error.message)
-      }
-    }
-
-    const resetAnalysisSettings = async () => {
-      if (!confirm('确定要重置分析设置为默认值吗？')) return
-
-      try {
-        settings.maxFileSize = '200MB'
-        settings.enableDeepScan = false
-        settings.extractResources = true
-        settings.analyzePermissions = true
-        await saveAnalysisSettings()
-        showSuccess('分析设置已重置')
-      } catch (error) {
-        showError('重置分析设置失败', error.message)
-      }
-    }
-
-    const savePerformanceSettings = async () => {
-      try {
-        const performanceSettings = {
-          maxConcurrentTasks: settings.maxConcurrentTasks,
-          enableCache: settings.enableCache,
-          cacheExpiry: settings.cacheExpiry,
-          maxLogSize: settings.maxLogSize
-        }
-        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
-        settingsServiceRef.value = svc
-        await svc.saveSettings(performanceSettings)
-        showSuccess('性能设置保存成功')
-      } catch (error) {
-        console.error('保存性能设置失败:', error)
-        showError('保存性能设置失败', error.message)
-      }
-    }
-
-    const resetPerformanceSettings = async () => {
-      if (!confirm('确定要重置性能设置为默认值吗？')) return
-
-      try {
-        settings.maxConcurrentTasks = 3
-        settings.enableCache = true
-        settings.cacheExpiry = 24
-        settings.maxLogSize = 10
-        await savePerformanceSettings()
-        showSuccess('性能设置已重置')
-      } catch (error) {
-        showError('重置性能设置失败', error.message)
-      }
-    }
-
-    const saveAdvancedSettings = async () => {
-      try {
-        const advancedSettings = {
-          enableDevTools: settings.enableDevTools,
-          enableLogging: settings.enableLogging,
-          logLevel: settings.logLevel
-        }
-        const svc = settingsServiceRef.value || await serviceManager.getService('settings')
-        settingsServiceRef.value = svc
-        await svc.saveSettings(advancedSettings)
-        showSuccess('高级设置保存成功')
-      } catch (error) {
-        console.error('保存高级设置失败:', error)
-        showError('保存高级设置失败', error.message)
-      }
-    }
-
-    const resetAdvancedSettings = async () => {
-      if (!confirm('确定要重置高级设置为默认值吗？')) return
-
-      try {
-        settings.enableDevTools = false
-        settings.enableLogging = true
-        settings.logLevel = 'info'
-        await saveAdvancedSettings()
-        showSuccess('高级设置已重置')
-      } catch (error) {
-        showError('重置高级设置失败', error.message)
+        showError('重置环境设置失败', error.message)
       }
     }
 
@@ -1456,25 +933,12 @@ export default {
       copyText,
       checkVersion,
       browseToolExecutable,
-      getMemoryUsageClass,
-      getDiskUsageClass,
       // 分类级别的方法
       saveGeneralSettings,
       resetGeneralSettings,
-      saveToolPathSettings,
-      resetToolPathSettings,
-      saveOutputSettings,
-      resetOutputSettings,
-      saveDeviceSettings,
-      resetDeviceSettings,
-      saveTimeoutSettings,
-      resetTimeoutSettings,
-      saveAnalysisSettings,
-      resetAnalysisSettings,
-      savePerformanceSettings,
-      resetPerformanceSettings,
-      saveAdvancedSettings,
-      resetAdvancedSettings,
+      saveEnvironmentSettings,
+      resetEnvironmentSettings,
+      displayPaths,
       clearStorage,
       isClearingCache,
       isClearingOutput,
@@ -1486,267 +950,3 @@ export default {
   }
 }
 </script>
-
-<style scoped>
-/* SettingsPage组件特殊样式 */
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-bottom: 20px;
-  padding: 0 20px;
-}
-
-
-
-.path-browse-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-/* 开发工具卡片 */
-.tool-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-}
-
-.tool-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 10px 12px;
-  overflow: hidden;
-}
-
-.tool-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.tool-name {
-  font-weight: 600;
-  color: var(--text-color);
-  font-size: 14px;
-}
-
-.tool-header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.tool-header-right {
-  margin-left: 8px;
-}
-
-.tool-status {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-}
-
-.status-ok {
-  background: #e6fffb;
-  color: #08979c;
-  border: 1px solid #87e8de;
-}
-
-.status-bad {
-  background: #fff1f0;
-  color: #cf1322;
-  border: 1px solid #ffa39e;
-}
-
-.update-badge {
-  background: #fffbe6;
-  color: #d48806;
-  border: 1px solid #ffe58f;
-  border-radius: 12px;
-  font-size: 11px;
-  padding: 2px 8px;
-}
-
-.tool-card-body {
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.tool-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.path-field {
-  width: 100%;
-}
-
-.path-input-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.path-label {
-  font-size: 12px;
-  color: var(--text-color-secondary);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 4px;
-}
-
-.path-input {
-  flex: 1;
-  font-family: monospace;
-  font-size: 12px;
-  padding: 4px 8px;
-  height: 28px;
-  background-color: var(--bg-color);
-  color: var(--text-color-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-}
-
-.version-text {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--primary-color);
-  font-family: 'Consolas', 'Monaco', monospace;
-}
-
-.text-muted {
-  opacity: 0.7;
-}
-
-.btn-icon {
-  padding: 4px;
-  line-height: 1;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-
-
-
-.info-category {
-  margin-bottom: 24px;
-}
-
-.info-category h3 {
-  color: var(--text-color);
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-}
-
-.info-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.info-item:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.info-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  color: var(--text-color-secondary);
-  margin: 0;
-  font-size: 14px;
-}
-
-.info-icon {
-  font-size: 16px;
-  width: 20px;
-  text-align: center;
-}
-
-.info-value {
-  font-weight: 600;
-  color: var(--text-color);
-  font-size: 14px;
-  text-align: right;
-  max-width: 50%;
-  word-break: break-all;
-}
-
-/* 使用率状态指示器 */
-.usage-normal {
-  color: #52c41a;
-}
-
-.usage-warning {
-  color: #faad14;
-}
-
-.usage-critical {
-  color: #ff4d4f;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .section-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .info-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .tool-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .info-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .info-value {
-    max-width: 100%;
-    text-align: left;
-  }
-}
-</style>

@@ -112,4 +112,20 @@ export function setupElectronHandlers() {
     clipboard.writeText(text || '')
     return true
   })
+  
+  // 路径解析
+  ipcMain.handle('path-resolve', async (event, pathStr) => {
+    if (!pathStr) return pathStr;
+    const path = await import('path');
+    if (path.default.isAbsolute(pathStr)) return pathStr;
+    
+    // 如果是相对路径，则相对于应用根目录解析
+    const baseDir = process.argv.includes('--dev')
+      ? path.default.join(__dirname, '..', '..')
+      : process.resourcesPath;
+      
+    // 移除可能存在的开头的 .\ 或 ./
+    const cleanPath = pathStr.replace(/^\.[\\/]/, '');
+    return path.default.join(baseDir, cleanPath);
+  })
 }

@@ -3,9 +3,15 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import log from 'electron-log';
 import { appStore } from './stores/index.js';
 import { setupAllHandlers } from './ipc/index.js';
 
+// 配置日志
+log.transports.file.level = 'info';
+log.transports.console.level = 'info';
+// 可选：将 console 输出重定向到 electron-log
+// Object.assign(console, log.functions);
 
 let mainWindow;
 let tray = null;
@@ -37,7 +43,14 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../index.html'));
+    // In production, the file structure in app.asar is:
+    // - src/main/main.js
+    // - dist/renderer/index.html
+    const indexPath = path.join(__dirname, '../../dist/renderer/index.html');
+    mainWindow.loadFile(indexPath).catch(err => {
+        log.error('Failed to load index.html:', err);
+        log.error('Attempted path:', indexPath);
+    });
   }
 
   createTray();
@@ -121,36 +134,73 @@ function createTray() {
 }
 
 async function startPythonService() {
-  const scriptPath = process.argv.includes('--dev')
-    ? path.join(__dirname, '..', '..', 'backend', 'main.py')
-    : path.join(process.resourcesPath, 'backend', 'main.py');
+  // 确定基准路径
+  const baseDir = process.argv.includes('--dev')
+    ? path.join(__dirname, '..', '..')
+    : process.resourcesPath;
+
+  // 获取 Server 配置
+  const serverDir = appStore.get('server');
+
+  // 解析 Server 路径
+  let absServerDir;
+  if (serverDir) {
+    if (path.isAbsolute(serverDir)) {
+      absServerDir = serverDir;
+    } else {
+      // 移除可能存在的开头的 .\ 或 ./
+      const cleanServerDir = serverDir.replace(/^\.[\\/]/, '');
+      absServerDir = path.join(baseDir, cleanServerDir);
+    }
+  } else {
+    // 理论上 appStore 会返回默认值，如果真没有，为了防止崩溃给个基准路径
+    // 但严格按照需求，我们不应该硬编码默认值来覆盖配置。
+    // 如果配置为空，则认为是用户意图或配置错误。
+    console.warn('Server path not configured in appStore!');
+    absServerDir = baseDir; 
+  }
+
+  const scriptPath = path.join(absServerDir, 'main.py');
+  log.info(`Python Script Path: ${scriptPath}`);
 
   let pythonExecutable = 'python';
-  try {
-    const pythonRuntime = appStore.get('tools.python');
-    if (pythonRuntime && typeof pythonRuntime === 'string' && pythonRuntime.trim() !== '') {
-      const candidate = path.isAbsolute(pythonRuntime)
-        ? path.join(pythonRuntime, 'python.exe')
-        : path.join(__dirname, '..', '..', pythonRuntime, 'python.exe');
+  
+  // 获取 Runtime 配置
+  const runtimeDir = appStore.get('runtime');
+  let absRuntimeDir; // 将变量提升到这里
+  
+  if (runtimeDir) {
+      if (path.isAbsolute(runtimeDir)) {
+          absRuntimeDir = runtimeDir;
+      } else {
+          const cleanRuntimeDir = runtimeDir.replace(/^\.[\\/]/, '');
+          absRuntimeDir = path.join(baseDir, cleanRuntimeDir);
+      }
+      
+      const candidate = path.join(absRuntimeDir, 'python', 'python.exe');
       try {
         await fs.access(candidate);
         pythonExecutable = candidate;
+        log.info(`Using Python Runtime: ${pythonExecutable}`);
       } catch {
-        // 无法访问候选路径则回退到系统 python
+        log.warn(`Python runtime not found at ${candidate}, falling back to system python`);
       }
-    }
-  } catch { }
+  }
 
   try {
-    pythonProcess = spawn(pythonExecutable, [scriptPath]);
+    const env = { 
+        ...process.env,
+        BT_RUNTIME_DIR: absRuntimeDir || ''
+    };
+    pythonProcess = spawn(pythonExecutable, [scriptPath], { env });
   } catch (e) {
-    console.error('启动 Python 进程失败:', e);
+    log.error('启动 Python 进程失败:', e);
     pythonProcess = null;
     return;
   }
 
   pythonProcess.on('error', (err) => {
-    console.error('Python 进程错误:', err);
+    log.error('Python 进程错误:', err);
   });
 
   pythonProcess.stderr.on('data', (data) => {
@@ -159,18 +209,18 @@ async function startPythonService() {
     const isError = /error|exception|traceback|fail/i.test(errorMsg);
     
     if (isError) {
-        console.error(`Python Stderr: ${errorMsg}`);
+        log.error(`Python Stderr: ${errorMsg}`);
         // 尝试将错误广播给所有窗口
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('python-error', errorMsg);
         }
     } else {
-        console.log(`Python Out: ${errorMsg}`);
+        log.info(`Python Out: ${errorMsg}`);
     }
   });
 
   pythonProcess.on('close', (code) => {
-    console.log(`Python process exited with code ${code}`);
+    log.info(`Python process exited with code ${code}`);
     pythonProcess = null;
   });
   return pythonProcess;
