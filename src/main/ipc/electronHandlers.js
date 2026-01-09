@@ -1,5 +1,6 @@
 import { ipcMain, dialog, shell, BrowserWindow, app, clipboard } from 'electron'
 import { promises as fs } from 'fs'
+import path from 'path'
 
 export function setupElectronHandlers() {
   ipcMain.handle('show-open-dialog', async (event, options) => {
@@ -96,7 +97,18 @@ export function setupElectronHandlers() {
 
   // 构建信息的获取
   ipcMain.handle('get-fontend-build-info', async (event) => {
+    let appDescription = ''
+    try {
+      const pkgPath = path.join(app.getAppPath(), 'package.json')
+      const raw = await fs.readFile(pkgPath, 'utf8')
+      const pkg = JSON.parse(raw)
+      appDescription = pkg?.description || ''
+    } catch {}
+
     return {
+      appName: app.getName(),
+      appVersion: app.getVersion(),
+      appDescription,
       nodeVersion: process.versions.node,
       chromeVersion: process.versions.chrome,
       electronVersion: process.versions.electron

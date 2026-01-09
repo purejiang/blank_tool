@@ -58,6 +58,7 @@ def system_info(params, stream_handler):
             "platform_release": platform.release(),
             "platform_version": platform.version(),
             "architecture": platform.machine(),
+            "processor": platform.processor(),
             "hostname": hostname,
             "ip_address": ip_address,
             "cpu": cpu_info,

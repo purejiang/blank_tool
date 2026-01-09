@@ -162,7 +162,7 @@
             </div>
           </div>
           <div class="settings-group">
-             <div class="info-grid" style="margin-bottom: 15px;">
+             <div class="info-grid info-grid-spaced">
                 <div class="info-item">
                   <p class="info-label">缓存大小</p>
                   <span class="info-value">{{ formatFileSize(cacheInfo.cache.size) }} ({{ cacheInfo.cache.files }} 文件)</span>
@@ -200,7 +200,15 @@
       <div class="right-panel">
         <!-- 构建信息 -->
         <div class="section">
-          <h2><span class="section-icon">🔧</span>构建信息</h2>
+          <div class="section-header">
+            <h2><span class="section-icon">🔧</span>构建信息</h2>
+            <div class="section-actions">
+              <button class="btn btn-sm btn-secondary" @click="refreshBuildInfo" :disabled="isLoadingBuildInfo" data-tooltip="刷新构建信息">
+                <span v-if="!isLoadingBuildInfo">🔄</span>
+                <span v-else class="btn-spinner"></span>
+              </button>
+            </div>
+          </div>
           <div class="settings-group">
             <div class="info-category">
               <h3>应用信息</h3>
@@ -225,23 +233,23 @@
               <div class="info-grid">
                 <div class="info-item">
                   <p class="info-label">Electron版本</p>
-                  <span class="info-value">{{ buildInfo.electronVersion}}</span>
+                  <span class="info-value">{{ buildInfo.electronVersion || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">Node.js版本</p>
-                  <span class="info-value">{{ buildInfo.nodeVersion}}</span>
+                  <span class="info-value">{{ buildInfo.nodeVersion || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">Chrome版本</p>
-                  <span class="info-value">{{ buildInfo.chromeVersion }}</span>
+                  <span class="info-value">{{ buildInfo.chromeVersion || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">Java版本</p>
-                  <span class="info-value">{{ buildInfo.javaVersion}}</span>
+                  <span class="info-value">{{ buildInfo.javaVersion || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">Python版本</p>
-                  <span class="info-value">{{ buildInfo.pythonVersion}}</span>
+                  <span class="info-value">{{ buildInfo.pythonVersion || '未知' }}</span>
                 </div>
               </div>
             </div>
@@ -271,25 +279,31 @@
                   <p class="info-label">
                     <span class="info-icon">🖥️</span>平台
                   </p>
-                  <span class="info-value">{{ systemInfo.platform || '加载中...' }}</span>
+                  <span class="info-value">{{ systemInfo.platform || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">
                     <span class="info-icon">📋</span>版本
                   </p>
-                  <span class="info-value">{{ systemInfo.platform_version || '加载中...' }}</span>
+                  <span class="info-value">{{ systemInfo.platform_version || '未知' }}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">
+                    <span class="info-icon">🏷️</span>发行版本
+                  </p>
+                  <span class="info-value">{{ systemInfo.platform_release || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">
                     <span class="info-icon">🏗️</span>架构
                   </p>
-                  <span class="info-value">{{ systemInfo.architecture || '加载中...' }}</span>
+                  <span class="info-value">{{ systemInfo.architecture || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">
                     <span class="info-icon">🏠</span>主机名
                   </p>
-                  <span class="info-value">{{ systemInfo.hostname || '加载中...' }}</span>
+                  <span class="info-value">{{ systemInfo.hostname || '未知' }}</span>
                 </div>
               </div>
             </div>
@@ -301,13 +315,28 @@
                   <p class="info-label">
                     <span class="info-icon">🔧</span>处理器
                   </p>
-                  <span class="info-value">{{ systemInfo.processor || '加载中...' }}</span>
+                  <span class="info-value">{{ systemInfo.processor || '未知' }}</span>
                 </div>
                 <div class="info-item">
                   <p class="info-label">
                     <span class="info-icon">⚙️</span>CPU核心数
                   </p>
-                  <span class="info-value">{{ systemInfo.cpuCount || '加载中...' }}</span>
+                  <span class="info-value">{{ systemInfo.cpuCount || '未知' }}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">
+                    <span class="info-icon">🧠</span>内存总量
+                  </p>
+                  <span class="info-value">{{ systemInfo.memoryTotal || '未知' }}</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">
+                    <span class="info-icon">📈</span>内存占用
+                  </p>
+                  <span class="info-value">
+                    {{ systemInfo.memoryUsed || '未知' }}
+                    <span v-if="systemInfo.memoryPercent">({{ systemInfo.memoryPercent }})</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -341,6 +370,7 @@ export default {
     const hasUnsavedChanges = ref(false)
     const isLoadingSystemInfo = ref(false)
     const isLoadingTools = ref(false)
+    const isLoadingBuildInfo = ref(false)
     
     // 显示用的路径数据（绝对路径）
     const displayPaths = reactive({
@@ -640,6 +670,7 @@ export default {
     
     const loadBuildInfo = async () => {
       try {
+        isLoadingBuildInfo.value = true
         // 从 store 获取
         if (!systemStore.buildInfo.appName) {
           await systemStore.fetchBuildInfo()
@@ -647,6 +678,20 @@ export default {
       } catch (error) {
         console.error('加载构建信息失败:', error)
         showError('加载构建信息失败', error.message)
+      } finally {
+        isLoadingBuildInfo.value = false
+      }
+    }
+
+    const refreshBuildInfo = async () => {
+      try {
+        isLoadingBuildInfo.value = true
+        await systemStore.fetchBuildInfo()
+        showSuccess('构建信息已刷新')
+      } catch (error) {
+        showError('刷新构建信息失败', error.message)
+      } finally {
+        isLoadingBuildInfo.value = false
       }
     }
 
@@ -919,6 +964,7 @@ export default {
       isLoadingTools,
       hasUnsavedChanges,
       isLoadingSystemInfo,
+      isLoadingBuildInfo,
       onSettingChange,
       saveSettings,
       resetSettings,
@@ -927,6 +973,7 @@ export default {
       browseToolPath,
       browseDirectory,
       refreshSystemInfo,
+      refreshBuildInfo,
       exportSystemInfo,
       refreshTools,
       toggleSystemSearch,
@@ -950,3 +997,21 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.settings-page .page-content {
+  gap: var(--spacing-lg);
+}
+
+.info-grid-spaced {
+  margin-bottom: 15px;
+}
+
+.section-actions {
+  position: static;
+}
+
+.section-header {
+  align-items: center;
+}
+</style>

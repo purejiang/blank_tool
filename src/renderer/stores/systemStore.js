@@ -50,19 +50,28 @@ export const useSystemStore = defineStore('system', () => {
 
       if (systemResult && systemResult.system_info) {
         const sysInfo = systemResult.system_info
+        const cpu = sysInfo.cpu || {}
+        const memory = sysInfo.memory || {}
         
         systemInfo.platform = sysInfo.platform || '未知'
         systemInfo.platform_version = sysInfo.platform_version || '未知'
         systemInfo.platform_release = sysInfo.platform_release || '未知'
         systemInfo.architecture = sysInfo.architecture || '未知'
         systemInfo.hostname = sysInfo.hostname || '未知'
-        systemInfo.cpuCount = sysInfo.cpu_count || '未知'
+        systemInfo.cpuCount = sysInfo.cpu_count || cpu.count_logical || cpu.count_physical || '未知'
         systemInfo.processor = sysInfo.processor || '未知'
 
         // Memory info
-        if (sysInfo.memoryTotal) systemInfo.memoryTotal = formatFileSize(sysInfo.memoryTotal)
-        if (sysInfo.memoryUsed) systemInfo.memoryUsed = formatFileSize(sysInfo.memoryUsed)
-        if (sysInfo.memoryPercent !== undefined) systemInfo.memoryPercent = `${sysInfo.memoryPercent.toFixed(1)}%`
+        const memoryTotal = sysInfo.memoryTotal || memory.total
+        const memoryUsed = sysInfo.memoryUsed || memory.used
+        const memoryPercent = sysInfo.memoryPercent ?? memory.percent
+
+        if (memoryTotal) systemInfo.memoryTotal = formatFileSize(memoryTotal)
+        if (memoryUsed) systemInfo.memoryUsed = formatFileSize(memoryUsed)
+        if (memoryPercent !== undefined && memoryPercent !== null && memoryPercent !== '') {
+          const pct = typeof memoryPercent === 'number' ? memoryPercent : parseFloat(memoryPercent)
+          if (!Number.isNaN(pct)) systemInfo.memoryPercent = `${pct.toFixed(1)}%`
+        }
 
         // Disk info
         if (sysInfo.diskTotal) systemInfo.diskTotal = formatFileSize(sysInfo.diskTotal)
