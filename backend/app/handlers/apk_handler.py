@@ -150,6 +150,16 @@ def apk_sign(params, stream_handler):
         if not apksigner or not apksigner.is_valid:
             raise Exception("未找到或无效的 apksigner 工具")
 
+        # 生成输出路径，避免原地修改导致的文件占用问题
+        dir_name = os.path.dirname(apk_path)
+        base_name = os.path.basename(apk_path)
+        name_without_ext = os.path.splitext(base_name)[0]
+        # 使用 -signed 后缀，如果文件名已有 -signed 则不再重复添加（简单处理）
+        if name_without_ext.endswith("-signed"):
+             output_apk = os.path.join(dir_name, f"{name_without_ext}_new.apk")
+        else:
+             output_apk = os.path.join(dir_name, f"{name_without_ext}-signed.apk")
+
         args = [
             "sign",
             "--ks", keystore.get("path", ""),
@@ -162,13 +172,16 @@ def apk_sign(params, stream_handler):
             args += ["--v2-signing-enabled", "false"]
         if options.get("v3") is False:
             args += ["--v3-signing-enabled", "false"]
+        
+        # 指定输出文件
+        args += ["--out", output_apk]
         args += [apk_path]
 
         context = CommandExecutionContext()
         result = apksigner.execute(args, context)
         if result.get("returncode", 1) != 0:
             raise Exception(result.get("stderr", "签名失败"))
-        return {"apk_path": apk_path}
+        return {"apk_path": output_apk}
     except Exception as e:
         logger.error(f"签名失败: {e}")
         raise e

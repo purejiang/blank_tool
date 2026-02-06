@@ -91,6 +91,19 @@ def install_aab(params, stream_handler):
     if not device_id:
         raise Exception("缺少 device_id")
 
+    # 如果 output_path 未指定，则自动推导
+    if not output_path:
+        output_path = os.path.splitext(aab_path)[0] + ".apks"
+
+    # 检查并删除已存在的 APKS 文件
+    if os.path.exists(output_path):
+        try:
+            os.remove(output_path)
+            logger.info(f"已删除旧的 APKS 文件: {output_path}")
+        except Exception as e:
+            logger.warning(f"删除旧的 APKS 文件失败: {e}")
+            # 继续尝试，bundletool 可能会覆盖或报错
+
     # 先转换
     convert_result = convert_aab_to_apks({
         "aab_path": aab_path,
@@ -108,11 +121,19 @@ def install_aab(params, stream_handler):
         bundletool = manager.get_tool("bundletool")
         if not bundletool or not bundletool.is_valid:
             raise Exception("未找到或无效的 bundletool 工具")
+            
+        adb = manager.get_tool("adb")
+        if not adb or not adb.is_valid or not os.path.exists(adb.tool_path):
+            raise Exception("未找到或无效的 adb 工具")
+            
         context = CommandExecutionContext()
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
             raise Exception("未找到或无效的 Java 运行环境")
-        result = bundletool.execute([java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path], context)
+            
+        args = [java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path, "--adb", adb.tool_path, "--device-id", device_id]
+        
+        result = bundletool.execute(args, context)
         if result.get("returncode", 1) != 0:
             raise Exception(result.get("stderr", "安装失败"))
         return {"device_id": device_id, "apks_path": apks_path}

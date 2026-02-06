@@ -55,6 +55,31 @@
             </div>
           </div>
         </div>
+
+        <!-- 签名配置 -->
+        <div class="section responsive-section">
+          <h2><span class="section-icon">🔑</span>签名配置</h2>
+          <div class="signature-list">
+             <div v-for="config in signatureConfigs" :key="config.id" class="signature-item">
+                <div class="signature-info">
+                   <div class="signature-name">{{ config.name }}</div>
+                   <div class="signature-alias" :title="config.alias">{{ config.alias }}</div>
+                </div>
+                <div class="signature-actions">
+                   <button class="btn btn-small" @click="openSignatureModal(config)" title="编辑">✏️</button>
+                   <button class="btn btn-small error" @click="deleteSignature(config.id)" title="删除">🗑️</button>
+                </div>
+             </div>
+             <div v-if="signatureConfigs.length === 0" class="placeholder">
+                暂无签名配置
+             </div>
+          </div>
+          <div class="actions-bottom-right">
+             <button class="btn btn-primary" @click="openSignatureModal()">
+                <span>➕</span>新增配置
+             </button>
+          </div>
+        </div>
       </div>
 
       <div class="right-panel">
@@ -102,6 +127,26 @@
           <div v-if="selectedProjectDir" class="file-info">
             <p><strong>项目目录:</strong> {{ selectedProjectDir }}</p>
           </div>
+          
+          <div v-if="selectedProjectDir" class="options-panel">
+             <div class="option-row">
+                <label class="checkbox-label">
+                   <input type="checkbox" v-model="recompileOptions.sign"> 启用签名
+                </label>
+                <select v-if="recompileOptions.sign" v-model="recompileSignatureId" class="form-control inline-select">
+                   <option value="" disabled>请选择签名配置</option>
+                   <option v-for="config in signatureConfigs" :key="config.id" :value="config.id">
+                      {{ config.name }}
+                   </option>
+                </select>
+             </div>
+             <div class="option-row">
+                <label class="checkbox-label">
+                   <input type="checkbox" v-model="recompileOptions.align"> ZipAlign优化
+                </label>
+             </div>
+          </div>
+
           <div v-if="recompileProgress && recompileProgress.show" class="progress-bar">
             <div class="progress-fill" :style="{ width: recompileProgress.value + '%' }"></div>
           </div>
@@ -119,9 +164,58 @@
             </div>
           </div>
         </div>
+
+        <!-- APK 重签 -->
+        <div class="section responsive-section">
+          <h2><span class="section-icon">✍️</span>APK 重签</h2>
+          <div class="file-drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
+            @dragenter.prevent @click="selectResignFile()">
+            <p>拖拽 APK 文件到此处进行重签</p>
+            <input type="file" accept=".apk" style="display: none;"
+              @change="handleFileInputChange($event, handleResignFileSelect)">
+          </div>
+          <div v-if="selectedResignFile" class="file-info">
+            <p><strong>文件名:</strong> {{ selectedResignFile.name }}</p>
+            <p><strong>大小:</strong> {{ formatFileSize(selectedResignFile.size) }}</p>
+          </div>
+          
+          <div class="form-group" style="margin-top: 10px;" v-if="selectedResignFile">
+             <label>选择签名:</label>
+             <select v-model="selectedSignatureId" class="form-control">
+                <option value="" disabled>请选择签名配置</option>
+                <option v-for="config in signatureConfigs" :key="config.id" :value="config.id">
+                   {{ config.name }}
+                </option>
+             </select>
+          </div>
+
+          <div v-if="resignResult" class="analysis-result">
+            <div v-html="resignResult"></div>
+          </div>
+          <div class="actions-bottom-right">
+            <div class="btn-group">
+              <button class="btn btn-primary" :class="{ 'loading': isResigning }"
+                :disabled="!selectedResignFile || !selectedSignatureId || isResigning" @click="resignApk">
+                <span v-if="!isResigning">✍️</span>
+                <span v-if="isResigning" class="btn-spinner"></span>
+                {{ isResigning ? '重签中...' : '开始重签' }}
+              </button>
+              <button class="btn btn-secondary" :disabled="!resignOutputPath" @click="openResignOutput">
+                <span>📂</span>打开输出
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
+  
+  <!-- 签名配置弹窗 -->
+  <SignatureEditModal 
+    v-model:visible="showSignatureModal"
+    :data="editingSignature"
+    @save="handleSaveSignature"
+  />
 </template>
 
 <script>
@@ -130,11 +224,18 @@ import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager.js'
 import { useNotification } from '@composables/useNotification.js'
 import { usePackageStore } from '@stores/packageStore.js'
+import { useSignatureStore } from '@stores/signatureStore.js'
+import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 
 export default {
   name: 'PackagePage',
+  components: {
+    SignatureEditModal
+  },
   setup() {
-   const packageStore = usePackageStore()
+    const packageStore = usePackageStore()
+    const signatureStore = useSignatureStore()
+    
     // 从 store 中获取状态
     const {
       selectedAnalysisFile,
@@ -157,6 +258,18 @@ export default {
       recompileOptions
     } = storeToRefs(packageStore)
 
+    const { configs: signatureConfigs } = storeToRefs(signatureStore)
+
+
+    // Signature & Resign State
+    const selectedResignFile = ref(null)
+    const selectedSignatureId = ref('')
+    const recompileSignatureId = ref('')
+    const isResigning = ref(false)
+    const resignResult = ref(null)
+    const resignOutputPath = ref(null)
+    const showSignatureModal = ref(false)
+    const editingSignature = ref(null)
 
     // Notification composable
     const { showLoading, completeLoading, failLoading } = useNotification()
@@ -447,16 +560,36 @@ export default {
 
     const startRecompile = async () => {
       if (!selectedProjectDir.value) return
+      
+      // Check signature config if sign is enabled
+      if (recompileOptions.value.sign && !recompileSignatureId.value) {
+         const svc = await getErrorService()
+         if (svc) svc.reportError(new Error('请选择签名配置'), { category: 'ui', severity: 'low' })
+         return
+      }
+
       let loadingId = null
       try {
         recompileProgress.show = true
         recompileProgress.value = 0
-
+        
         loadingId = showLoading('正在回编译APK...')
         const options = {
           sign: recompileOptions.value.sign,
           align: recompileOptions.value.align,
           optimize: recompileOptions.value.optimize
+        }
+        
+        if (options.sign) {
+             const config = signatureStore.getConfigById(recompileSignatureId.value)
+             if (config) {
+                 options.keystore = {
+                    path: config.path,
+                    alias: config.alias,
+                    storepass: config.storepass,
+                    keypass: config.keypass
+                 }
+             }
         }
 
         const apkService = apkServiceRef.value || await serviceManager.getService('apk')
@@ -488,6 +621,102 @@ export default {
         const svc = await serviceManager.getService('system')
         await svc.openPath(recompileOutputPath.value)
       }
+    }
+
+    // Resign Methods
+    const selectResignFile = async () => {
+      await selectFileWithStats(selectedResignFile)
+    }
+
+    const handleResignFileSelect = async (file) => {
+      if (file && file.name.toLowerCase().endsWith('.apk')) {
+        selectedResignFile.value = file
+      } else {
+        const svc = await getErrorService()
+        if (svc) svc.reportError(new Error('请选择有效的APK文件'), { category: 'ui', severity: 'low' })
+      }
+    }
+
+    const resignApk = async () => {
+      if (!selectedResignFile.value) return
+      const config = signatureStore.getConfigById(selectedSignatureId.value)
+      if (!config) {
+        const svc = await getErrorService()
+        if (svc) svc.reportError(new Error('请选择签名配置'), { category: 'ui', severity: 'low' })
+        return
+      }
+
+      let loadingId = null
+      try {
+        isResigning.value = true
+        loadingId = showLoading('正在重签APK...')
+        
+        const apkService = apkServiceRef.value || await serviceManager.getService('apk')
+        apkServiceRef.value = apkService
+        
+        const keystore = {
+            path: config.path,
+            alias: config.alias,
+            storepass: config.storepass,
+            keypass: config.keypass
+        }
+
+        const result = await apkService.signApk(selectedResignFile.value.path, keystore)
+
+        if (result.success) {
+          // 更新输出路径为实际生成的路径
+          resignOutputPath.value = result.outputPath
+          resignResult.value = `<p>重签完成！输出文件: ${result.outputPath}</p>`
+          if (loadingId) completeLoading(loadingId, '重签完成', `输出文件: ${result.outputPath}`)
+        } else {
+          if (loadingId) failLoading(loadingId, '重签失败', String(result.error || ''))
+        }
+      } catch (error) {
+        if (loadingId) failLoading(loadingId, '重签失败', String(error || ''))
+        const svc = await getErrorService()
+        if (svc) svc.reportError(error, { category: 'tool', context: 'apk.resign' })
+      } finally {
+        isResigning.value = false
+      }
+    }
+
+    const openResignOutput = async () => {
+      if (resignOutputPath.value) {
+        const svc = await serviceManager.getService('system')
+        await svc.openPath(resignOutputPath.value)
+      }
+    }
+
+    // Signature Config Methods
+    const openSignatureModal = (config = null) => {
+      editingSignature.value = config ? { ...config } : null
+      showSignatureModal.value = true
+    }
+
+    const handleSaveSignature = async (formData) => {
+        if (formData.id) {
+            await signatureStore.updateConfig({ ...formData })
+        } else {
+            await signatureStore.addConfig({ ...formData })
+        }
+        
+        // Auto select if it's the first one
+        if (signatureConfigs.value.length === 1) {
+            selectedSignatureId.value = signatureConfigs.value[0].id
+            recompileSignatureId.value = signatureConfigs.value[0].id
+        }
+    }
+
+    const deleteSignature = async (id) => {
+        if (confirm('确定要删除该配置吗？')) {
+            await signatureStore.removeConfig(id)
+            if (selectedSignatureId.value === id) {
+                selectedSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
+            }
+             if (recompileSignatureId.value === id) {
+                recompileSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
+            }
+        }
     }
 
     // 工具方法
@@ -569,6 +798,12 @@ export default {
         apkServiceRef.value = await serviceManager.getService('apk')
       } catch { }
       
+      await signatureStore.loadConfigs()
+      if (signatureConfigs.value.length > 0) {
+        selectedSignatureId.value = signatureConfigs.value[0].id
+        recompileSignatureId.value = signatureConfigs.value[0].id
+      }
+      
       // 检查并同步状态
       checkRunningTasks()
     })
@@ -591,6 +826,15 @@ export default {
       recompileProgress,
       decompileOptions,
       recompileOptions,
+      signatureConfigs,
+      selectedResignFile,
+      selectedSignatureId,
+      recompileSignatureId,
+      isResigning,
+      resignResult,
+      resignOutputPath,
+      showSignatureModal,
+      editingSignature,
       handleDrop,
       handleFileInputChange,
       handleApkFileSelect,
@@ -606,6 +850,13 @@ export default {
       selectProjectDir,
       startRecompile,
       openRecompileOutput,
+      selectResignFile,
+      handleResignFileSelect,
+      resignApk,
+      openResignOutput,
+      openSignatureModal,
+      handleSaveSignature,
+      deleteSignature,
       formatFileSize
     }
   }
@@ -801,5 +1052,83 @@ export default {
   background: var(--primary-bg-light);
   color: var(--primary-color);
   border-color: var(--primary-color-alpha);
+}
+
+.signature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--bg-secondary);
+}
+
+.signature-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.signature-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.signature-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.signature-alias {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signature-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.options-panel {
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.option-row:last-child {
+  margin-bottom: 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.inline-select {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 13px;
 }
 </style>

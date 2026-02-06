@@ -46,11 +46,19 @@ def device_install_apks(params, stream_handler):
         bundletool = manager.get_tool("bundletool")
         if not bundletool or not bundletool.is_valid or not os.path.exists(bundletool.tool_path):
             raise Exception("未找到或无效的 bundletool 工具")
+            
+        adb = manager.get_tool("adb")
+        if not adb or not adb.is_valid or not os.path.exists(adb.tool_path):
+            raise Exception("未找到或无效的 adb 工具")
+
         context = CommandExecutionContext()
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
             raise Exception("未找到或无效的 Java 运行环境")
-        result = bundletool.execute([java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path], context)
+            
+        args = [java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path, "--adb", adb.tool_path, "--device-id", device_id]
+        
+        result = bundletool.execute(args, context)
         success = result.get("returncode", 1) == 0
         if not success:
             raise Exception(result.get("stderr", "安装APKS失败"))
