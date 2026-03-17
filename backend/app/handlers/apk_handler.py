@@ -125,6 +125,10 @@ def apk_recompile(params, stream_handler):
                 ]
                 if keystore.get("keypass"):
                     args += ["--key-pass", f"pass:{keystore.get('keypass', '')}"]
+                
+                if options.get("v2") is False:
+                    args += ["--v2-signing-enabled", "false"]
+
                 args += [output_apk]
                 sr = apksigner.execute(args, CommandExecutionContext())
                 if sr.get("returncode", 1) != 0:

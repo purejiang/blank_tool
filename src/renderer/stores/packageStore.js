@@ -36,7 +36,12 @@ export const usePackageStore = defineStore('package', () => {
   const recompileOptions = reactive({
     sign: true,
     align: true,
-    optimize: false
+    optimize: false,
+    v2: true
+  })
+
+  const resignOptions = reactive({
+    v2: true
   })
 
   // Actions
@@ -114,6 +119,7 @@ export const usePackageStore = defineStore('package', () => {
     recompileProgress,
     decompileOptions,
     recompileOptions,
+    resignOptions,
     setSelectedAnalysisFile,
     setSelectedInstallFile,
     setSelectedDecompileFile,

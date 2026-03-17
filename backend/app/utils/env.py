@@ -98,21 +98,54 @@ def get_runtime_dir() -> str:
     runtime_dir = get_env(ENV_BT_RUNTIME_DIR)
     if runtime_dir:
         return resolve_path(runtime_dir)
+    
+    # Fallback: Try to find 'runtime' in the project root or up one level
+    # Development: backend/../runtime -> ROOT/runtime
+    local_runtime = os.path.join(ROOT, 'runtime')
+    if os.path.exists(local_runtime):
+        return local_runtime
+        
+    # Production/Alternative: ROOT/../runtime
+    up_runtime = os.path.abspath(os.path.join(ROOT, '..', 'runtime'))
+    if os.path.exists(up_runtime):
+        return up_runtime
+        
     return ""
 
 def get_java_bin() -> str:
+    # 1. First priority: Environment variable override
     override = os.environ.get(ENV_BT_JAVA_BIN)
     if override:
         resolved = resolve_path(override)
         if os.path.exists(resolved):
             return resolved
 
+    # 2. Second priority: Bundled JRE in runtime dir (The User's Request)
+    runtime_dir = get_runtime_dir()
+    if runtime_dir:
+        is_windows = platform.system() == 'Windows'
+        java_exe = 'java.exe' if is_windows else 'java'
+        
+        # Possible locations for java executable in runtime
+        candidates = [
+            os.path.join(runtime_dir, 'jre', 'bin', java_exe),
+            os.path.join(runtime_dir, 'java', 'bin', java_exe),
+            os.path.join(runtime_dir, 'bin', java_exe),
+            os.path.join(runtime_dir, java_exe)
+        ]
+        
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+
+    # 3. Third priority: JAVA_HOME / JRE_HOME
     jh = os.environ.get('JAVA_HOME') or os.environ.get('JRE_HOME')
     if jh:
         candidate = os.path.join(jh, 'bin', 'java.exe' if platform.system() == 'Windows' else 'java')
         if os.path.exists(candidate):
             return candidate
         
+    # 4. Last priority: System PATH
     which = shutil.which('java')
     return which or 'java'
 

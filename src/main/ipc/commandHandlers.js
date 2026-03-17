@@ -89,10 +89,44 @@ export function setupCommandHandlers(pythonProcess) {
     });
 
     ipcMain.handle('call-backend-api', async (event, request) => {
+        if (!pythonProcess || pythonProcess.killed) {
+            return { 
+                type: 'error', 
+                error: { message: '后端服务未运行' } 
+            };
+        }
+
         return new Promise((resolve, reject) => {
             // Store sender to send stream updates back to the caller
             requestCallbacks.set(request.id, { resolve, reject, sender: event.sender });
-            pythonProcess.stdin.write(JSON.stringify(request) + '\n');
+            
+            try {
+                const success = pythonProcess.stdin.write(JSON.stringify(request) + '\n');
+                if (!success) {
+                    requestCallbacks.delete(request.id);
+                    resolve({ 
+                        type: 'error', 
+                        error: { message: '无法发送请求到后端服务' } 
+                    });
+                }
+            } catch (err) {
+                requestCallbacks.delete(request.id);
+                resolve({ 
+                    type: 'error', 
+                    error: { message: `发送请求失败: ${err.message}` } 
+                });
+            }
+
+            // 设置超时 (30秒)
+            setTimeout(() => {
+                if (requestCallbacks.has(request.id)) {
+                    requestCallbacks.delete(request.id);
+                    resolve({ 
+                        type: 'error', 
+                        error: { message: '请求超时' } 
+                    });
+                }
+            }, 30000);
         });
     });
 }

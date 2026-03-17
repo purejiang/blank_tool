@@ -139,6 +139,9 @@
                       {{ config.name }}
                    </option>
                 </select>
+                <label v-if="recompileOptions.sign" class="checkbox-label" style="margin-left: 10px;">
+                   <input type="checkbox" v-model="recompileOptions.v2"> V2签名
+                </label>
              </div>
              <div class="option-row">
                 <label class="checkbox-label">
@@ -181,12 +184,17 @@
           
           <div class="form-group" style="margin-top: 10px;" v-if="selectedResignFile">
              <label>选择签名:</label>
-             <select v-model="selectedSignatureId" class="form-control">
-                <option value="" disabled>请选择签名配置</option>
-                <option v-for="config in signatureConfigs" :key="config.id" :value="config.id">
-                   {{ config.name }}
-                </option>
-             </select>
+             <div style="display: flex; align-items: center; gap: 10px;">
+               <select v-model="selectedSignatureId" class="form-control" style="flex: 1;">
+                  <option value="" disabled>请选择签名配置</option>
+                  <option v-for="config in signatureConfigs" :key="config.id" :value="config.id">
+                     {{ config.name }}
+                  </option>
+               </select>
+               <label class="checkbox-label" style="white-space: nowrap;">
+                  <input type="checkbox" v-model="resignOptions.v2"> V2签名
+               </label>
+             </div>
           </div>
 
           <div v-if="resignResult" class="analysis-result">
@@ -255,7 +263,8 @@ export default {
       decompileProgress,
       recompileProgress,
       decompileOptions,
-      recompileOptions
+      recompileOptions,
+      resignOptions
     } = storeToRefs(packageStore)
 
     const { configs: signatureConfigs } = storeToRefs(signatureStore)
@@ -577,7 +586,8 @@ export default {
         const options = {
           sign: recompileOptions.value.sign,
           align: recompileOptions.value.align,
-          optimize: recompileOptions.value.optimize
+          optimize: recompileOptions.value.optimize,
+          v2: recompileOptions.value.v2
         }
         
         if (options.sign) {
@@ -661,7 +671,11 @@ export default {
             keypass: config.keypass
         }
 
-        const result = await apkService.signApk(selectedResignFile.value.path, keystore)
+        const options = {
+            v2: resignOptions.value.v2
+        }
+
+        const result = await apkService.signApk(selectedResignFile.value.path, keystore, options)
 
         if (result.success) {
           // 更新输出路径为实际生成的路径
@@ -826,6 +840,7 @@ export default {
       recompileProgress,
       decompileOptions,
       recompileOptions,
+      resignOptions,
       signatureConfigs,
       selectedResignFile,
       selectedSignatureId,

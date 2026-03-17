@@ -95,6 +95,54 @@
           </div>
         </div>
 
+        <!-- 存储管理 -->
+        <div class="section">
+          <div class="section-header">
+            <h2><span class="section-icon">🧹</span>存储管理</h2>
+            <div class="section-actions">
+              <button class="btn btn-sm btn-secondary" @click="refreshCacheInfo" :disabled="isLoadingCacheInfo" data-tooltip="刷新存储信息">
+                <span v-if="!isLoadingCacheInfo">🔄</span>
+                <span v-else class="btn-spinner"></span>
+              </button>
+            </div>
+          </div>
+          <div class="settings-group">
+             <div class="info-grid info-grid-spaced">
+                <div class="info-item">
+                  <p class="info-label">缓存大小</p>
+                  <span class="info-value">{{ formatFileSize(cacheInfo.cache.size) }} ({{ cacheInfo.cache.files }} 文件)</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">输出大小</p>
+                  <span class="info-value">{{ formatFileSize(cacheInfo.output.size) }} ({{ cacheInfo.output.files }} 文件)</span>
+                </div>
+                <div class="info-item">
+                  <p class="info-label">总计占用</p>
+                  <span class="info-value">{{ formatFileSize(cacheInfo.total.size) }}</span>
+                </div>
+             </div>
+             <div class="form-group">
+                <p class="form-text">管理应用产生的临时文件和输出文件。</p>
+                <div class="btn-group">
+                  <button class="btn btn-warning" :class="{ 'loading': isClearingCache }" @click="clearStorage('cache')" 
+                    :disabled="isClearingCache || isLoadingCacheInfo">
+                    <span v-if="!isClearingCache">🗑️</span>
+                    <span v-if="isClearingCache" class="btn-spinner"></span>
+                    {{ isClearingCache ? '正在清理...' : '清理缓存' }}
+                  </button>
+                  <button class="btn btn-warning" :class="{ 'loading': isClearingOutput }" @click="clearStorage('output')" 
+                    :disabled="isClearingOutput || isLoadingCacheInfo">
+                    <span v-if="!isClearingOutput">�</span>
+                    <span v-if="isClearingOutput" class="btn-spinner"></span>
+                    {{ isClearingOutput ? '正在清理...' : '清理输出' }}
+                  </button>
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-panel">
         <!-- 开发工具 -->
         <div class="section">
           <div class="section-header">
@@ -140,7 +188,7 @@
                         <span>✏️</span>
                       </button>
                       <button class="btn btn-sm btn-secondary btn-icon" @click="checkVersion(tool.key)" data-tooltip="刷新状态">
-                        <span>🔄</span>
+                        <span>�</span>
                       </button>
                     </div>
                   </div>
@@ -150,54 +198,6 @@
           </div>
         </div>
 
-        <!-- 存储管理 -->
-        <div class="section">
-          <div class="section-header">
-            <h2><span class="section-icon">🧹</span>存储管理</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-secondary" @click="refreshCacheInfo" :disabled="isLoadingCacheInfo" data-tooltip="刷新存储信息">
-                <span v-if="!isLoadingCacheInfo">🔄</span>
-                <span v-else class="btn-spinner"></span>
-              </button>
-            </div>
-          </div>
-          <div class="settings-group">
-             <div class="info-grid info-grid-spaced">
-                <div class="info-item">
-                  <p class="info-label">缓存大小</p>
-                  <span class="info-value">{{ formatFileSize(cacheInfo.cache.size) }} ({{ cacheInfo.cache.files }} 文件)</span>
-                </div>
-                <div class="info-item">
-                  <p class="info-label">输出大小</p>
-                  <span class="info-value">{{ formatFileSize(cacheInfo.output.size) }} ({{ cacheInfo.output.files }} 文件)</span>
-                </div>
-                <div class="info-item">
-                  <p class="info-label">总计占用</p>
-                  <span class="info-value">{{ formatFileSize(cacheInfo.total.size) }}</span>
-                </div>
-             </div>
-             <div class="form-group">
-                <p class="form-text">管理应用产生的临时文件和输出文件。</p>
-                <div class="btn-group">
-                  <button class="btn btn-warning" :class="{ 'loading': isClearingCache }" @click="clearStorage('cache')" 
-                    :disabled="isClearingCache || isLoadingCacheInfo">
-                    <span v-if="!isClearingCache">🗑️</span>
-                    <span v-if="isClearingCache" class="btn-spinner"></span>
-                    {{ isClearingCache ? '正在清理...' : '清理缓存' }}
-                  </button>
-                  <button class="btn btn-warning" :class="{ 'loading': isClearingOutput }" @click="clearStorage('output')" 
-                    :disabled="isClearingOutput || isLoadingCacheInfo">
-                    <span v-if="!isClearingOutput">📂</span>
-                    <span v-if="isClearingOutput" class="btn-spinner"></span>
-                    {{ isClearingOutput ? '正在清理...' : '清理输出' }}
-                  </button>
-                </div>
-             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="right-panel">
         <!-- 构建信息 -->
         <div class="section">
           <div class="section-header">
@@ -999,19 +999,228 @@ export default {
 </script>
 
 <style scoped>
-.settings-page .page-content {
-  gap: var(--spacing-lg);
+/* 优化信息展示网格布局 */
+.info-category {
+  margin-bottom: var(--spacing-lg);
 }
 
-.info-grid-spaced {
-  margin-bottom: 15px;
+.info-category:last-child {
+  margin-bottom: 0;
 }
 
-.section-actions {
-  position: static;
+.info-category h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.section-header {
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.info-item:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--primary-color-alpha);
+}
+
+.info-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.info-icon {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.info-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* 工具卡片样式优化 */
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.tool-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.tool-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--primary-color-alpha);
+}
+
+.tool-card-header {
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tool-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.tool-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.status-ok {
+  background: rgba(var(--success-rgb), 0.1);
+  color: var(--success-color);
+}
+
+.status-bad {
+  background: rgba(var(--danger-rgb), 0.1);
+  color: var(--danger-color);
+}
+
+.update-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--warning-color);
+  color: white;
+  border-radius: 10px;
+}
+
+.tool-header-right {
+  text-align: right;
+}
+
+.version-text {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tool-card-body {
+  padding: 16px;
+}
+
+.path-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.path-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  padding-left: 8px;
+}
+
+.path-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 4px;
+  min-width: 0;
+}
+
+.path-input:focus {
+  outline: none;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+/* 存储管理样式 */
+.info-grid-spaced {
+  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-md);
+}
+
+.info-grid-spaced .info-item {
+  text-align: center;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-grid-spaced .info-label {
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.info-grid-spaced .info-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary-color);
 }
 </style>

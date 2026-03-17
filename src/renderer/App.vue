@@ -350,12 +350,19 @@ export default {
     async function waitForDOMReady() {
       console.log('等待DOM准备就绪...')
       return new Promise((resolve) => {
+        let attempts = 0;
+        const maxAttempts = 50; // 5 seconds timeout
+
         const checkDOM = () => {
+          attempts++;
           // 检查关键元素是否存在
           const loadingScreen = document.querySelector('.loading-screen')
 
           if (loadingScreen) {
             console.log('DOM已准备就绪')
+            resolve()
+          } else if (attempts >= maxAttempts) {
+            console.warn('等待DOM就绪超时，强制继续')
             resolve()
           } else {
             setTimeout(checkDOM, 100)

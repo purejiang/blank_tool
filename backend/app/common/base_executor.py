@@ -17,7 +17,7 @@ class CommandExecutionContext:
     
     def __init__(self, 
                  cwd: str = None,
-                 timeout: int = 120,
+                 timeout: int = 60*10,
                  encoding: str = 'utf-8',
                  errors: str = 'ignore',
                  text: bool = True,
@@ -149,6 +149,21 @@ class CommandExecutor(BaseCommandExecutor):
             error_msg = f"命令执行超时 ({context.timeout}s): {cmd_str}"
             self._log_error(f"[COMMAND] {error_msg}")
             raise e
+        except FileNotFoundError as e:
+            is_java = False
+            if isinstance(command, str):
+                is_java = command.strip().startswith('java')
+            elif isinstance(command, list) and len(command) > 0:
+                cmd = command[0].lower()
+                is_java = 'java' in cmd
+            
+            if is_java:
+                error_msg = f"未找到 Java 运行环境，请检查是否已安装 Java 或 runtime/jre 目录是否完整。命令: {cmd_str}"
+            else:
+                error_msg = f"系统找不到指定的可执行文件: {cmd_str}"
+            
+            self._log_error(f"[COMMAND] {error_msg}")
+            raise FileNotFoundError(error_msg) from e
         except Exception as e:
             error_msg = f"命令执行异常: {cmd_str}, 错误: {str(e)}"
             tb = traceback.format_exc()
