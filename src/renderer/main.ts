@@ -5,10 +5,7 @@ import naive from 'naive-ui';
 import App from './App.vue';
 import router from './router';
 
-// Import Inter font
-import 'vfonts/Inter.css';
-// Import Naive UI styles
-import 'vfonts/FiraCode.css';
+// Fonts are loaded via Google Fonts in index.html
 
 // Import app styles
 import './assets/styles/main.css';

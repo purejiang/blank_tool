@@ -76,13 +76,11 @@
       <!-- Device Info -->
       <n-grid-item>
         <n-card title="Device Info" :bordered="false" class="device-card" size="small">
-          <template v-if="!selectedDevice" #default>
-            <div class="empty-state">
-              <n-icon size="48" color="#475569"><Info /></n-icon>
-              <p>Select a device to view details</p>
-            </div>
-          </template>
-          <template v-else>
+          <div v-if="!selectedDevice" class="empty-state">
+            <n-icon size="48" color="#475569"><Info /></n-icon>
+            <p>Select a device to view details</p>
+          </div>
+          <template v-else-if="selectedDevice">
             <n-descriptions label-placement="left" :column="1" size="small">
               <n-descriptions-item label="Model">{{ selectedDevice.model || '-' }}</n-descriptions-item>
               <n-descriptions-item label="Serial">{{ selectedDevice.id }}</n-descriptions-item>
