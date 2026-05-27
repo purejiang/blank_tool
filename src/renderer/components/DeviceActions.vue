@@ -1,117 +1,200 @@
 <template>
-  <div class="section">
-    <div class="section-header">
-      <h2><span class="section-icon">⚙️</span>设备操作</h2>
-      <div class="section-actions">
-        <button 
-          class="btn btn-sm btn-secondary" 
+  <n-card :bordered="false" class="device-actions-card" size="small">
+    <template #header>
+      <span class="card-title">Device Actions</span>
+    </template>
+
+    <!-- Reboot Actions -->
+    <div class="actions-row">
+      <n-tag :bordered="false" type="info" size="small" class="section-label">Reboot</n-tag>
+      <n-space :size="8">
+        <n-button
+          size="small"
+          secondary
           :disabled="!selectedDevice"
           @click="rebootDevice('normal')"
-          data-tooltip="重启设备"
         >
-          <span>🔄</span>
-        </button>
-        <button 
-          class="btn btn-sm btn-warning" 
+          <template #icon><n-icon><RotateCw /></n-icon></template>
+          System
+        </n-button>
+        <n-button
+          size="small"
+          secondary
+          type="warning"
           :disabled="!selectedDevice"
           @click="rebootDevice('recovery')"
-          data-tooltip="重启到Recovery模式"
         >
-          <span>🛠️</span>
-        </button>
-        <button 
-          class="btn btn-sm btn-danger" 
+          <template #icon><n-icon><Wrench /></n-icon></template>
+          Recovery
+        </n-button>
+        <n-button
+          size="small"
+          secondary
+          type="error"
           :disabled="!selectedDevice"
           @click="rebootDevice('bootloader')"
-          data-tooltip="重启到Bootloader模式"
         >
-          <span>⚡</span>
-        </button>
-      </div>
+          <template #icon><n-icon><Zap /></n-icon></template>
+          Bootloader
+        </n-button>
+      </n-space>
     </div>
-    <div class="form-group">
-      <label>Shell 命令</label>
-      <div class="input-group">
-        <input 
-          type="text" 
-          class="form-control" 
-          v-model="shellCommand"
-          placeholder="输入 ADB shell 命令" 
+
+    <n-divider style="margin: 14px 0" />
+
+    <!-- Shell Command -->
+    <div class="actions-row">
+      <n-tag :bordered="false" type="info" size="small" class="section-label">Shell</n-tag>
+      <n-space :size="8" style="flex: 1">
+        <n-input
+          v-model:value="shellCommand"
+          placeholder="Enter ADB shell command..."
           :disabled="!selectedDevice"
+          size="small"
+          clearable
           @keyup.enter="executeShellCommand"
-        >
-        <button 
-          class="btn btn-primary" 
+        />
+        <n-button
+          size="small"
+          type="success"
+          secondary
           :disabled="!selectedDevice || !shellCommand.trim()"
           @click="executeShellCommand"
         >
-          <span>▶️</span>执行
-        </button>
+          <template #icon><n-icon><Play /></n-icon></template>
+          Run
+        </n-button>
+      </n-space>
+    </div>
+
+    <!-- Shell Output -->
+    <div v-if="shellOutput" class="shell-output">
+      <div class="shell-output-header">
+        <n-icon size="14"><Terminal /></n-icon>
+        <span>Output</span>
       </div>
+      <pre class="shell-output-text">{{ shellOutput }}</pre>
     </div>
-    <div v-if="shellOutput" class="code-output">
-      <pre>{{ shellOutput }}</pre>
+
+    <!-- Empty State -->
+    <div v-if="!selectedDevice" class="empty-state">
+      <n-icon size="28" color="#475569"><Settings2 /></n-icon>
+      <p class="empty-title">No Device Selected</p>
+      <p class="empty-desc">Select a device to perform actions</p>
     </div>
-  </div>
+  </n-card>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ref } from 'vue'
+import { NIcon } from 'naive-ui'
+import { RotateCw, Wrench, Zap, Terminal, Play, Settings2 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { storeToRefs } from 'pinia'
 
-export default {
-  name: 'DeviceActions',
-  setup() {
-    const { showSuccess, showError, showLoading, completeLoading, failLoading } = useNotification()
-    const deviceStore = useDeviceStore()
-    const { selectedDevice, shellOutput } = storeToRefs(deviceStore)
-    const shellCommand = ref('')
+const { showSuccess, showError, showLoading, completeLoading, failLoading } = useNotification()
+const deviceStore = useDeviceStore()
+const { selectedDevice, shellOutput } = storeToRefs(deviceStore)
+const shellCommand = ref('')
 
-    const rebootDevice = async (mode) => {
+const rebootDevice = async (mode: string) => {
+  const loadingId = showLoading('Rebooting device', `Rebooting to ${mode} mode...`)
 
-      const loadingId = showLoading('正在重启设备', `正在将设备重启到 ${mode} 模式...`)
-      
-      try {
-        const svc = await serviceManager.getService('device')
-        await svc.rebootDevice(mode)
-        
-        completeLoading(loadingId, '重启指令已发送', `设备正在重启到 ${mode} 模式`)
-      } catch (error) {
-        failLoading(loadingId, '重启失败', error.message || '未知错误')
-      }
-    }
-    const executeShellCommand = async () => {
-      if (!shellCommand.value.trim()) return
-      // 对于耗时较短的 shell 命令，也许不需要 loading，或者给一个短的延迟显示？
-      // 这里为了统一体验，加上 loading，因为 adb 命令有时候会卡住
-      const loadingId = showLoading('执行命令', `正在执行: ${shellCommand.value}`)
-      
-      try {
-        const svc = await serviceManager.getService('device')
-        await svc.executeShell(shellCommand.value)
-        shellCommand.value = ''
-        
-        completeLoading(loadingId, '执行完成', '命令执行成功')
-      } catch (error) {
-        failLoading(loadingId, '执行失败', error.message || '未知错误')
-      }
-    }
+  try {
+    const svc = await serviceManager.getService('device')
+    await svc.rebootDevice(mode)
 
-    return {
-      selectedDevice,
-      shellCommand,
-      shellOutput,
-      rebootDevice,
-      executeShellCommand
-    }
+    completeLoading(loadingId, 'Reboot command sent', `Device is rebooting to ${mode} mode`)
+  } catch (error: any) {
+    failLoading(loadingId, 'Reboot failed', error.message || 'Unknown error')
+  }
+}
+
+const executeShellCommand = async () => {
+  if (!shellCommand.value.trim()) return
+
+  const loadingId = showLoading('Executing command', `Running: ${shellCommand.value}`)
+
+  try {
+    const svc = await serviceManager.getService('device')
+    await svc.executeShell(shellCommand.value)
+    shellCommand.value = ''
+
+    completeLoading(loadingId, 'Execution complete', 'Command executed successfully')
+  } catch (error: any) {
+    failLoading(loadingId, 'Execution failed', error.message || 'Unknown error')
   }
 }
 </script>
 
 <style scoped>
-/* Component-specific styles */
-
+.device-actions-card {
+  background: #1E293B;
+  border-radius: 10px;
+}
+.card-title {
+  font-family: Inter, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+.actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-label {
+  flex-shrink: 0;
+  min-width: 56px;
+  text-align: center;
+}
+.shell-output {
+  margin-top: 12px;
+  background: #0C1322;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.shell-output-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #94A3B8;
+  background: rgba(34, 197, 94, 0.06);
+  border-bottom: 1px solid #1E293B;
+}
+.shell-output-text {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: #CBD5E1;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+  color: #64748B;
+  font-size: 14px;
+}
+.empty-state p { margin: 0; }
+.empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94A3B8;
+}
+.empty-desc {
+  font-size: 12px;
+  color: #64748B;
+}
 </style>

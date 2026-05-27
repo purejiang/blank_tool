@@ -1,207 +1,242 @@
 <template>
-  <div class="section">
-    <div class="section-header">
-      <h2><span class="section-icon">📦</span>应用管理</h2>
-      <div class="section-actions">
-        <button 
-          class="btn btn-sm btn-secondary" 
-          :disabled="!selectedDevice"
-          @click="refreshAppList"
-          data-tooltip="刷新应用列表"
-        >
-          <span>🔄</span>
-        </button>
-        <button 
-          class="btn btn-sm btn-primary" 
-          :disabled="!selectedDevice || apps.length === 0"
-          @click="exportAppList"
-          data-tooltip="导出应用列表"
-        >
-          <span>📄</span>
-        </button>
+  <n-card :bordered="false" class="app-manager-card" size="small">
+    <template #header>
+      <div class="card-header">
+        <span class="card-title">App Manager</span>
+        <n-space :size="8">
+          <n-tag v-if="selectedDevice && apps.length > 0" :bordered="false" type="info" size="small">
+            {{ filteredApps.length }} / {{ apps.length }}
+          </n-tag>
+          <n-button
+            size="tiny"
+            secondary
+            :disabled="!selectedDevice"
+            @click="refreshAppList"
+          >
+            <template #icon><n-icon><RefreshCw /></n-icon></template>
+          </n-button>
+          <n-button
+            size="tiny"
+            secondary
+            :disabled="!selectedDevice || apps.length === 0"
+            @click="exportAppList"
+          >
+            <template #icon><n-icon><FileDown /></n-icon></template>
+          </n-button>
+        </n-space>
       </div>
-  </div>
-  <div class="form-group">
-    <label>应用类型</label>
-      <select 
-        class="form-control" 
-        v-model="appType"
+    </template>
+
+    <!-- Filters -->
+    <div class="filter-row">
+      <n-select
+        v-model:value="appType"
+        :options="appTypeOptions"
         :disabled="!selectedDevice"
-        @change="refreshAppList"
+        size="small"
+        placeholder="App type"
+        @update:value="refreshAppList"
+        style="width: 140px"
+      />
+      <n-input
+        v-model:value="searchQuery"
+        placeholder="Search package name..."
+        :disabled="!selectedDevice"
+        size="small"
+        clearable
       >
-        <option value="all">所有应用</option>
-        <option value="system">系统应用</option>
-        <option value="user">用户应用</option>
-        <option value="enabled">已启用应用</option>
-        <option value="disabled">已禁用应用</option>
-    </select>
-  </div>
-  <div class="form-group">
-    <label>搜索应用</label>
-    <input 
-      class="form-control" 
-      type="text" 
-      v-model="searchQuery" 
-      placeholder="输入包名关键字"
-      :disabled="!selectedDevice"
-    >
-  </div>
-  <div class="app-list" v-if="apps.length > 0">
-    <div class="app-list-header">
-      <span>包名</span>
-      <span></span>
+        <template #prefix>
+          <n-icon size="14"><Search /></n-icon>
+        </template>
+      </n-input>
     </div>
-    <div class="app-list-content">
-      <div v-for="app in filteredApps" :key="app.packageName" class="app-item">
-        <input 
-          type="text" 
-          class="form-control app-package-input" 
-          :value="app.packageName" 
-          readonly 
-          :title="app.packageName"
-        >
-        <div class="app-actions">
-            <button class="btn btn-sm btn-primary" :class="{ 'loading': isExporting && isExporting(app.packageName) }" @click="exportApp(app.packageName)" data-tooltip="导出应用">
-            <span v-if="!isExporting || !isExporting(app.packageName)">⏏</span>
-            <span v-if="isExporting && isExporting(app.packageName)" class="btn-spinner"></span>
-          </button>
-          <button class="btn btn-sm btn-danger" @click="uninstallApp(app.packageName)" data-tooltip="卸载应用">🗑</button>
-        </div>
+
+    <!-- App List -->
+    <n-spin :show="loading">
+      <div v-if="!selectedDevice" class="empty-state">
+        <n-icon size="28" color="#475569"><Package /></n-icon>
+        <p class="empty-title">No Device Selected</p>
+        <p class="empty-desc">Select a device to manage apps</p>
       </div>
-    </div>
-  </div>
-  <div v-else class="placeholder">
-      <p>没有要显示的应用</p>
-    </div>
-  </div>
+      <div v-else-if="apps.length === 0" class="empty-state">
+        <n-icon size="28" color="#475569"><Inbox /></n-icon>
+        <p class="empty-title">No Apps Found</p>
+        <p class="empty-desc">Click refresh to load the app list</p>
+      </div>
+      <div v-else-if="filteredApps.length === 0" class="empty-state">
+        <n-icon size="28" color="#475569"><Search /></n-icon>
+        <p class="empty-title">No Matches</p>
+        <p class="empty-desc">Try a different search term</p>
+      </div>
+      <n-scrollbar v-else style="max-height: 320px">
+        <n-list hoverable clickable class="app-list">
+          <n-list-item v-for="app in filteredApps" :key="app.packageName">
+            <template #prefix>
+              <n-icon size="16" color="#64748B"><Box /></n-icon>
+            </template>
+            <span class="app-package-name" :title="app.packageName">
+              {{ app.packageName }}
+            </span>
+            <template #suffix>
+              <n-space :size="4">
+                <n-button
+                  size="tiny"
+                  secondary
+                  type="success"
+                  :loading="isExporting && isExporting(app.packageName)"
+                  @click="exportApp(app.packageName)"
+                >
+                  <template #icon><n-icon><Download /></n-icon></template>
+                </n-button>
+                <n-button
+                  size="tiny"
+                  secondary
+                  type="error"
+                  @click="uninstallApp(app.packageName)"
+                >
+                  <template #icon><n-icon><Trash2 /></n-icon></template>
+                </n-button>
+              </n-space>
+            </template>
+          </n-list-item>
+        </n-list>
+      </n-scrollbar>
+    </n-spin>
+  </n-card>
 </template>
 
-<script>
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { NIcon } from 'naive-ui'
+import {
+  RefreshCw, FileDown, Download, Trash2, Search, Package,
+  Inbox, Box
+} from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { storeToRefs } from 'pinia'
-import { ref, computed } from 'vue'
 
-export default {
-  name: 'AppManager',
-  setup() {
-    const deviceStore = useDeviceStore()
-    const { 
-      selectedDevice, 
-      apps, 
-      appType 
-    } = storeToRefs(deviceStore)
+const deviceStore = useDeviceStore()
+const {
+  selectedDevice,
+  apps,
+  appType
+} = storeToRefs(deviceStore)
 
-    const searchQuery = ref('')
-    const filteredApps = computed(() => {
-      const q = String(searchQuery.value || '').trim().toLowerCase()
-      if (!q) return apps.value
-      return apps.value.filter(a => String(a.packageName || '').toLowerCase().includes(q))
-    })
-    
-    const deviceSvcRef = ref(null)
-    const exportingPackages = ref(new Set())
+const searchQuery = ref('')
+const loading = ref(false)
+const deviceSvcRef = ref<any>(null)
+const exportingPackages = ref(new Set<string>())
 
-    const isExporting = (packageName) => {
-      return exportingPackages.value.has(packageName)
-    }
+const appTypeOptions = [
+  { label: 'All Apps', value: 'all' },
+  { label: 'System Apps', value: 'system' },
+  { label: 'User Apps', value: 'user' },
+  { label: 'Enabled', value: 'enabled' },
+  { label: 'Disabled', value: 'disabled' },
+]
 
-    const refreshAppList = async () => {
-      const svc = deviceSvcRef.value || await serviceManager.getService('device')
-      deviceSvcRef.value = svc
-      await svc.refreshAppList()
-    }
-    const exportAppList = async () => {
-      const svc = deviceSvcRef.value || await serviceManager.getService('device')
-      deviceSvcRef.value = svc
-      await svc.exportAppList()
-    }
-    const copyPackageName = async (packageName) => {
-      const svc = deviceSvcRef.value || await serviceManager.getService('device')
-      deviceSvcRef.value = svc
-      await svc.copyPackageName(packageName)
-    }
-    const exportApp = async (packageName) => {
-      if (exportingPackages.value.has(packageName)) return
-      
-      exportingPackages.value.add(packageName)
-      try {
-        const svc = deviceSvcRef.value || await serviceManager.getService('device')
-        deviceSvcRef.value = svc
-        await svc.exportApp(packageName)
-      } finally {
-        exportingPackages.value.delete(packageName)
-      }
-    }
-    const uninstallApp = async (packageName) => {
-      const svc = deviceSvcRef.value || await serviceManager.getService('device')
-      deviceSvcRef.value = svc
-      await svc.uninstallApp(packageName)
-    }
+const filteredApps = computed(() => {
+  const q = String(searchQuery.value || '').trim().toLowerCase()
+  if (!q) return apps.value
+  return apps.value.filter(a => String(a.packageName || '').toLowerCase().includes(q))
+})
 
-    return {
-      selectedDevice,
-      apps,
-      appType,
-      searchQuery,
-      filteredApps,
-      refreshAppList,
-      exportAppList,
-      copyPackageName,
-      exportApp,
-      uninstallApp,
-      isExporting
-    }
+const isExporting = (packageName: string) => {
+  return exportingPackages.value.has(packageName)
+}
+
+const refreshAppList = async () => {
+  loading.value = true
+  try {
+    const svc = deviceSvcRef.value || await serviceManager.getService('device')
+    deviceSvcRef.value = svc
+    await svc.refreshAppList()
+  } finally {
+    loading.value = false
   }
+}
+
+const exportAppList = async () => {
+  const svc = deviceSvcRef.value || await serviceManager.getService('device')
+  deviceSvcRef.value = svc
+  await svc.exportAppList()
+}
+
+const exportApp = async (packageName: string) => {
+  if (exportingPackages.value.has(packageName)) return
+
+  exportingPackages.value.add(packageName)
+  try {
+    const svc = deviceSvcRef.value || await serviceManager.getService('device')
+    deviceSvcRef.value = svc
+    await svc.exportApp(packageName)
+  } finally {
+    exportingPackages.value.delete(packageName)
+  }
+}
+
+const uninstallApp = async (packageName: string) => {
+  const svc = deviceSvcRef.value || await serviceManager.getService('device')
+  deviceSvcRef.value = svc
+  await svc.uninstallApp(packageName)
 }
 </script>
 
 <style scoped>
-
-
-.app-list {
-  margin-top: 8px;
+.app-manager-card {
+  background: #1E293B;
+  border-radius: 10px;
 }
-.app-list-header {
-  display: grid;
-  grid-template-columns: 1fr 120px;
-  font-weight: 600;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #ddd);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  background: var(--card-bg, #f8f8f8);
-}
-.app-list-header span:last-child {
-  text-align: right;
-  padding-right: 8px;
-}
-.app-list-content {
-  max-height: 320px;
-  overflow-y: auto;
-  border: 1px solid var(--border-color, #ddd);
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-}
-.app-item {
-  display: grid;
-  grid-template-columns: 1fr 100px;
-  gap: 16px;
+.card-header {
+  display: flex;
   align-items: center;
-  padding: 4px 12px;
-  border-bottom: 1px solid #eee;
+  justify-content: space-between;
+  width: 100%;
 }
-.app-item:last-child {
-  border-bottom: none;
+.card-title {
+  font-family: Inter, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+.filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.app-list {
+  margin: -4px 0;
 }
 .app-package-name {
-  font-family: monospace;
-  font-size: 13px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: #CBD5E1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.app-actions {
+:deep(.n-list-item) {
+  border-radius: 8px;
+  margin: 2px 0;
+}
+.empty-state {
   display: flex;
-  justify-content: flex-start;
-  gap: 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 16px;
+  color: #64748B;
+  font-size: 14px;
 }
-.app-actions .btn { margin-left: 0; }
+.empty-state p { margin: 0; }
+.empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94A3B8;
+}
+.empty-desc {
+  font-size: 12px;
+  color: #64748B;
+}
 </style>
