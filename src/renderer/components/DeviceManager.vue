@@ -42,16 +42,16 @@
                 :class="{ selected: selectedDeviceId === device.id }"
               >
                 <template #prefix>
-                  <n-icon size="20" :color="device.state === 'device' ? '#22C55E' : '#F59E0B'">
+                  <n-icon size="20" :color="device.status === 'device' ? '#22C55E' : '#F59E0B'">
                     <Smartphone />
                   </n-icon>
                 </template>
                 <div class="device-item-content">
-                  <span class="device-model">{{ device.model || 'Unknown Device' }}</span>
+                  <span class="device-model">{{ device.name || 'Unknown Device' }}</span>
                   <span class="device-serial">{{ device.id }}</span>
                 </div>
                 <template #suffix>
-                  <span class="device-state-dot" :class="device.state === 'device' ? 'online' : 'warning'"></span>
+                  <span class="device-state-dot" :class="device.status === 'device' ? 'online' : 'warning'"></span>
                 </template>
               </n-list-item>
             </n-list>
@@ -59,15 +59,15 @@
           <template v-if="selectedDeviceId" #action>
             <n-space>
               <n-button
-                :type="isMonitoring ? 'error' : 'success'"
+                :type="isLogcatRunning ? 'error' : 'success'"
                 size="small"
-                @click="toggleMonitoring"
+                @click="toggleLogcat"
                 secondary
               >
                 <template #icon>
                   <n-icon><Activity /></n-icon>
                 </template>
-                {{ isMonitoring ? 'Stop Logcat' : 'Start Logcat' }}
+                {{ isLogcatRunning ? 'Stop Logcat' : 'Start Logcat' }}
               </n-button>
             </n-space>
           </template>
@@ -88,21 +88,21 @@
           <template v-else-if="selectedDevice">
             <n-descriptions label-placement="left" :column="1" size="small" class="device-descriptions">
               <n-descriptions-item label="Model">
-                <span class="info-value highlight">{{ selectedDevice.model || '-' }}</span>
+                <span class="info-value highlight">{{ selectedDevice.name || '-' }}</span>
               </n-descriptions-item>
               <n-descriptions-item label="Serial">
                 <span class="info-value mono">{{ selectedDevice.id }}</span>
               </n-descriptions-item>
               <n-descriptions-item label="Status">
-                <n-tag :type="selectedDevice.state === 'device' ? 'success' : 'warning'" size="small" :bordered="false">
-                  {{ selectedDevice.state }}
+                <n-tag :type="selectedDevice.status === 'device' ? 'success' : 'warning'" size="small" :bordered="false">
+                  {{ selectedDevice.status }}
                 </n-tag>
               </n-descriptions-item>
-              <n-descriptions-item label="Product">{{ selectedDevice.product || '-' }}</n-descriptions-item>
+              <n-descriptions-item label="Product">{{ deviceInfo.product || '-' }}</n-descriptions-item>
               <template v-if="deviceInfo">
                 <n-descriptions-item label="Android">{{ deviceInfo.androidVersion || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="SDK">{{ deviceInfo.sdkLevel || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="CPU">{{ deviceInfo.cpu || '-' }}</n-descriptions-item>
+                <n-descriptions-item label="SDK">{{ deviceInfo.apiLevel || '-' }}</n-descriptions-item>
+                <n-descriptions-item label="CPU">{{ deviceInfo.architecture || '-' }}</n-descriptions-item>
               </template>
             </n-descriptions>
           </template>
@@ -116,7 +116,7 @@
         <div class="card-header logcat-header" @click="logcatCollapsed = !logcatCollapsed" style="cursor: pointer;">
           <span class="card-title">Logcat</span>
           <n-space align="center">
-            <n-tag v-if="isMonitoring" type="success" size="small" :bordered="false">
+            <n-tag v-if="isLogcatRunning" type="success" size="small" :bordered="false">
               <template #icon><n-icon><Circle /></n-icon></template>
               Live
             </n-tag>
@@ -128,7 +128,7 @@
         </div>
       </template>
       <div v-show="!logcatCollapsed">
-        <div v-if="!isMonitoring" class="empty-state logcat-empty">
+        <div v-if="!isLogcatRunning" class="empty-state logcat-empty">
           <n-icon size="32" color="#475569"><Terminal /></n-icon>
           <p class="empty-title">Logcat Not Running</p>
           <p class="empty-desc">Select a device and click "Start Logcat" to begin monitoring</p>
@@ -164,7 +164,7 @@ const {
   selectedDeviceId,
   selectedDevice,
   deviceInfo,
-  isMonitoring,
+  isLogcatRunning,
   connectionStatus,
   logcatOutput
 } = storeToRefs(deviceStore)
@@ -182,14 +182,14 @@ watch(() => logcatOutput.value.length, () => {
   })
 })
 
-// Auto-expand logcat card when monitoring starts
-watch(() => isMonitoring.value, (val) => {
+// Auto-expand logcat card when logcat starts
+watch(() => isLogcatRunning.value, (val) => {
   if (val) logcatCollapsed.value = false
 })
 
 onUnmounted(() => {
-  if (isMonitoring.value) {
-    serviceManager.getService('device').then(svc => svc.toggleMonitoring())
+  if (isLogcatRunning.value) {
+    serviceManager.getService('device').then(svc => svc.toggleLogcat())
   }
 })
 
@@ -211,9 +211,9 @@ const refreshDevices = async () => {
   }
 }
 
-const toggleMonitoring = async () => {
+const toggleLogcat = async () => {
   const svc = await serviceManager.getService('device')
-  await svc.toggleMonitoring()
+  await svc.toggleLogcat()
 }
 
 const handleDeviceSelection = async (id: string) => {

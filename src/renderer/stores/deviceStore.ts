@@ -39,7 +39,10 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     density: '',
     architecture: '',
     systemActivationDate: '',
-    pageSize: ''
+    pageSize: '',
+    product: '',
+    serial: '',
+    state: ''
   })
 
   // 监控状态
