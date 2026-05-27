@@ -1,19 +1,26 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Cache and output directory management handlers.
+"""
+
 import os
 import shutil
+
 from app.utils.logger import Logger
 from app.utils.env import get_env, resolve_path, get_output_dir
+from app.common.exceptions import ToolException
 
 logger = Logger.get_logger("CacheHandler")
 
 
 def _cache_root():
-    # 优先从环境变量获取，默认为 ./cache
     cache_dir = get_env("BT_CACHE_DIR", "./cache")
     return resolve_path(cache_dir)
 
+
 def _output_root():
     return get_output_dir()
-
 
 
 def _get_dir_size(path):
@@ -30,39 +37,40 @@ def _get_dir_size(path):
                     pass
     return total_size, total_files
 
+
 def cache_info(params, stream_handler):
     cache_root = _cache_root()
     output_root = _output_root()
-    
+
     try:
         cache_size, cache_files = _get_dir_size(cache_root)
         output_size, output_files = _get_dir_size(output_root)
-        
+
         return {
             "cache": {
                 "path": cache_root,
                 "size": cache_size,
-                "files": cache_files
+                "files": cache_files,
             },
             "output": {
                 "path": output_root,
                 "size": output_size,
-                "files": output_files
+                "files": output_files,
             },
             "total": {
                 "size": cache_size + output_size,
-                "files": cache_files + output_files
-            }
+                "files": cache_files + output_files,
+            },
         }
     except Exception as e:
-        logger.error(f"获取存储信息失败: {e}")
-        raise e
+        logger.error(f"Failed to get cache info: {e}")
+        raise
 
 
 def _clear_directory(path):
     if not os.path.exists(path):
         return False
-    
+
     for entry in os.listdir(path):
         p = os.path.join(path, entry)
         try:
@@ -74,14 +82,16 @@ def _clear_directory(path):
             pass
     return True
 
+
 def cache_clear(params, stream_handler):
     root = _cache_root()
     try:
         _clear_directory(root)
         return {"path": root, "size": 0, "files": 0}
     except Exception as e:
-        logger.error(f"清除缓存失败: {e}")
-        raise e
+        logger.error(f"Failed to clear cache: {e}")
+        raise
+
 
 def output_clear(params, stream_handler):
     root = _output_root()
@@ -89,25 +99,21 @@ def output_clear(params, stream_handler):
         _clear_directory(root)
         return {"path": root, "size": 0, "files": 0}
     except Exception as e:
-        logger.error(f"清除输出失败: {e}")
-        raise e
+        logger.error(f"Failed to clear output: {e}")
+        raise
+
 
 def storage_clear(params, stream_handler):
-    # Clear both cache and output directories
-    # Get parameters to decide what to clear
-    # params can contain 'target': 'all', 'cache', 'output'
     target = params.get("target", "all")
-    
+
     cleared_paths = []
-    
+
     try:
-        # Clear cache
         if target in ["all", "cache"]:
             cache_root = _cache_root()
             if _clear_directory(cache_root):
                 cleared_paths.append(cache_root)
 
-        # Clear output
         if target in ["all", "output"]:
             output_root = _output_root()
             if _clear_directory(output_root):
@@ -115,8 +121,8 @@ def storage_clear(params, stream_handler):
 
         return {"success": True, "cleared_paths": cleared_paths}
     except Exception as e:
-        logger.error(f"清除存储失败: {e}")
-        raise e
+        logger.error(f"Failed to clear storage: {e}")
+        raise
 
 
 API_MAP = {
@@ -124,6 +130,5 @@ API_MAP = {
     "cache.info": cache_info,
     "cache.clear": cache_clear,
     "output.clear": output_clear,
-    "storage.clear": storage_clear
+    "storage.clear": storage_clear,
 }
-

@@ -1,28 +1,67 @@
-from typing import Callable, Any
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+API handler with middleware-style error formatting and protocol compliance.
+
+Handler functions throw typed business exceptions; the middleware layer
+catches and formats them into BackendResponse JSON using the protocol
+models from ``app.protocol``.
+"""
+
 import threading
 import importlib
 import pkgutil
 import uuid
+from typing import Callable, Any
+
 from app.utils.logger import Logger
+from app.protocol import (
+    BackendResponse,
+    BackendSuccessPayload,
+    BackendErrorPayload,
+    ErrorCode,
+)
+from app.common.exceptions import ToolException, ToolNotFoundError, TimeoutException
+
 
 class ApiHandler:
+    """Receives JSON-RPC requests, dispatches to handler functions, and
+    formats responses using the shared protocol models."""
+
     def __init__(self, send_response: Callable[[dict], None]):
         self.send_response = send_response
-        self.streaming_threads = {}
+        self.streaming_threads: dict[str, tuple] = {}
         self.logger = Logger.get_logger(self.__class__.__name__)
-        self.api_map = self.load_handlers()
+        self.api_map = self._load_handlers()
 
-    def load_handlers(self) -> dict:
-        api_map = {}
+    # ------------------------------------------------------------------
+    # Handler discovery
+    # ------------------------------------------------------------------
+
+    def _load_handlers(self) -> dict:
+        """Auto-discover handler modules and collect their API_MAP entries."""
+        api_map: dict = {}
         handlers_package = 'app.handlers'
         package = importlib.import_module(handlers_package)
-        for _, name, _ in pkgutil.walk_packages(package.__path__, package.__name__ + '.'):
+        for _, name, _ in pkgutil.walk_packages(
+            package.__path__, package.__name__ + '.'
+        ):
             module = importlib.import_module(name)
             if hasattr(module, 'API_MAP'):
                 api_map.update(module.API_MAP)
         return api_map
 
-    def handle_request(self, request_data):
+    # ------------------------------------------------------------------
+    # Request dispatch (middleware)
+    # ------------------------------------------------------------------
+
+    def handle_request(self, request_data: dict) -> dict:
+        """Dispatch a JSON-RPC request to the appropriate handler.
+
+        Returns a dict suitable for JSON serialisation (the output of
+        ``BackendResponse.to_json()`` if the result is a protocol object,
+        or the raw dict for streaming init responses).
+        """
         req_id = request_data.get("id")
         method = request_data.get("method")
         params = request_data.get("params", {})
@@ -30,69 +69,112 @@ class ApiHandler:
         handler = self.api_map.get(method)
 
         if not handler:
-            return {
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Method '{method}' not found"}
-            }
+            return self._error_response(
+                req_id,
+                f"Method '{method}' not found",
+                ErrorCode.METHOD_NOT_FOUND,
+            )
 
         try:
-            # Check if handler is marked as streaming (via decorator) or is in legacy hardcoded list
             is_streaming = getattr(handler, 'is_streaming', False)
-            
+
             if is_streaming:
-                # Pass request_id to stream_handler
-                result = self.stream_handler(handler, req_id)(params)
-                # Return initial response indicating stream started
-                return {"id": req_id, "result": result, "finished": False}
+                raw_result = self.stream_handler(handler, req_id)(params)
+                # Streaming init — return a raw dict (not a BackendResponse)
+                return {"id": req_id, "result": raw_result, "finished": False}
             else:
                 raw_result = handler(params, None)
-                # Automatic wrapping
-                if isinstance(raw_result, dict) and "type" in raw_result:
-                    result = raw_result
-                else:
-                    result = {"type": "success", "payload": raw_result}
-                
-                return {"id": req_id, "result": result, "finished": True}
-        except Exception as e:
-            self.logger.error(f"Error handling request (method={method}): {e}")
-            return {
-                "id": req_id, 
-                "result": {"type": "error", "payload": {"message": str(e)}},
-                "finished": True
-            }
+                return self._success_response(req_id, raw_result)
 
-    def stream_handler(self, handler: Callable[[dict, Callable], None], request_id: Any):
-        def wrapper(params):
+        except ToolNotFoundError as e:
+            self.logger.error(f"Tool not found (method={method}): {e}")
+            return self._error_response(req_id, e.message, e.code)
+        except TimeoutException as e:
+            self.logger.error(f"Timeout (method={method}): {e}")
+            return self._error_response(req_id, e.message, e.code)
+        except ToolException as e:
+            self.logger.error(f"Tool error (method={method}): {e}")
+            return self._error_response(req_id, e.message, e.code)
+        except Exception as e:
+            self.logger.error(f"Handler error (method={method}): {e}")
+            return self._error_response(
+                req_id, str(e), ErrorCode.INTERNAL_ERROR
+            )
+
+    # ------------------------------------------------------------------
+    # Response formatting
+    # ------------------------------------------------------------------
+
+    def _success_response(self, req_id: Any, raw_result: Any) -> str:
+        """Wrap a handler return value into a BackendResponse JSON string."""
+        if isinstance(raw_result, dict) and "type" in raw_result:
+            result = raw_result
+        else:
+            result = BackendSuccessPayload(payload=raw_result).to_dict()
+        return BackendResponse(id=req_id, result=result, finished=True).to_json()
+
+    def _error_response(
+        self, req_id: Any, message: str, code: int
+    ) -> str:
+        """Build a JSON-RPC error response as a BackendResponse JSON string."""
+        return BackendResponse(
+            id=req_id,
+            result=BackendErrorPayload(message=message, code=code),
+            finished=True,
+        ).to_json()
+
+    # ------------------------------------------------------------------
+    # Streaming support
+    # ------------------------------------------------------------------
+
+    def stream_handler(
+        self, handler: Callable, request_id: Any
+    ):
+        """Wrap a streaming handler to run in a background thread.
+
+        Streaming events are sent via ``self.send_response`` and the
+        final message signals ``finished: True``.
+        """
+        def wrapper(params: dict):
             stream_id = f"{handler.__name__}-{str(uuid.uuid4())}"
             stop_event = threading.Event()
 
-            def stream_callback(data):
-                # Send stream data associated with request_id
+            def stream_callback(data: dict):
                 response = {
                     "id": request_id,
                     "result": data,
                     "stream_id": stream_id,
-                    "finished": False
+                    "finished": False,
                 }
                 self.send_response(response)
 
-            def stream_wrapper(stop_event:threading.Event, stream_callback: Callable[[dict], None], params_dict:dict):
+            def stream_worker(
+                stop_event: threading.Event,
+                stream_callback: Callable[[dict], None],
+                params_dict: dict,
+            ):
                 try:
                     handler(params_dict, stream_callback)
                 except Exception as e:
                     self.logger.error(f"Error in stream thread: {e}")
-                    stream_callback({"type": "error", "payload": {"message": str(e)}})
+                    stream_callback({
+                        "type": "error",
+                        "payload": {"message": str(e)},
+                    })
                 finally:
-                    # Send finished signal when thread exits
                     self.send_response({
                         "id": request_id,
                         "stream_id": stream_id,
-                        "finished": True
+                        "finished": True,
                     })
 
-            thread = threading.Thread(target=stream_wrapper, args=(stop_event, stream_callback, params))
+            thread = threading.Thread(
+                target=stream_worker,
+                args=(stop_event, stream_callback, params),
+            )
             thread.start()
 
             self.streaming_threads[stream_id] = (thread, stop_event)
             return {"stream_id": stream_id}
+
         return wrapper

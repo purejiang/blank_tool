@@ -1,24 +1,36 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+AAB signing, conversion, and installation handlers.
+"""
+
 import os
+from typing import Any, Callable, Dict
+
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
+from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 
 logger = Logger.get_logger("AabHandler")
 manager = ToolManager.instance()
 
 
-def aab_sign(params, stream_handler):
+def aab_sign(
+    params: Dict[str, Any], stream_handler: Callable[[str], None] = None
+) -> Dict[str, Any]:
+    """Sign an AAB file using jarsigner."""
     aab_path = params.get("aab_path")
     keystore = params.get("keystore", {})
     if not aab_path or not os.path.exists(aab_path):
-        raise Exception("AAB 路径不存在")
+        raise ToolException("AAB path does not exist")
     if not keystore.get("path") or not keystore.get("alias"):
-        raise Exception("缺少签名所需的 keystore 信息")
+        raise ToolException("Missing keystore info for signing")
 
     try:
         jarsigner = manager.get_tool("jarsigner")
         if not jarsigner or not jarsigner.is_valid:
-            raise Exception("未找到或无效的 jarsigner 工具")
+            raise ToolNotFoundError("jarsigner")
 
         args = [
             "-keystore", keystore.get("path", ""),
@@ -29,28 +41,35 @@ def aab_sign(params, stream_handler):
         args += [aab_path, keystore.get("alias", "")]
 
         context = CommandExecutionContext()
-        result = jarsigner.execute([jarsigner.tool_path] + args, context)
+        result = jarsigner.execute(
+            [jarsigner.tool_path] + args, context
+        )
         if result.get("returncode", 1) != 0:
-            raise Exception(result.get("stderr", "签名失败"))
+            raise ToolException(result.get("stderr", "Signing failed"))
         return {"aab_path": aab_path}
+    except ToolException:
+        raise
     except Exception as e:
-        logger.error(f"AAB 签名失败: {e}")
-        raise e
+        logger.error(f"AAB signing failed: {e}")
+        raise
 
 
 def convert_aab_to_apks(params, stream_handler):
+    """Convert AAB to APKS using bundletool."""
     aab_path = params.get("aab_path")
-    output_path = params.get("output_path") or (os.path.splitext(aab_path)[0] + ".apks")
+    output_path = params.get("output_path") or (
+        os.path.splitext(aab_path)[0] + ".apks"
+    )
     keystore = params.get("keystore", {})
     device_id = params.get("device_id")
 
     if not aab_path or not os.path.exists(aab_path):
-        raise Exception("AAB 路径不存在")
+        raise ToolException("AAB path does not exist")
 
     try:
         bundletool = manager.get_tool("bundletool")
         if not bundletool or not bundletool.is_valid:
-            raise Exception("未找到或无效的 bundletool 工具")
+            raise ToolNotFoundError("bundletool")
 
         args = [
             "build-apks",
@@ -64,82 +83,93 @@ def convert_aab_to_apks(params, stream_handler):
                 "--ks-pass", f"pass:{keystore.get('storepass', '')}",
             ]
             if keystore.get("keypass"):
-                args += ["--key-pass", f"pass:{keystore.get('keypass', '')}"]
+                args += [
+                    "--key-pass",
+                    f"pass:{keystore.get('keypass', '')}",
+                ]
 
         context = CommandExecutionContext()
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
-            raise Exception("未找到或无效的 Java 运行环境")
-        result = bundletool.execute([java, "-jar", bundletool.tool_path] + args, context)
+            raise ToolException("Java runtime not found or invalid")
+        result = bundletool.execute(
+            [java, "-jar", bundletool.tool_path] + args, context
+        )
         if result.get("returncode", 1) != 0:
-            raise Exception(result.get("stderr", "转换失败"))
+            raise ToolException(result.get("stderr", "Conversion failed"))
         return {"apks_path": output_path}
+    except ToolException:
+        raise
     except Exception as e:
-        logger.error(f"AAB 转换为 APKS 失败: {e}")
-        raise e
+        logger.error(f"AAB to APKS conversion failed: {e}")
+        raise
 
 
 def install_aab(params, stream_handler):
-    # 组合操作：先转换为 APKS，再安装到设备
+    """Convert AAB to APKS then install on a device."""
     aab_path = params.get("aab_path")
     device_id = params.get("device_id")
     output_path = params.get("output_path")
     keystore = params.get("keystore", {})
 
     if not aab_path:
-        raise Exception("缺少 aab_path")
+        raise ToolException("Missing aab_path")
     if not device_id:
-        raise Exception("缺少 device_id")
+        raise ToolException("Missing device_id")
 
-    # 如果 output_path 未指定，则自动推导
     if not output_path:
         output_path = os.path.splitext(aab_path)[0] + ".apks"
 
-    # 检查并删除已存在的 APKS 文件
     if os.path.exists(output_path):
         try:
             os.remove(output_path)
-            logger.info(f"已删除旧的 APKS 文件: {output_path}")
+            logger.info(f"Removed old APKS file: {output_path}")
         except Exception as e:
-            logger.warning(f"删除旧的 APKS 文件失败: {e}")
-            # 继续尝试，bundletool 可能会覆盖或报错
+            logger.warning(f"Failed to remove old APKS file: {e}")
 
-    # 先转换
-    convert_result = convert_aab_to_apks({
-        "aab_path": aab_path,
-        "output_path": output_path,
-        "device_id": device_id,
-        "keystore": keystore
-    }, stream_handler)
+    convert_result = convert_aab_to_apks(
+        {
+            "aab_path": aab_path,
+            "output_path": output_path,
+            "device_id": device_id,
+            "keystore": keystore,
+        },
+        stream_handler,
+    )
 
     apks_path = convert_result.get("apks_path")
     if not apks_path:
-        raise Exception("转换后未得到 APKS 路径")
+        raise ToolException("No APKS path after conversion")
 
-    # 再安装
     try:
         bundletool = manager.get_tool("bundletool")
         if not bundletool or not bundletool.is_valid:
-            raise Exception("未找到或无效的 bundletool 工具")
-            
+            raise ToolNotFoundError("bundletool")
+
         adb = manager.get_tool("adb")
         if not adb or not adb.is_valid or not os.path.exists(adb.tool_path):
-            raise Exception("未找到或无效的 adb 工具")
-            
+            raise ToolNotFoundError("adb")
+
         context = CommandExecutionContext()
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
-            raise Exception("未找到或无效的 Java 运行环境")
-            
-        args = [java, "-jar", bundletool.tool_path, "install-apks", "--apks", apks_path, "--adb", adb.tool_path, "--device-id", device_id]
-        
+            raise ToolException("Java runtime not found or invalid")
+
+        args = [
+            java, "-jar", bundletool.tool_path,
+            "install-apks", "--apks", apks_path,
+            "--adb", adb.tool_path, "--device-id", device_id,
+        ]
+
         result = bundletool.execute(args, context)
         if result.get("returncode", 1) != 0:
-            raise Exception(result.get("stderr", "安装失败"))
+            raise ToolException(result.get("stderr", "Installation failed"))
         return {"device_id": device_id, "apks_path": apks_path}
+    except ToolException:
+        raise
     except Exception as e:
-        logger.error(f"安装 AAB 失败: {e}")
-        raise e
+        logger.error(f"AAB installation failed: {e}")
+        raise
 
 
 API_MAP = {
