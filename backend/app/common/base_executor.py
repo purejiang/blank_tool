@@ -162,6 +162,7 @@ class CommandExecutor(BaseCommandExecutor):
                 cmd=command,
                 cwd=context.cwd,
                 env=context.env,
+                shell=context.shell,
                 text=context.text,
                 encoding=context.encoding,
                 errors=context.errors,

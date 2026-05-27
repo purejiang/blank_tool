@@ -105,23 +105,23 @@ class ApiHandler:
     # Response formatting
     # ------------------------------------------------------------------
 
-    def _success_response(self, req_id: Any, raw_result: Any) -> str:
-        """Wrap a handler return value into a BackendResponse JSON string."""
+    def _success_response(self, req_id: Any, raw_result: Any) -> dict:
+        """Wrap a handler return value into a response dict for send_json."""
         if isinstance(raw_result, dict) and "type" in raw_result:
             result = raw_result
         else:
             result = BackendSuccessPayload(payload=raw_result).to_dict()
-        return BackendResponse(id=req_id, result=result, finished=True).to_json()
+        return {"id": req_id, "result": result, "finished": True}
 
     def _error_response(
         self, req_id: Any, message: str, code: int
-    ) -> str:
-        """Build a JSON-RPC error response as a BackendResponse JSON string."""
-        return BackendResponse(
-            id=req_id,
-            result=BackendErrorPayload(message=message, code=code),
-            finished=True,
-        ).to_json()
+    ) -> dict:
+        """Build a JSON-RPC error response dict for send_json."""
+        return {
+            "id": req_id,
+            "result": BackendErrorPayload(message=message, code=code).to_dict(),
+            "finished": True,
+        }
 
     # ------------------------------------------------------------------
     # Streaming support

@@ -226,12 +226,15 @@ class DeviceService {
     }
     try {
       if (api && typeof api.startLogcat === 'function') {
-        api.startLogcat(dev.id)
+        await api.startLogcat(dev.id)
+        store.isLogcatRunning = true
       } else {
         throw new Error('startLogcat API not implemented')
       }
-    } catch {}
-    store.isLogcatRunning = true
+    } catch {
+      store.isLogcatRunning = false
+      return false
+    }
     return true
   }
 

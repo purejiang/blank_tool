@@ -44,27 +44,30 @@ class ToolRegistry:
         BaseTool (excluding BaseTool itself, CommandTool, and classes
         defined in base_tool.py).
         """
-        self._initialized = True
-        package = importlib.import_module(tool_package)
-        for _, name, _ in pkgutil.walk_packages(
-            package.__path__, package.__name__ + '.'
-        ):
-            module = importlib.import_module(name)
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (
-                    isinstance(attr, type)
-                    and issubclass(attr, BaseTool)
-                    and attr is not BaseTool
-                    and attr.__name__ != "CommandTool"
-                    and attr.__module__ != "app.tools.base_tool"
-                ):
-                    key = self._canonical_tool_name(attr.__name__)
-                    default_path = self._default_tool_path(key)
-                    self.logger.info(
-                        f"Discovered tool: {attr.__name__} -> {default_path}"
-                    )
-                    self._discovered[key] = attr
+        with self._discover_lock:
+            if self._initialized:
+                return
+            self._initialized = True
+            package = importlib.import_module(tool_package)
+            for _, name, _ in pkgutil.walk_packages(
+                package.__path__, package.__name__ + '.'
+            ):
+                module = importlib.import_module(name)
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, BaseTool)
+                        and attr is not BaseTool
+                        and attr.__name__ != "CommandTool"
+                        and attr.__module__ != "app.tools.base_tool"
+                    ):
+                        key = self._canonical_tool_name(attr.__name__)
+                        default_path = self._default_tool_path(key)
+                        self.logger.info(
+                            f"Discovered tool: {attr.__name__} -> {default_path}"
+                        )
+                        self._discovered[key] = attr
 
     # ------------------------------------------------------------------
     # Lazy access

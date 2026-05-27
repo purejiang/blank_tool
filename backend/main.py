@@ -15,7 +15,7 @@ import time
 import threading
 from pathlib import Path
 from typing import Dict, Any
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor
 
 # Add backend directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
 from app.utils.env import get_env, load_dotenv, load_server_config, resolve_path
-from app.protocol import BackendResponse, BackendSuccessPayload, BackendErrorPayload, ErrorCode
+from app.protocol import ErrorCode
 
 # Thread-safe lock for writing to stdout
 stdout_lock = threading.Lock()
@@ -194,6 +194,9 @@ def main():
                 continue
             future = executor.submit(process_request, line)
             _futures.append(future)
+            # Prune completed futures to prevent unbounded memory growth
+            if len(_futures) > 100:
+                _futures[:] = [f for f in _futures if not f.done()]
 
         # stdin loop exited (EOF) — attempt reconnect
         logger.warning("stdin closed, attempting reconnect...")
