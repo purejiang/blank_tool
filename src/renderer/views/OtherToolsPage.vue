@@ -1,282 +1,124 @@
 <template>
-  <div class="page other-tools-page">
-    <div class="page-content responsive-two-column">
-      <div class="left-panel">
-        <div class="section responsive-section">
-          <div class="section-header">
-            <h2><span class="section-icon">🔌</span>插件管理</h2>
-            <div class="section-actions">
-              <button class="btn btn-sm btn-secondary" @click="reloadPlugins" :disabled="isLoading" data-tooltip="重新加载插件">
-                <span :class="{ 'spin': isLoading }">🔄</span>
-              </button>
-            </div>
-          </div>
-          
-          <div v-if="plugins.length === 0" class="empty-state">
-            <p v-if="!isLoading">暂无已加载的插件</p>
-            <p v-else>正在加载插件...</p>
-          </div>
-
-          <div v-else class="plugin-list">
-            <div v-for="plugin in plugins" :key="plugin.name" class="plugin-item">
-              <div class="plugin-header">
-                <div class="plugin-title">
-                  <h3>{{ plugin.name }}</h3>
-                  <span class="plugin-version">v{{ plugin.version }}</span>
-                </div>
-                <div class="plugin-author">By {{ plugin.author }}</div>
-              </div>
-              <div class="plugin-body">
-                <p class="plugin-description">{{ plugin.description }}</p>
-              </div>
-              <div class="plugin-actions">
-                <button class="btn btn-sm btn-primary" @click="runPlugin(plugin)" :disabled="plugin.running">
-                  <span v-if="!plugin.running">▶️ 运行</span>
-                  <span v-else class="btn-spinner"></span>
-                </button>
-              </div>
-              <div v-if="plugin.lastResult" class="plugin-result">
-                <pre>{{ plugin.lastResult }}</pre>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="right-panel">
-        <div class="section">
-          <h2><span class="section-icon">💡</span>如何添加插件</h2>
-          <div class="help-content">
-            <p>您可以通过编写 Python 脚本来扩展本工具的功能。</p>
-            <ol>
-              <li>编写一个 Python 脚本 (例如 <code>my_tool.py</code>)</li>
-              <li>实现 <code>run(context, **kwargs)</code> 函数</li>
-              <li>将脚本放入 <code>backend/plugins</code> 目录</li>
-              <li>点击左侧的 <span class="icon">🔄</span> 刷新按钮</li>
-            </ol>
-            <div class="code-example">
-<pre><code># 示例插件结构
-DESCRIPTION = "插件描述"
-VERSION = "1.0.0"
-AUTHOR = "Your Name"
-
-def run(context, **kwargs):
-    context.log("开始执行...")
-    # 您的业务逻辑
-    return {"status": "ok"}
-</code></pre>
-            </div>
-          </div>
-        </div>
+  <div class="tools-page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Plugins & Tools</h1>
+        <p class="page-subtitle">Manage and run extension plugins</p>
       </div>
     </div>
+
+    <n-grid :cols="1" responsive="screen">
+      <n-grid-item span="1 800:2">
+        <n-card title="Plugins" :bordered="false" size="small" class="tools-card">
+          <template #header-extra>
+            <n-button size="tiny" quaternary @click="reloadPlugins" :loading="isLoading">
+              <template #icon><n-icon><RefreshCw /></n-icon></template>
+            </n-button>
+          </template>
+          <div v-if="plugins.length === 0 && !isLoading" class="empty-state">
+            <n-icon size="36" color="#475569"><Puzzle /></n-icon>
+            <p>No plugins loaded</p>
+          </div>
+          <n-spin :show="isLoading">
+            <n-list v-if="plugins.length > 0" hoverable>
+              <n-list-item v-for="plugin in plugins" :key="plugin.name">
+                <n-thing :title="plugin.name" :description="'v' + plugin.version + ' by ' + plugin.author">
+                  <p class="plugin-desc">{{ plugin.description }}</p>
+                  <template #action>
+                    <n-button size="tiny" type="primary" @click="runPlugin(plugin)" :loading="plugin.running">
+                      Run
+                    </n-button>
+                  </template>
+                  <pre v-if="plugin.lastResult" class="plugin-result">{{ plugin.lastResult }}</pre>
+                </n-thing>
+              </n-list-item>
+            </n-list>
+          </n-spin>
+        </n-card>
+      </n-grid-item>
+
+      <n-grid-item span="1 800:1">
+        <n-card title="How to Add Plugins" :bordered="false" size="small" class="tools-card">
+          <p style="color: #CBD5E1; font-size: 14px; line-height: 1.6;">Extend Blank Tool by writing Python scripts.</p>
+          <n-ol>
+            <n-li>Write a Python script (e.g. <code>my_tool.py</code>)</n-li>
+            <n-li>Implement the <code>run(context, **kwargs)</code> function</n-li>
+            <n-li>Place the script in the <code>backend/plugins</code> directory</n-li>
+            <n-li>Click the reload button above</n-li>
+          </n-ol>
+          <n-code code="
+DESCRIPTION = 'Plugin description'
+VERSION = '1.0.0'
+AUTHOR = 'Your Name'
+
+def run(context, **kwargs):
+    context.log('Starting...')
+    return {'status': 'ok'}" language="python" style="margin-top: 12px" />
+        </n-card>
+      </n-grid-item>
+    </n-grid>
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { NIcon } from 'naive-ui'
+import { RefreshCw, Puzzle } from 'lucide-vue-next'
 import { useNotification } from '@/composables/useNotification'
 
-export default {
-  name: 'OtherToolsPage',
-  setup() {
-    const plugins = ref<any[]>([])
-    const isLoading = ref(false)
-    const { showSuccess, showError } = useNotification()
+const plugins = ref<any[]>([])
+const isLoading = ref(false)
+const { showSuccess, showError } = useNotification()
 
-    const callBackend = async (method: string, payload: Record<string, unknown> = {}) => {
-      const api = window.electronAPI
-      if (api && typeof api.callBackendAPI === 'function') {
-        return await (api.callBackendAPI as Function)(method, payload)
-      }
-      return []
-    }
-
-    const loadPlugins = async () => {
-      isLoading.value = true
-      try {
-        plugins.value = (await callBackend('plugin.list', {})) as any[] || []
-      } catch (error: any) {
-        showError('Failed to load plugins', error.message)
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    const reloadPlugins = async () => {
-      isLoading.value = true
-      try {
-        plugins.value = (await callBackend('plugin.reload', {})) as any[] || []
-        showSuccess('Plugin list updated')
-      } catch (error: any) {
-        showError('Failed to reload plugins', error.message)
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    const runPlugin = async (plugin: any) => {
-      plugin.running = true
-      plugin.lastResult = null
-      try {
-        const result = await callBackend('plugin.run', { name: plugin.name, params: {} })
-        plugin.lastResult = JSON.stringify(result, null, 2)
-        showSuccess(`Plugin ${plugin.name} executed`)
-      } catch (error: any) {
-        showError(`Plugin ${plugin.name} failed`, error.message)
-        plugin.lastResult = `Error: ${error.message}`
-      } finally {
-        plugin.running = false
-      }
-    }
-
-    onMounted(() => {
-      loadPlugins()
-    })
-
-    return {
-      plugins,
-      isLoading,
-      reloadPlugins,
-      runPlugin
-    }
+const callBackend = async (method: string, payload: Record<string, unknown> = {}) => {
+  const api = window.electronAPI
+  if (api && typeof api.callBackendAPI === 'function') {
+    return await (api.callBackendAPI as Function)(method, payload)
   }
+  return []
 }
+
+const loadPlugins = async () => {
+  isLoading.value = true
+  try {
+    plugins.value = (await callBackend('plugin.list', {})) as any[] || []
+  } catch (error: any) {
+    showError('Failed to load plugins', error.message)
+  } finally { isLoading.value = false }
+}
+
+const reloadPlugins = async () => {
+  isLoading.value = true
+  try {
+    plugins.value = (await callBackend('plugin.reload', {})) as any[] || []
+    showSuccess('Plugin list updated')
+  } catch (error: any) {
+    showError('Failed to reload plugins', error.message)
+  } finally { isLoading.value = false }
+}
+
+const runPlugin = async (plugin: any) => {
+  plugin.running = true; plugin.lastResult = null
+  try {
+    const result = await callBackend('plugin.run', { name: plugin.name, params: {} })
+    plugin.lastResult = JSON.stringify(result, null, 2)
+    showSuccess(`Plugin ${plugin.name} executed`)
+  } catch (error: any) {
+    showError(`Plugin ${plugin.name} failed`, error.message)
+    plugin.lastResult = `Error: ${error.message}`
+  } finally { plugin.running = false }
+}
+
+onMounted(() => loadPlugins())
 </script>
 
 <style scoped>
-.empty-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 200px;
-  color: var(--text-secondary);
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-  display: inline-block;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.plugin-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.plugin-item {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 16px;
-  transition: all 0.2s;
-}
-
-.plugin-item:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.plugin-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-
-.plugin-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.plugin-title h3 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--text-primary);
-}
-
-.plugin-version {
-  font-size: 12px;
-  background: var(--bg-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--text-secondary);
-}
-
-.plugin-author {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.plugin-description {
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin-bottom: 12px;
-}
-
-.plugin-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.plugin-result {
-  margin-top: 12px;
-  background: var(--bg-primary);
-  padding: 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  overflow-x: auto;
-}
-
-.plugin-result pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.help-content {
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.help-content ol {
-  padding-left: 20px;
-  margin-bottom: 16px;
-}
-
-.help-content li {
-  margin-bottom: 8px;
-}
-
-.code-example {
-  background: var(--bg-secondary);
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  border: 1px solid var(--border-color);
-}
-
-.code-example pre {
-  margin: 0;
-  font-family: 'Consolas', monospace;
-  font-size: 13px;
-}
-
-.icon {
-  font-style: normal;
-}
+.tools-page { max-width: 1000px; margin: 0 auto; }
+.page-header { margin-bottom: 20px; }
+.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: #F8FAFC; margin: 0; letter-spacing: -0.02em; }
+.page-subtitle { font-size: 13px; color: #94A3B8; margin: 4px 0 0; }
+.tools-card { background: #1E293B; border-radius: 10px; margin-bottom: 16px; }
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px; color: #64748B; font-size: 14px; }
+.plugin-desc { color: #94A3B8; font-size: 13px; margin: 4px 0; }
+.plugin-result { background: #0C1322; padding: 8px 12px; border-radius: 6px; font-family: 'Fira Code', monospace; font-size: 12px; color: #CBD5E1; margin-top: 8px; white-space: pre-wrap; word-break: break-all; overflow-x: auto; }
 </style>
