@@ -10,8 +10,8 @@
                 <n-icon size="48" color="#22C55E">
                   <Terminal />
                 </n-icon>
-                <h1 class="loading-title">Blank Tool</h1>
-                <p class="loading-subtitle">Android Development Toolkit</p>
+                <h1 class="loading-title">{{ $t('app.title') }}</h1>
+                <p class="loading-subtitle">{{ $t('app.subtitle') }}</p>
               </div>
               <n-progress
                 type="line"
@@ -30,7 +30,7 @@
                 <n-alert type="error" :title="initError">
                   <template v-if="showRetryButton" #footer>
                     <n-button @click="retryInitialization" type="error" size="small">
-                      Retry ({{ retryCount }}/{{ maxRetries }})
+                      {{ $t('app.retry') }} ({{ retryCount }}/{{ maxRetries }})
                     </n-button>
                   </template>
                 </n-alert>
@@ -56,7 +56,7 @@
                   <n-icon size="28" color="#22C55E">
                     <Terminal />
                   </n-icon>
-                  <span v-if="!sidebarCollapsed" class="brand-text">Blank Tool</span>
+                  <span v-if="!sidebarCollapsed" class="brand-text">{{ $t('app.title') }}</span>
                 </div>
 
                 <!-- Navigation Menu -->
@@ -106,6 +106,7 @@
 <script setup lang="ts">
 import { ref, h, onMounted, onUnmounted, getCurrentInstance, computed, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { darkTheme, NIcon, zhCN, enUS } from 'naive-ui'
 import {
   Smartphone, Package, Settings, Wrench, Terminal,
@@ -128,6 +129,7 @@ import { useToolStore, useAppConfigStore, useSystemStore } from '@stores/index'
 
 const router = useRouter()
 const route = useRoute()
+const { t, locale: i18nLocale } = useI18n()
 
 // Theme overrides for OLED dark mode
 const themeOverrides = {
@@ -160,9 +162,9 @@ const sidebarCollapsed = ref(false)
 const activeMenuKey = ref(route.path || '/device')
 
 // Locale for Naive UI i18n
-const locale = ref(zhCN)
+const locale = computed(() => i18nLocale.value === 'zh-CN' ? zhCN : enUS)
 const setLocale = (lang: string) => {
-  locale.value = lang === 'zh-CN' ? zhCN : enUS
+  i18nLocale.value = lang
 }
 provide('setLocale', setLocale)
 
@@ -175,10 +177,10 @@ function renderIcon(icon: any) {
 }
 
 const menuOptions: MenuOption[] = [
-  { label: 'Device', key: '/device', icon: renderIcon(Smartphone) },
-  { label: 'Package', key: '/package', icon: renderIcon(Package) },
-  { label: 'Tools', key: '/tools', icon: renderIcon(Wrench) },
-  { label: 'Settings', key: '/settings', icon: renderIcon(Settings) },
+  { label: t('nav.device'), key: '/device', icon: renderIcon(Smartphone) },
+  { label: t('nav.package'), key: '/package', icon: renderIcon(Package) },
+  { label: t('nav.tools'), key: '/tools', icon: renderIcon(Wrench) },
+  { label: t('nav.settings'), key: '/settings', icon: renderIcon(Settings) },
 ]
 
 function handleMenuSelect(key: string) {
@@ -189,7 +191,7 @@ function handleMenuSelect(key: string) {
 // Loading state
 const isLoading = ref(true)
 const loadingProgress = ref(0)
-const loadingStep = ref('Initializing...')
+const loadingStep = ref(t('app.loadingInit'))
 const initError = ref('')
 const showRetryButton = ref(false)
 const retryCount = ref(0)
@@ -239,10 +241,10 @@ async function initializeApplication() {
     initError.value = ''
 
     const initTasks = [
-      { name: 'Loading services...', task: initializeServices, weight: 40, critical: true },
-      { name: 'Loading configuration...', task: loadApplicationData, weight: 30, critical: true },
-      { name: 'Checking tools...', task: checkToolsStatus, weight: 20, critical: false },
-      { name: 'Preparing UI...', task: prepareUI, weight: 10, critical: true },
+      { name: t('app.loadingServices'), task: initializeServices, weight: 40, critical: true },
+      { name: t('app.loadingConfig'), task: loadApplicationData, weight: 30, critical: true },
+      { name: t('app.loadingTools'), task: checkToolsStatus, weight: 20, critical: false },
+      { name: t('app.loadingUI'), task: prepareUI, weight: 10, critical: true },
     ]
 
     let completedWeight = 0
@@ -271,7 +273,7 @@ async function initializeApplication() {
   } catch (error: any) {
     console.error('Init failed:', error)
     stopTimer()
-    initError.value = error.message || 'Initialization failed'
+    initError.value = error.message || t('app.initFailed')
     showRetryButton.value = true
     throw error
   }

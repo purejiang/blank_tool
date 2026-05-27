@@ -2,7 +2,7 @@
   <n-card :bordered="false" class="app-manager-card" size="small">
     <template #header>
       <div class="card-header">
-        <span class="card-title">App Manager</span>
+        <span class="card-title">{{ t('appManager.title') }}</span>
         <n-space :size="8">
           <n-tag v-if="selectedDevice && apps.length > 0" :bordered="false" type="info" size="small">
             {{ filteredApps.length }} / {{ apps.length }}
@@ -34,13 +34,13 @@
         :options="appTypeOptions"
         :disabled="!selectedDevice"
         size="small"
-        placeholder="App type"
+        :placeholder="t('appManager.appType')"
         @update:value="refreshAppList"
         style="width: 140px"
       />
       <n-input
         v-model:value="searchQuery"
-        placeholder="Search package name..."
+        :placeholder="t('appManager.searchPlaceholder')"
         :disabled="!selectedDevice"
         size="small"
         clearable
@@ -55,18 +55,18 @@
     <n-spin :show="loading">
       <div v-if="!selectedDevice" class="empty-state">
         <n-icon size="28" color="#475569"><Package /></n-icon>
-        <p class="empty-title">No Device Selected</p>
-        <p class="empty-desc">Select a device to manage apps</p>
+        <p class="empty-title">{{ t('appManager.noDeviceSelected') }}</p>
+        <p class="empty-desc">{{ t('appManager.noDeviceSelectedDesc') }}</p>
       </div>
       <div v-else-if="apps.length === 0" class="empty-state">
         <n-icon size="28" color="#475569"><Inbox /></n-icon>
-        <p class="empty-title">No Apps Found</p>
-        <p class="empty-desc">Click refresh to load the app list</p>
+        <p class="empty-title">{{ t('appManager.noApps') }}</p>
+        <p class="empty-desc">{{ t('appManager.noAppsDesc') }}</p>
       </div>
       <div v-else-if="filteredApps.length === 0" class="empty-state">
         <n-icon size="28" color="#475569"><Search /></n-icon>
-        <p class="empty-title">No Matches</p>
-        <p class="empty-desc">Try a different search term</p>
+        <p class="empty-title">{{ t('appManager.noMatches') }}</p>
+        <p class="empty-desc">{{ t('appManager.noMatchesDesc') }}</p>
       </div>
       <n-scrollbar v-else style="max-height: 320px">
         <n-list hoverable clickable class="app-list">
@@ -107,6 +107,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
   RefreshCw, FileDown, Download, Trash2, Search, Package,
@@ -115,6 +116,8 @@ import {
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { storeToRefs } from 'pinia'
+
+const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
 const {
@@ -128,13 +131,13 @@ const loading = ref(false)
 const deviceSvcRef = ref<any>(null)
 const exportingPackages = ref(new Set<string>())
 
-const appTypeOptions = [
-  { label: 'All Apps', value: 'all' },
-  { label: 'System Apps', value: 'system' },
-  { label: 'User Apps', value: 'user' },
-  { label: 'Enabled', value: 'enabled' },
-  { label: 'Disabled', value: 'disabled' },
-]
+const appTypeOptions = computed(() => [
+  { label: t('appManager.allApps'), value: 'all' },
+  { label: t('appManager.systemApps'), value: 'system' },
+  { label: t('appManager.userApps'), value: 'user' },
+  { label: t('appManager.enabled'), value: 'enabled' },
+  { label: t('appManager.disabled'), value: 'disabled' },
+])
 
 const filteredApps = computed(() => {
   const q = String(searchQuery.value || '').trim().toLowerCase()

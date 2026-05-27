@@ -1,33 +1,33 @@
 <template>
   <div v-if="visible" class="modal-overlay">
      <div class="modal-content">
-        <h3>{{ isEdit ? '编辑签名配置' : '新增签名配置' }}</h3>
+        <h3>{{ isEdit ? t('signature.editTitle') : t('signature.addTitle') }}</h3>
         <div class="form-group">
-           <label>配置名称:</label>
-           <input v-model="form.name" type="text" placeholder="例如: Release Key" class="form-control">
+           <label>{{ t('signature.configName') }}:</label>
+           <input v-model="form.name" type="text" :placeholder="t('signature.configNamePlaceholder')" class="form-control">
         </div>
         <div class="form-group">
-           <label>Keystore路径:</label>
+           <label>{{ t('signature.keystorePath') }}:</label>
            <div class="input-group">
               <input v-model="form.path" type="text" class="form-control" readonly>
-              <button class="btn btn-secondary" @click="selectKeystoreFile">选择</button>
+              <button class="btn btn-secondary" @click="selectKeystoreFile">{{ t('signature.choose') }}</button>
            </div>
         </div>
         <div class="form-group">
-           <label>Alias (别名):</label>
+           <label>{{ t('signature.alias') }}:</label>
            <input v-model="form.alias" type="text" class="form-control">
         </div>
         <div class="form-group">
-           <label>Store Password:</label>
+           <label>{{ t('signature.storePassword') }}:</label>
            <input v-model="form.storepass" type="password" class="form-control">
         </div>
         <div class="form-group">
-           <label>Key Password:</label>
-           <input v-model="form.keypass" type="password" class="form-control" placeholder="留空则同Store Password">
+           <label>{{ t('signature.keyPassword') }}:</label>
+           <input v-model="form.keypass" type="password" class="form-control" :placeholder="t('signature.keyPasswordPlaceholder')">
         </div>
         <div class="modal-actions">
-           <button class="btn btn-secondary" @click="close">取消</button>
-           <button class="btn btn-primary" @click="save">保存</button>
+           <button class="btn btn-secondary" @click="close">{{ t('signature.cancel') }}</button>
+           <button class="btn btn-primary" @click="save">{{ t('signature.save') }}</button>
         </div>
      </div>
   </div>
@@ -35,6 +35,7 @@
 
 <script>
 import { ref, reactive, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import serviceManager from '@services/ServiceManager'
 
 export default {
@@ -51,6 +52,7 @@ export default {
   },
   emits: ['update:visible', 'save'],
   setup(props, { emit }) {
+    const { t } = useI18n()
     const form = reactive({
       id: '',
       name: '',
@@ -84,7 +86,7 @@ export default {
 
     const save = () => {
        if (!form.name || !form.path || !form.alias) {
-           alert('请填写必要信息(名称、路径、别名)')
+           alert(t('signature.fillRequired'))
            return
        }
        emit('save', { ...form })
@@ -95,8 +97,8 @@ export default {
         try {
         const systemSvc = await serviceManager.getService('system')
         const res = await systemSvc.selectFile({
-          title: '选择Keystore文件',
-          filters: [{ name: 'Keystore Files', extensions: ['jks', 'keystore'] }]
+          title: t('signature.selectKeystore'),
+          filters: [{ name: t('signature.keystoreFiles'), extensions: ['jks', 'keystore'] }]
         })
         if (res && !res.canceled) {
             const p = (res.filePath || (res.filePaths && res.filePaths[0]) || '').trim()
@@ -114,7 +116,8 @@ export default {
       isEdit,
       close,
       save,
-      selectKeystoreFile
+      selectKeystoreFile,
+      t,
     }
   }
 }

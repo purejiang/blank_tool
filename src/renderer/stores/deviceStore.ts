@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed, watch } from 'vue'
+import i18n from '../i18n'
 
 interface Device {
   id: string;
@@ -56,7 +57,7 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
   const selectedDevice = computed(() => devices.value.find(d => d.id === selectedDeviceId.value) || null)
   const connectionStatus = computed(() => ({
     connected: deviceCount.value > 0,
-    text: deviceCount.value > 0 ? `已连接 ${deviceCount.value} 个设备` : '未发现设备'
+    text: deviceCount.value > 0 ? i18n.global.t('device.connected', { count: deviceCount.value }) : i18n.global.t('device.noDevices')
   }))
 
   // 更新设备列表

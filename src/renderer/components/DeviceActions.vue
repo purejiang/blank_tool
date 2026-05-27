@@ -1,12 +1,12 @@
 <template>
   <n-card :bordered="false" class="device-actions-card" size="small">
     <template #header>
-      <span class="card-title">Device Actions</span>
+      <span class="card-title">{{ t('actions.title') }}</span>
     </template>
 
     <!-- Reboot Actions -->
     <div class="actions-row">
-      <n-tag :bordered="false" type="info" size="small" class="section-label">Reboot</n-tag>
+      <n-tag :bordered="false" type="info" size="small" class="section-label">{{ t('actions.reboot') }}</n-tag>
       <n-space :size="8">
         <n-button
           size="small"
@@ -15,7 +15,7 @@
           @click="rebootDevice('normal')"
         >
           <template #icon><n-icon><RotateCw /></n-icon></template>
-          System
+          {{ t('actions.system') }}
         </n-button>
         <n-button
           size="small"
@@ -25,7 +25,7 @@
           @click="rebootDevice('recovery')"
         >
           <template #icon><n-icon><Wrench /></n-icon></template>
-          Recovery
+          {{ t('actions.recovery') }}
         </n-button>
         <n-button
           size="small"
@@ -35,7 +35,7 @@
           @click="rebootDevice('bootloader')"
         >
           <template #icon><n-icon><Zap /></n-icon></template>
-          Bootloader
+          {{ t('actions.bootloader') }}
         </n-button>
       </n-space>
     </div>
@@ -44,11 +44,11 @@
 
     <!-- Shell Command -->
     <div class="actions-row">
-      <n-tag :bordered="false" type="info" size="small" class="section-label">Shell</n-tag>
+      <n-tag :bordered="false" type="info" size="small" class="section-label">{{ t('actions.shell') }}</n-tag>
       <n-space :size="8" style="flex: 1">
         <n-input
           v-model:value="shellCommand"
-          placeholder="Enter ADB shell command..."
+          :placeholder="t('actions.shellPlaceholder')"
           :disabled="!selectedDevice"
           size="small"
           clearable
@@ -62,7 +62,7 @@
           @click="executeShellCommand"
         >
           <template #icon><n-icon><Play /></n-icon></template>
-          Run
+          {{ t('actions.run') }}
         </n-button>
       </n-space>
     </div>
@@ -71,7 +71,7 @@
     <div v-if="shellOutput" class="shell-output">
       <div class="shell-output-header">
         <n-icon size="14"><Terminal /></n-icon>
-        <span>Output</span>
+        <span>{{ t('actions.output') }}</span>
       </div>
       <pre class="shell-output-text">{{ shellOutput }}</pre>
     </div>
@@ -79,14 +79,15 @@
     <!-- Empty State -->
     <div v-if="!selectedDevice" class="empty-state">
       <n-icon size="28" color="#475569"><Settings2 /></n-icon>
-      <p class="empty-title">No Device Selected</p>
-      <p class="empty-desc">Select a device to perform actions</p>
+      <p class="empty-title">{{ t('actions.noDeviceSelected') }}</p>
+      <p class="empty-desc">{{ t('actions.noDeviceSelectedDesc') }}</p>
     </div>
   </n-card>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { RotateCw, Wrench, Zap, Terminal, Play, Settings2 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
@@ -94,37 +95,39 @@ import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { storeToRefs } from 'pinia'
 
+const { t } = useI18n()
+
 const { showSuccess, showError, showLoading, completeLoading, failLoading } = useNotification()
 const deviceStore = useDeviceStore()
 const { selectedDevice, shellOutput } = storeToRefs(deviceStore)
 const shellCommand = ref('')
 
 const rebootDevice = async (mode: string) => {
-  const loadingId = showLoading('Rebooting device', `Rebooting to ${mode} mode...`)
+  const loadingId = showLoading(t('actions.rebooting'), t('actions.rebootingTo', { mode }))
 
   try {
     const svc = await serviceManager.getService('device')
     await svc.rebootDevice(mode)
 
-    completeLoading(loadingId, 'Reboot command sent', `Device is rebooting to ${mode} mode`)
+    completeLoading(loadingId, t('actions.rebootSent'), t('actions.rebootDesc', { mode }))
   } catch (error: any) {
-    failLoading(loadingId, 'Reboot failed', error.message || 'Unknown error')
+    failLoading(loadingId, t('actions.rebootFailed'), error.message || t('actions.unknownError'))
   }
 }
 
 const executeShellCommand = async () => {
   if (!shellCommand.value.trim()) return
 
-  const loadingId = showLoading('Executing command', `Running: ${shellCommand.value}`)
+  const loadingId = showLoading(t('actions.executing'), t('actions.executingCmd', { cmd: shellCommand.value }))
 
   try {
     const svc = await serviceManager.getService('device')
     await svc.executeShell(shellCommand.value)
     shellCommand.value = ''
 
-    completeLoading(loadingId, 'Execution complete', 'Command executed successfully')
+    completeLoading(loadingId, t('actions.executionComplete'), t('actions.executionSuccess'))
   } catch (error: any) {
-    failLoading(loadingId, 'Execution failed', error.message || 'Unknown error')
+    failLoading(loadingId, t('actions.executionFailed'), error.message || t('actions.unknownError'))
   }
 }
 </script>

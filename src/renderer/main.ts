@@ -2,6 +2,7 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import type { PiniaPluginContext } from 'pinia';
 import naive from 'naive-ui';
+import i18n from './i18n';
 import App from './App.vue';
 import router from './router';
 
@@ -57,6 +58,9 @@ app.use(pinia);
 // 使用Vue Router
 app.use(router);
 
+// 使用i18n
+app.use(i18n);
+
 // 启动应用
 async function launchApp() {
   try {
@@ -85,7 +89,7 @@ async function launchApp() {
           border-radius: 8px;
           box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         ">
-          <h2 style="color: #e74c3c; margin-bottom: 1rem;">应用初始化失败</h2>
+          <h2 style="color: #e74c3c; margin-bottom: 1rem;">App Initialization Failed</h2>
           <p style="color: #666; margin-bottom: 1rem;">${error.message}</p>
           <button onclick="location.reload()" style="
             padding: 0.5rem 1rem;
@@ -94,7 +98,7 @@ async function launchApp() {
             border: none;
             border-radius: 4px;
             cursor: pointer;
-          ">重新加载</button>
+          ">Reload</button>
         </div>
       </div>
     `;

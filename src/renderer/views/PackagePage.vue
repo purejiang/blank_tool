@@ -2,28 +2,28 @@
   <div class="package-page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Package Manager</h1>
-        <p class="page-subtitle">Analyze, install, decompile, recompile, and resign APK/AAB packages</p>
+        <h1 class="page-title">{{ t('package.title') }}</h1>
+        <p class="page-subtitle">{{ t('package.subtitle') }}</p>
       </div>
     </div>
 
     <n-grid :cols="1" :x-gap="16" responsive="screen" item-responsive>
       <!-- Left Column: Analysis & Install -->
       <n-grid-item span="1 800:1">
-        <div class="section-label">Analysis & Install</div>
+        <div class="section-label">{{ t('package.analysisInstall') }}</div>
 
         <!-- APK Analysis -->
         <n-card :bordered="false" size="small" class="pkg-card">
           <template #header>
             <div class="card-header-row">
               <n-icon size="18" color="#3B82F6"><Search /></n-icon>
-              <span class="card-title">APK Analysis</span>
+              <span class="card-title">{{ t('package.apkAnalysis') }}</span>
             </div>
           </template>
           <div class="drop-zone" @drop="handleDrop($event, handleApkFileSelect)" @dragover.prevent
             @dragenter.prevent @click="!isAnalyzing && selectApkFile()">
             <n-icon size="28" color="#475569"><Package /></n-icon>
-            <p class="drop-text">Drop APK here or click to browse</p>
+            <p class="drop-text">{{ t('package.dropApkHere') }}</p>
             <input ref="apkFileInput" type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleApkFileSelect)">
           </div>
@@ -37,7 +37,7 @@
             <n-button type="primary" size="small" :loading="isAnalyzing"
               :disabled="!selectedAnalysisFile || isAnalyzing" @click="analyzeApk" block>
               <template #icon><n-icon><Search /></n-icon></template>
-              Analyze
+              {{ t('package.analyze') }}
             </n-button>
           </div>
         </n-card>
@@ -47,14 +47,14 @@
           <template #header>
             <div class="card-header-row">
               <n-icon size="18" color="#22C55E"><Download /></n-icon>
-              <span class="card-title">Install</span>
+              <span class="card-title">{{ t('package.install') }}</span>
             </div>
           </template>
           <div class="drop-zone" :class="{ disabled: isInstalling }"
             @drop="!isInstalling && handleDrop($event, handleInstallFileSelect)" @dragover.prevent @dragenter.prevent
             @click="!isInstalling && selectInstallFile()">
             <n-icon size="28" color="#475569"><Download /></n-icon>
-            <p class="drop-text">Drop APK/AAB here to install</p>
+            <p class="drop-text">{{ t('package.dropToInstall') }}</p>
             <input ref="installFileInput" type="file" accept=".apk,.aab" class="hidden-input"
               @change="handleFileInputChange($event, handleInstallFileSelect)">
           </div>
@@ -67,7 +67,7 @@
             <n-button type="success" size="small" :loading="isInstalling"
               :disabled="!selectedInstallFile || isInstalling" @click="installApp" block>
               <template #icon><n-icon><Download /></n-icon></template>
-              Install
+              {{ t('package.install') }}
             </n-button>
           </div>
         </n-card>
@@ -77,13 +77,13 @@
           <template #header>
             <div class="card-header-row">
               <n-icon size="18" color="#F59E0B"><Key /></n-icon>
-              <span class="card-title">Signature Configs</span>
+              <span class="card-title">{{ t('package.signatureConfigs') }}</span>
             </div>
           </template>
           <template #header-extra>
             <n-button size="tiny" quaternary @click="openSignatureModal()">
               <template #icon><n-icon><Plus /></n-icon></template>
-              Add
+              {{ t('package.add') }}
             </n-button>
           </template>
           <div v-if="signatureConfigs.length > 0" class="sig-list">
@@ -104,27 +104,27 @@
           </div>
           <div v-else class="empty-state">
             <n-icon size="24" color="#475569"><Key /></n-icon>
-            <p>No signature configs</p>
+            <p>{{ t('package.noSignatureConfigs') }}</p>
           </div>
         </n-card>
       </n-grid-item>
 
       <!-- Right Column: Decompile & Resign -->
       <n-grid-item span="1 800:1">
-        <div class="section-label">Decompile & Resign</div>
+        <div class="section-label">{{ t('package.decompileResign') }}</div>
 
         <!-- Decompile -->
         <n-card :bordered="false" size="small" class="pkg-card">
           <template #header>
             <div class="card-header-row">
               <n-icon size="18" color="#8B5CF6"><Unlock /></n-icon>
-              <span class="card-title">Decompile</span>
+              <span class="card-title">{{ t('package.decompile') }}</span>
             </div>
           </template>
           <div class="drop-zone" @drop="handleDrop($event, handleDecompileFileSelect)" @dragover.prevent
             @dragenter.prevent @click="selectDecompileFile()">
             <n-icon size="28" color="#475569"><Unlock /></n-icon>
-            <p class="drop-text">Drop APK to decompile</p>
+            <p class="drop-text">{{ t('package.dropToDecompile') }}</p>
             <input ref="decompileFileInput" type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleDecompileFileSelect)">
           </div>
@@ -138,11 +138,11 @@
             <n-button type="primary" size="small" :loading="isDecompiling"
               :disabled="!selectedDecompileFile || isDecompiling" @click="startDecompile" block>
               <template #icon><n-icon><Unlock /></n-icon></template>
-              Decompile
+              {{ t('package.decompile') }}
             </n-button>
             <n-button v-if="decompileOutputPath" size="small" @click="openDecompileOutput">
               <template #icon><n-icon><FolderOpen /></n-icon></template>
-              Open
+              {{ t('package.open') }}
             </n-button>
           </div>
         </n-card>
@@ -152,15 +152,15 @@
           <template #header>
             <div class="card-header-row">
               <n-icon size="18" color="#EF4444"><Lock /></n-icon>
-              <span class="card-title">Recompile</span>
+              <span class="card-title">{{ t('package.recompile') }}</span>
             </div>
           </template>
           <div class="drop-zone" @click="selectProjectDir">
             <n-icon size="28" color="#475569"><Lock /></n-icon>
-            <p class="drop-text">Select decompiled project directory</p>
+            <p class="drop-text">{{ t('package.selectProjectDir') }}</p>
             <n-button size="small" quaternary @click.stop="selectProjectDir">
               <template #icon><n-icon><FolderOpen /></n-icon></template>
-              Browse
+              {{ t('package.browse') }}
             </n-button>
           </div>
           <div v-if="selectedProjectDir" class="file-info-row">
@@ -169,12 +169,12 @@
           </div>
           <div v-if="selectedProjectDir" class="options-panel">
             <n-space align="center" wrap>
-              <n-checkbox v-model:checked="recompileOptions.sign" size="small">Sign</n-checkbox>
+              <n-checkbox v-model:checked="recompileOptions.sign" size="small">{{ t('package.sign') }}</n-checkbox>
               <n-select v-if="recompileOptions.sign" v-model:value="recompileSignatureId"
                 :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                placeholder="Signature" style="width: 150px" size="tiny" />
-              <n-checkbox v-if="recompileOptions.sign" v-model:checked="recompileOptions.v2" size="small">V2</n-checkbox>
-              <n-checkbox v-model:checked="recompileOptions.align" size="small">ZipAlign</n-checkbox>
+                :placeholder="t('package.signature')" style="width: 150px" size="tiny" />
+              <n-checkbox v-if="recompileOptions.sign" v-model:checked="recompileOptions.v2" size="small">{{ t('package.v2') }}</n-checkbox>
+              <n-checkbox v-model:checked="recompileOptions.align" size="small">{{ t('package.zipAlign') }}</n-checkbox>
             </n-space>
           </div>
           <div v-if="recompileProgress && recompileProgress.show" style="margin-top: 12px">
@@ -183,11 +183,11 @@
           <div class="card-actions">
             <n-button type="primary" size="small" :disabled="!selectedProjectDir" @click="startRecompile" block>
               <template #icon><n-icon><Lock /></n-icon></template>
-              Recompile
+              {{ t('package.recompile') }}
             </n-button>
             <n-button v-if="recompileOutputPath" size="small" @click="openRecompileOutput">
               <template #icon><n-icon><FolderOpen /></n-icon></template>
-              Open
+              {{ t('package.open') }}
             </n-button>
           </div>
         </n-card>
@@ -197,13 +197,13 @@
           <template #header>
             <div class="card-header-row">
               <n-icon size="18" color="#EC4899"><PenTool /></n-icon>
-              <span class="card-title">Resign</span>
+              <span class="card-title">{{ t('package.resign') }}</span>
             </div>
           </template>
           <div class="drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
             @dragenter.prevent @click="selectResignFile()">
             <n-icon size="28" color="#475569"><PenTool /></n-icon>
-            <p class="drop-text">Drop APK to resign</p>
+            <p class="drop-text">{{ t('package.dropToResign') }}</p>
             <input type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleResignFileSelect)">
           </div>
@@ -216,8 +216,8 @@
             <n-space align="center">
               <n-select v-model:value="selectedSignatureId"
                 :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                placeholder="Select signature" style="width: 180px" size="small" />
-              <n-checkbox v-model:checked="resignOptions.v2" size="small">V2 Sign</n-checkbox>
+                :placeholder="t('package.selectSignature')" style="width: 180px" size="small" />
+              <n-checkbox v-model:checked="resignOptions.v2" size="small">{{ t('package.v2sign') }}</n-checkbox>
             </n-space>
           </div>
           <div v-if="resignResult" class="analysis-result" v-html="resignResult" />
@@ -225,11 +225,11 @@
             <n-button type="primary" size="small" :loading="isResigning"
               :disabled="!selectedResignFile || !selectedSignatureId || isResigning" @click="resignApk" block>
               <template #icon><n-icon><PenTool /></n-icon></template>
-              Resign
+              {{ t('package.resign2') }}
             </n-button>
             <n-button v-if="resignOutputPath" size="small" @click="openResignOutput">
               <template #icon><n-icon><FolderOpen /></n-icon></template>
-              Open
+              {{ t('package.open') }}
             </n-button>
           </div>
         </n-card>
@@ -247,6 +247,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
@@ -258,6 +259,8 @@ import {
   Package, Download, Unlock, Lock, PenTool, Search, FolderOpen,
   Plus, Edit, Trash2, File, Folder, Key
 } from 'lucide-vue-next'
+
+const { t } = useI18n()
 
 const packageStore = usePackageStore()
 const signatureStore = useSignatureStore()
@@ -314,8 +317,8 @@ const selectFileWithStats = async (targetRef: any, extensions = ['apk']) => {
   try {
     const systemSvc = await serviceManager.getService('system') as any
     const res = await systemSvc.selectFile({
-      title: 'Select file',
-      filters: [{ name: 'Android Packages', extensions }]
+      title: t('package.selectFile'),
+      filters: [{ name: t('package.androidPackages'), extensions }]
     })
     if (res && !res.canceled) {
       const p = (res.filePath || (res.filePaths && res.filePaths[0]) || '').trim()
@@ -342,23 +345,23 @@ const selectResignFile = () => selectFileWithStats(selectedResignFile)
 
 const handleApkFileSelect = async (file: File) => {
   if (file && file.name.toLowerCase().endsWith('.apk')) selectedAnalysisFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApk')), { category: 'ui', severity: 'low' }) }
 }
 
 const handleInstallFileSelect = async (file: File) => {
   const name = file.name.toLowerCase()
   if (file && (name.endsWith('.apk') || name.endsWith('.aab'))) selectedInstallFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK or AAB file'), { category: 'ui', severity: 'low' }) }
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApkAab')), { category: 'ui', severity: 'low' }) }
 }
 
 const handleDecompileFileSelect = async (file: File) => {
   if (file && file.name.toLowerCase().endsWith('.apk')) selectedDecompileFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApk')), { category: 'ui', severity: 'low' }) }
 }
 
 const handleResignFileSelect = async (file: File) => {
   if (file && file.name.toLowerCase().endsWith('.apk')) selectedResignFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApk')), { category: 'ui', severity: 'low' }) }
 }
 
 const analyzeApk = async () => {
@@ -366,17 +369,17 @@ const analyzeApk = async () => {
   let loadingId: any = null
   try {
     isAnalyzing.value = true
-    loadingId = showLoading('Analyzing APK...')
+    loadingId = showLoading(t('package.analyzing'))
     const apkService = await getApkService()
     const result = await apkService.analyzeApk(selectedAnalysisFile.value.path)
     if (result.success) {
       apkAnalysisResult.value = displayApkAnalysisResult(result.data)
-      if (loadingId) completeLoading(loadingId, 'Analysis complete', '')
+      if (loadingId) completeLoading(loadingId, t('package.analysisComplete'), '')
     } else {
-      if (loadingId) failLoading(loadingId, 'Analysis failed', String(result.error || ''))
+      if (loadingId) failLoading(loadingId, t('package.analysisFailed'), String(result.error || ''))
     }
   } catch (error: any) {
-    if (loadingId) failLoading(loadingId, 'Analysis failed', error.message || String(error))
+    if (loadingId) failLoading(loadingId, t('package.analysisFailed'), error.message || String(error))
     const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'ui', severity: 'low' })
   } finally { isAnalyzing.value = false }
 }
@@ -386,16 +389,16 @@ const installApp = async () => {
   let loadingId: any = null
   try {
     isInstalling.value = true
-    loadingId = showLoading('Installing...')
+    loadingId = showLoading(t('package.installing'))
     const deviceSvc = await serviceManager.getService('device') as any
     const result = await deviceSvc.installApp(selectedInstallFile.value.path)
     if (result.success) {
-      if (loadingId) completeLoading(loadingId, 'Install complete', '')
+      if (loadingId) completeLoading(loadingId, t('package.installComplete'), '')
     } else {
-      if (loadingId) failLoading(loadingId, 'Install failed', String(result.error || ''))
+      if (loadingId) failLoading(loadingId, t('package.installFailed'), String(result.error || ''))
     }
   } catch (error: any) {
-    if (loadingId) failLoading(loadingId, 'Install failed', error.message || String(error))
+    if (loadingId) failLoading(loadingId, t('package.installFailed'), error.message || String(error))
     const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'device', context: 'device.install' })
   } finally { isInstalling.value = false }
 }
@@ -408,7 +411,7 @@ const startDecompile = async () => {
     if (decompileProgress && decompileProgress.value) {
       decompileProgress.value.show = true; decompileProgress.value.value = 0
     }
-    loadingId = showLoading('Decompiling APK...')
+    loadingId = showLoading(t('package.decompiling'))
     const options = {
       resources: decompileOptions.value.resources,
       sources: decompileOptions.value.sources,
@@ -419,13 +422,13 @@ const startDecompile = async () => {
     if (result.success) {
       if (decompileProgress?.value) decompileProgress.value.value = 100
       decompileOutputPath.value = result.outputPath
-      decompileResult.value = `<div class="apk-info-grid"><div class="info-row"><span class="label">Status:</span><span class="value highlight text-success">Success</span></div><div class="info-row"><span class="label">Output:</span><span class="value code">${result.outputPath}</span></div></div>`
-      if (loadingId) completeLoading(loadingId, 'Decompile complete', `Output: ${result.outputPath}`)
+      decompileResult.value = `<div class="apk-info-grid"><div class="info-row"><span class="label">${t('package.status')}:</span><span class="value highlight text-success">${t('package.success')}</span></div><div class="info-row"><span class="label">${t('package.output')}:</span><span class="value code">${result.outputPath}</span></div></div>`
+      if (loadingId) completeLoading(loadingId, t('package.decompileComplete'), `${t('package.output')}: ${result.outputPath}`)
     } else {
-      if (loadingId) failLoading(loadingId, 'Decompile failed', String(result.error || ''))
+      if (loadingId) failLoading(loadingId, t('package.decompileFailed'), String(result.error || ''))
     }
   } catch (error: any) {
-    if (loadingId) failLoading(loadingId, 'Decompile failed', String(error || ''))
+    if (loadingId) failLoading(loadingId, t('package.decompileFailed'), String(error || ''))
     const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.decompile' })
   } finally {
     isDecompiling.value = false
@@ -453,13 +456,13 @@ const selectProjectDir = async () => {
 const startRecompile = async () => {
   if (!selectedProjectDir.value) return
   if (recompileOptions.value.sign && !recompileSignatureId.value) {
-    const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a signature config'), { category: 'ui', severity: 'low' })
+    const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectSignature')), { category: 'ui', severity: 'low' })
     return
   }
   let loadingId: any = null
   try {
     recompileProgress.value.show = true; recompileProgress.value.value = 0
-    loadingId = showLoading('Recompiling APK...')
+    loadingId = showLoading(t('package.recompiling'))
     const options: any = { sign: recompileOptions.value.sign, align: recompileOptions.value.align, optimize: recompileOptions.value.optimize, v2: recompileOptions.value.v2 }
     if (options.sign) {
       const config = signatureStore.getConfigById(recompileSignatureId.value)
@@ -469,13 +472,13 @@ const startRecompile = async () => {
     const result = await apkService.recompileApk(selectedProjectDir.value, options)
     if (result.success) {
       recompileProgress.value.value = 100; recompileOutputPath.value = result.outputPath
-      recompileResult.value = `<p>Recompile complete! Output: ${result.outputPath}</p>`
-      if (loadingId) completeLoading(loadingId, 'Recompile complete', `Output: ${result.outputPath}`)
+      recompileResult.value = `<p>${t('package.recompileComplete')}! ${t('package.output')}: ${result.outputPath}</p>`
+      if (loadingId) completeLoading(loadingId, t('package.recompileComplete'), `${t('package.output')}: ${result.outputPath}`)
     } else {
-      if (loadingId) failLoading(loadingId, 'Recompile failed', String(result.error || ''))
+      if (loadingId) failLoading(loadingId, t('package.recompileFailed'), String(result.error || ''))
     }
   } catch (error: any) {
-    if (loadingId) failLoading(loadingId, 'Recompile failed', String(error || ''))
+    if (loadingId) failLoading(loadingId, t('package.recompileFailed'), String(error || ''))
     const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.recompile' })
   } finally {
     setTimeout(() => { recompileProgress.value.show = false; recompileProgress.value.value = 0 }, 2000)
@@ -493,26 +496,26 @@ const resignApk = async () => {
   if (!selectedResignFile.value) return
   const config = signatureStore.getConfigById(selectedSignatureId.value)
   if (!config) {
-    const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a signature config'), { category: 'ui', severity: 'low' })
+    const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectSignature')), { category: 'ui', severity: 'low' })
     return
   }
   let loadingId: any = null
   try {
     isResigning.value = true
-    loadingId = showLoading('Resigning APK...')
+    loadingId = showLoading(t('package.resigning'))
     const apkService = await getApkService()
     const keystore = { path: config.path, alias: config.alias, storepass: config.storepass, keypass: config.keypass }
     const options = { v2: resignOptions.value.v2 }
     const result = await apkService.signApk(selectedResignFile.value.path, keystore, options)
     if (result.success) {
       resignOutputPath.value = result.outputPath
-      resignResult.value = `<p>Resign complete! Output: ${result.outputPath}</p>`
-      if (loadingId) completeLoading(loadingId, 'Resign complete', `Output: ${result.outputPath}`)
+      resignResult.value = `<p>${t('package.resignComplete')}! ${t('package.output')}: ${result.outputPath}</p>`
+      if (loadingId) completeLoading(loadingId, t('package.resignComplete'), `${t('package.output')}: ${result.outputPath}`)
     } else {
-      if (loadingId) failLoading(loadingId, 'Resign failed', String(result.error || ''))
+      if (loadingId) failLoading(loadingId, t('package.resignFailed'), String(result.error || ''))
     }
   } catch (error: any) {
-    if (loadingId) failLoading(loadingId, 'Resign failed', String(error || ''))
+    if (loadingId) failLoading(loadingId, t('package.resignFailed'), String(error || ''))
     const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.resign' })
   } finally { isResigning.value = false }
 }
@@ -539,7 +542,7 @@ const handleSaveSignature = async (formData: any) => {
 }
 
 const deleteSignature = async (id: string) => {
-  if (confirm('Delete this signature config?')) {
+  if (confirm(t('package.deleteSignatureConfirm'))) {
     await signatureStore.removeConfig(id)
     if (selectedSignatureId.value === id) selectedSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
     if (recompileSignatureId.value === id) recompileSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
@@ -547,9 +550,9 @@ const deleteSignature = async (id: string) => {
 }
 
 const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return '0 Bytes'
+  if (bytes === 0) return '0 ' + t('package.bytes')
   const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const sizes = [t('package.bytes'), t('package.kb'), t('package.mb'), t('package.gb')]
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
@@ -569,11 +572,11 @@ const displayApkAnalysisResult = (data: any) => {
     permissionsHtml += '</div>'
   }
   return `<div class="apk-info-grid">
-    <div class="info-row"><span class="label">App Name:</span><span class="value highlight">${data.applicationLabel || 'N/A'}</span></div>
-    <div class="info-row"><span class="label">Package:</span><span class="value code">${data.packageName || 'N/A'}</span></div>
-    <div class="info-group"><div class="info-col"><span class="label">Version:</span><span class="value">${data.versionName || 'N/A'}</span></div><div class="info-col"><span class="label">Code:</span><span class="value">${data.versionCode || 'N/A'}</span></div></div>
-    <div class="info-group"><div class="info-col"><span class="label">Min SDK:</span><span class="value">${data.minSdkVersion || 'N/A'}</span></div><div class="info-col"><span class="label">Target SDK:</span><span class="value">${data.targetSdkVersion || 'N/A'}</span></div></div>
-    <div class="info-row"><span class="label">Permissions:</span><span class="value">${permissionsHtml || 'None'}</span></div>
+    <div class="info-row"><span class="label">${t('package.appName')}:</span><span class="value highlight">${data.applicationLabel || t('package.n_a')}</span></div>
+    <div class="info-row"><span class="label">${t('package.packageName')}:</span><span class="value code">${data.packageName || t('package.n_a')}</span></div>
+    <div class="info-group"><div class="info-col"><span class="label">${t('package.version')}:</span><span class="value">${data.versionName || t('package.n_a')}</span></div><div class="info-col"><span class="label">${t('package.code')}:</span><span class="value">${data.versionCode || t('package.n_a')}</span></div></div>
+    <div class="info-group"><div class="info-col"><span class="label">${t('package.minSdk')}:</span><span class="value">${data.minSdkVersion || t('package.n_a')}</span></div><div class="info-col"><span class="label">${t('package.targetSdk')}:</span><span class="value">${data.targetSdkVersion || t('package.n_a')}</span></div></div>
+    <div class="info-row"><span class="label">${t('package.permissions')}:</span><span class="value">${permissionsHtml || t('package.none')}</span></div>
   </div>`
 }
 

@@ -2,8 +2,8 @@
   <div class="device-page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Device Management</h1>
-        <p class="page-subtitle">Manage connected Android devices via ADB</p>
+        <h1 class="page-title">{{ t('device.title') }}</h1>
+        <p class="page-subtitle">{{ t('device.subtitle') }}</p>
       </div>
       <n-space align="center">
         <n-tag :type="connectionStatus.connected ? 'success' : 'error'" round size="medium" :bordered="false">
@@ -12,7 +12,7 @@
         </n-tag>
         <n-button @click="refreshDevices" :loading="loading" secondary size="small">
           <template #icon><n-icon><RefreshCw /></n-icon></template>
-          Refresh
+          {{ t('device.refresh') }}
         </n-button>
       </n-space>
     </div>
@@ -23,16 +23,16 @@
         <n-card :bordered="false" class="device-card" size="small">
           <template #header>
             <div class="card-header">
-              <span class="card-title">Devices</span>
-              <n-tag size="small" :bordered="false" type="info">{{ devices.length }} connected</n-tag>
+              <span class="card-title">{{ t('device.devices') }}</span>
+              <n-tag size="small" :bordered="false" type="info">{{ t('device.connected', { count: devices.length }) }}</n-tag>
             </div>
           </template>
           <n-spin :show="loading">
             <div v-if="devices.length === 0" class="empty-state">
               <n-icon size="40" color="#475569"><Smartphone /></n-icon>
-              <p class="empty-title">No Devices Connected</p>
-              <p class="empty-desc">Connect an Android device via USB or enable wireless debugging</p>
-              <n-button @click="refreshDevices" size="small" quaternary>Refresh</n-button>
+              <p class="empty-title">{{ t('device.noDevices') }}</p>
+              <p class="empty-desc">{{ t('device.noDevicesDesc') }}</p>
+              <n-button @click="refreshDevices" size="small" quaternary>{{ t('device.refresh') }}</n-button>
             </div>
             <n-list v-else hoverable clickable class="device-list">
               <n-list-item
@@ -47,7 +47,7 @@
                   </n-icon>
                 </template>
                 <div class="device-item-content">
-                  <span class="device-model">{{ device.name || 'Unknown Device' }}</span>
+                  <span class="device-model">{{ device.name || t('device.unknownDevice') }}</span>
                   <span class="device-serial">{{ device.id }}</span>
                 </div>
                 <template #suffix>
@@ -67,7 +67,7 @@
                 <template #icon>
                   <n-icon><Activity /></n-icon>
                 </template>
-                {{ isLogcatRunning ? 'Stop Logcat' : 'Start Logcat' }}
+                {{ isLogcatRunning ? t('device.stopLogcat') : t('device.startLogcat') }}
               </n-button>
             </n-space>
           </template>
@@ -78,31 +78,31 @@
       <n-grid-item>
         <n-card :bordered="false" class="device-card" size="small">
           <template #header>
-            <span class="card-title">Device Info</span>
+            <span class="card-title">{{ t('device.deviceInfo') }}</span>
           </template>
           <div v-if="!selectedDevice" class="empty-state">
             <n-icon size="40" color="#475569"><Info /></n-icon>
-            <p class="empty-title">No Device Selected</p>
-            <p class="empty-desc">Select a device from the list to view its details</p>
+            <p class="empty-title">{{ t('device.noDeviceSelected') }}</p>
+            <p class="empty-desc">{{ t('device.noDeviceSelectedDesc') }}</p>
           </div>
           <template v-else-if="selectedDevice">
             <n-descriptions label-placement="left" :column="1" size="small" class="device-descriptions">
-              <n-descriptions-item label="Model">
+              <n-descriptions-item :label="t('device.model')">
                 <span class="info-value highlight">{{ selectedDevice.name || '-' }}</span>
               </n-descriptions-item>
-              <n-descriptions-item label="Serial">
+              <n-descriptions-item :label="t('device.serial')">
                 <span class="info-value mono">{{ selectedDevice.id }}</span>
               </n-descriptions-item>
-              <n-descriptions-item label="Status">
+              <n-descriptions-item :label="t('device.status')">
                 <n-tag :type="selectedDevice.status === 'device' ? 'success' : 'warning'" size="small" :bordered="false">
                   {{ selectedDevice.status }}
                 </n-tag>
               </n-descriptions-item>
-              <n-descriptions-item label="Product">{{ deviceInfo.product || '-' }}</n-descriptions-item>
+              <n-descriptions-item :label="t('device.product')">{{ deviceInfo.product || '-' }}</n-descriptions-item>
               <template v-if="deviceInfo">
-                <n-descriptions-item label="Android">{{ deviceInfo.androidVersion || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="SDK">{{ deviceInfo.apiLevel || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="CPU">{{ deviceInfo.architecture || '-' }}</n-descriptions-item>
+                <n-descriptions-item :label="t('device.android')">{{ deviceInfo.androidVersion || '-' }}</n-descriptions-item>
+                <n-descriptions-item :label="t('device.sdk')">{{ deviceInfo.apiLevel || '-' }}</n-descriptions-item>
+                <n-descriptions-item :label="t('device.cpu')">{{ deviceInfo.architecture || '-' }}</n-descriptions-item>
               </template>
             </n-descriptions>
           </template>
@@ -114,11 +114,11 @@
     <n-card :bordered="false" class="logcat-card" size="small" style="margin-top: 16px">
       <template #header>
         <div class="card-header logcat-header" @click="logcatCollapsed = !logcatCollapsed" style="cursor: pointer;">
-          <span class="card-title">Logcat</span>
+          <span class="card-title">{{ t('device.logcat') }}</span>
           <n-space align="center">
             <n-tag v-if="isLogcatRunning" type="success" size="small" :bordered="false">
               <template #icon><n-icon><Circle /></n-icon></template>
-              Live
+              {{ t('device.live') }}
             </n-tag>
             <n-icon :size="18" color="#94A3B8">
               <ChevronDown v-if="!logcatCollapsed" />
@@ -130,12 +130,12 @@
       <div v-show="!logcatCollapsed">
         <div v-if="!isLogcatRunning" class="empty-state logcat-empty">
           <n-icon size="32" color="#475569"><Terminal /></n-icon>
-          <p class="empty-title">Logcat Not Running</p>
-          <p class="empty-desc">Select a device and click "Start Logcat" to begin monitoring</p>
+          <p class="empty-title">{{ t('device.logcatNotRunning') }}</p>
+          <p class="empty-desc">{{ t('device.logcatNotRunningDesc') }}</p>
         </div>
         <div v-else class="logcat-output" ref="logcatContainer">
           <div v-if="logcatOutput.length === 0" class="empty-state">
-            <p>Waiting for log output...</p>
+            <p>{{ t('device.waitingForOutput') }}</p>
           </div>
           <div v-for="(line, i) in logcatOutput" :key="i" class="logcat-line" :class="getLogLevel(line)">
             <span class="log-line-num">{{ i + 1 }}</span>
@@ -149,6 +149,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
   Smartphone, RefreshCw, Activity, Info, Link, Link2Off, Circle,
@@ -157,6 +158,8 @@ import {
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { storeToRefs } from 'pinia'
+
+const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
 const {

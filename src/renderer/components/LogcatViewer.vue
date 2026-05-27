@@ -2,11 +2,11 @@
   <n-card :bordered="false" class="logcat-viewer-card" size="small">
     <template #header>
       <div class="card-header">
-        <span class="card-title">Logcat</span>
+        <span class="card-title">{{ t('logcat.title') }}</span>
         <n-space :size="8" align="center">
           <n-tag v-if="isLogcatRunning" type="success" size="small" :bordered="false">
             <template #icon><n-icon><Circle /></n-icon></template>
-            Live
+            {{ t('logcat.live') }}
           </n-tag>
           <n-button
             size="tiny"
@@ -19,7 +19,7 @@
             <template #icon>
               <n-icon><Square v-if="isLogcatRunning" /><Play v-else /></n-icon>
             </template>
-            {{ isLogcatRunning ? 'Stop' : 'Start' }}
+            {{ isLogcatRunning ? t('logcat.stop') : t('logcat.start') }}
           </n-button>
           <n-button
             size="tiny"
@@ -44,18 +44,18 @@
     <!-- Empty / Stopped State -->
     <div v-if="!selectedDevice" class="empty-state">
       <n-icon size="28" color="#475569"><Terminal /></n-icon>
-      <p class="empty-title">No Device Selected</p>
-      <p class="empty-desc">Select a device to use logcat</p>
+      <p class="empty-title">{{ t('logcat.noDeviceSelected') }}</p>
+      <p class="empty-desc">{{ t('logcat.noDeviceSelectedDesc') }}</p>
     </div>
     <div v-else-if="!isLogcatRunning && logcatOutput.length === 0" class="empty-state">
       <n-icon size="28" color="#475569"><Terminal /></n-icon>
-      <p class="empty-title">Logcat Not Running</p>
-      <p class="empty-desc">Click "Start" to begin monitoring</p>
+      <p class="empty-title">{{ t('logcat.notRunning') }}</p>
+      <p class="empty-desc">{{ t('logcat.notRunningDesc') }}</p>
     </div>
     <div v-else-if="!isLogcatRunning && logcatOutput.length > 0" class="empty-state">
       <n-icon size="28" color="#475569"><PauseCircle /></n-icon>
-      <p class="empty-title">Logcat Stopped</p>
-      <p class="empty-desc">{{ logcatOutput.length }} lines captured</p>
+      <p class="empty-title">{{ t('logcat.stopped') }}</p>
+      <p class="empty-desc">{{ t('logcat.stoppedDesc', { count: logcatOutput.length }) }}</p>
     </div>
 
     <!-- Logcat Output -->
@@ -70,6 +70,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
   Play, Square, Trash2, FileDown, Terminal, Circle, PauseCircle
@@ -77,6 +78,8 @@ import {
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { storeToRefs } from 'pinia'
+
+const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
 const {

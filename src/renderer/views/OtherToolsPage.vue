@@ -2,12 +2,12 @@
   <div class="tools-page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">Plugins & Tools</h1>
-        <p class="page-subtitle">Manage and run extension plugins</p>
+        <h1 class="page-title">{{ t('tools.title') }}</h1>
+        <p class="page-subtitle">{{ t('tools.subtitle') }}</p>
       </div>
       <n-button size="small" secondary @click="reloadPlugins" :loading="isLoading">
         <template #icon><n-icon><RefreshCw /></n-icon></template>
-        Reload
+        {{ t('tools.reload') }}
       </n-button>
     </div>
 
@@ -15,8 +15,8 @@
     <n-spin :show="isLoading">
       <div v-if="plugins.length === 0 && !isLoading" class="empty-state">
         <n-icon size="48" color="#475569"><Puzzle /></n-icon>
-        <p class="empty-title">No Plugins Loaded</p>
-        <p class="empty-desc">Place Python scripts in the backend/plugins directory and click Reload</p>
+        <p class="empty-title">{{ t('tools.noPlugins') }}</p>
+        <p class="empty-desc">{{ t('tools.noPluginsDesc') }}</p>
       </div>
       <n-grid v-else :cols="1" :x-gap="16" :y-gap="16" responsive="screen">
         <n-grid-item v-for="plugin in plugins" :key="plugin.name" span="1 600:2 1000:3">
@@ -32,12 +32,12 @@
                 </div>
               </div>
             </template>
-            <p class="plugin-desc">{{ plugin.description || 'No description' }}</p>
+            <p class="plugin-desc">{{ plugin.description || t('tools.noDescription') }}</p>
             <pre v-if="plugin.lastResult" class="plugin-result">{{ plugin.lastResult }}</pre>
             <div class="plugin-actions">
               <n-button type="primary" size="small" @click="runPlugin(plugin)" :loading="plugin.running" block>
                 <template #icon><n-icon><Play /></n-icon></template>
-                Run
+                {{ t('tools.run') }}
               </n-button>
             </div>
           </n-card>
@@ -51,7 +51,7 @@
         <div class="help-header" @click="helpCollapsed = !helpCollapsed" style="cursor: pointer">
           <div style="display:flex;align-items:center;gap:8px">
             <n-icon size="18" color="#3B82F6"><BookOpen /></n-icon>
-            <span class="card-title">How to Add Plugins</span>
+            <span class="card-title">{{ t('tools.howToAdd') }}</span>
           </div>
           <n-icon size="18" color="#94A3B8">
             <ChevronDown v-if="!helpCollapsed" />
@@ -60,12 +60,12 @@
         </div>
       </template>
       <div v-show="!helpCollapsed" class="help-content">
-        <p class="help-intro">Extend Blank Tool by writing Python scripts. Each plugin is a standalone script placed in the plugins directory.</p>
+        <p class="help-intro">{{ t('tools.helpIntro') }}</p>
         <n-ol class="help-steps">
-          <n-li>Write a Python script (e.g. <code>my_tool.py</code>)</n-li>
-          <n-li>Implement the <code>run(context, **kwargs)</code> function</n-li>
-          <n-li>Place the script in the <code>backend/plugins</code> directory</n-li>
-          <n-li>Click the Reload button to discover new plugins</n-li>
+          <n-li>{{ t('tools.helpStep1') }}</n-li>
+          <n-li>{{ t('tools.helpStep2') }}</n-li>
+          <n-li>{{ t('tools.helpStep3') }}</n-li>
+          <n-li>{{ t('tools.helpStep4') }}</n-li>
         </n-ol>
         <n-code code="
 DESCRIPTION = 'Plugin description'
@@ -82,9 +82,12 @@ def run(context, **kwargs):
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { RefreshCw, Puzzle, Play, BookOpen, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useNotification } from '@/composables/useNotification'
+
+const { t } = useI18n()
 
 const plugins = ref<any[]>([])
 const isLoading = ref(false)
@@ -104,7 +107,7 @@ const loadPlugins = async () => {
   try {
     plugins.value = (await callBackend('plugin.list', {})) as any[] || []
   } catch (error: any) {
-    showError('Failed to load plugins', error.message)
+    showError(t('tools.loadFailed'), error.message)
   } finally { isLoading.value = false }
 }
 
@@ -112,9 +115,9 @@ const reloadPlugins = async () => {
   isLoading.value = true
   try {
     plugins.value = (await callBackend('plugin.reload', {})) as any[] || []
-    showSuccess('Plugin list updated')
+    showSuccess(t('tools.pluginListUpdated'))
   } catch (error: any) {
-    showError('Failed to reload plugins', error.message)
+    showError(t('tools.reloadFailed'), error.message)
   } finally { isLoading.value = false }
 }
 
@@ -123,9 +126,9 @@ const runPlugin = async (plugin: any) => {
   try {
     const result = await callBackend('plugin.run', { name: plugin.name, params: {} })
     plugin.lastResult = JSON.stringify(result, null, 2)
-    showSuccess(`Plugin ${plugin.name} executed`)
+    showSuccess(t('tools.pluginExecuted', { name: plugin.name }))
   } catch (error: any) {
-    showError(`Plugin ${plugin.name} failed`, error.message)
+    showError(t('tools.pluginFailed', { name: plugin.name }), error.message)
     plugin.lastResult = `Error: ${error.message}`
   } finally { plugin.running = false }
 }

@@ -15,7 +15,7 @@
         </div>
         <div class="device-badge off" v-else>
           <n-icon size="14" color="#64748B"><Smartphone /></n-icon>
-          <span class="dim">No device</span>
+          <span class="dim">{{ t('statusBar.noDevice') }}</span>
           <span class="status-dot offline"></span>
         </div>
       </div>
@@ -28,11 +28,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { Smartphone } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
+
+const { t } = useI18n()
 
 defineProps<{ collapsed?: boolean }>()
 

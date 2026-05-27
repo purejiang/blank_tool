@@ -32,7 +32,7 @@
             v-if="notification.type !== 'loading'"
             class="notification-close" 
             @click="hideNotification(notification.id)"
-            aria-label="关闭通知"
+            aria-label="Close notification"
           >
             <span class="close-icon">×</span>
           </button>
@@ -130,9 +130,9 @@ onMounted(async () => {
       setupListeners(notificationService)
     }
   } catch (error) {
-    console.error('获取通知服务失败:', error)
+    console.error('Failed to get notification service:', error)
   }
-  console.log('Notification 组件已挂载')
+  console.log('Notification component mounted')
 })
 
 const setupListeners = (service) => {
