@@ -50,37 +50,43 @@
               :native-scrollbar="false"
               class="app-sider"
             >
-              <!-- App Brand -->
-              <div class="sider-brand" :class="{ collapsed: sidebarCollapsed }">
-                <n-icon size="28" color="#22C55E">
-                  <Terminal />
-                </n-icon>
-                <span v-if="!sidebarCollapsed" class="brand-text">Blank Tool</span>
-              </div>
+              <div class="sider-inner">
+                <!-- App Brand -->
+                <div class="sider-brand" :class="{ collapsed: sidebarCollapsed }">
+                  <n-icon size="28" color="#22C55E">
+                    <Terminal />
+                  </n-icon>
+                  <span v-if="!sidebarCollapsed" class="brand-text">Blank Tool</span>
+                </div>
 
-              <!-- Navigation Menu -->
-              <n-menu
-                :value="activeMenuKey"
-                :collapsed="sidebarCollapsed"
-                :collapsed-width="64"
-                :collapsed-icon-size="22"
-                :options="menuOptions"
-                :render-label="renderMenuLabel"
-                @update:value="handleMenuSelect"
-              />
+                <!-- Navigation Menu -->
+                <n-menu
+                  :value="activeMenuKey"
+                  :collapsed="sidebarCollapsed"
+                  :collapsed-width="64"
+                  :collapsed-icon-size="22"
+                  :options="menuOptions"
+                  :render-label="renderMenuLabel"
+                  @update:value="handleMenuSelect"
+                  class="sider-menu"
+                />
 
-              <!-- Bottom Actions -->
-              <div class="sider-footer" :class="{ collapsed: sidebarCollapsed }">
-                <n-button
-                  quaternary
-                  circle
-                  size="small"
-                  @click="sidebarCollapsed = !sidebarCollapsed"
-                >
-                  <template #icon>
-                    <n-icon><ChevronsLeft v-if="!sidebarCollapsed" /><ChevronsRight v-else /></n-icon>
-                  </template>
-                </n-button>
+                <!-- Status Bar (inside sidebar) -->
+                <StatusBar />
+
+                <!-- Bottom Actions -->
+                <div class="sider-footer" :class="{ collapsed: sidebarCollapsed }">
+                  <n-button
+                    quaternary
+                    circle
+                    size="small"
+                    @click="sidebarCollapsed = !sidebarCollapsed"
+                  >
+                    <template #icon>
+                      <n-icon><ChevronsLeft v-if="!sidebarCollapsed" /><ChevronsRight v-else /></n-icon>
+                    </template>
+                  </n-button>
+                </div>
               </div>
             </n-layout-sider>
 
@@ -89,7 +95,6 @@
               <n-layout-content class="main-content">
                 <router-view />
               </n-layout-content>
-              <StatusBar />
             </n-layout>
           </n-layout>
         </div>
@@ -377,12 +382,18 @@ onUnmounted(() => {
 .app-sider {
   background: #0C1322;
 }
+.sider-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
 .sider-brand {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 20px 18px 16px;
   border-bottom: 1px solid #1E293B;
+  flex-shrink: 0;
 }
 .sider-brand.collapsed {
   justify-content: center;
@@ -395,13 +406,16 @@ onUnmounted(() => {
   color: #F8FAFC;
   letter-spacing: -0.02em;
 }
+.sider-menu {
+  flex: 1;
+  overflow-y: auto;
+}
 .sider-footer {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 12px;
   display: flex;
   justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid #1E293B;
+  flex-shrink: 0;
 }
 .sider-footer.collapsed {
   justify-content: center;
@@ -409,7 +423,8 @@ onUnmounted(() => {
 .main-content {
   padding: 24px;
   background: #0F172A;
-  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
 }
 </style>
 
@@ -418,12 +433,16 @@ onUnmounted(() => {
 .n-menu .n-menu-item-content {
   margin: 2px 8px;
   border-radius: 8px;
+  transition: all 0.15s ease;
 }
 .n-menu .n-menu-item-content--selected {
   background: rgba(34,197,94,0.12) !important;
 }
 .n-menu .n-menu-item-content:hover {
-  background: rgba(255,255,255,0.04) !important;
+  background: rgba(34,197,94,0.06) !important;
+}
+.n-menu .n-menu-item-content:active {
+  background: rgba(34,197,94,0.1) !important;
 }
 /* Scrollbar */
 ::-webkit-scrollbar {

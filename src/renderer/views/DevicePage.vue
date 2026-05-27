@@ -13,7 +13,7 @@
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import serviceManager from '@/services/ServiceManager'
 
@@ -22,29 +22,14 @@ import DeviceActions from '@components/DeviceActions.vue'
 import AppManager from '@components/AppManager.vue'
 import LogcatViewer from '@components/LogcatViewer.vue'
 
-export default {
-  name: 'DevicePage',
-  components: {
-    DeviceManager,
-    DeviceActions,
-    AppManager,
-    LogcatViewer
-  },
-  setup() {
-    const deviceServiceRef = ref(null)
+const deviceServiceRef = ref<any>(null)
 
-    onMounted(async () => {
-      console.log('DevicePage 组件已挂载')
-      try {
-        deviceServiceRef.value = await serviceManager.getService('device')
-      } catch {}
-    })
-
-    return {
-      deviceServiceRef
-    }
-  }
-}
+onMounted(async () => {
+  console.log('DevicePage 组件已挂载')
+  try {
+    deviceServiceRef.value = await serviceManager.getService('device')
+  } catch {}
+})
 </script>
 
 <style scoped>

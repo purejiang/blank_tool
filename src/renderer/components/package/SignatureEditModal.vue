@@ -35,7 +35,7 @@
 
 <script>
 import { ref, reactive, watch, computed } from 'vue'
-import serviceManager from '@services/ServiceManager.js'
+import serviceManager from '@services/ServiceManager'
 
 export default {
   name: 'SignatureEditModal',

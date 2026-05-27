@@ -5,69 +5,90 @@
         <h1 class="page-title">Plugins & Tools</h1>
         <p class="page-subtitle">Manage and run extension plugins</p>
       </div>
+      <n-button size="small" secondary @click="reloadPlugins" :loading="isLoading">
+        <template #icon><n-icon><RefreshCw /></n-icon></template>
+        Reload
+      </n-button>
     </div>
 
-    <n-grid :cols="1" responsive="screen">
-      <n-grid-item span="1 800:2">
-        <n-card title="Plugins" :bordered="false" size="small" class="tools-card">
-          <template #header-extra>
-            <n-button size="tiny" quaternary @click="reloadPlugins" :loading="isLoading">
-              <template #icon><n-icon><RefreshCw /></n-icon></template>
-            </n-button>
-          </template>
-          <div v-if="plugins.length === 0 && !isLoading" class="empty-state">
-            <n-icon size="36" color="#475569"><Puzzle /></n-icon>
-            <p>No plugins loaded</p>
-          </div>
-          <n-spin :show="isLoading">
-            <n-list v-if="plugins.length > 0" hoverable>
-              <n-list-item v-for="plugin in plugins" :key="plugin.name">
-                <n-thing :title="plugin.name" :description="'v' + plugin.version + ' by ' + plugin.author">
-                  <p class="plugin-desc">{{ plugin.description }}</p>
-                  <template #action>
-                    <n-button size="tiny" type="primary" @click="runPlugin(plugin)" :loading="plugin.running">
-                      Run
-                    </n-button>
-                  </template>
-                  <pre v-if="plugin.lastResult" class="plugin-result">{{ plugin.lastResult }}</pre>
-                </n-thing>
-              </n-list-item>
-            </n-list>
-          </n-spin>
-        </n-card>
-      </n-grid-item>
+    <!-- Plugin Grid -->
+    <n-spin :show="isLoading">
+      <div v-if="plugins.length === 0 && !isLoading" class="empty-state">
+        <n-icon size="48" color="#475569"><Puzzle /></n-icon>
+        <p class="empty-title">No Plugins Loaded</p>
+        <p class="empty-desc">Place Python scripts in the backend/plugins directory and click Reload</p>
+      </div>
+      <n-grid v-else :cols="1" :x-gap="16" :y-gap="16" responsive="screen">
+        <n-grid-item v-for="plugin in plugins" :key="plugin.name" span="1 600:2 1000:3">
+          <n-card :bordered="false" size="small" class="plugin-card">
+            <template #header>
+              <div class="plugin-header">
+                <div class="plugin-icon">
+                  <n-icon size="20" color="#22C55E"><Puzzle /></n-icon>
+                </div>
+                <div class="plugin-meta">
+                  <span class="plugin-name">{{ plugin.name }}</span>
+                  <span class="plugin-version">v{{ plugin.version }} by {{ plugin.author }}</span>
+                </div>
+              </div>
+            </template>
+            <p class="plugin-desc">{{ plugin.description || 'No description' }}</p>
+            <pre v-if="plugin.lastResult" class="plugin-result">{{ plugin.lastResult }}</pre>
+            <div class="plugin-actions">
+              <n-button type="primary" size="small" @click="runPlugin(plugin)" :loading="plugin.running" block>
+                <template #icon><n-icon><Play /></n-icon></template>
+                Run
+              </n-button>
+            </div>
+          </n-card>
+        </n-grid-item>
+      </n-grid>
+    </n-spin>
 
-      <n-grid-item span="1 800:1">
-        <n-card title="How to Add Plugins" :bordered="false" size="small" class="tools-card">
-          <p style="color: #CBD5E1; font-size: 14px; line-height: 1.6;">Extend Blank Tool by writing Python scripts.</p>
-          <n-ol>
-            <n-li>Write a Python script (e.g. <code>my_tool.py</code>)</n-li>
-            <n-li>Implement the <code>run(context, **kwargs)</code> function</n-li>
-            <n-li>Place the script in the <code>backend/plugins</code> directory</n-li>
-            <n-li>Click the reload button above</n-li>
-          </n-ol>
-          <n-code code="
+    <!-- Help Section (collapsible) -->
+    <n-card :bordered="false" size="small" class="help-card">
+      <template #header>
+        <div class="help-header" @click="helpCollapsed = !helpCollapsed" style="cursor: pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <n-icon size="18" color="#3B82F6"><BookOpen /></n-icon>
+            <span class="card-title">How to Add Plugins</span>
+          </div>
+          <n-icon size="18" color="#94A3B8">
+            <ChevronDown v-if="!helpCollapsed" />
+            <ChevronUp v-else />
+          </n-icon>
+        </div>
+      </template>
+      <div v-show="!helpCollapsed" class="help-content">
+        <p class="help-intro">Extend Blank Tool by writing Python scripts. Each plugin is a standalone script placed in the plugins directory.</p>
+        <n-ol class="help-steps">
+          <n-li>Write a Python script (e.g. <code>my_tool.py</code>)</n-li>
+          <n-li>Implement the <code>run(context, **kwargs)</code> function</n-li>
+          <n-li>Place the script in the <code>backend/plugins</code> directory</n-li>
+          <n-li>Click the Reload button to discover new plugins</n-li>
+        </n-ol>
+        <n-code code="
 DESCRIPTION = 'Plugin description'
 VERSION = '1.0.0'
 AUTHOR = 'Your Name'
 
 def run(context, **kwargs):
     context.log('Starting...')
-    return {'status': 'ok'}" language="python" style="margin-top: 12px" />
-        </n-card>
-      </n-grid-item>
-    </n-grid>
+    return {'status': 'ok'}" language="python" show-line-numbers style="margin-top: 12px" />
+      </div>
+    </n-card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { NIcon } from 'naive-ui'
-import { RefreshCw, Puzzle } from 'lucide-vue-next'
+import { RefreshCw, Puzzle, Play, BookOpen, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useNotification } from '@/composables/useNotification'
 
 const plugins = ref<any[]>([])
 const isLoading = ref(false)
+const helpCollapsed = ref(false)
 const { showSuccess, showError } = useNotification()
 
 const callBackend = async (method: string, payload: Record<string, unknown> = {}) => {
@@ -114,11 +135,109 @@ onMounted(() => loadPlugins())
 
 <style scoped>
 .tools-page { max-width: 1000px; margin: 0 auto; }
-.page-header { margin-bottom: 20px; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: #F8FAFC; margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: #94A3B8; margin: 4px 0 0; }
-.tools-card { background: #1E293B; border-radius: 10px; margin-bottom: 16px; }
-.empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px; color: #64748B; font-size: 14px; }
-.plugin-desc { color: #94A3B8; font-size: 13px; margin: 4px 0; }
-.plugin-result { background: #0C1322; padding: 8px 12px; border-radius: 6px; font-family: 'Fira Code', monospace; font-size: 12px; color: #CBD5E1; margin-top: 8px; white-space: pre-wrap; word-break: break-all; overflow-x: auto; }
+.card-title { font-family: Inter, sans-serif; font-size: 14px; font-weight: 600; color: #F8FAFC; }
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 64px 16px; color: #64748B; }
+.empty-title { font-size: 14px; font-weight: 600; color: #94A3B8; margin: 0; }
+.empty-desc { font-size: 13px; color: #64748B; margin: 0; max-width: 320px; text-align: center; }
+/* Plugin cards */
+.plugin-card {
+  background: #1E293B;
+  border-radius: 10px;
+  transition: border-color 0.2s;
+  border: 1px solid #1E293B;
+}
+.plugin-card:hover {
+  border-color: rgba(34,197,94,0.3);
+}
+.plugin-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.plugin-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(34,197,94,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.plugin-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.plugin-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+.plugin-version {
+  font-size: 11px;
+  color: #64748B;
+}
+.plugin-desc {
+  color: #94A3B8;
+  font-size: 13px;
+  margin: 0;
+  line-height: 1.5;
+}
+.plugin-actions {
+  margin-top: 12px;
+}
+.plugin-result {
+  background: #0C1322;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: #CBD5E1;
+  margin-top: 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 150px;
+  overflow-y: auto;
+}
+/* Help card */
+.help-card {
+  background: #1E293B;
+  border-radius: 10px;
+  margin-top: 20px;
+}
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  user-select: none;
+}
+.help-content {
+  margin-top: 4px;
+}
+.help-intro {
+  color: #CBD5E1;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+.help-steps {
+  color: #CBD5E1;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.help-steps code {
+  background: #0C1322;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: #22C55E;
+}
 </style>

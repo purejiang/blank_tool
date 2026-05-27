@@ -1,0 +1,78 @@
+2026-03-20 10:44:53 - ToolManager - INFO - 发现工具: Aapt: F:\cyanrain\electron\blank_tool\runtime\aapt\aapt2.exe
+2026-03-20 11:18:37 - ToolManager - INFO - 发现工具: Aapt: F:\cyanrain\electron\blank_tool\runtime\aapt\aapt2.exe
+2026-03-20 11:18:37 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\aapt\aapt2.exe --help
+2026-03-20 11:18:37 - CommandExecutor - WARNING - [COMMAND] 返回码: 1
+2026-03-20 11:18:37 - CommandExecutor - WARNING - [STDERR] aapt2 [subcommand] [options] files...
+
+Subcommands:
+ compile                                           Compiles resources to be linked into an apk.
+ link                                              Links resources into an apk.
+ dump                                              
+ diff                                              Prints the differences in resources of two apks.
+ optimize                                          Preforms resource optimizations on an apk.
+ convert                                           Converts an apk between binary and proto formats.
+ version                                           Prints the version of aapt.
+ apkinfo                                           Dump information about an APK in binary proto format.
+ daemon                                            Runs aapt in daemon mode. Each subsequent line is a single parameter to the
+                                                   command. The end of an invocation is signaled by providing an empty line.
+
+Options:
+ --help                                            Displays this help menu
+2026-03-20 11:18:37 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\aapt\aapt2.exe version
+2026-03-20 11:18:37 - ToolManager - INFO - 发现工具: Adb: F:\cyanrain\electron\blank_tool\runtime\adb\adb.exe
+2026-03-20 11:18:37 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\adb\adb.exe version
+2026-03-20 11:18:38 - Adb - INFO - adb is_valid: True
+2026-03-20 11:18:38 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\adb\adb.exe version
+2026-03-20 11:18:38 - Adb - INFO - adb version output: Android Debug Bridge version 1.0.41
+Version 36.0.0-13206524
+Installed as F:\cyanrain\electron\blank_tool\runtime\adb\adb.exe
+Running on Windows 10.0.22621
+
+2026-03-20 11:18:38 - ToolManager - INFO - 发现工具: Apksigner: F:\cyanrain\electron\blank_tool\runtime\android\apksigner.jar
+2026-03-20 11:18:38 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\jre\bin\java.exe -jar F:\cyanrain\electron\blank_tool\runtime\android\apksigner.jar --help
+2026-03-20 11:18:38 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\jre\bin\java.exe -jar F:\cyanrain\electron\blank_tool\runtime\android\apksigner.jar version
+2026-03-20 11:18:39 - ToolManager - INFO - 发现工具: ApkTool: F:\cyanrain\electron\blank_tool\runtime\apktool\apktool.jar
+2026-03-20 11:18:39 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\jre\bin\java.exe -jar F:\cyanrain\electron\blank_tool\runtime\apktool\apktool.jar h
+2026-03-20 11:18:39 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\jre\bin\java.exe -jar F:\cyanrain\electron\blank_tool\runtime\apktool\apktool.jar -version
+2026-03-20 11:18:40 - ToolManager - INFO - 发现工具: BundleTool: F:\cyanrain\electron\blank_tool\runtime\bundletool\bundletool.jar
+2026-03-20 11:18:40 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\jre\bin\java.exe -jar F:\cyanrain\electron\blank_tool\runtime\bundletool\bundletool.jar help
+2026-03-20 11:18:40 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\jre\bin\java.exe -jar F:\cyanrain\electron\blank_tool\runtime\bundletool\bundletool.jar version
+2026-03-20 11:18:41 - ToolManager - INFO - 发现工具: Jarsigner: F:\cyanrain\electron\blank_tool\runtime\jre\bin\jarsigner.exe
+2026-03-20 11:18:41 - Jarsigner - INFO - 在 F:\python_project\apk2aab\re\jre\bin\jarsigner.exe 找到工具: jarsigner
+2026-03-20 11:18:41 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\python_project\apk2aab\re\jre\bin\jarsigner.exe -h
+2026-03-20 11:18:41 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\python_project\apk2aab\re\jre\bin\jarsigner.exe
+2026-03-20 11:18:41 - ToolManager - INFO - 发现工具: Zipalign: F:\cyanrain\electron\blank_tool\runtime\android\zipalign.exe
+2026-03-20 11:18:41 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\android\zipalign.exe
+2026-03-20 11:18:42 - CommandExecutor - WARNING - [COMMAND] 返回码: 2
+2026-03-20 11:18:42 - CommandExecutor - WARNING - [STDERR] Zip alignment utility
+Copyright (C) 2009 The Android Open Source Project
+
+Usage: zipalign [-f] [-p] [-P <pagesize_kb>] [-v] [-z] <align> infile.zip outfile.zip
+       zipalign -c [-p] [-P <pagesize_kb>] [-v] <align> infile.zip
+
+  <align>: alignment in bytes, e.g. '4' provides 32-bit alignment
+  -c: check alignment only (does not modify file)
+  -f: overwrite existing outfile.zip
+  -p: 4kb page-align uncompressed .so files
+  -v: verbose output
+  -z: recompress using Zopfli
+  -P <pagesize_kb>: Align uncompressed .so files to the specified
+                    page size. Valid values for <pagesize_kb> are 4, 16
+                    and 64. '-P' cannot be used in combination with '-p'.
+2026-03-20 11:18:42 - CommandExecutor - INFO - [COMMAND] 执行命令: F:\cyanrain\electron\blank_tool\runtime\android\zipalign.exe
+2026-03-20 11:18:42 - CommandExecutor - WARNING - [COMMAND] 返回码: 2
+2026-03-20 11:18:42 - CommandExecutor - WARNING - [STDERR] Zip alignment utility
+Copyright (C) 2009 The Android Open Source Project
+
+Usage: zipalign [-f] [-p] [-P <pagesize_kb>] [-v] [-z] <align> infile.zip outfile.zip
+       zipalign -c [-p] [-P <pagesize_kb>] [-v] <align> infile.zip
+
+  <align>: alignment in bytes, e.g. '4' provides 32-bit alignment
+  -c: check alignment only (does not modify file)
+  -f: overwrite existing outfile.zip
+  -p: 4kb page-align uncompressed .so files
+  -v: verbose output
+  -z: recompress using Zopfli
+  -P <pagesize_kb>: Align uncompressed .so files to the specified
+                    page size. Valid values for <pagesize_kb> are 4, 16
+                    and 64. '-P' cannot be used in combination with '-p'.

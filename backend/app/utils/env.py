@@ -2,6 +2,8 @@ import os
 import sys
 import platform
 import shutil
+import json
+from typing import Dict, Optional, Set
 
 # JAVA 环境变量
 ENV_BT_JAVA_BIN = 'BT_JAVA_BIN'
@@ -15,6 +17,7 @@ ENV_BT_LOG_LEVEL = 'BT_LOG_LEVEL'
 ENV_BT_SEARCH_SYSTEM_REQUIREMENTS = 'BT_SEARCH_SYSTEM_REQUIREMENTS'
 # 运行时目录环境变量
 ENV_BT_RUNTIME_DIR = 'BT_RUNTIME_DIR'
+ENV_BT_SERVER_CONFIG = 'BT_SERVER_CONFIG'
 # 应用版本环境变量
 ENV_APP_VERSION = 'APP_VERSION'
 # 项目名称环境变量
@@ -42,7 +45,7 @@ def resolve_path(path_str: str) -> str:
     resolved = os.path.normpath(os.path.join(ROOT, path_str))
     return resolved
 
-def load_dotenv(path: str = None):
+def load_dotenv(path: str = None) -> Set[str]:
     """
     Simple .env file loader.
     """
@@ -50,8 +53,9 @@ def load_dotenv(path: str = None):
         # Default to .env in root
         path = os.path.join(ROOT, '.env')
     
+    loaded_keys: Set[str] = set()
     if not os.path.exists(path):
-        return
+        return loaded_keys
 
     try:
         with open(path, 'r', encoding='utf-8') as f:
@@ -70,9 +74,46 @@ def load_dotenv(path: str = None):
                     
                     if key and key not in os.environ:
                         os.environ[key] = value
+                        loaded_keys.add(key)
 
     except Exception:
         pass
+    return loaded_keys
+
+def load_server_config(path: Optional[str] = None, override_keys: Optional[Set[str]] = None) -> Dict[str, str]:
+    source_path = path or get_env(ENV_BT_SERVER_CONFIG, os.path.join(ROOT, 'server.config.json'))
+    resolved_source = resolve_path(source_path)
+
+    if not resolved_source or not os.path.exists(resolved_source):
+        return {}
+
+    try:
+        with open(resolved_source, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+    except Exception:
+        return {}
+
+    if not isinstance(raw, dict):
+        return {}
+
+    entries = raw.get('env') if isinstance(raw.get('env'), dict) else raw
+    if not isinstance(entries, dict):
+        return {}
+
+    written: Dict[str, str] = {}
+    override_keys = override_keys or set()
+    for key, value in entries.items():
+        if not isinstance(key, str):
+            continue
+
+        str_value = '' if value is None else str(value)
+        if key in os.environ and key not in override_keys:
+            continue
+
+        os.environ[key] = str_value
+        written[key] = str_value
+
+    return written
 
 def get_env(key: str, default=None):
     val = os.environ.get(key)

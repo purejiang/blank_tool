@@ -77,8 +77,8 @@
 </template>
 
 <script>
-import { useDeviceStore } from '@stores/deviceStore.js'
-import serviceManager from '@services/ServiceManager.js'
+import { useDeviceStore } from '@stores/deviceStore'
+import serviceManager from '@services/ServiceManager'
 import { storeToRefs } from 'pinia'
 import { ref, computed } from 'vue'
 

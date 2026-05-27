@@ -42,9 +42,9 @@
   </Teleport>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import serviceManager from '@services/ServiceManager.js'
+import serviceManager from '@services/ServiceManager'
 
 // 响应式数据
 const notifications = ref([])
@@ -167,10 +167,12 @@ defineExpose({
 <style scoped>
 .notification-container {
   position: fixed;
-  top: 60px;
+  bottom: 20px;
   right: 20px;
   z-index: 9999;
   pointer-events: none;
+  display: flex;
+  flex-direction: column-reverse;
 }
 
 .notification {
@@ -178,7 +180,7 @@ defineExpose({
   align-items: flex-start;
   min-width: 320px;
   max-width: 480px;
-  margin-bottom: 12px;
+  margin-top: 12px;
   padding: 16px;
   background: var(--bg-color, #ffffff);
   border: 1px solid var(--border-color, #e1e5e9);
@@ -369,7 +371,8 @@ defineExpose({
   .notification-container {
     left: 20px;
     right: 20px;
-    top: 20px;
+    bottom: 20px;
+    top: auto;
   }
   
   .notification {

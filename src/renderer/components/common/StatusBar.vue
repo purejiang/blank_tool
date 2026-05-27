@@ -58,13 +58,12 @@ onMounted(() => getVersions())
 <style scoped>
 .status-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 28px;
-  padding: 0 16px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 18px;
   background: #0C1322;
   border-top: 1px solid #1E293B;
-  font-size: 12px;
+  font-size: 11px;
   font-family: Inter, sans-serif;
 }
 .status-left, .status-right {
@@ -76,6 +75,9 @@ onMounted(() => getVersions())
   align-items: center;
   gap: 6px;
   color: #CBD5E1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .device-badge.off { color: #64748B; }
 .dim { color: #64748B; }
@@ -84,6 +86,7 @@ onMounted(() => getVersions())
   height: 6px;
   border-radius: 50%;
   background: #EF4444;
+  flex-shrink: 0;
 }
 .status-dot.online { background: #22C55E; }
 .status-dot.connecting { background: #F59E0B; animation: pulse 1.5s infinite; }
@@ -91,6 +94,7 @@ onMounted(() => getVersions())
 .version-text {
   font-family: 'Fira Code', monospace;
   color: #64748B;
+  font-size: 10px;
 }
 @keyframes pulse {
   0%, 100% { opacity: 1; }

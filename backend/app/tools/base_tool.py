@@ -9,9 +9,21 @@ from app.utils.env import get_java_bin, get_python_bin, get_node_bin
 
 
 class BaseTool(ABC):
-    """工具抽象基类"""
+    """
+    工具抽象基类
 
-    def __init__(self, name: str = None, path: str = None, search_system: bool = True):
+    Parameters:
+        name: 工具名称
+        path: 工具路径
+        search_system: 是否在系统PATH中查找工具
+    Attributes:
+        name: 工具名称
+        tool_path: 工具路径
+        is_valid: 是否有效
+        version: 工具版本
+    """
+
+    def __init__(self, name: str, path: str, search_system: bool):
         self.name = name or self.__class__.__name__
         self._logger = Logger.get_logger(self.__class__.__name__)
         self.tool_path = path or (self._find_tool_path_in_system() if search_system else "")
@@ -39,25 +51,54 @@ class BaseTool(ABC):
 
     @abstractmethod
     def _validate_tool(self) -> bool:
-        """验证工具是否有效"""
+        """
+        验证工具是否有效
+        
+        Returns:
+            bool: 如果工具有效则返回 True，否则返回 False
+        """
         pass
 
     @abstractmethod
     def _get_possible_tool_names(self) -> List[str]:
-        """获取可能的工具名称列表"""
+        """
+        获取可能的工具名称列表
+        
+        Returns:
+            List[str]: 可能的工具名称列表
+        """
         pass
 
     @abstractmethod
     def _get_tool_version(self) -> str:
-        """获取工具版本"""
+        """
+        获取工具版本
+        
+        Returns:
+            str: 工具的版本号，如果获取失败则返回空字符串
+        """
         pass
 
 
 
 class CommandTool(BaseTool):
-    """命令行工具基类"""
+    """
+    命令行工具基类
+    
+    该类提供了执行命令行工具的基本功能，包括验证工具是否有效、获取可能的工具名称列表、获取工具版本以及执行命令。
 
-    def __init__(self, name: str = None, path: str = None, search_system: bool = True):
+    Parameters:
+        name: 工具名称
+        path: 工具路径
+        search_system: 是否在系统PATH中查找工具, 默认值为False
+    Attributes:
+        name: 工具名称
+        tool_path: 工具路径
+        is_valid: 是否有效
+        version: 工具版本
+    """
+
+    def __init__(self, name: str, path: str, search_system: bool=False):
         self._command_executor = CommandExecutor()
         self._running_processes = {}
         super().__init__(name, path, search_system=search_system)
@@ -77,7 +118,7 @@ class CommandTool(BaseTool):
         process = self._running_processes.get(process_id)
         return process is not None and process.poll() is None
     
-    def _execute_stream(self, command: List[str], context: CommandExecutionContext = None, callback=None):
+    def _execute_stream(self, command: List[str], context: CommandExecutionContext, callback=None):
         """
         执行流式命令
         
@@ -90,7 +131,12 @@ class CommandTool(BaseTool):
             callback (function): 处理命令输出的回调函数，参数为 {"type": "output", "payload": line.strip()}
         """
         # 将工具的完整路径添加到命令的最前面
-        context = context or CommandExecutionContext()
+        if not context:
+            self._logger.error("命令执行上下文为空")
+            return
+        if not command:
+            self._logger.error("命令列表为空")
+            return
         if not self._command_executor:
             self._logger.error("CommandExecutor 未初始化")
             return
@@ -105,7 +151,7 @@ class CommandTool(BaseTool):
             if line and callback:
                 callback({"type": "output", "payload": line.strip()})
 
-    def _execute(self, command: List[str], context: CommandExecutionContext = None)->Dict[str, Any]:
+    def _execute(self, command: List[str], context: CommandExecutionContext)->Dict[str, Any]:
         """
         执行命令，并根据上下文管理流式进程
         
@@ -120,8 +166,12 @@ class CommandTool(BaseTool):
             Dict[str, Any]: 命令执行结果，包含进程ID、返回码、标准输出等
         """
         # 将工具的完整路径添加到命令的最前面
-        context = context or CommandExecutionContext()
-
+        if not command:
+            self._logger.error("命令列表为空")
+            return
+        if not context:
+            self._logger.error("命令执行上下文为空")
+            return
         if not self._command_executor:
             self._logger.error("CommandExecutor 未初始化")
             return
@@ -234,8 +284,7 @@ class ScriptTool(CommandTool):
         自动处理解释器前缀。
         如果工具路径符合脚本扩展名，使用解释器执行；否则直接执行。
         """
-        if context is None:
-            context = CommandExecutionContext()
+        context = context or CommandExecutionContext()
 
         cmd_prefix = []
         is_script = False
@@ -250,7 +299,7 @@ class ScriptTool(CommandTool):
             args = self._get_interpreter_args()
             cmd_prefix = [interpreter] + args + [self.tool_path]
         else:
-            raise 
+            raise ValueError(f"工具路径 {self.tool_path} 不符合脚本扩展名")
         
         is_prefixed = False
         if len(command) >= len(cmd_prefix) and cmd_prefix:

@@ -8,188 +8,230 @@
     </div>
 
     <n-grid :cols="1" :x-gap="16" responsive="screen" item-responsive>
-      <!-- Left Column -->
+      <!-- Left Column: Analysis & Install -->
       <n-grid-item span="1 800:1">
+        <div class="section-label">Analysis & Install</div>
+
         <!-- APK Analysis -->
-        <n-card title="APK Analysis" :bordered="false" size="small" class="pkg-card">
+        <n-card :bordered="false" size="small" class="pkg-card">
+          <template #header>
+            <div class="card-header-row">
+              <n-icon size="18" color="#3B82F6"><Search /></n-icon>
+              <span class="card-title">APK Analysis</span>
+            </div>
+          </template>
           <div class="drop-zone" @drop="handleDrop($event, handleApkFileSelect)" @dragover.prevent
             @dragenter.prevent @click="!isAnalyzing && selectApkFile()">
-            <n-icon size="32" color="#475569"><Package /></n-icon>
-            <p>Drop APK file here or click to browse</p>
+            <n-icon size="28" color="#475569"><Package /></n-icon>
+            <p class="drop-text">Drop APK here or click to browse</p>
             <input ref="apkFileInput" type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleApkFileSelect)">
           </div>
-          <div v-if="selectedAnalysisFile" class="file-info">
-            <n-tag type="info" size="small">{{ selectedAnalysisFile.name }}</n-tag>
+          <div v-if="selectedAnalysisFile" class="file-info-row">
+            <n-icon size="14" color="#64748B"><File /></n-icon>
+            <span class="file-name">{{ selectedAnalysisFile.name }}</span>
             <span class="file-size">{{ formatFileSize(selectedAnalysisFile.size) }}</span>
           </div>
           <div v-if="apkAnalysisResult" class="analysis-result" v-html="apkAnalysisResult" />
-          <template #action>
+          <div class="card-actions">
             <n-button type="primary" size="small" :loading="isAnalyzing"
-              :disabled="!selectedAnalysisFile || isAnalyzing" @click="analyzeApk">
+              :disabled="!selectedAnalysisFile || isAnalyzing" @click="analyzeApk" block>
               <template #icon><n-icon><Search /></n-icon></template>
               Analyze
             </n-button>
-          </template>
+          </div>
         </n-card>
 
         <!-- Install -->
-        <n-card title="Install" :bordered="false" size="small" class="pkg-card">
+        <n-card :bordered="false" size="small" class="pkg-card">
+          <template #header>
+            <div class="card-header-row">
+              <n-icon size="18" color="#22C55E"><Download /></n-icon>
+              <span class="card-title">Install</span>
+            </div>
+          </template>
           <div class="drop-zone" :class="{ disabled: isInstalling }"
             @drop="!isInstalling && handleDrop($event, handleInstallFileSelect)" @dragover.prevent @dragenter.prevent
             @click="!isInstalling && selectInstallFile()">
-            <n-icon size="32" color="#475569"><Download /></n-icon>
-            <p>Drop APK/AAB file to install</p>
+            <n-icon size="28" color="#475569"><Download /></n-icon>
+            <p class="drop-text">Drop APK/AAB here to install</p>
             <input ref="installFileInput" type="file" accept=".apk,.aab" class="hidden-input"
               @change="handleFileInputChange($event, handleInstallFileSelect)">
           </div>
-          <div v-if="selectedInstallFile" class="file-info">
-            <n-tag type="info" size="small">{{ selectedInstallFile.name }}</n-tag>
+          <div v-if="selectedInstallFile" class="file-info-row">
+            <n-icon size="14" color="#64748B"><File /></n-icon>
+            <span class="file-name">{{ selectedInstallFile.name }}</span>
             <span class="file-size">{{ formatFileSize(selectedInstallFile.size) }}</span>
           </div>
-          <template #action>
+          <div class="card-actions">
             <n-button type="success" size="small" :loading="isInstalling"
-              :disabled="!selectedInstallFile || isInstalling" @click="installApp">
+              :disabled="!selectedInstallFile || isInstalling" @click="installApp" block>
               <template #icon><n-icon><Download /></n-icon></template>
               Install
             </n-button>
-          </template>
+          </div>
         </n-card>
 
         <!-- Signature Configs -->
-        <n-card title="Signatures" :bordered="false" size="small" class="pkg-card">
+        <n-card :bordered="false" size="small" class="pkg-card">
+          <template #header>
+            <div class="card-header-row">
+              <n-icon size="18" color="#F59E0B"><Key /></n-icon>
+              <span class="card-title">Signature Configs</span>
+            </div>
+          </template>
           <template #header-extra>
-            <n-button size="tiny" @click="openSignatureModal()">
+            <n-button size="tiny" quaternary @click="openSignatureModal()">
               <template #icon><n-icon><Plus /></n-icon></template>
               Add
             </n-button>
           </template>
-          <n-list v-if="signatureConfigs.length > 0" hoverable>
-            <n-list-item v-for="config in signatureConfigs" :key="config.id">
-              <n-thing :title="config.name" :description="config.alias">
-                <template #action>
-                  <n-space>
-                    <n-button size="tiny" quaternary @click="openSignatureModal(config)">
-                      <template #icon><n-icon><Edit /></n-icon></template>
-                    </n-button>
-                    <n-button size="tiny" quaternary type="error" @click="deleteSignature(config.id)">
-                      <template #icon><n-icon><Trash2 /></n-icon></template>
-                    </n-button>
-                  </n-space>
-                </template>
-              </n-thing>
-            </n-list-item>
-          </n-list>
-          <div v-else class="empty-state">No signature configurations</div>
+          <div v-if="signatureConfigs.length > 0" class="sig-list">
+            <div v-for="config in signatureConfigs" :key="config.id" class="sig-item">
+              <div class="sig-info">
+                <span class="sig-name">{{ config.name }}</span>
+                <span class="sig-alias">{{ config.alias }}</span>
+              </div>
+              <n-space size="small">
+                <n-button size="tiny" quaternary @click="openSignatureModal(config)">
+                  <template #icon><n-icon size="14"><Edit /></n-icon></template>
+                </n-button>
+                <n-button size="tiny" quaternary type="error" @click="deleteSignature(config.id)">
+                  <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
+                </n-button>
+              </n-space>
+            </div>
+          </div>
+          <div v-else class="empty-state">
+            <n-icon size="24" color="#475569"><Key /></n-icon>
+            <p>No signature configs</p>
+          </div>
         </n-card>
       </n-grid-item>
 
-      <!-- Right Column -->
+      <!-- Right Column: Decompile & Resign -->
       <n-grid-item span="1 800:1">
+        <div class="section-label">Decompile & Resign</div>
+
         <!-- Decompile -->
-        <n-card title="Decompile" :bordered="false" size="small" class="pkg-card">
+        <n-card :bordered="false" size="small" class="pkg-card">
+          <template #header>
+            <div class="card-header-row">
+              <n-icon size="18" color="#8B5CF6"><Unlock /></n-icon>
+              <span class="card-title">Decompile</span>
+            </div>
+          </template>
           <div class="drop-zone" @drop="handleDrop($event, handleDecompileFileSelect)" @dragover.prevent
             @dragenter.prevent @click="selectDecompileFile()">
-            <n-icon size="32" color="#475569"><Unlock /></n-icon>
-            <p>Drop APK file to decompile</p>
+            <n-icon size="28" color="#475569"><Unlock /></n-icon>
+            <p class="drop-text">Drop APK to decompile</p>
             <input ref="decompileFileInput" type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleDecompileFileSelect)">
           </div>
-          <div v-if="selectedDecompileFile" class="file-info">
-            <n-tag type="info" size="small">{{ selectedDecompileFile.name }}</n-tag>
+          <div v-if="selectedDecompileFile" class="file-info-row">
+            <n-icon size="14" color="#64748B"><File /></n-icon>
+            <span class="file-name">{{ selectedDecompileFile.name }}</span>
             <span class="file-size">{{ formatFileSize(selectedDecompileFile.size) }}</span>
           </div>
           <div v-if="decompileResult" class="analysis-result" v-html="decompileResult" />
-          <template #action>
-            <n-space>
-              <n-button type="primary" size="small" :loading="isDecompiling"
-                :disabled="!selectedDecompileFile || isDecompiling" @click="startDecompile">
-                <template #icon><n-icon><Unlock /></n-icon></template>
-                Decompile
-              </n-button>
-              <n-button size="small" :disabled="!decompileOutputPath" @click="openDecompileOutput">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
-                Open
-              </n-button>
-            </n-space>
-          </template>
+          <div class="card-actions">
+            <n-button type="primary" size="small" :loading="isDecompiling"
+              :disabled="!selectedDecompileFile || isDecompiling" @click="startDecompile" block>
+              <template #icon><n-icon><Unlock /></n-icon></template>
+              Decompile
+            </n-button>
+            <n-button v-if="decompileOutputPath" size="small" @click="openDecompileOutput">
+              <template #icon><n-icon><FolderOpen /></n-icon></template>
+              Open
+            </n-button>
+          </div>
         </n-card>
 
         <!-- Recompile -->
-        <n-card title="Recompile" :bordered="false" size="small" class="pkg-card">
-          <div class="drop-zone">
-            <n-icon size="32" color="#475569"><Lock /></n-icon>
-            <p>Select decompiled project directory to recompile</p>
-            <n-button size="small" quaternary @click="selectProjectDir">
+        <n-card :bordered="false" size="small" class="pkg-card">
+          <template #header>
+            <div class="card-header-row">
+              <n-icon size="18" color="#EF4444"><Lock /></n-icon>
+              <span class="card-title">Recompile</span>
+            </div>
+          </template>
+          <div class="drop-zone" @click="selectProjectDir">
+            <n-icon size="28" color="#475569"><Lock /></n-icon>
+            <p class="drop-text">Select decompiled project directory</p>
+            <n-button size="small" quaternary @click.stop="selectProjectDir">
               <template #icon><n-icon><FolderOpen /></n-icon></template>
-              Select Directory
+              Browse
             </n-button>
           </div>
-          <div v-if="selectedProjectDir" class="file-info">
-            <n-tag type="info" size="small">{{ selectedProjectDir }}</n-tag>
+          <div v-if="selectedProjectDir" class="file-info-row">
+            <n-icon size="14" color="#64748B"><Folder /></n-icon>
+            <span class="file-name">{{ selectedProjectDir }}</span>
           </div>
           <div v-if="selectedProjectDir" class="options-panel">
-            <n-space align="center">
-              <n-checkbox v-model:checked="recompileOptions.sign">Sign</n-checkbox>
+            <n-space align="center" wrap>
+              <n-checkbox v-model:checked="recompileOptions.sign" size="small">Sign</n-checkbox>
               <n-select v-if="recompileOptions.sign" v-model:value="recompileSignatureId"
                 :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                placeholder="Select signature" style="width: 160px" size="tiny" />
-              <n-checkbox v-if="recompileOptions.sign" v-model:checked="recompileOptions.v2">V2 Sign</n-checkbox>
-              <n-checkbox v-model:checked="recompileOptions.align">ZipAlign</n-checkbox>
+                placeholder="Signature" style="width: 150px" size="tiny" />
+              <n-checkbox v-if="recompileOptions.sign" v-model:checked="recompileOptions.v2" size="small">V2</n-checkbox>
+              <n-checkbox v-model:checked="recompileOptions.align" size="small">ZipAlign</n-checkbox>
             </n-space>
           </div>
           <div v-if="recompileProgress && recompileProgress.show" style="margin-top: 12px">
             <n-progress type="line" :percentage="recompileProgress.value" color="#22C55E" />
           </div>
-          <template #action>
-            <n-space>
-              <n-button type="primary" size="small" :disabled="!selectedProjectDir" @click="startRecompile">
-                <template #icon><n-icon><Lock /></n-icon></template>
-                Recompile
-              </n-button>
-              <n-button size="small" :disabled="!recompileOutputPath" @click="openRecompileOutput">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
-                Open
-              </n-button>
-            </n-space>
-          </template>
+          <div class="card-actions">
+            <n-button type="primary" size="small" :disabled="!selectedProjectDir" @click="startRecompile" block>
+              <template #icon><n-icon><Lock /></n-icon></template>
+              Recompile
+            </n-button>
+            <n-button v-if="recompileOutputPath" size="small" @click="openRecompileOutput">
+              <template #icon><n-icon><FolderOpen /></n-icon></template>
+              Open
+            </n-button>
+          </div>
         </n-card>
 
         <!-- Resign -->
-        <n-card title="Resign" :bordered="false" size="small" class="pkg-card">
+        <n-card :bordered="false" size="small" class="pkg-card">
+          <template #header>
+            <div class="card-header-row">
+              <n-icon size="18" color="#EC4899"><PenTool /></n-icon>
+              <span class="card-title">Resign</span>
+            </div>
+          </template>
           <div class="drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
             @dragenter.prevent @click="selectResignFile()">
-            <n-icon size="32" color="#475569"><PenTool /></n-icon>
-            <p>Drop APK file to resign</p>
+            <n-icon size="28" color="#475569"><PenTool /></n-icon>
+            <p class="drop-text">Drop APK to resign</p>
             <input type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleResignFileSelect)">
           </div>
-          <div v-if="selectedResignFile" class="file-info">
-            <n-tag type="info" size="small">{{ selectedResignFile.name }}</n-tag>
+          <div v-if="selectedResignFile" class="file-info-row">
+            <n-icon size="14" color="#64748B"><File /></n-icon>
+            <span class="file-name">{{ selectedResignFile.name }}</span>
             <span class="file-size">{{ formatFileSize(selectedResignFile.size) }}</span>
           </div>
           <div class="options-panel" v-if="selectedResignFile">
             <n-space align="center">
               <n-select v-model:value="selectedSignatureId"
                 :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                placeholder="Select signature" style="width: 200px" size="small" />
-              <n-checkbox v-model:checked="resignOptions.v2">V2 Sign</n-checkbox>
+                placeholder="Select signature" style="width: 180px" size="small" />
+              <n-checkbox v-model:checked="resignOptions.v2" size="small">V2 Sign</n-checkbox>
             </n-space>
           </div>
           <div v-if="resignResult" class="analysis-result" v-html="resignResult" />
-          <template #action>
-            <n-space>
-              <n-button type="primary" size="small" :loading="isResigning"
-                :disabled="!selectedResignFile || !selectedSignatureId || isResigning" @click="resignApk">
-                <template #icon><n-icon><PenTool /></n-icon></template>
-                Resign
-              </n-button>
-              <n-button size="small" :disabled="!resignOutputPath" @click="openResignOutput">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
-                Open
-              </n-button>
-            </n-space>
-          </template>
+          <div class="card-actions">
+            <n-button type="primary" size="small" :loading="isResigning"
+              :disabled="!selectedResignFile || !selectedSignatureId || isResigning" @click="resignApk" block>
+              <template #icon><n-icon><PenTool /></n-icon></template>
+              Resign
+            </n-button>
+            <n-button v-if="resignOutputPath" size="small" @click="openResignOutput">
+              <template #icon><n-icon><FolderOpen /></n-icon></template>
+              Open
+            </n-button>
+          </div>
         </n-card>
       </n-grid-item>
     </n-grid>
@@ -203,363 +245,346 @@
   </div>
 </template>
 
-<script>
-import { ref, inject, onMounted } from 'vue'
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { usePackageStore } from '@stores/packageStore'
 import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
+import { NIcon } from 'naive-ui'
+import {
+  Package, Download, Unlock, Lock, PenTool, Search, FolderOpen,
+  Plus, Edit, Trash2, File, Folder, Key
+} from 'lucide-vue-next'
 
-export default {
-  name: 'PackagePage',
-  components: { SignatureEditModal },
-  setup() {
-    const packageStore = usePackageStore()
-    const signatureStore = useSignatureStore()
+const packageStore = usePackageStore()
+const signatureStore = useSignatureStore()
 
-    const {
-      selectedAnalysisFile, selectedInstallFile, selectedDecompileFile,
-      selectedProjectDir, isInstalling, isDecompiling, isRecompiling,
-      isAnalyzing, apkAnalysisResult, decompileResult, recompileResult,
-      decompileOutputPath, recompileOutputPath, installProgress,
-      decompileProgress, recompileProgress, decompileOptions,
-      recompileOptions, resignOptions
-    } = storeToRefs(packageStore)
+const {
+  selectedAnalysisFile, selectedInstallFile, selectedDecompileFile,
+  selectedProjectDir, isInstalling, isDecompiling, isRecompiling,
+  isAnalyzing, apkAnalysisResult, decompileResult, recompileResult,
+  decompileOutputPath, recompileOutputPath, installProgress,
+  decompileProgress, recompileProgress, decompileOptions,
+  recompileOptions, resignOptions
+} = storeToRefs(packageStore)
 
-    const { configs: signatureConfigs } = storeToRefs(signatureStore)
+const { configs: signatureConfigs } = storeToRefs(signatureStore)
 
-    const selectedResignFile = ref(null)
-    const selectedSignatureId = ref('')
-    const recompileSignatureId = ref('')
-    const isResigning = ref(false)
-    const resignResult = ref(null)
-    const resignOutputPath = ref(null)
-    const showSignatureModal = ref(false)
-    const editingSignature = ref(null)
+const selectedResignFile = ref<any>(null)
+const selectedSignatureId = ref('')
+const recompileSignatureId = ref('')
+const isResigning = ref(false)
+const resignResult = ref<any>(null)
+const resignOutputPath = ref<any>(null)
+const showSignatureModal = ref(false)
+const editingSignature = ref<any>(null)
 
-    const { showLoading, completeLoading, failLoading } = useNotification()
-    const errorServiceRef = ref(null)
-    const apkServiceRef = ref(null)
+const { showLoading, completeLoading, failLoading } = useNotification()
+const errorServiceRef = ref<any>(null)
+const apkServiceRef = ref<any>(null)
 
-    const getErrorService = async () => {
-      if (!errorServiceRef.value) errorServiceRef.value = await serviceManager.getService('error')
-      return errorServiceRef.value
-    }
+const getErrorService = async () => {
+  if (!errorServiceRef.value) errorServiceRef.value = await serviceManager.getService('error')
+  return errorServiceRef.value
+}
 
-    const getApkService = async () => {
-      if (!apkServiceRef.value) apkServiceRef.value = await serviceManager.getService('apk')
-      return apkServiceRef.value
-    }
+const getApkService = async () => {
+  if (!apkServiceRef.value) apkServiceRef.value = await serviceManager.getService('apk')
+  return apkServiceRef.value
+}
 
-    const handleDrop = (event, callback) => {
-      event.preventDefault()
-      if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-        callback(event.dataTransfer.files[0])
-      }
-    }
-
-    const handleFileInputChange = (event, callback) => {
-      const file = event.target.files[0]
-      if (file) callback(file)
-      event.target.value = ''
-    }
-
-    const selectFileWithStats = async (targetRef, extensions = ['apk']) => {
-      try {
-        const systemSvc = await serviceManager.getService('system')
-        const res = await systemSvc.selectFile({
-          title: 'Select file',
-          filters: [{ name: 'Android Packages', extensions }]
-        })
-        if (res && !res.canceled) {
-          const p = (res.filePath || (res.filePaths && res.filePaths[0]) || '').trim()
-          if (p) {
-            const name = p.split(/[/\\]/).pop()
-            let size = 0
-            try {
-              const stats = await systemSvc.getFileStats(p)
-              if (stats && stats.size) size = stats.size
-            } catch (error) { console.error('File stats error:', error) }
-            targetRef.value = { name, path: p, size }
-          }
-        }
-      } catch (error) {
-        const svc = await getErrorService()
-        if (svc) svc.reportError(error)
-      }
-    }
-
-    const selectApkFile = () => selectFileWithStats(selectedAnalysisFile)
-    const selectInstallFile = () => selectFileWithStats(selectedInstallFile, ['apk', 'aab'])
-    const selectDecompileFile = () => selectFileWithStats(selectedDecompileFile)
-    const selectResignFile = () => selectFileWithStats(selectedResignFile)
-
-    const handleApkFileSelect = async (file) => {
-      if (file && file.name.toLowerCase().endsWith('.apk')) selectedAnalysisFile.value = file
-      else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
-    }
-
-    const handleInstallFileSelect = async (file) => {
-      const name = file.name.toLowerCase()
-      if (file && (name.endsWith('.apk') || name.endsWith('.aab'))) selectedInstallFile.value = file
-      else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK or AAB file'), { category: 'ui', severity: 'low' }) }
-    }
-
-    const handleDecompileFileSelect = async (file) => {
-      if (file && file.name.toLowerCase().endsWith('.apk')) selectedDecompileFile.value = file
-      else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
-    }
-
-    const handleResignFileSelect = async (file) => {
-      if (file && file.name.toLowerCase().endsWith('.apk')) selectedResignFile.value = file
-      else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
-    }
-
-    const analyzeApk = async () => {
-      if (!selectedAnalysisFile.value) return
-      let loadingId = null
-      try {
-        isAnalyzing.value = true
-        loadingId = showLoading('Analyzing APK...')
-        const apkService = await getApkService()
-        const result = await apkService.analyzeApk(selectedAnalysisFile.value.path)
-        if (result.success) {
-          apkAnalysisResult.value = displayApkAnalysisResult(result.data)
-          if (loadingId) completeLoading(loadingId, 'Analysis complete', '')
-        } else {
-          if (loadingId) failLoading(loadingId, 'Analysis failed', String(result.error || ''))
-        }
-      } catch (error) {
-        if (loadingId) failLoading(loadingId, 'Analysis failed', error.message || String(error))
-        const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'ui', severity: 'low' })
-      } finally { isAnalyzing.value = false }
-    }
-
-    const installApp = async () => {
-      if (!selectedInstallFile.value) return
-      let loadingId = null
-      try {
-        isInstalling.value = true
-        loadingId = showLoading('Installing...')
-        const deviceSvc = await serviceManager.getService('device')
-        const result = await deviceSvc.installApp(selectedInstallFile.value.path)
-        if (result.success) {
-          if (loadingId) completeLoading(loadingId, 'Install complete', '')
-        } else {
-          if (loadingId) failLoading(loadingId, 'Install failed', String(result.error || ''))
-        }
-      } catch (error) {
-        if (loadingId) failLoading(loadingId, 'Install failed', error.message || String(error))
-        const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'device', context: 'device.install' })
-      } finally { isInstalling.value = false }
-    }
-
-    const startDecompile = async () => {
-      if (!selectedDecompileFile.value) return
-      let loadingId = null
-      try {
-        isDecompiling.value = true
-        if (decompileProgress && decompileProgress.value) {
-          decompileProgress.value.show = true; decompileProgress.value.value = 0
-        }
-        loadingId = showLoading('Decompiling APK...')
-        const options = {
-          resources: decompileOptions.value.resources,
-          sources: decompileOptions.value.sources,
-          manifest: decompileOptions.value.manifest
-        }
-        const apkService = await getApkService()
-        const result = await apkService.decompileApk(selectedDecompileFile.value.path, options)
-        if (result.success) {
-          if (decompileProgress?.value) decompileProgress.value.value = 100
-          decompileOutputPath.value = result.outputPath
-          decompileResult.value = `<div class="apk-info-grid"><div class="info-row"><span class="label">Status:</span><span class="value highlight text-success">Success</span></div><div class="info-row"><span class="label">Output:</span><span class="value code">${result.outputPath}</span></div></div>`
-          if (loadingId) completeLoading(loadingId, 'Decompile complete', `Output: ${result.outputPath}`)
-        } else {
-          if (loadingId) failLoading(loadingId, 'Decompile failed', String(result.error || ''))
-        }
-      } catch (error) {
-        if (loadingId) failLoading(loadingId, 'Decompile failed', String(error || ''))
-        const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.decompile' })
-      } finally {
-        isDecompiling.value = false
-        setTimeout(() => { if (decompileProgress?.value) { decompileProgress.value.show = false; decompileProgress.value.value = 0 } }, 2000)
-      }
-    }
-
-    const openDecompileOutput = async () => {
-      if (decompileOutputPath.value) {
-        const systemSvc = await serviceManager.getService('system')
-        await systemSvc.openPath(decompileOutputPath.value)
-      }
-    }
-
-    const selectProjectDir = async () => {
-      try {
-        const systemSvc = await serviceManager.getService('system')
-        const result = await systemSvc.selectDirectory()
-        if (result && !result.canceled) selectedProjectDir.value = result.filePaths[0]
-      } catch (error) {
-        const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'system', context: 'system.selectDirectory' })
-      }
-    }
-
-    const startRecompile = async () => {
-      if (!selectedProjectDir.value) return
-      if (recompileOptions.value.sign && !recompileSignatureId.value) {
-        const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a signature config'), { category: 'ui', severity: 'low' })
-        return
-      }
-      let loadingId = null
-      try {
-        recompileProgress.show = true; recompileProgress.value = 0
-        loadingId = showLoading('Recompiling APK...')
-        const options = { sign: recompileOptions.value.sign, align: recompileOptions.value.align, optimize: recompileOptions.value.optimize, v2: recompileOptions.value.v2 }
-        if (options.sign) {
-          const config = signatureStore.getConfigById(recompileSignatureId.value)
-          if (config) options.keystore = { path: config.path, alias: config.alias, storepass: config.storepass, keypass: config.keypass }
-        }
-        const apkService = await getApkService()
-        const result = await apkService.recompileApk(selectedProjectDir.value, options)
-        if (result.success) {
-          recompileProgress.value = 100; recompileOutputPath.value = result.outputPath
-          recompileResult.value = `<p>Recompile complete! Output: ${result.outputPath}</p>`
-          if (loadingId) completeLoading(loadingId, 'Recompile complete', `Output: ${result.outputPath}`)
-        } else {
-          if (loadingId) failLoading(loadingId, 'Recompile failed', String(result.error || ''))
-        }
-      } catch (error) {
-        if (loadingId) failLoading(loadingId, 'Recompile failed', String(error || ''))
-        const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.recompile' })
-      } finally {
-        setTimeout(() => { recompileProgress.show = false; recompileProgress.value = 0 }, 2000)
-      }
-    }
-
-    const openRecompileOutput = async () => {
-      if (recompileOutputPath.value) {
-        const svc = await serviceManager.getService('system')
-        await svc.openPath(recompileOutputPath.value)
-      }
-    }
-
-    const resignApk = async () => {
-      if (!selectedResignFile.value) return
-      const config = signatureStore.getConfigById(selectedSignatureId.value)
-      if (!config) {
-        const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a signature config'), { category: 'ui', severity: 'low' })
-        return
-      }
-      let loadingId = null
-      try {
-        isResigning.value = true
-        loadingId = showLoading('Resigning APK...')
-        const apkService = await getApkService()
-        const keystore = { path: config.path, alias: config.alias, storepass: config.storepass, keypass: config.keypass }
-        const options = { v2: resignOptions.value.v2 }
-        const result = await apkService.signApk(selectedResignFile.value.path, keystore, options)
-        if (result.success) {
-          resignOutputPath.value = result.outputPath
-          resignResult.value = `<p>Resign complete! Output: ${result.outputPath}</p>`
-          if (loadingId) completeLoading(loadingId, 'Resign complete', `Output: ${result.outputPath}`)
-        } else {
-          if (loadingId) failLoading(loadingId, 'Resign failed', String(result.error || ''))
-        }
-      } catch (error) {
-        if (loadingId) failLoading(loadingId, 'Resign failed', String(error || ''))
-        const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.resign' })
-      } finally { isResigning.value = false }
-    }
-
-    const openResignOutput = async () => {
-      if (resignOutputPath.value) {
-        const svc = await serviceManager.getService('system')
-        await svc.openPath(resignOutputPath.value)
-      }
-    }
-
-    const openSignatureModal = (config = null) => {
-      editingSignature.value = config ? { ...config } : null
-      showSignatureModal.value = true
-    }
-
-    const handleSaveSignature = async (formData) => {
-      if (formData.id) await signatureStore.updateConfig({ ...formData })
-      else await signatureStore.addConfig({ ...formData })
-      if (signatureConfigs.value.length === 1) {
-        selectedSignatureId.value = signatureConfigs.value[0].id
-        recompileSignatureId.value = signatureConfigs.value[0].id
-      }
-    }
-
-    const deleteSignature = async (id) => {
-      if (confirm('Delete this signature config?')) {
-        await signatureStore.removeConfig(id)
-        if (selectedSignatureId.value === id) selectedSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
-        if (recompileSignatureId.value === id) recompileSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
-      }
-    }
-
-    const formatFileSize = (bytes) => {
-      if (bytes === 0) return '0 Bytes'
-      const k = 1024
-      const sizes = ['Bytes', 'KB', 'MB', 'GB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-    }
-
-    const displayApkAnalysisResult = (data) => {
-      if (!data) return ''
-      let permissionsHtml = ''
-      if (data.permissions && data.permissions.length > 0) {
-        const visiblePerms = data.permissions.slice(0, 5)
-        const hiddenPerms = data.permissions.slice(5)
-        permissionsHtml = '<div class="permissions-list">'
-        visiblePerms.forEach(p => {
-          const name = p.name || p
-          permissionsHtml += `<div class="perm-tag">${name.split('.').pop()}</div>`
-        })
-        if (hiddenPerms.length > 0) permissionsHtml += `<div class="perm-tag more">+${hiddenPerms.length}</div>`
-        permissionsHtml += '</div>'
-      }
-      return `<div class="apk-info-grid">
-        <div class="info-row"><span class="label">App Name:</span><span class="value highlight">${data.applicationLabel || 'N/A'}</span></div>
-        <div class="info-row"><span class="label">Package:</span><span class="value code">${data.packageName || 'N/A'}</span></div>
-        <div class="info-group"><div class="info-col"><span class="label">Version:</span><span class="value">${data.versionName || 'N/A'}</span></div><div class="info-col"><span class="label">Code:</span><span class="value">${data.versionCode || 'N/A'}</span></div></div>
-        <div class="info-group"><div class="info-col"><span class="label">Min SDK:</span><span class="value">${data.minSdkVersion || 'N/A'}</span></div><div class="info-col"><span class="label">Target SDK:</span><span class="value">${data.targetSdkVersion || 'N/A'}</span></div></div>
-        <div class="info-row"><span class="label">Permissions:</span><span class="value">${permissionsHtml || 'None'}</span></div>
-      </div>`
-    }
-
-    onMounted(async () => {
-      try { apkServiceRef.value = await serviceManager.getService('apk') } catch { }
-      await signatureStore.loadConfigs()
-      if (signatureConfigs.value.length > 0) {
-        selectedSignatureId.value = signatureConfigs.value[0].id
-        recompileSignatureId.value = signatureConfigs.value[0].id
-      }
-    })
-
-    return {
-      selectedAnalysisFile, selectedInstallFile, selectedDecompileFile, selectedProjectDir,
-      isInstalling, isDecompiling, isRecompiling, isAnalyzing, apkAnalysisResult,
-      decompileResult, recompileResult, decompileOutputPath, recompileOutputPath,
-      installProgress, decompileProgress, recompileProgress, decompileOptions,
-      recompileOptions, resignOptions, signatureConfigs,
-      selectedResignFile, selectedSignatureId, recompileSignatureId,
-      isResigning, resignResult, resignOutputPath,
-      showSignatureModal, editingSignature,
-      handleDrop, handleFileInputChange, handleApkFileSelect, handleInstallFileSelect,
-      selectApkFile, selectInstallFile, selectDecompileFile, handleDecompileFileSelect,
-      analyzeApk, installApp, startDecompile, openDecompileOutput,
-      selectProjectDir, startRecompile, openRecompileOutput,
-      selectResignFile, handleResignFileSelect, resignApk, openResignOutput,
-      openSignatureModal, handleSaveSignature, deleteSignature, formatFileSize
-    }
+const handleDrop = (event: DragEvent, callback: (file: File) => void) => {
+  event.preventDefault()
+  if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+    callback(event.dataTransfer.files[0])
   }
 }
+
+const handleFileInputChange = (event: Event, callback: (file: File) => void) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) callback(file)
+  target.value = ''
+}
+
+const selectFileWithStats = async (targetRef: any, extensions = ['apk']) => {
+  try {
+    const systemSvc = await serviceManager.getService('system') as any
+    const res = await systemSvc.selectFile({
+      title: 'Select file',
+      filters: [{ name: 'Android Packages', extensions }]
+    })
+    if (res && !res.canceled) {
+      const p = (res.filePath || (res.filePaths && res.filePaths[0]) || '').trim()
+      if (p) {
+        const name = p.split(/[/\\]/).pop()
+        let size = 0
+        try {
+          const stats = await systemSvc.getFileStats(p)
+          if (stats && stats.size) size = stats.size
+        } catch (error) { console.error('File stats error:', error) }
+        targetRef.value = { name, path: p, size }
+      }
+    }
+  } catch (error) {
+    const svc = await getErrorService()
+    if (svc) svc.reportError(error)
+  }
+}
+
+const selectApkFile = () => selectFileWithStats(selectedAnalysisFile)
+const selectInstallFile = () => selectFileWithStats(selectedInstallFile, ['apk', 'aab'])
+const selectDecompileFile = () => selectFileWithStats(selectedDecompileFile)
+const selectResignFile = () => selectFileWithStats(selectedResignFile)
+
+const handleApkFileSelect = async (file: File) => {
+  if (file && file.name.toLowerCase().endsWith('.apk')) selectedAnalysisFile.value = file as any
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
+}
+
+const handleInstallFileSelect = async (file: File) => {
+  const name = file.name.toLowerCase()
+  if (file && (name.endsWith('.apk') || name.endsWith('.aab'))) selectedInstallFile.value = file as any
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK or AAB file'), { category: 'ui', severity: 'low' }) }
+}
+
+const handleDecompileFileSelect = async (file: File) => {
+  if (file && file.name.toLowerCase().endsWith('.apk')) selectedDecompileFile.value = file as any
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
+}
+
+const handleResignFileSelect = async (file: File) => {
+  if (file && file.name.toLowerCase().endsWith('.apk')) selectedResignFile.value = file as any
+  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a valid APK file'), { category: 'ui', severity: 'low' }) }
+}
+
+const analyzeApk = async () => {
+  if (!selectedAnalysisFile.value) return
+  let loadingId: any = null
+  try {
+    isAnalyzing.value = true
+    loadingId = showLoading('Analyzing APK...')
+    const apkService = await getApkService()
+    const result = await apkService.analyzeApk(selectedAnalysisFile.value.path)
+    if (result.success) {
+      apkAnalysisResult.value = displayApkAnalysisResult(result.data)
+      if (loadingId) completeLoading(loadingId, 'Analysis complete', '')
+    } else {
+      if (loadingId) failLoading(loadingId, 'Analysis failed', String(result.error || ''))
+    }
+  } catch (error: any) {
+    if (loadingId) failLoading(loadingId, 'Analysis failed', error.message || String(error))
+    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'ui', severity: 'low' })
+  } finally { isAnalyzing.value = false }
+}
+
+const installApp = async () => {
+  if (!selectedInstallFile.value) return
+  let loadingId: any = null
+  try {
+    isInstalling.value = true
+    loadingId = showLoading('Installing...')
+    const deviceSvc = await serviceManager.getService('device') as any
+    const result = await deviceSvc.installApp(selectedInstallFile.value.path)
+    if (result.success) {
+      if (loadingId) completeLoading(loadingId, 'Install complete', '')
+    } else {
+      if (loadingId) failLoading(loadingId, 'Install failed', String(result.error || ''))
+    }
+  } catch (error: any) {
+    if (loadingId) failLoading(loadingId, 'Install failed', error.message || String(error))
+    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'device', context: 'device.install' })
+  } finally { isInstalling.value = false }
+}
+
+const startDecompile = async () => {
+  if (!selectedDecompileFile.value) return
+  let loadingId: any = null
+  try {
+    isDecompiling.value = true
+    if (decompileProgress && decompileProgress.value) {
+      decompileProgress.value.show = true; decompileProgress.value.value = 0
+    }
+    loadingId = showLoading('Decompiling APK...')
+    const options = {
+      resources: decompileOptions.value.resources,
+      sources: decompileOptions.value.sources,
+      manifest: decompileOptions.value.manifest
+    }
+    const apkService = await getApkService()
+    const result = await apkService.decompileApk(selectedDecompileFile.value.path, options)
+    if (result.success) {
+      if (decompileProgress?.value) decompileProgress.value.value = 100
+      decompileOutputPath.value = result.outputPath
+      decompileResult.value = `<div class="apk-info-grid"><div class="info-row"><span class="label">Status:</span><span class="value highlight text-success">Success</span></div><div class="info-row"><span class="label">Output:</span><span class="value code">${result.outputPath}</span></div></div>`
+      if (loadingId) completeLoading(loadingId, 'Decompile complete', `Output: ${result.outputPath}`)
+    } else {
+      if (loadingId) failLoading(loadingId, 'Decompile failed', String(result.error || ''))
+    }
+  } catch (error: any) {
+    if (loadingId) failLoading(loadingId, 'Decompile failed', String(error || ''))
+    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.decompile' })
+  } finally {
+    isDecompiling.value = false
+    setTimeout(() => { if (decompileProgress?.value) { decompileProgress.value.show = false; decompileProgress.value.value = 0 } }, 2000)
+  }
+}
+
+const openDecompileOutput = async () => {
+  if (decompileOutputPath.value) {
+    const systemSvc = await serviceManager.getService('system') as any
+    await systemSvc.openPath(decompileOutputPath.value)
+  }
+}
+
+const selectProjectDir = async () => {
+  try {
+    const systemSvc = await serviceManager.getService('system') as any
+    const result = await systemSvc.selectDirectory()
+    if (result && !result.canceled) selectedProjectDir.value = result.filePaths[0]
+  } catch (error) {
+    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'system', context: 'system.selectDirectory' })
+  }
+}
+
+const startRecompile = async () => {
+  if (!selectedProjectDir.value) return
+  if (recompileOptions.value.sign && !recompileSignatureId.value) {
+    const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a signature config'), { category: 'ui', severity: 'low' })
+    return
+  }
+  let loadingId: any = null
+  try {
+    recompileProgress.value.show = true; recompileProgress.value.value = 0
+    loadingId = showLoading('Recompiling APK...')
+    const options: any = { sign: recompileOptions.value.sign, align: recompileOptions.value.align, optimize: recompileOptions.value.optimize, v2: recompileOptions.value.v2 }
+    if (options.sign) {
+      const config = signatureStore.getConfigById(recompileSignatureId.value)
+      if (config) options.keystore = { path: config.path, alias: config.alias, storepass: config.storepass, keypass: config.keypass }
+    }
+    const apkService = await getApkService()
+    const result = await apkService.recompileApk(selectedProjectDir.value, options)
+    if (result.success) {
+      recompileProgress.value.value = 100; recompileOutputPath.value = result.outputPath
+      recompileResult.value = `<p>Recompile complete! Output: ${result.outputPath}</p>`
+      if (loadingId) completeLoading(loadingId, 'Recompile complete', `Output: ${result.outputPath}`)
+    } else {
+      if (loadingId) failLoading(loadingId, 'Recompile failed', String(result.error || ''))
+    }
+  } catch (error: any) {
+    if (loadingId) failLoading(loadingId, 'Recompile failed', String(error || ''))
+    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.recompile' })
+  } finally {
+    setTimeout(() => { recompileProgress.value.show = false; recompileProgress.value.value = 0 }, 2000)
+  }
+}
+
+const openRecompileOutput = async () => {
+  if (recompileOutputPath.value) {
+    const svc = await serviceManager.getService('system') as any
+    await svc.openPath(recompileOutputPath.value)
+  }
+}
+
+const resignApk = async () => {
+  if (!selectedResignFile.value) return
+  const config = signatureStore.getConfigById(selectedSignatureId.value)
+  if (!config) {
+    const svc = await getErrorService(); if (svc) svc.reportError(new Error('Please select a signature config'), { category: 'ui', severity: 'low' })
+    return
+  }
+  let loadingId: any = null
+  try {
+    isResigning.value = true
+    loadingId = showLoading('Resigning APK...')
+    const apkService = await getApkService()
+    const keystore = { path: config.path, alias: config.alias, storepass: config.storepass, keypass: config.keypass }
+    const options = { v2: resignOptions.value.v2 }
+    const result = await apkService.signApk(selectedResignFile.value.path, keystore, options)
+    if (result.success) {
+      resignOutputPath.value = result.outputPath
+      resignResult.value = `<p>Resign complete! Output: ${result.outputPath}</p>`
+      if (loadingId) completeLoading(loadingId, 'Resign complete', `Output: ${result.outputPath}`)
+    } else {
+      if (loadingId) failLoading(loadingId, 'Resign failed', String(result.error || ''))
+    }
+  } catch (error: any) {
+    if (loadingId) failLoading(loadingId, 'Resign failed', String(error || ''))
+    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.resign' })
+  } finally { isResigning.value = false }
+}
+
+const openResignOutput = async () => {
+  if (resignOutputPath.value) {
+    const svc = await serviceManager.getService('system') as any
+    await svc.openPath(resignOutputPath.value)
+  }
+}
+
+const openSignatureModal = (config: any = null) => {
+  editingSignature.value = config ? { ...config } : null
+  showSignatureModal.value = true
+}
+
+const handleSaveSignature = async (formData: any) => {
+  if (formData.id) await signatureStore.updateConfig({ ...formData })
+  else await signatureStore.addConfig({ ...formData })
+  if (signatureConfigs.value.length === 1) {
+    selectedSignatureId.value = signatureConfigs.value[0].id
+    recompileSignatureId.value = signatureConfigs.value[0].id
+  }
+}
+
+const deleteSignature = async (id: string) => {
+  if (confirm('Delete this signature config?')) {
+    await signatureStore.removeConfig(id)
+    if (selectedSignatureId.value === id) selectedSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
+    if (recompileSignatureId.value === id) recompileSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
+  }
+}
+
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const displayApkAnalysisResult = (data: any) => {
+  if (!data) return ''
+  let permissionsHtml = ''
+  if (data.permissions && data.permissions.length > 0) {
+    const visiblePerms = data.permissions.slice(0, 5)
+    const hiddenPerms = data.permissions.slice(5)
+    permissionsHtml = '<div class="permissions-list">'
+    visiblePerms.forEach((p: any) => {
+      const name = p.name || p
+      permissionsHtml += `<div class="perm-tag">${name.split('.').pop()}</div>`
+    })
+    if (hiddenPerms.length > 0) permissionsHtml += `<div class="perm-tag more">+${hiddenPerms.length}</div>`
+    permissionsHtml += '</div>'
+  }
+  return `<div class="apk-info-grid">
+    <div class="info-row"><span class="label">App Name:</span><span class="value highlight">${data.applicationLabel || 'N/A'}</span></div>
+    <div class="info-row"><span class="label">Package:</span><span class="value code">${data.packageName || 'N/A'}</span></div>
+    <div class="info-group"><div class="info-col"><span class="label">Version:</span><span class="value">${data.versionName || 'N/A'}</span></div><div class="info-col"><span class="label">Code:</span><span class="value">${data.versionCode || 'N/A'}</span></div></div>
+    <div class="info-group"><div class="info-col"><span class="label">Min SDK:</span><span class="value">${data.minSdkVersion || 'N/A'}</span></div><div class="info-col"><span class="label">Target SDK:</span><span class="value">${data.targetSdkVersion || 'N/A'}</span></div></div>
+    <div class="info-row"><span class="label">Permissions:</span><span class="value">${permissionsHtml || 'None'}</span></div>
+  </div>`
+}
+
+onMounted(async () => {
+  try { apkServiceRef.value = await serviceManager.getService('apk') } catch { /* ignore */ }
+  await signatureStore.loadConfigs()
+  if (signatureConfigs.value.length > 0) {
+    selectedSignatureId.value = signatureConfigs.value[0].id
+    recompileSignatureId.value = signatureConfigs.value[0].id
+  }
+})
 </script>
 
 <style scoped>
@@ -586,39 +611,81 @@ export default {
   color: #94A3B8;
   margin: 4px 0 0;
 }
+.section-label {
+  font-family: Inter, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748B;
+  margin-bottom: 12px;
+  padding-left: 2px;
+}
 .pkg-card {
   background: #1E293B;
   border-radius: 10px;
   margin-bottom: 16px;
 }
+.card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-title {
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
 .drop-zone {
   border: 2px dashed #334155;
   border-radius: 10px;
-  padding: 24px;
+  padding: 28px 16px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
   color: #64748B;
-  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 .drop-zone:hover {
   border-color: #22C55E;
   background: rgba(34,197,94,0.04);
+  color: #94A3B8;
 }
 .drop-zone.disabled {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
 }
-.file-info {
+.drop-text {
+  font-size: 13px;
+  margin: 0;
+}
+.file-info-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-top: 12px;
+  padding: 8px 12px;
+  background: #0C1322;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.file-name {
+  flex: 1;
+  color: #E2E8F0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .file-size {
-  font-size: 12px;
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
   color: #94A3B8;
+  flex-shrink: 0;
 }
 .analysis-result {
   margin-top: 12px;
@@ -629,15 +696,59 @@ export default {
 }
 .options-panel {
   margin-top: 12px;
-  padding: 12px;
+  padding: 10px 12px;
   background: #0C1322;
   border-radius: 8px;
 }
+.card-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+}
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   padding: 24px;
   text-align: center;
   color: #64748B;
-  font-size: 14px;
+  font-size: 13px;
+}
+.empty-state p { margin: 0; }
+/* Signature list */
+.sig-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sig-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #0C1322;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.sig-item:hover {
+  background: #162032;
+}
+.sig-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.sig-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #E2E8F0;
+}
+.sig-alias {
+  font-size: 11px;
+  color: #64748B;
+  font-family: 'Fira Code', monospace;
 }
 .hidden-input { display: none; }
 :deep(.text-success) { color: #22C55E; }

@@ -1,0 +1,9 @@
+{
+  "env": {
+    "APP_VERSION": "1.0.1",
+    "PROJECT_NAME": "blank_tool_server",
+    "BT_LOG_LEVEL": "DEBUG",
+    "BT_CACHE_DIR": "../cache",
+    "BT_OUTPUT_DIR": "../output"
+  }
+}

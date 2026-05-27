@@ -57,9 +57,9 @@
 
 <script>
 import { ref } from 'vue'
-import { useDeviceStore } from '@stores/deviceStore.js'
-import  serviceManager  from '@services/serviceManager.js'
-import { useNotification } from '@composables/useNotification.js'
+import { useDeviceStore } from '@stores/deviceStore'
+import serviceManager from '@services/ServiceManager'
+import { useNotification } from '@composables/useNotification'
 import { storeToRefs } from 'pinia'
 
 export default {

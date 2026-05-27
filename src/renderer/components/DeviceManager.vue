@@ -5,8 +5,8 @@
         <h1 class="page-title">Device Management</h1>
         <p class="page-subtitle">Manage connected Android devices via ADB</p>
       </div>
-      <n-space>
-        <n-tag :type="connectionStatus.connected ? 'success' : 'error'" round size="small">
+      <n-space align="center">
+        <n-tag :type="connectionStatus.connected ? 'success' : 'error'" round size="medium" :bordered="false">
           <template #icon><n-icon :component="connectionStatus.connected ? Link : Link2Off" /></template>
           {{ connectionStatus.text }}
         </n-tag>
@@ -20,17 +20,21 @@
     <n-grid cols="1 800:2" :x-gap="16" :y-gap="16">
       <!-- Device List -->
       <n-grid-item>
-        <n-card title="Devices" :bordered="false" class="device-card" size="small">
-          <template #header-extra>
-            <n-tag size="small" :bordered="false">{{ devices.length }} connected</n-tag>
+        <n-card :bordered="false" class="device-card" size="small">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title">Devices</span>
+              <n-tag size="small" :bordered="false" type="info">{{ devices.length }} connected</n-tag>
+            </div>
           </template>
           <n-spin :show="loading">
             <div v-if="devices.length === 0" class="empty-state">
-              <n-icon size="48" color="#475569"><Smartphone /></n-icon>
-              <p>No devices connected</p>
-              <n-button @click="refreshDevices" size="small" quaternary>Try refreshing</n-button>
+              <n-icon size="40" color="#475569"><Smartphone /></n-icon>
+              <p class="empty-title">No Devices Connected</p>
+              <p class="empty-desc">Connect an Android device via USB or enable wireless debugging</p>
+              <n-button @click="refreshDevices" size="small" quaternary>Refresh</n-button>
             </div>
-            <n-list v-else hoverable clickable>
+            <n-list v-else hoverable clickable class="device-list">
               <n-list-item
                 v-for="device in devices"
                 :key="device.id"
@@ -42,16 +46,13 @@
                     <Smartphone />
                   </n-icon>
                 </template>
-                <n-thing :title="device.model || device.id" title-extra="">
-                  <template #description>
-                    <n-space size="small">
-                      <n-tag :type="device.state === 'device' ? 'success' : 'warning'" size="tiny" :bordered="false">
-                        {{ device.state }}
-                      </n-tag>
-                      <span class="serial-text">{{ device.id }}</span>
-                    </n-space>
-                  </template>
-                </n-thing>
+                <div class="device-item-content">
+                  <span class="device-model">{{ device.model || 'Unknown Device' }}</span>
+                  <span class="device-serial">{{ device.id }}</span>
+                </div>
+                <template #suffix>
+                  <span class="device-state-dot" :class="device.state === 'device' ? 'online' : 'warning'"></span>
+                </template>
               </n-list-item>
             </n-list>
           </n-spin>
@@ -75,15 +76,23 @@
 
       <!-- Device Info -->
       <n-grid-item>
-        <n-card title="Device Info" :bordered="false" class="device-card" size="small">
+        <n-card :bordered="false" class="device-card" size="small">
+          <template #header>
+            <span class="card-title">Device Info</span>
+          </template>
           <div v-if="!selectedDevice" class="empty-state">
-            <n-icon size="48" color="#475569"><Info /></n-icon>
-            <p>Select a device to view details</p>
+            <n-icon size="40" color="#475569"><Info /></n-icon>
+            <p class="empty-title">No Device Selected</p>
+            <p class="empty-desc">Select a device from the list to view its details</p>
           </div>
           <template v-else-if="selectedDevice">
-            <n-descriptions label-placement="left" :column="1" size="small">
-              <n-descriptions-item label="Model">{{ selectedDevice.model || '-' }}</n-descriptions-item>
-              <n-descriptions-item label="Serial">{{ selectedDevice.id }}</n-descriptions-item>
+            <n-descriptions label-placement="left" :column="1" size="small" class="device-descriptions">
+              <n-descriptions-item label="Model">
+                <span class="info-value highlight">{{ selectedDevice.model || '-' }}</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="Serial">
+                <span class="info-value mono">{{ selectedDevice.id }}</span>
+              </n-descriptions-item>
               <n-descriptions-item label="Status">
                 <n-tag :type="selectedDevice.state === 'device' ? 'success' : 'warning'" size="small" :bordered="false">
                   {{ selectedDevice.state }}
@@ -91,8 +100,8 @@
               </n-descriptions-item>
               <n-descriptions-item label="Product">{{ selectedDevice.product || '-' }}</n-descriptions-item>
               <template v-if="deviceInfo">
-                <n-descriptions-item label="Android Version">{{ deviceInfo.androidVersion || '-' }}</n-descriptions-item>
-                <n-descriptions-item label="SDK Level">{{ deviceInfo.sdkLevel || '-' }}</n-descriptions-item>
+                <n-descriptions-item label="Android">{{ deviceInfo.androidVersion || '-' }}</n-descriptions-item>
+                <n-descriptions-item label="SDK">{{ deviceInfo.sdkLevel || '-' }}</n-descriptions-item>
                 <n-descriptions-item label="CPU">{{ deviceInfo.cpu || '-' }}</n-descriptions-item>
               </template>
             </n-descriptions>
@@ -101,20 +110,37 @@
       </n-grid-item>
     </n-grid>
 
-    <!-- Logcat Output -->
-    <n-card v-if="isMonitoring" title="Logcat" :bordered="false" class="logcat-card" size="small" style="margin-top: 16px">
-      <template #header-extra>
-        <n-tag type="success" size="small" :bordered="false">
-          <template #icon><n-icon><Circle /></n-icon></template>
-          Live
-        </n-tag>
-      </template>
-      <div class="logcat-output" ref="logcatContainer">
-        <div v-if="logcatOutput.length === 0" class="empty-state">
-          <p>Waiting for log output...</p>
+    <!-- Logcat Output (collapsible) -->
+    <n-card :bordered="false" class="logcat-card" size="small" style="margin-top: 16px">
+      <template #header>
+        <div class="card-header logcat-header" @click="logcatCollapsed = !logcatCollapsed" style="cursor: pointer;">
+          <span class="card-title">Logcat</span>
+          <n-space align="center">
+            <n-tag v-if="isMonitoring" type="success" size="small" :bordered="false">
+              <template #icon><n-icon><Circle /></n-icon></template>
+              Live
+            </n-tag>
+            <n-icon :size="18" color="#94A3B8">
+              <ChevronDown v-if="!logcatCollapsed" />
+              <ChevronUp v-else />
+            </n-icon>
+          </n-space>
         </div>
-        <div v-for="(line, i) in logcatOutput" :key="i" class="logcat-line" :class="getLogLevel(line)">
-          {{ line }}
+      </template>
+      <div v-show="!logcatCollapsed">
+        <div v-if="!isMonitoring" class="empty-state logcat-empty">
+          <n-icon size="32" color="#475569"><Terminal /></n-icon>
+          <p class="empty-title">Logcat Not Running</p>
+          <p class="empty-desc">Select a device and click "Start Logcat" to begin monitoring</p>
+        </div>
+        <div v-else class="logcat-output" ref="logcatContainer">
+          <div v-if="logcatOutput.length === 0" class="empty-state">
+            <p>Waiting for log output...</p>
+          </div>
+          <div v-for="(line, i) in logcatOutput" :key="i" class="logcat-line" :class="getLogLevel(line)">
+            <span class="log-line-num">{{ i + 1 }}</span>
+            <span>{{ line }}</span>
+          </div>
         </div>
       </div>
     </n-card>
@@ -125,7 +151,8 @@
 import { ref, watch, nextTick, onUnmounted } from 'vue'
 import { NIcon } from 'naive-ui'
 import {
-  Smartphone, RefreshCw, Activity, Info, Link, Link2Off, Circle
+  Smartphone, RefreshCw, Activity, Info, Link, Link2Off, Circle,
+  ChevronDown, ChevronUp, Terminal
 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
@@ -144,6 +171,7 @@ const {
 
 const loading = ref(false)
 const logcatContainer = ref<HTMLElement | null>(null)
+const logcatCollapsed = ref(true)
 
 // Auto-scroll logcat
 watch(() => logcatOutput.value.length, () => {
@@ -152,6 +180,11 @@ watch(() => logcatOutput.value.length, () => {
       logcatContainer.value.scrollTop = logcatContainer.value.scrollHeight
     }
   })
+})
+
+// Auto-expand logcat card when monitoring starts
+watch(() => isMonitoring.value, (val) => {
+  if (val) logcatCollapsed.value = false
 })
 
 onUnmounted(() => {
@@ -216,6 +249,18 @@ const handleDeviceSelection = async (id: string) => {
   color: #94A3B8;
   margin: 4px 0 0;
 }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.card-title {
+  font-family: Inter, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
 .device-card {
   background: #1E293B;
   border-radius: 10px;
@@ -225,16 +270,50 @@ const handleDeviceSelection = async (id: string) => {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 32px 16px;
+  padding: 40px 16px;
   color: #64748B;
   font-size: 14px;
 }
 .empty-state p { margin: 0; }
-.serial-text {
+.empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #94A3B8;
+  margin-top: 4px !important;
+}
+.empty-desc {
+  font-size: 12px;
+  color: #64748B;
+  max-width: 220px;
+  text-align: center;
+}
+/* Device list items */
+.device-list {
+  margin: -4px 0;
+}
+.device-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.device-model {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+.device-serial {
   font-family: 'Fira Code', monospace;
   font-size: 11px;
   color: #64748B;
 }
+.device-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.device-state-dot.online { background: #22C55E; }
+.device-state-dot.warning { background: #F59E0B; }
 :deep(.n-list-item) {
   border-radius: 8px;
   margin: 2px 0;
@@ -242,9 +321,32 @@ const handleDeviceSelection = async (id: string) => {
 :deep(.n-list-item.selected) {
   background: rgba(34,197,94,0.08) !important;
 }
+/* Device info */
+.device-descriptions {
+  margin: -8px 0;
+}
+.info-value {
+  color: #E2E8F0;
+}
+.info-value.highlight {
+  font-weight: 600;
+  color: #F8FAFC;
+}
+.info-value.mono {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: #3B82F6;
+}
+/* Logcat */
 .logcat-card {
   background: #1E293B;
   border-radius: 10px;
+}
+.logcat-header {
+  user-select: none;
+}
+.logcat-empty {
+  padding: 32px 16px;
 }
 .logcat-output {
   background: #0C1322;
@@ -257,9 +359,18 @@ const handleDeviceSelection = async (id: string) => {
   line-height: 1.7;
 }
 .logcat-line {
+  display: flex;
+  gap: 12px;
   white-space: pre-wrap;
   word-break: break-all;
   color: #CBD5E1;
+}
+.log-line-num {
+  color: #475569;
+  min-width: 28px;
+  text-align: right;
+  user-select: none;
+  flex-shrink: 0;
 }
 .level-error { color: #EF4444; }
 .level-warn { color: #F59E0B; }

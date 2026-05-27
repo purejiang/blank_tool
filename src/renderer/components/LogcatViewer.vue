@@ -38,8 +38,8 @@
 
 <script>
 import { computed, ref, watch, nextTick } from 'vue'
-import { useDeviceStore } from '@stores/deviceStore.js'
-import serviceManager from '@services/ServiceManager.js'
+import { useDeviceStore } from '@stores/deviceStore'
+import serviceManager from '@services/ServiceManager'
 import { storeToRefs } from 'pinia'
 
 export default {

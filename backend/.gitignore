@@ -2,4 +2,5 @@
 /tests/
 /cache/
 /output/
+server.config.json
 **/__pycache__
