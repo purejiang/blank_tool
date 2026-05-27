@@ -317,6 +317,13 @@ const handleDeviceSelection = async (id: string) => {
 :deep(.n-list-item) {
   border-radius: 8px;
   margin: 2px 0;
+  background: transparent !important;
+}
+:deep(.n-list-item .n-thing) {
+  background: transparent !important;
+}
+:deep(.n-list-item .n-thing .n-thing-main .n-thing-header) {
+  background: transparent !important;
 }
 :deep(.n-list-item.selected) {
   background: rgba(34,197,94,0.08) !important;

@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides">
+  <n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides" :locale="locale">
     <n-notification-provider>
       <n-message-provider>
         <div id="app">
@@ -72,7 +72,7 @@
                 />
 
                 <!-- Status Bar (inside sidebar) -->
-                <StatusBar />
+                <StatusBar :collapsed="sidebarCollapsed" />
 
                 <!-- Bottom Actions -->
                 <div class="sider-footer" :class="{ collapsed: sidebarCollapsed }">
@@ -104,9 +104,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, onMounted, onUnmounted, getCurrentInstance, computed } from 'vue'
+import { ref, h, onMounted, onUnmounted, getCurrentInstance, computed, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { darkTheme, NIcon } from 'naive-ui'
+import { darkTheme, NIcon, zhCN, enUS } from 'naive-ui'
 import {
   Smartphone, Package, Settings, Wrench, Terminal,
   ChevronsLeft, ChevronsRight
@@ -158,6 +158,13 @@ const themeOverrides = {
 // Sidebar
 const sidebarCollapsed = ref(false)
 const activeMenuKey = ref(route.path || '/device')
+
+// Locale for Naive UI i18n
+const locale = ref(zhCN)
+const setLocale = (lang: string) => {
+  locale.value = lang === 'zh-CN' ? zhCN : enUS
+}
+provide('setLocale', setLocale)
 
 const renderMenuLabel = (option: MenuOption) => {
   return option.label as string
@@ -443,6 +450,15 @@ onUnmounted(() => {
 }
 .n-menu .n-menu-item-content:active {
   background: rgba(34,197,94,0.1) !important;
+}
+/* Center icons when sidebar is collapsed */
+.n-menu--collapsed .n-menu-item-content {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  justify-content: center !important;
+}
+.n-menu--collapsed .n-menu-item-content .n-menu-item-content__icon {
+  margin-right: 0 !important;
 }
 /* Scrollbar */
 ::-webkit-scrollbar {

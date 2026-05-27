@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, inject } from 'vue'
 import { NIcon } from 'naive-ui'
 import { Save, RotateCcw, FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
@@ -7,6 +7,7 @@ import { useNotification } from '@composables/useNotification'
 import { useToolStore, useSystemStore } from '@stores/index'
 
 const { showSuccess, showError } = useNotification()
+const setLocale = inject<(lang: string) => void>('setLocale', () => {})
 const toolStore = useToolStore()
 const systemStore = useSystemStore()
 
@@ -67,6 +68,7 @@ const saveGeneral = async () => {
   try {
     const svc = await serviceManager.getService('settings')
     await svc.saveSettings({ ...general })
+    setLocale(general.language)
     showSuccess('Settings saved')
   } catch (e: any) { showError('Failed to save', e.message) }
 }

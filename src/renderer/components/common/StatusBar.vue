@@ -1,20 +1,28 @@
 <template>
-  <div class="status-bar">
-    <div class="status-left">
-      <div class="device-badge" v-if="connectedDevice">
-        <n-icon size="14"><Smartphone /></n-icon>
-        <span>{{ connectedDevice.name || connectedDevice.id }}</span>
-        <span class="status-dot" :class="deviceStatusClass"></span>
+  <div class="status-bar" :class="{ collapsed }">
+    <!-- Minimal mode: icon + dot only when sidebar collapsed -->
+    <template v-if="collapsed">
+      <n-icon size="18" :color="deviceStatus === 'online' ? '#22C55E' : '#64748B'"><Smartphone /></n-icon>
+      <span class="status-dot" :class="deviceStatus"></span>
+    </template>
+    <!-- Full mode -->
+    <template v-else>
+      <div class="status-left">
+        <div class="device-badge" v-if="connectedDevice">
+          <n-icon size="14"><Smartphone /></n-icon>
+          <span>{{ connectedDevice.name || connectedDevice.id }}</span>
+          <span class="status-dot" :class="deviceStatusClass"></span>
+        </div>
+        <div class="device-badge off" v-else>
+          <n-icon size="14" color="#64748B"><Smartphone /></n-icon>
+          <span class="dim">No device</span>
+          <span class="status-dot offline"></span>
+        </div>
       </div>
-      <div class="device-badge off" v-else>
-        <n-icon size="14" color="#64748B"><Smartphone /></n-icon>
-        <span class="dim">No device</span>
-        <span class="status-dot offline"></span>
+      <div class="status-right">
+        <span class="version-text">v{{ frontendVersion }} | backend {{ backendVersion || 'N/A' }}</span>
       </div>
-    </div>
-    <div class="status-right">
-      <span class="version-text">v{{ frontendVersion }} | backend {{ backendVersion || 'N/A' }}</span>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -25,6 +33,8 @@ import { Smartphone } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
+
+defineProps<{ collapsed?: boolean }>()
 
 const deviceStore = useDeviceStore()
 const { selectedDevice } = storeToRefs(deviceStore)
@@ -65,6 +75,14 @@ onMounted(() => getVersions())
   border-top: 1px solid #1E293B;
   font-size: 11px;
   font-family: Inter, sans-serif;
+  flex-shrink: 0;
+}
+.status-bar.collapsed {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 4px;
 }
 .status-left, .status-right {
   display: flex;
