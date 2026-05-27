@@ -85,7 +85,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { RefreshCw, Puzzle, Play, BookOpen, ChevronDown, ChevronUp } from 'lucide-vue-next'
-import { useNotification } from '@/composables/useNotification'
+import { useNotification } from '@composables/useNotification'
 
 const { t } = useI18n()
 
@@ -139,12 +139,33 @@ onMounted(() => loadPlugins())
 <style scoped>
 .tools-page { max-width: 1000px; margin: 0 auto; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: #F8FAFC; margin: 0; letter-spacing: -0.02em; }
+.page-title {
+  font-family: Inter, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #F8FAFC;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
 .page-subtitle { font-size: 13px; color: #94A3B8; margin: 4px 0 0; }
-.card-title { font-family: Inter, sans-serif; font-size: 14px; font-weight: 600; color: #F8FAFC; }
-.empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 64px 16px; color: #64748B; }
-.empty-title { font-size: 14px; font-weight: 600; color: #94A3B8; margin: 0; }
-.empty-desc { font-size: 13px; color: #64748B; margin: 0; max-width: 320px; text-align: center; }
+.card-title {
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 64px 16px;
+  color: #64748B;
+  text-align: center;
+}
+.empty-title { font-size: 15px; font-weight: 600; color: #94A3B8; margin: 0; }
+.empty-desc { font-size: 13px; color: #64748B; margin: 0; max-width: 360px; text-align: center; }
+
 /* Plugin cards */
 .plugin-card {
   background: #1E293B;
@@ -176,24 +197,10 @@ onMounted(() => loadPlugins())
   gap: 1px;
   min-width: 0;
 }
-.plugin-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #F8FAFC;
-}
-.plugin-version {
-  font-size: 11px;
-  color: #64748B;
-}
-.plugin-desc {
-  color: #94A3B8;
-  font-size: 13px;
-  margin: 0;
-  line-height: 1.5;
-}
-.plugin-actions {
-  margin-top: 12px;
-}
+.plugin-name { font-size: 14px; font-weight: 600; color: #F8FAFC; }
+.plugin-version { font-size: 11px; color: #64748B; }
+.plugin-desc { color: #94A3B8; font-size: 13px; margin: 0; line-height: 1.5; }
+.plugin-actions { margin-top: 12px; }
 .plugin-result {
   background: #0C1322;
   padding: 8px 12px;
@@ -208,6 +215,7 @@ onMounted(() => loadPlugins())
   max-height: 150px;
   overflow-y: auto;
 }
+
 /* Help card */
 .help-card {
   background: #1E293B;
@@ -221,20 +229,9 @@ onMounted(() => loadPlugins())
   width: 100%;
   user-select: none;
 }
-.help-content {
-  margin-top: 4px;
-}
-.help-intro {
-  color: #CBD5E1;
-  font-size: 14px;
-  line-height: 1.6;
-  margin: 0 0 12px;
-}
-.help-steps {
-  color: #CBD5E1;
-  font-size: 14px;
-  line-height: 1.8;
-}
+.help-content { margin-top: 4px; }
+.help-intro { color: #CBD5E1; font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
+.help-steps { color: #CBD5E1; font-size: 14px; line-height: 1.8; }
 .help-steps code {
   background: #0C1322;
   padding: 1px 6px;

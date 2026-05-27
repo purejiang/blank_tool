@@ -7,234 +7,251 @@
       </div>
     </div>
 
-    <n-grid :cols="1" :x-gap="16" responsive="screen" item-responsive>
-      <!-- Left Column: Analysis & Install -->
-      <n-grid-item span="1 800:1">
-        <div class="section-label">{{ t('package.analysisInstall') }}</div>
-
-        <!-- APK Analysis -->
-        <n-card :bordered="false" size="small" class="pkg-card">
-          <template #header>
-            <div class="card-header-row">
-              <n-icon size="18" color="#3B82F6"><Search /></n-icon>
-              <span class="card-title">{{ t('package.apkAnalysis') }}</span>
-            </div>
-          </template>
-          <div class="drop-zone" @drop="handleDrop($event, handleApkFileSelect)" @dragover.prevent
-            @dragenter.prevent @click="!isAnalyzing && selectApkFile()">
-            <n-icon size="28" color="#475569"><Package /></n-icon>
-            <p class="drop-text">{{ t('package.dropApkHere') }}</p>
-            <input ref="apkFileInput" type="file" accept=".apk" class="hidden-input"
-              @change="handleFileInputChange($event, handleApkFileSelect)">
-          </div>
-          <div v-if="selectedAnalysisFile" class="file-info-row">
-            <n-icon size="14" color="#64748B"><File /></n-icon>
-            <span class="file-name">{{ selectedAnalysisFile.name }}</span>
-            <span class="file-size">{{ formatFileSize(selectedAnalysisFile.size) }}</span>
-          </div>
-          <div v-if="apkAnalysisResult" class="analysis-result" v-html="apkAnalysisResult" />
-          <div class="card-actions">
-            <n-button type="primary" size="small" :loading="isAnalyzing"
-              :disabled="!selectedAnalysisFile || isAnalyzing" @click="analyzeApk" block>
-              <template #icon><n-icon><Search /></n-icon></template>
-              {{ t('package.analyze') }}
-            </n-button>
-          </div>
-        </n-card>
-
-        <!-- Install -->
-        <n-card :bordered="false" size="small" class="pkg-card">
-          <template #header>
-            <div class="card-header-row">
-              <n-icon size="18" color="#22C55E"><Download /></n-icon>
-              <span class="card-title">{{ t('package.install') }}</span>
-            </div>
-          </template>
-          <div class="drop-zone" :class="{ disabled: isInstalling }"
-            @drop="!isInstalling && handleDrop($event, handleInstallFileSelect)" @dragover.prevent @dragenter.prevent
-            @click="!isInstalling && selectInstallFile()">
-            <n-icon size="28" color="#475569"><Download /></n-icon>
-            <p class="drop-text">{{ t('package.dropToInstall') }}</p>
-            <input ref="installFileInput" type="file" accept=".apk,.aab" class="hidden-input"
-              @change="handleFileInputChange($event, handleInstallFileSelect)">
-          </div>
-          <div v-if="selectedInstallFile" class="file-info-row">
-            <n-icon size="14" color="#64748B"><File /></n-icon>
-            <span class="file-name">{{ selectedInstallFile.name }}</span>
-            <span class="file-size">{{ formatFileSize(selectedInstallFile.size) }}</span>
-          </div>
-          <div class="card-actions">
-            <n-button type="success" size="small" :loading="isInstalling"
-              :disabled="!selectedInstallFile || isInstalling" @click="installApp" block>
-              <template #icon><n-icon><Download /></n-icon></template>
-              {{ t('package.install') }}
-            </n-button>
-          </div>
-        </n-card>
-
-        <!-- Signature Configs -->
-        <n-card :bordered="false" size="small" class="pkg-card">
-          <template #header>
-            <div class="card-header-row">
-              <n-icon size="18" color="#F59E0B"><Key /></n-icon>
-              <span class="card-title">{{ t('package.signatureConfigs') }}</span>
-            </div>
-          </template>
-          <template #header-extra>
-            <n-button size="tiny" quaternary @click="openSignatureModal()">
-              <template #icon><n-icon><Plus /></n-icon></template>
-              {{ t('package.add') }}
-            </n-button>
-          </template>
-          <div v-if="signatureConfigs.length > 0" class="sig-list">
-            <div v-for="config in signatureConfigs" :key="config.id" class="sig-item">
-              <div class="sig-info">
-                <span class="sig-name">{{ config.name }}</span>
-                <span class="sig-alias">{{ config.alias }}</span>
+    <n-tabs type="line" animated :default-value="'analyze'" class="pkg-tabs">
+      <!-- Tab 1: Analyze & Install -->
+      <n-tab-pane name="analyze" :tab="t('package.analysisInstall')">
+        <n-grid :cols="2" :x-gap="16" responsive="screen">
+          <!-- APK Analysis -->
+          <n-grid-item span="1 800:1">
+            <n-card :bordered="false" size="small" class="pkg-card">
+              <template #header>
+                <div class="card-header-row">
+                  <n-icon size="18" color="#3B82F6"><Search /></n-icon>
+                  <span class="card-title">{{ t('package.apkAnalysis') }}</span>
+                </div>
+              </template>
+              <div class="drop-zone" @drop="handleDrop($event, handleApkFileSelect)" @dragover.prevent
+                @dragenter.prevent @click="!isAnalyzing && selectApkFile()">
+                <n-icon size="28" color="#475569"><Package /></n-icon>
+                <p class="drop-text">{{ t('package.dropApkHere') }}</p>
+                <input ref="apkFileInput" type="file" accept=".apk" class="hidden-input"
+                  @change="handleFileInputChange($event, handleApkFileSelect)">
               </div>
-              <n-space size="small">
-                <n-button size="tiny" quaternary @click="openSignatureModal(config)">
-                  <template #icon><n-icon size="14"><Edit /></n-icon></template>
+              <div v-if="selectedAnalysisFile" class="file-info-row">
+                <n-icon size="14" color="#64748B"><File /></n-icon>
+                <span class="file-name">{{ selectedAnalysisFile.name }}</span>
+                <span class="file-size">{{ formatFileSize(selectedAnalysisFile.size) }}</span>
+              </div>
+              <div v-if="apkAnalysisResult" class="analysis-result" v-html="apkAnalysisResult" />
+              <div class="card-actions">
+                <n-button type="primary" size="small" :loading="isAnalyzing"
+                  :disabled="!selectedAnalysisFile || isAnalyzing" @click="analyzeApk" block>
+                  <template #icon><n-icon><Search /></n-icon></template>
+                  {{ t('package.analyze') }}
                 </n-button>
-                <n-button size="tiny" quaternary type="error" @click="deleteSignature(config.id)">
-                  <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
+              </div>
+            </n-card>
+          </n-grid-item>
+
+          <!-- Install -->
+          <n-grid-item span="1 800:1">
+            <n-card :bordered="false" size="small" class="pkg-card">
+              <template #header>
+                <div class="card-header-row">
+                  <n-icon size="18" color="#22C55E"><Download /></n-icon>
+                  <span class="card-title">{{ t('package.install') }}</span>
+                </div>
+              </template>
+              <div class="drop-zone" :class="{ disabled: isInstalling }"
+                @drop="!isInstalling && handleDrop($event, handleInstallFileSelect)" @dragover.prevent @dragenter.prevent
+                @click="!isInstalling && selectInstallFile()">
+                <n-icon size="28" color="#475569"><Download /></n-icon>
+                <p class="drop-text">{{ t('package.dropToInstall') }}</p>
+                <input ref="installFileInput" type="file" accept=".apk,.aab" class="hidden-input"
+                  @change="handleFileInputChange($event, handleInstallFileSelect)">
+              </div>
+              <div v-if="selectedInstallFile" class="file-info-row">
+                <n-icon size="14" color="#64748B"><File /></n-icon>
+                <span class="file-name">{{ selectedInstallFile.name }}</span>
+                <span class="file-size">{{ formatFileSize(selectedInstallFile.size) }}</span>
+              </div>
+              <div class="card-actions">
+                <n-button type="success" size="small" :loading="isInstalling"
+                  :disabled="!selectedInstallFile || isInstalling" @click="installApp" block>
+                  <template #icon><n-icon><Download /></n-icon></template>
+                  {{ t('package.install') }}
                 </n-button>
-              </n-space>
-            </div>
-          </div>
-          <div v-else class="empty-state">
-            <n-icon size="24" color="#475569"><Key /></n-icon>
-            <p>{{ t('package.noSignatureConfigs') }}</p>
-          </div>
-        </n-card>
-      </n-grid-item>
+              </div>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
+      </n-tab-pane>
 
-      <!-- Right Column: Decompile & Resign -->
-      <n-grid-item span="1 800:1">
-        <div class="section-label">{{ t('package.decompileResign') }}</div>
+      <!-- Tab 2: Decompile & Recompile -->
+      <n-tab-pane name="decompile" :tab="t('package.decompileRecompile')">
+        <n-grid :cols="2" :x-gap="16" responsive="screen">
+          <!-- Decompile -->
+          <n-grid-item span="1 800:1">
+            <n-card :bordered="false" size="small" class="pkg-card">
+              <template #header>
+                <div class="card-header-row">
+                  <n-icon size="18" color="#8B5CF6"><Unlock /></n-icon>
+                  <span class="card-title">{{ t('package.decompile') }}</span>
+                </div>
+              </template>
+              <div class="drop-zone" @drop="handleDrop($event, handleDecompileFileSelect)" @dragover.prevent
+                @dragenter.prevent @click="selectDecompileFile()">
+                <n-icon size="28" color="#475569"><Unlock /></n-icon>
+                <p class="drop-text">{{ t('package.dropToDecompile') }}</p>
+                <input ref="decompileFileInput" type="file" accept=".apk" class="hidden-input"
+                  @change="handleFileInputChange($event, handleDecompileFileSelect)">
+              </div>
+              <div v-if="selectedDecompileFile" class="file-info-row">
+                <n-icon size="14" color="#64748B"><File /></n-icon>
+                <span class="file-name">{{ selectedDecompileFile.name }}</span>
+                <span class="file-size">{{ formatFileSize(selectedDecompileFile.size) }}</span>
+              </div>
+              <div v-if="decompileResult" class="analysis-result" v-html="decompileResult" />
+              <div class="card-actions">
+                <n-button type="primary" size="small" :loading="isDecompiling"
+                  :disabled="!selectedDecompileFile || isDecompiling" @click="startDecompile" block>
+                  <template #icon><n-icon><Unlock /></n-icon></template>
+                  {{ t('package.decompile') }}
+                </n-button>
+                <n-button v-if="decompileOutputPath" size="small" @click="openDecompileOutput">
+                  <template #icon><n-icon><FolderOpen /></n-icon></template>
+                  {{ t('package.open') }}
+                </n-button>
+              </div>
+            </n-card>
+          </n-grid-item>
 
-        <!-- Decompile -->
-        <n-card :bordered="false" size="small" class="pkg-card">
-          <template #header>
-            <div class="card-header-row">
-              <n-icon size="18" color="#8B5CF6"><Unlock /></n-icon>
-              <span class="card-title">{{ t('package.decompile') }}</span>
-            </div>
-          </template>
-          <div class="drop-zone" @drop="handleDrop($event, handleDecompileFileSelect)" @dragover.prevent
-            @dragenter.prevent @click="selectDecompileFile()">
-            <n-icon size="28" color="#475569"><Unlock /></n-icon>
-            <p class="drop-text">{{ t('package.dropToDecompile') }}</p>
-            <input ref="decompileFileInput" type="file" accept=".apk" class="hidden-input"
-              @change="handleFileInputChange($event, handleDecompileFileSelect)">
-          </div>
-          <div v-if="selectedDecompileFile" class="file-info-row">
-            <n-icon size="14" color="#64748B"><File /></n-icon>
-            <span class="file-name">{{ selectedDecompileFile.name }}</span>
-            <span class="file-size">{{ formatFileSize(selectedDecompileFile.size) }}</span>
-          </div>
-          <div v-if="decompileResult" class="analysis-result" v-html="decompileResult" />
-          <div class="card-actions">
-            <n-button type="primary" size="small" :loading="isDecompiling"
-              :disabled="!selectedDecompileFile || isDecompiling" @click="startDecompile" block>
-              <template #icon><n-icon><Unlock /></n-icon></template>
-              {{ t('package.decompile') }}
-            </n-button>
-            <n-button v-if="decompileOutputPath" size="small" @click="openDecompileOutput">
-              <template #icon><n-icon><FolderOpen /></n-icon></template>
-              {{ t('package.open') }}
-            </n-button>
-          </div>
-        </n-card>
+          <!-- Recompile -->
+          <n-grid-item span="1 800:1">
+            <n-card :bordered="false" size="small" class="pkg-card">
+              <template #header>
+                <div class="card-header-row">
+                  <n-icon size="18" color="#EF4444"><Lock /></n-icon>
+                  <span class="card-title">{{ t('package.recompile') }}</span>
+                </div>
+              </template>
+              <div class="drop-zone" @click="selectProjectDir">
+                <n-icon size="28" color="#475569"><Lock /></n-icon>
+                <p class="drop-text">{{ t('package.selectProjectDir') }}</p>
+                <n-button size="small" quaternary @click.stop="selectProjectDir">
+                  <template #icon><n-icon><FolderOpen /></n-icon></template>
+                  {{ t('package.browse') }}
+                </n-button>
+              </div>
+              <div v-if="selectedProjectDir" class="file-info-row">
+                <n-icon size="14" color="#64748B"><Folder /></n-icon>
+                <span class="file-name">{{ selectedProjectDir }}</span>
+              </div>
+              <div v-if="selectedProjectDir" class="options-panel">
+                <n-space align="center" wrap>
+                  <n-checkbox v-model:checked="recompileOptions.sign" size="small">{{ t('package.sign') }}</n-checkbox>
+                  <n-select v-if="recompileOptions.sign" v-model:value="recompileSignatureId"
+                    :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
+                    :placeholder="t('package.signature')" style="width: 150px" size="tiny" />
+                  <n-checkbox v-if="recompileOptions.sign" v-model:checked="recompileOptions.v2" size="small">{{ t('package.v2') }}</n-checkbox>
+                  <n-checkbox v-model:checked="recompileOptions.align" size="small">{{ t('package.zipAlign') }}</n-checkbox>
+                </n-space>
+              </div>
+              <div v-if="recompileProgress && recompileProgress.show" style="margin-top: 12px">
+                <n-progress type="line" :percentage="recompileProgress.value" color="#22C55E" />
+              </div>
+              <div class="card-actions">
+                <n-button type="primary" size="small" :disabled="!selectedProjectDir" @click="startRecompile" block>
+                  <template #icon><n-icon><Lock /></n-icon></template>
+                  {{ t('package.recompile') }}
+                </n-button>
+                <n-button v-if="recompileOutputPath" size="small" @click="openRecompileOutput">
+                  <template #icon><n-icon><FolderOpen /></n-icon></template>
+                  {{ t('package.open') }}
+                </n-button>
+              </div>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
+      </n-tab-pane>
 
-        <!-- Recompile -->
-        <n-card :bordered="false" size="small" class="pkg-card">
-          <template #header>
-            <div class="card-header-row">
-              <n-icon size="18" color="#EF4444"><Lock /></n-icon>
-              <span class="card-title">{{ t('package.recompile') }}</span>
-            </div>
-          </template>
-          <div class="drop-zone" @click="selectProjectDir">
-            <n-icon size="28" color="#475569"><Lock /></n-icon>
-            <p class="drop-text">{{ t('package.selectProjectDir') }}</p>
-            <n-button size="small" quaternary @click.stop="selectProjectDir">
-              <template #icon><n-icon><FolderOpen /></n-icon></template>
-              {{ t('package.browse') }}
-            </n-button>
-          </div>
-          <div v-if="selectedProjectDir" class="file-info-row">
-            <n-icon size="14" color="#64748B"><Folder /></n-icon>
-            <span class="file-name">{{ selectedProjectDir }}</span>
-          </div>
-          <div v-if="selectedProjectDir" class="options-panel">
-            <n-space align="center" wrap>
-              <n-checkbox v-model:checked="recompileOptions.sign" size="small">{{ t('package.sign') }}</n-checkbox>
-              <n-select v-if="recompileOptions.sign" v-model:value="recompileSignatureId"
-                :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                :placeholder="t('package.signature')" style="width: 150px" size="tiny" />
-              <n-checkbox v-if="recompileOptions.sign" v-model:checked="recompileOptions.v2" size="small">{{ t('package.v2') }}</n-checkbox>
-              <n-checkbox v-model:checked="recompileOptions.align" size="small">{{ t('package.zipAlign') }}</n-checkbox>
-            </n-space>
-          </div>
-          <div v-if="recompileProgress && recompileProgress.show" style="margin-top: 12px">
-            <n-progress type="line" :percentage="recompileProgress.value" color="#22C55E" />
-          </div>
-          <div class="card-actions">
-            <n-button type="primary" size="small" :disabled="!selectedProjectDir" @click="startRecompile" block>
-              <template #icon><n-icon><Lock /></n-icon></template>
-              {{ t('package.recompile') }}
-            </n-button>
-            <n-button v-if="recompileOutputPath" size="small" @click="openRecompileOutput">
-              <template #icon><n-icon><FolderOpen /></n-icon></template>
-              {{ t('package.open') }}
-            </n-button>
-          </div>
-        </n-card>
+      <!-- Tab 3: Resign & Signatures -->
+      <n-tab-pane name="resign" :tab="t('package.resignSignatures')">
+        <n-grid :cols="2" :x-gap="16" responsive="screen">
+          <!-- Resign -->
+          <n-grid-item span="1 800:1">
+            <n-card :bordered="false" size="small" class="pkg-card">
+              <template #header>
+                <div class="card-header-row">
+                  <n-icon size="18" color="#EC4899"><PenTool /></n-icon>
+                  <span class="card-title">{{ t('package.resign') }}</span>
+                </div>
+              </template>
+              <div class="drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
+                @dragenter.prevent @click="selectResignFile()">
+                <n-icon size="28" color="#475569"><PenTool /></n-icon>
+                <p class="drop-text">{{ t('package.dropToResign') }}</p>
+                <input type="file" accept=".apk" class="hidden-input"
+                  @change="handleFileInputChange($event, handleResignFileSelect)">
+              </div>
+              <div v-if="selectedResignFile" class="file-info-row">
+                <n-icon size="14" color="#64748B"><File /></n-icon>
+                <span class="file-name">{{ selectedResignFile.name }}</span>
+                <span class="file-size">{{ formatFileSize(selectedResignFile.size) }}</span>
+              </div>
+              <div class="options-panel" v-if="selectedResignFile">
+                <n-space align="center">
+                  <n-select v-model:value="selectedSignatureId"
+                    :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
+                    :placeholder="t('package.selectSignature')" style="width: 180px" size="small" />
+                  <n-checkbox v-model:checked="resignOptions.v2" size="small">{{ t('package.v2sign') }}</n-checkbox>
+                </n-space>
+              </div>
+              <div v-if="resignResult" class="analysis-result" v-html="resignResult" />
+              <div class="card-actions">
+                <n-button type="primary" size="small" :loading="isResigning"
+                  :disabled="!selectedResignFile || !selectedSignatureId || isResigning" @click="resignApk" block>
+                  <template #icon><n-icon><PenTool /></n-icon></template>
+                  {{ t('package.resign2') }}
+                </n-button>
+                <n-button v-if="resignOutputPath" size="small" @click="openResignOutput">
+                  <template #icon><n-icon><FolderOpen /></n-icon></template>
+                  {{ t('package.open') }}
+                </n-button>
+              </div>
+            </n-card>
+          </n-grid-item>
 
-        <!-- Resign -->
-        <n-card :bordered="false" size="small" class="pkg-card">
-          <template #header>
-            <div class="card-header-row">
-              <n-icon size="18" color="#EC4899"><PenTool /></n-icon>
-              <span class="card-title">{{ t('package.resign') }}</span>
-            </div>
-          </template>
-          <div class="drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
-            @dragenter.prevent @click="selectResignFile()">
-            <n-icon size="28" color="#475569"><PenTool /></n-icon>
-            <p class="drop-text">{{ t('package.dropToResign') }}</p>
-            <input type="file" accept=".apk" class="hidden-input"
-              @change="handleFileInputChange($event, handleResignFileSelect)">
-          </div>
-          <div v-if="selectedResignFile" class="file-info-row">
-            <n-icon size="14" color="#64748B"><File /></n-icon>
-            <span class="file-name">{{ selectedResignFile.name }}</span>
-            <span class="file-size">{{ formatFileSize(selectedResignFile.size) }}</span>
-          </div>
-          <div class="options-panel" v-if="selectedResignFile">
-            <n-space align="center">
-              <n-select v-model:value="selectedSignatureId"
-                :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                :placeholder="t('package.selectSignature')" style="width: 180px" size="small" />
-              <n-checkbox v-model:checked="resignOptions.v2" size="small">{{ t('package.v2sign') }}</n-checkbox>
-            </n-space>
-          </div>
-          <div v-if="resignResult" class="analysis-result" v-html="resignResult" />
-          <div class="card-actions">
-            <n-button type="primary" size="small" :loading="isResigning"
-              :disabled="!selectedResignFile || !selectedSignatureId || isResigning" @click="resignApk" block>
-              <template #icon><n-icon><PenTool /></n-icon></template>
-              {{ t('package.resign2') }}
-            </n-button>
-            <n-button v-if="resignOutputPath" size="small" @click="openResignOutput">
-              <template #icon><n-icon><FolderOpen /></n-icon></template>
-              {{ t('package.open') }}
-            </n-button>
-          </div>
-        </n-card>
-      </n-grid-item>
-    </n-grid>
+          <!-- Signature Configs -->
+          <n-grid-item span="1 800:1">
+            <n-card :bordered="false" size="small" class="pkg-card">
+              <template #header>
+                <div class="card-header-row">
+                  <n-icon size="18" color="#F59E0B"><Key /></n-icon>
+                  <span class="card-title">{{ t('package.signatureConfigs') }}</span>
+                </div>
+              </template>
+              <template #header-extra>
+                <n-button size="tiny" quaternary @click="openSignatureModal()">
+                  <template #icon><n-icon><Plus /></n-icon></template>
+                  {{ t('package.add') }}
+                </n-button>
+              </template>
+              <div v-if="signatureConfigs.length > 0" class="sig-list">
+                <div v-for="config in signatureConfigs" :key="config.id" class="sig-item">
+                  <div class="sig-info">
+                    <span class="sig-name">{{ config.name }}</span>
+                    <span class="sig-alias">{{ config.alias }}</span>
+                  </div>
+                  <n-space size="small">
+                    <n-button size="tiny" quaternary @click="openSignatureModal(config)">
+                      <template #icon><n-icon size="14"><Edit /></n-icon></template>
+                    </n-button>
+                    <n-button size="tiny" quaternary type="error" @click="deleteSignature(config.id)">
+                      <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
+                    </n-button>
+                  </n-space>
+                </div>
+              </div>
+              <div v-else class="empty-state">
+                <n-icon size="24" color="#475569"><Key /></n-icon>
+                <p>{{ t('package.noSignatureConfigs') }}</p>
+              </div>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
+      </n-tab-pane>
+    </n-tabs>
 
     <!-- Signature Edit Modal -->
     <SignatureEditModal
@@ -592,7 +609,7 @@ onMounted(async () => {
 
 <style scoped>
 .package-page {
-  max-width: 1200px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 .page-header {
@@ -614,15 +631,8 @@ onMounted(async () => {
   color: #94A3B8;
   margin: 4px 0 0;
 }
-.section-label {
-  font-family: Inter, sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #64748B;
-  margin-bottom: 12px;
-  padding-left: 2px;
+.pkg-tabs {
+  margin-top: 4px;
 }
 .pkg-card {
   background: #1E293B;
@@ -719,7 +729,6 @@ onMounted(async () => {
   font-size: 13px;
 }
 .empty-state p { margin: 0; }
-/* Signature list */
 .sig-list {
   display: flex;
   flex-direction: column;
