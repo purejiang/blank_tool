@@ -101,12 +101,12 @@
         <n-grid :cols="3" :x-gap="12">
           <n-grid-item>
             <n-statistic :label="t('settings.cache')" :value="formatFileSize(cacheInfo.cache.size)">
-              <template #suffix>{{ t('settings.files', { count: cacheInfo.cache.files }) }}</template>
+              <template #suffix>{{ cacheFilesText }}</template>
             </n-statistic>
           </n-grid-item>
           <n-grid-item>
             <n-statistic :label="t('settings.output')" :value="formatFileSize(cacheInfo.output.size)">
-              <template #suffix>{{ t('settings.files', { count: cacheInfo.output.files }) }}</template>
+              <template #suffix>{{ outputFilesText }}</template>
             </n-statistic>
           </n-grid-item>
           <n-grid-item>
@@ -142,7 +142,7 @@
           <n-descriptions-item :label="t('settings.os')">{{ systemInfo.platform || '-' }}</n-descriptions-item>
           <n-descriptions-item :label="t('settings.architecture')">{{ systemInfo.architecture || '-' }}</n-descriptions-item>
           <n-descriptions-item :label="t('settings.hostname')">{{ systemInfo.hostname || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.cpu')">{{ systemInfo.cpuCount || '-' }} {{ t('device.cores', { count: Number(systemInfo.cpuCount) || 0 }) }}</n-descriptions-item>
+          <n-descriptions-item :label="t('settings.cpu')">{{ cpuText }}</n-descriptions-item>
         </n-descriptions>
       </n-card>
 
@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, inject } from 'vue'
+import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
@@ -185,6 +185,14 @@ import { useToolStore, useSystemStore } from '@stores/index'
 
 const { t } = useI18n()
 const { showSuccess, showError } = useNotification()
+
+// Computed texts to avoid complex template expressions in slots
+const cacheFilesText = computed(() => t('settings.files', { count: cacheInfo.value.cache.files }))
+const outputFilesText = computed(() => t('settings.files', { count: cacheInfo.value.output.files }))
+const cpuText = computed(() => {
+  const count = systemInfo.cpuCount || '0'
+  return `${count} ${t('device.cores', { count: Number(count) || 0 })}`
+})
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
 const toolStore = useToolStore()
 const systemStore = useSystemStore()
