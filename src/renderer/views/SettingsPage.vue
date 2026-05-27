@@ -12,15 +12,14 @@
     </div>
 
     <div class="settings-content">
+
       <!-- Appearance -->
       <n-card :bordered="false" class="settings-card">
-        <template #header>
-          <div class="section-header">
-            <n-icon size="18" color="#22C55E"><Monitor /></n-icon>
-            <span class="section-title">{{ t('settings.appearance') }}</span>
-          </div>
-        </template>
-        <n-form label-placement="left" label-width="140" size="small">
+        <div class="section-header">
+          <n-icon size="18" color="#22C55E"><Monitor /></n-icon>
+          <span class="section-title">{{ t('settings.appearance') }}</span>
+        </div>
+        <n-form label-placement="left" label-width="140" size="small" style="margin-top:12px">
           <n-form-item :label="t('settings.language')">
             <n-select v-model:value="general.language" @update:value="saveGeneral"
               :options="langOptions" style="width: 220px" />
@@ -34,13 +33,11 @@
 
       <!-- Behavior -->
       <n-card :bordered="false" class="settings-card">
-        <template #header>
-          <div class="section-header">
-            <n-icon size="18" color="#3B82F6"><Settings2 /></n-icon>
-            <span class="section-title">{{ t('settings.behavior') }}</span>
-          </div>
-        </template>
-        <n-form label-placement="left" label-width="140" size="small">
+        <div class="section-header">
+          <n-icon size="18" color="#3B82F6"><Settings2 /></n-icon>
+          <span class="section-title">{{ t('settings.behavior') }}</span>
+        </div>
+        <n-form label-placement="left" label-width="140" size="small" style="margin-top:12px">
           <n-form-item :label="t('settings.autoSave')">
             <n-switch v-model:value="general.autoSave" @update:value="saveGeneral" />
           </n-form-item>
@@ -52,13 +49,11 @@
 
       <!-- Paths -->
       <n-card :bordered="false" class="settings-card">
-        <template #header>
-          <div class="section-header">
-            <n-icon size="18" color="#F59E0B"><FolderOpen /></n-icon>
-            <span class="section-title">{{ t('settings.environmentPaths') }}</span>
-          </div>
-        </template>
-        <n-form label-placement="left" label-width="140" size="small">
+        <div class="section-header">
+          <n-icon size="18" color="#F59E0B"><FolderOpen /></n-icon>
+          <span class="section-title">{{ t('settings.environmentPaths') }}</span>
+        </div>
+        <n-form label-placement="left" label-width="140" size="small" style="margin-top:12px">
           <n-form-item :label="t('settings.runtime')">
             <div style="display:flex;align-items:center;gap:8px">
               <n-input :value="displayPaths.runtime" readonly style="width: 320px" placeholder=".\runtime" />
@@ -82,17 +77,15 @@
 
       <!-- Storage -->
       <n-card :bordered="false" class="settings-card">
-        <template #header>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="section-header">
             <n-icon size="18" color="#8B5CF6"><Database /></n-icon>
             <span class="section-title">{{ t('settings.storage') }}</span>
           </div>
-          <template #header-extra>
-            <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
-              <template #icon><n-icon><RefreshCw /></n-icon></template>
-            </n-button>
-          </template>
-        </template>
+          <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
+            <template #icon><n-icon><RefreshCw /></n-icon></template>
+          </n-button>
+        </div>
         <div class="storage-grid">
           <div class="storage-item">
             <div class="storage-label">{{ t('settings.cache') }}</div>
@@ -123,73 +116,43 @@
 
       <!-- System Info -->
       <n-card :bordered="false" class="settings-card">
-        <template #header>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="section-header">
             <n-icon size="18" color="#64748B"><Cpu /></n-icon>
             <span class="section-title">{{ t('settings.systemInfo') }}</span>
           </div>
-          <template #header-extra>
-            <n-button size="tiny" quaternary @click="systemStore.fetchSystemInfo()">
-              <template #icon><n-icon><RefreshCw /></n-icon></template>
-            </n-button>
-          </template>
-        </template>
+          <n-button size="tiny" quaternary @click="systemStore.fetchSystemInfo()">
+            <template #icon><n-icon><RefreshCw /></n-icon></template>
+          </n-button>
+        </div>
         <div class="info-grid">
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.os') }}</span>
-            <span class="info-val">{{ systemInfo.platform || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.architecture') }}</span>
-            <span class="info-val">{{ systemInfo.architecture || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.hostname') }}</span>
-            <span class="info-val">{{ systemInfo.hostname || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.cpu') }}</span>
-            <span class="info-val">{{ cpuText }}</span>
-          </div>
+          <div class="info-row"><span class="info-label">{{ t('settings.os') }}</span><span class="info-val">{{ systemInfo.platform || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.architecture') }}</span><span class="info-val">{{ systemInfo.architecture || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.hostname') }}</span><span class="info-val">{{ systemInfo.hostname || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.cpu') }}</span><span class="info-val">{{ cpuText }}</span></div>
         </div>
       </n-card>
 
       <!-- Build Info -->
       <n-card :bordered="false" class="settings-card">
-        <template #header>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="section-header">
             <n-icon size="18" color="#64748B"><Layers /></n-icon>
             <span class="section-title">{{ t('settings.buildInfo') }}</span>
           </div>
-          <template #header-extra>
-            <n-button size="tiny" quaternary @click="systemStore.fetchBuildInfo()">
-              <template #icon><n-icon><RefreshCw /></n-icon></template>
-            </n-button>
-          </template>
-        </template>
+          <n-button size="tiny" quaternary @click="systemStore.fetchBuildInfo()">
+            <template #icon><n-icon><RefreshCw /></n-icon></template>
+          </n-button>
+        </div>
         <div class="info-grid">
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.appVersion') }}</span>
-            <span class="info-val">{{ buildInfo.appVersion || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.electron') }}</span>
-            <span class="info-val">{{ buildInfo.electronVersion || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.nodeJs') }}</span>
-            <span class="info-val">{{ buildInfo.nodeVersion || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.python') }}</span>
-            <span class="info-val">{{ buildInfo.pythonVersion || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">{{ t('settings.chrome') }}</span>
-            <span class="info-val">{{ buildInfo.chromeVersion || '-' }}</span>
-          </div>
+          <div class="info-row"><span class="info-label">{{ t('settings.appVersion') }}</span><span class="info-val">{{ buildInfo.appVersion || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || '-' }}</span></div>
         </div>
       </n-card>
+
     </div>
   </div>
 </template>
@@ -198,10 +161,7 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
-import {
-  FolderOpen, Trash2, Download, RefreshCw,
-  Cpu, Monitor, Layers, Settings2, Database, CheckCircle
-} from 'lucide-vue-next'
+import { FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers, Settings2, Database, CheckCircle } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore } from '@stores/index'
