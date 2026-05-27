@@ -12,7 +12,7 @@
     </div>
 
     <div class="settings-content">
-      <!-- Section: Appearance -->
+      <!-- Appearance -->
       <n-card :bordered="false" class="settings-card">
         <template #header>
           <div class="section-header">
@@ -22,22 +22,17 @@
         </template>
         <n-form label-placement="left" label-width="140" size="small">
           <n-form-item :label="t('settings.language')">
-            <n-select v-model:value="general.language" @update:value="saveGeneral" :options="[
-              { label: t('settings.simplifiedChinese'), value: 'zh-CN' },
-              { label: t('settings.english'), value: 'en-US' },
-            ]" style="width: 220px" />
+            <n-select v-model:value="general.language" @update:value="saveGeneral"
+              :options="langOptions" style="width: 220px" />
           </n-form-item>
           <n-form-item :label="t('settings.theme')">
-            <n-select v-model:value="general.theme" @update:value="saveGeneral" :options="[
-              { label: t('settings.themeAuto'), value: 'auto' },
-              { label: t('settings.themeLight'), value: 'light' },
-              { label: t('settings.themeDark'), value: 'dark' },
-            ]" style="width: 220px" />
+            <n-select v-model:value="general.theme" @update:value="saveGeneral"
+              :options="themeOptions" style="width: 220px" />
           </n-form-item>
         </n-form>
       </n-card>
 
-      <!-- Section: Behavior -->
+      <!-- Behavior -->
       <n-card :bordered="false" class="settings-card">
         <template #header>
           <div class="section-header">
@@ -55,7 +50,7 @@
         </n-form>
       </n-card>
 
-      <!-- Section: Paths -->
+      <!-- Paths -->
       <n-card :bordered="false" class="settings-card">
         <template #header>
           <div class="section-header">
@@ -65,27 +60,27 @@
         </template>
         <n-form label-placement="left" label-width="140" size="small">
           <n-form-item :label="t('settings.runtime')">
-            <n-space>
+            <div style="display:flex;align-items:center;gap:8px">
               <n-input :value="displayPaths.runtime" readonly style="width: 320px" placeholder=".\runtime" />
               <n-button size="small" @click="handleBrowseDirectory('runtime')">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
                 {{ t('settings.browse') }}
               </n-button>
-            </n-space>
+            </div>
           </n-form-item>
           <n-form-item :label="t('settings.backend')">
-            <n-space>
+            <div style="display:flex;align-items:center;gap:8px">
               <n-input :value="displayPaths.server" readonly style="width: 320px" placeholder=".\backend" />
               <n-button size="small" @click="handleBrowseDirectory('server')">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
                 {{ t('settings.browse') }}
               </n-button>
-            </n-space>
+            </div>
           </n-form-item>
         </n-form>
       </n-card>
 
-      <!-- Section: Storage -->
+      <!-- Storage -->
       <n-card :bordered="false" class="settings-card">
         <template #header>
           <div class="section-header">
@@ -98,22 +93,23 @@
             </n-button>
           </template>
         </template>
-        <n-grid :cols="3" :x-gap="12">
-          <n-grid-item>
-            <n-statistic :label="t('settings.cache')" :value="formatFileSize(cacheInfo.cache.size)">
-              <template #suffix>{{ cacheFilesText }}</template>
-            </n-statistic>
-          </n-grid-item>
-          <n-grid-item>
-            <n-statistic :label="t('settings.output')" :value="formatFileSize(cacheInfo.output.size)">
-              <template #suffix>{{ outputFilesText }}</template>
-            </n-statistic>
-          </n-grid-item>
-          <n-grid-item>
-            <n-statistic :label="t('settings.total')" :value="formatFileSize(cacheInfo.total.size)" />
-          </n-grid-item>
-        </n-grid>
-        <n-space style="margin-top: 16px">
+        <div class="storage-grid">
+          <div class="storage-item">
+            <div class="storage-label">{{ t('settings.cache') }}</div>
+            <div class="storage-value">{{ formatFileSize(cacheInfo.cache.size) }}</div>
+            <div class="storage-sub">{{ cacheFilesText }}</div>
+          </div>
+          <div class="storage-item">
+            <div class="storage-label">{{ t('settings.output') }}</div>
+            <div class="storage-value">{{ formatFileSize(cacheInfo.output.size) }}</div>
+            <div class="storage-sub">{{ outputFilesText }}</div>
+          </div>
+          <div class="storage-item">
+            <div class="storage-label">{{ t('settings.total') }}</div>
+            <div class="storage-value">{{ formatFileSize(cacheInfo.total.size) }}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px">
           <n-button type="warning" size="small" @click="clearStorage('cache')" :loading="isClearingCache">
             <template #icon><n-icon><Trash2 /></n-icon></template>
             {{ t('settings.clearCache') }}
@@ -122,10 +118,10 @@
             <template #icon><n-icon><Download /></n-icon></template>
             {{ t('settings.clearOutput') }}
           </n-button>
-        </n-space>
+        </div>
       </n-card>
 
-      <!-- Section: System Info -->
+      <!-- System Info -->
       <n-card :bordered="false" class="settings-card">
         <template #header>
           <div class="section-header">
@@ -138,15 +134,27 @@
             </n-button>
           </template>
         </template>
-        <n-descriptions label-placement="left" :column="2" size="small">
-          <n-descriptions-item :label="t('settings.os')">{{ systemInfo.platform || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.architecture')">{{ systemInfo.architecture || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.hostname')">{{ systemInfo.hostname || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.cpu')">{{ cpuText }}</n-descriptions-item>
-        </n-descriptions>
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.os') }}</span>
+            <span class="info-val">{{ systemInfo.platform || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.architecture') }}</span>
+            <span class="info-val">{{ systemInfo.architecture || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.hostname') }}</span>
+            <span class="info-val">{{ systemInfo.hostname || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.cpu') }}</span>
+            <span class="info-val">{{ cpuText }}</span>
+          </div>
+        </div>
       </n-card>
 
-      <!-- Section: Build Info -->
+      <!-- Build Info -->
       <n-card :bordered="false" class="settings-card">
         <template #header>
           <div class="section-header">
@@ -159,13 +167,28 @@
             </n-button>
           </template>
         </template>
-        <n-descriptions label-placement="left" :column="2" size="small">
-          <n-descriptions-item :label="t('settings.appVersion')">{{ buildInfo.appVersion || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.electron')">{{ buildInfo.electronVersion || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.nodeJs')">{{ buildInfo.nodeVersion || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.python')">{{ buildInfo.pythonVersion || '-' }}</n-descriptions-item>
-          <n-descriptions-item :label="t('settings.chrome')">{{ buildInfo.chromeVersion || '-' }}</n-descriptions-item>
-        </n-descriptions>
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.appVersion') }}</span>
+            <span class="info-val">{{ buildInfo.appVersion || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.electron') }}</span>
+            <span class="info-val">{{ buildInfo.electronVersion || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.nodeJs') }}</span>
+            <span class="info-val">{{ buildInfo.nodeVersion || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.python') }}</span>
+            <span class="info-val">{{ buildInfo.pythonVersion || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.chrome') }}</span>
+            <span class="info-val">{{ buildInfo.chromeVersion || '-' }}</span>
+          </div>
+        </div>
       </n-card>
     </div>
   </div>
@@ -176,58 +199,51 @@ import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
-  Save, RotateCcw, FolderOpen, Trash2, Download, RefreshCw,
+  FolderOpen, Trash2, Download, RefreshCw,
   Cpu, Monitor, Layers, Settings2, Database, CheckCircle
 } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
-import { useToolStore, useSystemStore } from '@stores/index'
+import { useSystemStore } from '@stores/index'
 
 const { t } = useI18n()
 const { showSuccess, showError } = useNotification()
-
-// Computed texts to avoid complex template expressions in slots
-const cacheFilesText = computed(() => t('settings.files', { count: cacheInfo.value.cache.files }))
-const outputFilesText = computed(() => t('settings.files', { count: cacheInfo.value.output.files }))
-const cpuText = computed(() => {
-  const count = systemInfo.cpuCount || '0'
-  return `${count} ${t('device.cores', { count: Number(count) || 0 })}`
-})
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
-const toolStore = useToolStore()
 const systemStore = useSystemStore()
 
-// --- Auto-save indicator ---
 const showSaved = ref(false)
 let savedTimer: ReturnType<typeof setTimeout> | null = null
-
 const triggerSaved = () => {
   showSaved.value = true
   if (savedTimer) clearTimeout(savedTimer)
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-// --- General Settings ---
-const general = reactive({
-  language: 'zh-CN',
-  theme: 'auto',
-  autoSave: true,
-  enableNotifications: true,
-})
-
-// --- Path Settings ---
+const general = reactive({ language: 'zh-CN', theme: 'auto', autoSave: true, enableNotifications: true })
 const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
 const displayPaths = reactive({ runtime: '', server: '' })
-
-// --- Cache ---
 const cacheInfo = ref({ cache: { size: 0, files: 0 }, output: { size: 0, files: 0 }, total: { size: 0, files: 0 } })
 const isClearingCache = ref(false)
 const isClearingOutput = ref(false)
 const isLoadingCacheInfo = ref(false)
-
-// --- System Info ---
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
+
+const langOptions = computed(() => [
+  { label: t('settings.simplifiedChinese'), value: 'zh-CN' },
+  { label: t('settings.english'), value: 'en-US' },
+])
+const themeOptions = computed(() => [
+  { label: t('settings.themeAuto'), value: 'auto' },
+  { label: t('settings.themeLight'), value: 'light' },
+  { label: t('settings.themeDark'), value: 'dark' },
+])
+const cacheFilesText = computed(() => t('settings.files', { count: cacheInfo.value.cache.files }))
+const outputFilesText = computed(() => t('settings.files', { count: cacheInfo.value.output.files }))
+const cpuText = computed(() => {
+  const count = systemInfo.cpuCount || '0'
+  return `${count} ${t('device.cores', { count: Number(count) || 0 })}`
+})
 
 const formatFileSize = (bytes: number) => {
   if (!bytes) return '0 B'
@@ -236,7 +252,6 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`
 }
 
-// --- Load settings ---
 const loadSettings = async () => {
   try {
     const svc = await serviceManager.getService('settings')
@@ -256,16 +271,13 @@ const loadSettings = async () => {
   } catch (e) { console.error('Failed to load settings:', e) }
 }
 
-// --- Auto-save methods ---
 const saveGeneral = async () => {
   try {
     const svc = await serviceManager.getService('settings')
     await svc.saveSettings({ ...general })
     setLocale(general.language)
     triggerSaved()
-  } catch (e: any) {
-    showError(t('settings.saveFailed'), e.message)
-  }
+  } catch (e: any) { showError(t('settings.saveFailed'), e.message) }
 }
 
 const savePaths = async () => {
@@ -273,9 +285,7 @@ const savePaths = async () => {
     const svc = await serviceManager.getService('settings')
     await svc.saveSettings({ runtime: pathSettings.runtime, server: pathSettings.server })
     triggerSaved()
-  } catch (e: any) {
-    showError(t('settings.pathsFailed'), e.message)
-  }
+  } catch (e: any) { showError(t('settings.pathsFailed'), e.message) }
 }
 
 const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
@@ -290,9 +300,7 @@ const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
       displayPaths.server = paths.server || ''
       await savePaths()
     }
-  } catch (e) {
-    showError(t('settings.selectDirFailed'))
-  }
+  } catch (e) { showError(t('settings.selectDirFailed')) }
 }
 
 const refreshCache = async () => {
@@ -311,73 +319,36 @@ const clearStorage = async (target: 'cache' | 'output') => {
   try {
     const svc = await serviceManager.getService('cache')
     const result = await svc.clearStorage(target)
-    if (result.success) {
-      showSuccess(t('settings.storageCleared'))
-      await refreshCache()
-    } else {
-      showError(t('settings.clearFailed'), result.error)
-    }
-  } catch (e: any) {
-    showError(t('settings.clearFailed'), e.message)
-  }
+    if (result.success) { showSuccess(t('settings.storageCleared')); await refreshCache() }
+    else showError(t('settings.clearFailed'), result.error)
+  } catch (e: any) { showError(t('settings.clearFailed'), e.message) }
   finally {
     if (target === 'cache') isClearingCache.value = false
     else isClearingOutput.value = false
   }
 }
 
-onMounted(() => {
-  loadSettings()
-  refreshCache()
-})
+onMounted(() => { loadSettings(); refreshCache() })
 </script>
 
 <style scoped>
-.settings-page {
-  max-width: 740px;
-  margin: 0 auto;
-}
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-.page-title {
-  font-family: Inter, sans-serif;
-  font-size: 22px;
-  font-weight: 700;
-  color: #F8FAFC;
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-.page-subtitle {
-  font-size: 13px;
-  color: #94A3B8;
-  margin: 4px 0 0;
-}
-.saved-tag {
-  margin-top: 4px;
-  transition: opacity 0.3s;
-}
-.settings-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.settings-card {
-  background: #1E293B;
-  border-radius: 10px;
-}
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.section-title {
-  font-family: Inter, sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: #F8FAFC;
-}
+.settings-page { max-width: 740px; margin: 0 auto; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: #F8FAFC; margin: 0; letter-spacing: -0.02em; }
+.page-subtitle { font-size: 13px; color: #94A3B8; margin: 4px 0 0; }
+.saved-tag { margin-top: 4px; transition: opacity 0.3s; }
+.settings-content { display: flex; flex-direction: column; gap: 16px; }
+.settings-card { background: #1E293B; border-radius: 10px; }
+.section-header { display: flex; align-items: center; gap: 10px; }
+.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: #F8FAFC; }
+.storage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.storage-item { text-align: center; padding: 12px; background: rgba(15,23,42,0.5); border-radius: 8px; }
+.storage-label { font-size: 12px; color: #94A3B8; margin-bottom: 4px; }
+.storage-value { font-size: 18px; font-weight: 600; color: #22C55E; font-variant-numeric: tabular-nums; }
+.storage-sub { font-size: 11px; color: #64748B; margin-top: 2px; }
+.info-grid { display: flex; flex-direction: column; gap: 10px; }
+.info-row { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(51,65,85,0.3); }
+.info-row:last-child { border-bottom: none; }
+.info-label { font-size: 13px; color: #94A3B8; min-width: 100px; }
+.info-val { font-size: 13px; color: #E2E8F0; font-family: 'Fira Code', monospace; }
 </style>
