@@ -28,8 +28,8 @@
               </div>
               <div v-if="initError" class="loading-error-card">
                 <n-alert type="error" :title="initError">
-                  <template v-if="showRetryButton" #footer>
-                    <n-button @click="retryInitialization" type="error" size="small">
+                  <template #footer>
+                    <n-button v-if="showRetryButton" @click="retryInitialization" type="error" size="small">
                       {{ $t('app.retry') }} ({{ retryCount }}/{{ maxRetries }})
                     </n-button>
                   </template>

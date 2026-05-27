@@ -43,8 +43,9 @@
         </n-list-item>
       </n-list>
     </n-spin>
-    <template v-if="selectedDeviceId" #action>
+    <template #action>
       <n-button
+        v-if="selectedDeviceId"
         :type="isLogcatRunning ? 'error' : 'success'"
         size="small"
         @click="$emit('toggleLogcat')"
