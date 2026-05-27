@@ -47,21 +47,22 @@ import { ref, onMounted, onUnmounted, getCurrentInstance } from 'vue'
 import AppHeader from '@components/common/Header.vue'
 import StatusBar from '@components/common/StatusBar.vue'
 import Notification from '@components/common/Notification.vue'
-import serviceManager from '@services/ServiceManager.js'
-import { ThemeService } from '@services/ThemeService.js'
-import ToolService from '@services/ToolService.js'
-import NotificationService from '@services/NotificationService.js'
-import unifiedAPI from './api/unifiedAPI.js'
-import ErrorService from '@services/ErrorService.js'
-import StoreService from '@services/StoreService.js'
-import ApkService from '@services/ApkService.js'
-import CacheService from '@services/CacheService.js'
-import SettingsService from '@services/SettingsService.js'
-import DeviceService from '@services/DeviceService.js'
-import SystemService from '@services/SystemService.js'
+import serviceManager from '@services/ServiceManager'
+import { ThemeService } from '@services/ThemeService'
+import ToolService from '@services/ToolService'
+import NotificationService from '@services/NotificationService'
+import unifiedApi from './api/unifiedApi'
+import ErrorService from '@services/ErrorService'
+import { ConfigService } from '@services/ConfigService'
+import ApkService from '@services/ApkService'
+import CacheService from '@services/CacheService'
+import DeviceService from '@services/DeviceService'
+import SystemService from '@services/SystemService'
 import { useToolStore, useAppConfigStore, useSystemStore } from '@stores'
 
 
+// CSS variable tokens
+import './assets/variables.css'
 // const logoIcon = 'images/icon.png'
 import logoUrl from '@/assets/images/icon.png';
 // 然后在模板或响应式数据中使用
@@ -94,19 +95,18 @@ export default {
      * 服务注册
      */
     function registerServices() {
-      // 关键服务初始化
-      serviceManager.register('store', StoreService)
+      // Core services
+      serviceManager.register('config', ConfigService)
       serviceManager.register('notification', NotificationService)
-      
-      // 功能服务初始化
-      serviceManager.register('device', DeviceService, ['store'])
-      serviceManager.register('settings', SettingsService, ['store'])
+
+      // Feature services
+      serviceManager.register('device', DeviceService)
       serviceManager.register('theme', ThemeService)
-      serviceManager.register('tools', ToolService, ['store'])
+      serviceManager.register('tools', ToolService, ['config'])
       serviceManager.register('error', ErrorService, ['notification'])
       serviceManager.register('system', SystemService)
-      serviceManager.register('apk', ApkService, ['store'])
-      serviceManager.register('cache', CacheService, ['store'])
+      serviceManager.register('apk', ApkService, ['config'])
+      serviceManager.register('cache', CacheService, ['config'])
     }
 
     /**
@@ -410,7 +410,7 @@ export default {
 
         // F12: 打开开发者工具
         if (event.key === 'F12') {
-          const api = unifiedAPI.getAPI()
+          const api = unifiedApi.getAPI()
           if (api && typeof api.openDevTools === 'function') {
             api.openDevTools()
           }

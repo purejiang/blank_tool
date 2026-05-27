@@ -8,7 +8,7 @@
           <div class="file-drop-zone" @drop="handleDrop($event, handleApkFileSelect)" @dragover.prevent
             @dragenter.prevent @click="!isAnalyzing && selectApkFile()">
             <p>拖拽 APK 文件到此处，或点击选择文件</p>
-            <input ref="apkFileInput" type="file" accept=".apk" style="display: none;"
+            <input ref="apkFileInput" type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleApkFileSelect)">
           </div>
           <div v-if="selectedAnalysisFile" class="file-info">
@@ -37,7 +37,7 @@
             @drop="!isInstalling && handleDrop($event, handleInstallFileSelect)" @dragover.prevent @dragenter.prevent
             @click="!isInstalling && selectInstallFile()">
             <p>拖拽 APK/AAB 文件到此处安装</p>
-            <input ref="installFileInput" type="file" accept=".apk,.aab" style="display: none;" :disabled="isInstalling"
+            <input ref="installFileInput" type="file" accept=".apk,.aab" class="hidden-input" :disabled="isInstalling"
               @change="handleFileInputChange($event, handleInstallFileSelect)">
           </div>
           <div v-if="selectedInstallFile" class="file-info">
@@ -90,7 +90,7 @@
           <div class="file-drop-zone" @drop="handleDrop($event, handleDecompileFileSelect)" @dragover.prevent
             @dragenter.prevent @click="selectDecompileFile()">
             <p>拖拽 APK 文件到此处进行反编译</p>
-            <input ref="decompileFileInput" type="file" accept=".apk" style="display: none;"
+            <input ref="decompileFileInput" type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleDecompileFileSelect)">
           </div>
           <div v-if="selectedDecompileFile" class="file-info">
@@ -139,7 +139,7 @@
                       {{ config.name }}
                    </option>
                 </select>
-                <label v-if="recompileOptions.sign" class="checkbox-label" style="margin-left: 10px;">
+                <label v-if="recompileOptions.sign" class="checkbox-label recompile-v2-checkbox">
                    <input type="checkbox" v-model="recompileOptions.v2"> V2签名
                 </label>
              </div>
@@ -174,7 +174,7 @@
           <div class="file-drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
             @dragenter.prevent @click="selectResignFile()">
             <p>拖拽 APK 文件到此处进行重签</p>
-            <input type="file" accept=".apk" style="display: none;"
+            <input type="file" accept=".apk" class="hidden-input"
               @change="handleFileInputChange($event, handleResignFileSelect)">
           </div>
           <div v-if="selectedResignFile" class="file-info">
@@ -182,16 +182,16 @@
             <p><strong>大小:</strong> {{ formatFileSize(selectedResignFile.size) }}</p>
           </div>
           
-          <div class="form-group" style="margin-top: 10px;" v-if="selectedResignFile">
+          <div class="form-group resign-form" v-if="selectedResignFile">
              <label>选择签名:</label>
-             <div style="display: flex; align-items: center; gap: 10px;">
-               <select v-model="selectedSignatureId" class="form-control" style="flex: 1;">
+             <div class="resign-row">
+               <select v-model="selectedSignatureId" class="form-control resign-select">
                   <option value="" disabled>请选择签名配置</option>
                   <option v-for="config in signatureConfigs" :key="config.id" :value="config.id">
                      {{ config.name }}
                   </option>
                </select>
-               <label class="checkbox-label" style="white-space: nowrap;">
+               <label class="checkbox-label resign-v2-checkbox">
                   <input type="checkbox" v-model="resignOptions.v2"> V2签名
                </label>
              </div>
@@ -229,10 +229,10 @@
 <script>
 import { ref, inject, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import serviceManager from '@services/ServiceManager.js'
-import { useNotification } from '@composables/useNotification.js'
-import { usePackageStore } from '@stores/packageStore.js'
-import { useSignatureStore } from '@stores/signatureStore.js'
+import serviceManager from '@services/ServiceManager'
+import { useNotification } from '@composables/useNotification'
+import { usePackageStore } from '@stores/packageStore'
+import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 
 export default {
@@ -1145,5 +1145,31 @@ export default {
   width: auto;
   padding: 4px 8px;
   font-size: 13px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.resign-form {
+  margin-top: var(--space-md);
+}
+
+.resign-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.resign-select {
+  flex: 1;
+}
+
+.resign-v2-checkbox {
+  white-space: nowrap;
+}
+
+.recompile-v2-checkbox {
+  margin-left: var(--space-sm);
 }
 </style>

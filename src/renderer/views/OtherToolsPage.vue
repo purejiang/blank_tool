@@ -73,24 +73,31 @@ def run(context, **kwargs):
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import { ref, onMounted } from 'vue'
-import PluginService from '@/services/PluginService'
 import { useNotification } from '@/composables/useNotification'
 
 export default {
   name: 'OtherToolsPage',
   setup() {
-    const plugins = ref([])
+    const plugins = ref<any[]>([])
     const isLoading = ref(false)
     const { showSuccess, showError } = useNotification()
+
+    const callBackend = async (method: string, payload: Record<string, unknown> = {}) => {
+      const api = window.electronAPI
+      if (api && typeof api.callBackendAPI === 'function') {
+        return await (api.callBackendAPI as Function)(method, payload)
+      }
+      return []
+    }
 
     const loadPlugins = async () => {
       isLoading.value = true
       try {
-        plugins.value = await PluginService.getPlugins()
-      } catch (error) {
-        showError('加载插件失败', error.message)
+        plugins.value = (await callBackend('plugin.list', {})) as any[] || []
+      } catch (error: any) {
+        showError('Failed to load plugins', error.message)
       } finally {
         isLoading.value = false
       }
@@ -99,24 +106,24 @@ export default {
     const reloadPlugins = async () => {
       isLoading.value = true
       try {
-        plugins.value = await PluginService.reloadPlugins()
-        showSuccess('插件列表已更新')
-      } catch (error) {
-        showError('重载插件失败', error.message)
+        plugins.value = (await callBackend('plugin.reload', {})) as any[] || []
+        showSuccess('Plugin list updated')
+      } catch (error: any) {
+        showError('Failed to reload plugins', error.message)
       } finally {
         isLoading.value = false
       }
     }
 
-    const runPlugin = async (plugin) => {
+    const runPlugin = async (plugin: any) => {
       plugin.running = true
       plugin.lastResult = null
       try {
-        const result = await PluginService.runPlugin(plugin.name)
+        const result = await callBackend('plugin.run', { name: plugin.name, params: {} })
         plugin.lastResult = JSON.stringify(result, null, 2)
-        showSuccess(`插件 ${plugin.name} 执行完成`)
-      } catch (error) {
-        showError(`插件 ${plugin.name} 执行失败`, error.message)
+        showSuccess(`Plugin ${plugin.name} executed`)
+      } catch (error: any) {
+        showError(`Plugin ${plugin.name} failed`, error.message)
         plugin.lastResult = `Error: ${error.message}`
       } finally {
         plugin.running = false

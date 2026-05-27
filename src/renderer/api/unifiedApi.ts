@@ -1,10 +1,15 @@
-/**
- *   统一的 API 服务
- * - 初始化并暴露 window.electronAPI
- * - 提供 safeCall 与后端 call(action, params)
- * - 在非 Electron 环境提供 Mock
- */
+import type { ApiMethodMap } from '../../shared/ipc/protocol'
 import type { ElectronApi } from '../../shared/ipc/electronApi'
+
+type MethodParams<M extends keyof ApiMethodMap> = ApiMethodMap[M]['params']
+type MethodResult<M extends keyof ApiMethodMap> = ApiMethodMap[M]['result']
+
+export async function callApi<M extends keyof ApiMethodMap>(
+  method: M,
+  params: MethodParams<M>
+): Promise<MethodResult<M>> {
+  return window.electronAPI.callBackendAPI(method as any, params) as Promise<MethodResult<M>>
+}
 
 type ApiFn = (...args: unknown[]) => unknown | Promise<unknown>
 type FailedCallResult = { success: false; error: string }
@@ -15,9 +20,7 @@ function isFailedCallResult(value: unknown): value is FailedCallResult {
   return result.success === false && typeof result.error === 'string'
 }
 
-// declare global moved to src/shared/ipc/electronApi.ts
-
-class unifiedApi {
+class UnifiedApi {
   private api: ElectronApi | null
   private isAvailable: boolean
 
@@ -32,14 +35,14 @@ class unifiedApi {
       if (typeof window !== 'undefined' && window.electronAPI) {
         this.api = window.electronAPI
         this.isAvailable = true
-        console.log('unifiedApiService: Electron API 已初始化')
+        console.log('unifiedApiService: Electron API initialized')
       } else {
-        console.warn('unifiedApiService: 未检测到 Electron API，可能运行在浏览器环境中')
+        console.warn('unifiedApiService: Electron API not detected, running in browser environment')
         this.isAvailable = false
         this.api = this.createMockAPI()
       }
     } catch (error) {
-      console.error('unifiedApiService: 初始化失败', error)
+      console.error('unifiedApiService: Initialization failed', error)
       this.isAvailable = false
       this.api = this.createMockAPI()
     }
@@ -51,20 +54,20 @@ class unifiedApi {
       callBackendByRequest: async () => ({}),
       appConfig: {
         get: async () => ({}),
-        set: async () => ({ success: true }),
-        setMany: async () => ({ success: true }),
+        set: async () => undefined,
+        setMany: async () => undefined,
         getAll: async () => ({}),
-        reset: async () => true
+        reset: async () => undefined,
       },
       userConfig: {
         get: async () => ({}),
-        set: async () => ({ success: true }),
+        set: async () => undefined,
         getAll: async () => ({}),
-        reset: async () => true
+        reset: async () => undefined,
       },
       settings: {
         getViewModel: async () => ({ settings: {}, displayPaths: { runtime: '', server: '' } }),
-        resolvePaths: async () => ({ runtime: '', server: '' })
+        resolvePaths: async () => ({ runtime: '', server: '' }),
       },
       onDeviceChange: () => () => {},
       onLogUpdate: () => () => {},
@@ -72,7 +75,7 @@ class unifiedApi {
       onLogcatStarted: () => () => {},
       onLogcatFinished: () => () => {},
       onLogcatError: () => () => {},
-      removeLogcatListener: () => {}
+      removeLogcatListener: () => {},
     }
   }
 
@@ -85,11 +88,11 @@ class unifiedApi {
       if (typeof method === 'function') {
         return await method(...args) as T
       } else {
-        console.warn(`unifiedApiService: 方法 ${methodName} 不可用`)
-        return { success: false, error: `方法 ${methodName} 不可用` }
+        console.warn(`unifiedApiService: Method ${methodName} not available`)
+        return { success: false, error: `Method ${methodName} not available` }
       }
     } catch (error) {
-      console.error(`unifiedApiService: 调用 ${methodName} 失败`, error)
+      console.error(`unifiedApiService: Call to ${methodName} failed`, error)
       const errorMessage = error instanceof Error ? error.message : String(error)
       return { success: false, error: errorMessage }
     }
@@ -100,11 +103,10 @@ class unifiedApi {
     if (isFailedCallResult(resp)) {
       throw new Error(resp.error)
     }
-
     return resp as T
   }
 }
 
-const api = new unifiedApi()
+const api = new UnifiedApi()
 export default api
-export { unifiedApi }
+export { UnifiedApi }
