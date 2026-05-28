@@ -123,12 +123,12 @@ const handleDeviceSelection = async (id: string) => {
 </style>
 
 <style>
+.device-card .n-card-header,
+.device-card .n-card-header__main {
+  background: transparent !important;
+}
 .device-card .n-list-item,
-.device-card .n-list-item *,
-.device-card .n-list-item__main,
-.device-card .n-thing,
-.device-card .n-thing-main,
-.device-card .n-thing-main__title {
+.device-card .n-list-item * {
   background: transparent !important;
 }
 .device-card .n-list-item:hover {
