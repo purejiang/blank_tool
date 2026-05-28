@@ -14,12 +14,10 @@
           <!-- APK Analysis -->
           <n-grid-item span="1 800:1">
             <n-card :bordered="false" size="small" class="pkg-card">
-              <template #header>
-                <div class="card-header-row">
+              <div class="card-header-row">
                   <n-icon size="18" color="#3B82F6"><Search /></n-icon>
                   <span class="card-title">{{ t('package.apkAnalysis') }}</span>
                 </div>
-              </template>
               <div class="drop-zone" @drop="handleDrop($event, handleApkFileSelect)" @dragover.prevent
                 @dragenter.prevent @click="!isAnalyzing && selectApkFile()">
                 <n-icon size="28" color="#475569"><Package /></n-icon>
@@ -46,12 +44,10 @@
           <!-- Install -->
           <n-grid-item span="1 800:1">
             <n-card :bordered="false" size="small" class="pkg-card">
-              <template #header>
-                <div class="card-header-row">
+              <div class="card-header-row">
                   <n-icon size="18" color="#22C55E"><Download /></n-icon>
                   <span class="card-title">{{ t('package.install') }}</span>
                 </div>
-              </template>
               <div class="drop-zone" :class="{ disabled: isInstalling }"
                 @drop="!isInstalling && handleDrop($event, handleInstallFileSelect)" @dragover.prevent @dragenter.prevent
                 @click="!isInstalling && selectInstallFile()">
@@ -83,12 +79,10 @@
           <!-- Decompile -->
           <n-grid-item span="1 800:1">
             <n-card :bordered="false" size="small" class="pkg-card">
-              <template #header>
-                <div class="card-header-row">
+              <div class="card-header-row">
                   <n-icon size="18" color="#8B5CF6"><Unlock /></n-icon>
                   <span class="card-title">{{ t('package.decompile') }}</span>
                 </div>
-              </template>
               <div class="drop-zone" @drop="handleDrop($event, handleDecompileFileSelect)" @dragover.prevent
                 @dragenter.prevent @click="selectDecompileFile()">
                 <n-icon size="28" color="#475569"><Unlock /></n-icon>
@@ -119,12 +113,10 @@
           <!-- Recompile -->
           <n-grid-item span="1 800:1">
             <n-card :bordered="false" size="small" class="pkg-card">
-              <template #header>
-                <div class="card-header-row">
+              <div class="card-header-row">
                   <n-icon size="18" color="#EF4444"><Lock /></n-icon>
                   <span class="card-title">{{ t('package.recompile') }}</span>
                 </div>
-              </template>
               <div class="drop-zone" @click="selectProjectDir">
                 <n-icon size="28" color="#475569"><Lock /></n-icon>
                 <p class="drop-text">{{ t('package.selectProjectDir') }}</p>
@@ -171,12 +163,10 @@
           <!-- Resign -->
           <n-grid-item span="1 800:1">
             <n-card :bordered="false" size="small" class="pkg-card">
-              <template #header>
-                <div class="card-header-row">
+              <div class="card-header-row">
                   <n-icon size="18" color="#EC4899"><PenTool /></n-icon>
                   <span class="card-title">{{ t('package.resign') }}</span>
                 </div>
-              </template>
               <div class="drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
                 @dragenter.prevent @click="selectResignFile()">
                 <n-icon size="28" color="#475569"><PenTool /></n-icon>
@@ -215,18 +205,14 @@
           <!-- Signature Configs -->
           <n-grid-item span="1 800:1">
             <n-card :bordered="false" size="small" class="pkg-card">
-              <template #header>
-                <div class="card-header-row">
+              <div class="card-header-row">
                   <n-icon size="18" color="#F59E0B"><Key /></n-icon>
                   <span class="card-title">{{ t('package.signatureConfigs') }}</span>
                 </div>
-              </template>
-              <template #header-extra>
                 <n-button size="tiny" quaternary @click="openSignatureModal()">
                   <template #icon><n-icon><Plus /></n-icon></template>
                   {{ t('package.add') }}
                 </n-button>
-              </template>
               <div v-if="signatureConfigs.length > 0" class="sig-list">
                 <div v-for="config in signatureConfigs" :key="config.id" class="sig-item">
                   <div class="sig-info">

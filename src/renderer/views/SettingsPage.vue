@@ -19,7 +19,7 @@
           <n-icon size="18" color="#22C55E"><Monitor /></n-icon>
           <span class="section-title">{{ t('settings.appearance') }}</span>
         </div>
-        <n-form label-placement="left" label-width="140" size="small" style="margin-top:12px">
+        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
           <n-form-item :label="t('settings.language')">
             <n-select v-model:value="general.language" @update:value="saveGeneral"
               :options="langOptions" style="width: 220px" />
@@ -37,7 +37,7 @@
           <n-icon size="18" color="#3B82F6"><Settings2 /></n-icon>
           <span class="section-title">{{ t('settings.behavior') }}</span>
         </div>
-        <n-form label-placement="left" label-width="140" size="small" style="margin-top:12px">
+        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
           <n-form-item :label="t('settings.autoSave')">
             <n-switch v-model:value="general.autoSave" @update:value="saveGeneral" />
           </n-form-item>
@@ -53,7 +53,7 @@
           <n-icon size="18" color="#F59E0B"><FolderOpen /></n-icon>
           <span class="section-title">{{ t('settings.environmentPaths') }}</span>
         </div>
-        <n-form label-placement="left" label-width="140" size="small" style="margin-top:12px">
+        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
           <n-form-item :label="t('settings.runtime')">
             <div style="display:flex;align-items:center;gap:8px">
               <n-input :value="displayPaths.runtime" readonly style="width: 320px" placeholder=".\runtime" />

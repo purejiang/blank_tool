@@ -21,7 +21,7 @@
       <n-grid v-else :cols="1" :x-gap="16" :y-gap="16" responsive="screen">
         <n-grid-item v-for="plugin in plugins" :key="plugin.name" span="1 600:2 1000:3">
           <n-card :bordered="false" size="small" class="plugin-card">
-            <template #header>
+            
               <div class="plugin-header">
                 <div class="plugin-icon">
                   <n-icon size="20" color="#22C55E"><Puzzle /></n-icon>
@@ -31,7 +31,6 @@
                   <span class="plugin-version">v{{ plugin.version }} by {{ plugin.author }}</span>
                 </div>
               </div>
-            </template>
             <p class="plugin-desc">{{ plugin.description || t('tools.noDescription') }}</p>
             <pre v-if="plugin.lastResult" class="plugin-result">{{ plugin.lastResult }}</pre>
             <div class="plugin-actions">
@@ -47,7 +46,7 @@
 
     <!-- Help Section (collapsible) -->
     <n-card :bordered="false" size="small" class="help-card">
-      <template #header>
+      
         <div class="help-header" @click="helpCollapsed = !helpCollapsed" style="cursor: pointer">
           <div style="display:flex;align-items:center;gap:8px">
             <n-icon size="18" color="#3B82F6"><BookOpen /></n-icon>
@@ -58,7 +57,6 @@
             <ChevronUp v-else />
           </n-icon>
         </div>
-      </template>
       <div v-show="!helpCollapsed" class="help-content">
         <p class="help-intro">{{ t('tools.helpIntro') }}</p>
         <n-ol class="help-steps">

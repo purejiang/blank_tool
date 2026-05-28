@@ -1,13 +1,12 @@
 <template>
   <n-card :bordered="false" class="device-card" size="small">
-    <template #header>
-      <div class="card-header">
-        <span class="card-title">{{ t('device.devices') }}</span>
-        <n-tag size="small" :bordered="false" type="info">
-          {{ t('device.connected', { count: devices.length }) }}
-        </n-tag>
-      </div>
-    </template>
+    <div class="card-header">
+      <n-icon size="18" color="#22C55E"><Smartphone /></n-icon>
+      <span class="card-title">{{ t('device.devices') }}</span>
+      <n-tag size="small" :bordered="false" type="info">
+        {{ t('device.connected', { count: devices.length }) }}
+      </n-tag>
+    </div>
     <n-spin :show="loading">
       <div v-if="devices.length === 0" class="empty-state">
         <n-icon size="36" color="#475569"><Smartphone /></n-icon>
