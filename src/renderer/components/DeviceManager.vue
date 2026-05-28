@@ -1,5 +1,5 @@
 <template>
-  <div class="device-card">
+  <n-card :bordered="false" class="device-card" size="small">
     <div class="card-header">
       <n-icon size="18" color="#22C55E"><Smartphone /></n-icon>
       <span class="card-title">{{ t('device.devices') }}</span>
@@ -43,7 +43,7 @@
         {{ t('device.refresh') }}
       </n-button>
     </div>
-  </div>
+  </n-card>
 </template>
 
 <script setup lang="ts">
@@ -82,7 +82,6 @@ const handleDeviceSelection = async (id: string) => {
 .device-card {
   background: #1E293B;
   border-radius: 10px;
-  padding: 16px;
 }
 .card-header {
   display: flex;

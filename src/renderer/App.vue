@@ -448,9 +448,17 @@ onUnmounted(() => {
   background: rgba(34,197,94,0.12) !important;
 }
 
-/* Card header background override - remove gray tint */
-.n-card > .n-card-header,
-.n-card > .n-card-header .n-card-header__main {
+/* Card header backgrounds - transparent everywhere */
+.n-card-header,
+.n-card-header__main,
+.n-card-header__close,
+.n-card__header,
+.n-card .n-card-header,
+.n-card > .n-card-header {
+  background: transparent !important;
+}
+/* Card content area also transparent, matching cardColor */
+.n-card > .n-card__content {
   background: transparent !important;
 }
 .n-menu .n-menu-item-content:hover {
