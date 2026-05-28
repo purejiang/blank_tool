@@ -453,7 +453,6 @@ onUnmounted(() => {
 .n-card > .n-card-header .n-card-header__main {
   background: transparent !important;
 }
-</style>
 .n-menu .n-menu-item-content:hover {
   background: rgba(34,197,94,0.06) !important;
 }
