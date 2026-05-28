@@ -19,44 +19,25 @@
           v-for="device in devices"
           :key="device.id"
           :class="{ selected: selectedDeviceId === device.id }"
+          @click="handleDeviceSelection(device.id)"
         >
           <template #prefix>
-            <n-icon size="20" :color="device.status === 'device' ? '#22C55E' : '#F59E0B'">
-              <Smartphone />
-            </n-icon>
+            <div class="device-icon-wrap">
+              <n-icon size="20" :color="device.status === 'device' ? '#22C55E' : '#F59E0B'">
+                <Smartphone />
+              </n-icon>
+            </div>
           </template>
-          <div class="device-item-content" @click="handleDeviceSelection(device.id)">
+          <div class="device-info">
             <span class="device-model">{{ device.name || t('device.unknownDevice') }}</span>
             <span class="device-serial">{{ device.id }}</span>
           </div>
           <template #suffix>
-            <n-button
-              size="tiny"
-              secondary
-              @click="handleDeviceSelection(device.id)"
-              class="details-btn"
-            >
-              <template #icon><n-icon size="14"><Eye /></n-icon></template>
-              {{ t('device.details') }}
-            </n-button>
+            <div class="device-dot" :class="device.status === 'device' ? 'online' : 'warning'"></div>
           </template>
         </n-list-item>
       </n-list>
     </n-spin>
-    <template #action>
-      <n-button
-        v-if="selectedDeviceId"
-        :type="isLogcatRunning ? 'error' : 'success'"
-        size="small"
-        @click="$emit('toggleLogcat')"
-        secondary
-      >
-        <template #icon>
-          <n-icon><Activity /></n-icon>
-        </template>
-        {{ isLogcatRunning ? t('device.stopLogcat') : t('device.startLogcat') }}
-      </n-button>
-    </template>
     <div class="card-footer">
       <n-button @click="$emit('refreshDevices')" :loading="loading" secondary size="small" block>
         <template #icon><n-icon><RefreshCw /></n-icon></template>
@@ -70,7 +51,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
-import { Smartphone, RefreshCw, Activity, Eye } from 'lucide-vue-next'
+import { Smartphone, RefreshCw } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { storeToRefs } from 'pinia'
@@ -78,19 +59,11 @@ import { storeToRefs } from 'pinia'
 const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
-const {
-  devices,
-  selectedDeviceId,
-  isLogcatRunning,
-  deviceInfo
-} = storeToRefs(deviceStore)
+const { devices, selectedDeviceId } = storeToRefs(deviceStore)
 
 const loading = ref(false)
 
-defineEmits<{
-  refreshDevices: []
-  toggleLogcat: []
-}>()
+defineEmits<{ refreshDevices: [] }>()
 
 const handleDeviceSelection = async (id: string) => {
   if (loading.value) return
@@ -136,53 +109,42 @@ const handleDeviceSelection = async (id: string) => {
   font-size: 14px;
 }
 .empty-state p { margin: 0; }
-.empty-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #94A3B8;
-  margin-top: 4px !important;
+.empty-title { font-size: 14px; font-weight: 600; color: #94A3B8; margin-top: 4px !important; }
+.empty-desc { font-size: 12px; color: #64748B; max-width: 220px; text-align: center; }
+
+/* Device list */
+.device-list { margin: -4px 0; }
+.device-item-content { cursor: pointer; flex: 1; }
+
+/* Override all list item backgrounds */
+:deep(.n-list-item) { background: transparent !important; border-radius: 8px !important; margin: 1px 0 !important; }
+:deep(.n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
+:deep(.n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }
+:deep(.n-list-item .n-list-item__main) { background: transparent !important; }
+:deep(.n-list-item .n-thing) { background: transparent !important; }
+:deep(.n-list-item .n-thing-main) { background: transparent !important; }
+:deep(.n-list-item .n-thing-main__title) { background: transparent !important; }
+
+.device-icon-wrap {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
-.empty-desc {
-  font-size: 12px;
-  color: #64748B;
-  max-width: 220px;
-  text-align: center;
-}
-.device-list {
-  margin: -4px 0;
-}
-.device-item-content {
+.device-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  cursor: pointer;
-  flex: 1;
+  min-width: 0;
 }
-.device-model {
-  font-size: 14px;
-  font-weight: 600;
-  color: #F8FAFC;
+.device-model { font-size: 14px; font-weight: 600; color: #F8FAFC; }
+.device-serial { font-family: 'Fira Code', monospace; font-size: 11px; color: #64748B; }
+.device-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: #EF4444;
 }
-.device-serial {
-  font-family: 'Fira Code', monospace;
-  font-size: 11px;
-  color: #64748B;
-}
-.details-btn {
-  margin-left: 4px;
-}
-:deep(.n-list-item) {
-  border-radius: 8px;
-  margin: 2px 0;
-  background: transparent !important;
-}
-:deep(.n-list-item .n-thing) {
-  background: transparent !important;
-}
-:deep(.n-list-item .n-thing .n-thing-main .n-thing-header) {
-  background: transparent !important;
-}
-:deep(.n-list-item.selected) {
-  background: rgba(34,197,94,0.08) !important;
-}
+.device-dot.online { background: #22C55E; }
+.device-dot.warning { background: #F59E0B; }
 </style>

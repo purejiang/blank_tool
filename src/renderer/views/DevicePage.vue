@@ -6,81 +6,12 @@
         <h1 class="page-title">{{ t('device.title') }}</h1>
         <p class="page-subtitle">{{ t('device.subtitle') }}</p>
       </div>
-      <n-space align="center">
-        <n-tag :type="connectionStatus.connected ? 'success' : 'error'" round size="medium" :bordered="false">
-          <template #icon><n-icon :component="connectionStatus.connected ? Link : Link2Off" /></template>
-          {{ connectionStatus.text }}
-        </n-tag>
-        <n-button @click="refreshDevices" :loading="loading" secondary size="small">
-          <template #icon><n-icon><RefreshCw /></n-icon></template>
-          {{ t('device.refresh') }}
-        </n-button>
-      </n-space>
     </div>
 
     <div class="page-content">
-      <!-- Left Panel: Device List + Logcat -->
+      <!-- Left Panel: Device List -->
       <div class="left-panel">
-        <DeviceManager
-          @refresh-devices="refreshDevices"
-          @toggle-logcat="toggleLogcat"
-        />
-
-        <!-- Logcat Section -->
-        <n-card :bordered="false" class="logcat-card" size="small">
-          <template #header>
-            <div class="logcat-header" @click="logcatCollapsed = !logcatCollapsed" style="cursor: pointer;">
-              <span class="card-title">{{ t('device.logcat') }}</span>
-              <n-space align="center">
-                <n-tag v-if="isLogcatRunning" type="success" size="small" :bordered="false">
-                  <template #icon><n-icon><Circle /></n-icon></template>
-                  {{ t('device.live') }}
-                </n-tag>
-                <n-icon :size="18" color="#94A3B8">
-                  <ChevronDown v-if="!logcatCollapsed" />
-                  <ChevronUp v-else />
-                </n-icon>
-              </n-space>
-            </div>
-          </template>
-          <div v-show="!logcatCollapsed">
-            <!-- Not running, no output -->
-            <div v-if="!isLogcatRunning && logcatOutput.length === 0" class="logcat-minimal">
-              <n-icon size="16" color="#64748B"><Terminal /></n-icon>
-              <span>{{ t('device.logcatNotRunning') }}</span>
-              <span class="logcat-hint">{{ t('device.logcatNotRunningHint') }}</span>
-            </div>
-            <!-- Stopped with output -->
-            <div v-else-if="!isLogcatRunning && logcatOutput.length > 0" class="logcat-stopped">
-              <n-icon size="16" color="#94A3B8"><PauseCircle /></n-icon>
-              <span>{{ t('device.stoppedDesc', { count: logcatOutput.length }) }}</span>
-            </div>
-            <!-- Running, waiting -->
-            <div v-else-if="isLogcatRunning && logcatOutput.length === 0" class="empty-state logcat-empty">
-              <p>{{ t('device.waitingForOutput') }}</p>
-            </div>
-            <!-- Running with output -->
-            <div v-else class="logcat-output" ref="logcatContainer">
-              <div v-for="(line, i) in logcatOutput" :key="i" class="logcat-line" :class="getLogLevel(line)">
-                <span class="log-line-num">{{ i + 1 }}</span>
-                <span>{{ line }}</span>
-              </div>
-            </div>
-            <!-- Logcat Actions -->
-            <div v-if="logcatOutput.length > 0" class="logcat-actions">
-              <n-space :size="8">
-                <n-button size="tiny" secondary @click="clearLogcatOutput">
-                  <template #icon><n-icon><Trash2 /></n-icon></template>
-                  {{ t('device.clearLogcat') }}
-                </n-button>
-                <n-button size="tiny" secondary @click="exportLogcatOutput">
-                  <template #icon><n-icon><FileDown /></n-icon></template>
-                  {{ t('device.exportLogcat') }}
-                </n-button>
-              </n-space>
-            </div>
-          </div>
-        </n-card>
+        <DeviceManager @refresh-devices="refreshDevices" />
       </div>
 
       <!-- Right Panel: Context-aware Tabs -->
@@ -97,7 +28,7 @@
         <!-- Device selected: Tabbed info panel -->
         <n-card v-else :bordered="false" class="panel-card" size="small">
           <n-tabs type="line" animated :default-value="'info'" class="panel-tabs">
-            <!-- Tab 1: Device Info -->
+            <!-- Tab 1: Device Info + Logcat -->
             <n-tab-pane name="info" :tab="t('device.infoTab')">
               <div class="tab-content">
                 <n-descriptions label-placement="left" :column="1" size="small" class="device-descriptions">
@@ -127,6 +58,49 @@
                     </n-descriptions-item>
                   </template>
                 </n-descriptions>
+
+                <!-- Logcat inline -->
+                <div class="logcat-section">
+                  <div class="logcat-section-header">
+                    <span class="logcat-section-title">{{ t('device.logcat') }}</span>
+                    <n-space align="center" :size="8">
+                      <n-tag v-if="isLogcatRunning" type="success" size="tiny" :bordered="false">
+                        <template #icon><n-icon size="10"><Circle /></n-icon></template>
+                        {{ t('device.live') }}
+                      </n-tag>
+                      <n-button
+                        :type="isLogcatRunning ? 'error' : 'success'"
+                        size="tiny"
+                        secondary
+                        @click="toggleLogcat"
+                      >
+                        <template #icon><n-icon size="14"><Activity /></n-icon></template>
+                        {{ isLogcatRunning ? t('device.stopLogcat') : t('device.startLogcat') }}
+                      </n-button>
+                    </n-space>
+                  </div>
+                  <div v-if="isLogcatRunning || logcatOutput.length > 0" class="logcat-section-body">
+                    <div v-if="logcatOutput.length === 0" class="logcat-waiting">
+                      {{ t('device.waitingForOutput') }}
+                    </div>
+                    <div v-else class="logcat-output" ref="logcatContainer">
+                      <div v-for="(line, i) in logcatOutput" :key="i" class="logcat-line" :class="getLogLevel(line)">
+                        <span class="log-line-num">{{ i + 1 }}</span>
+                        <span>{{ line }}</span>
+                      </div>
+                    </div>
+                    <div v-if="logcatOutput.length > 0" class="logcat-actions">
+                      <n-button size="tiny" secondary @click="clearLogcatOutput">
+                        <template #icon><n-icon><Trash2 /></n-icon></template>
+                        {{ t('device.clearLogcat') }}
+                      </n-button>
+                      <n-button size="tiny" secondary @click="exportLogcatOutput">
+                        <template #icon><n-icon><FileDown /></n-icon></template>
+                        {{ t('device.exportLogcat') }}
+                      </n-button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </n-tab-pane>
 
@@ -659,66 +633,16 @@ const uninstallApp = async (packageName: string) => {
   margin: 2px 0;
 }
 
-/* Logcat Card */
-.logcat-card {
-  background: #1E293B;
-  border-radius: 10px;
-}
-.logcat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  user-select: none;
-}
-.logcat-minimal {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  font-size: 13px;
-  color: #94A3B8;
-}
-.logcat-hint {
-  font-size: 12px;
-  color: #64748B;
-  margin-left: auto;
-}
-.logcat-stopped {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  font-size: 13px;
-  color: #94A3B8;
-}
-.logcat-output {
-  background: #0C1322;
-  border-radius: 8px;
-  padding: 12px;
-  max-height: 300px;
-  overflow-y: auto;
-  font-family: 'Fira Code', monospace;
-  font-size: 12px;
-  line-height: 1.7;
-}
-.logcat-line {
-  display: flex;
-  gap: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: #CBD5E1;
-}
-.log-line-num {
-  color: #475569;
-  min-width: 28px;
-  text-align: right;
-  user-select: none;
-  flex-shrink: 0;
-}
-.logcat-actions {
-  padding-top: 8px;
-}
+/* Logcat inline */
+.logcat-section { margin-top: 16px; border-top: 1px solid rgba(51,65,85,0.4); padding-top: 14px; }
+.logcat-section-header { display: flex; align-items: center; justify-content: space-between; }
+.logcat-section-title { font-size: 13px; font-weight: 600; color: #94A3B8; }
+.logcat-section-body { margin-top: 10px; }
+.logcat-waiting { font-size: 12px; color: #64748B; padding: 8px 0; }
+.logcat-output { background: #0C1322; border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow-y: auto; font-family: 'Fira Code', monospace; font-size: 12px; line-height: 1.7; }
+.logcat-line { display: flex; gap: 10px; white-space: pre-wrap; word-break: break-all; color: #CBD5E1; }
+.log-line-num { color: #475569; min-width: 24px; text-align: right; user-select: none; flex-shrink: 0; }
+.logcat-actions { display: flex; gap: 8px; padding-top: 8px; }
 .level-error { color: #EF4444; }
 .level-warn { color: #F59E0B; }
 .level-info { color: #3B82F6; }
