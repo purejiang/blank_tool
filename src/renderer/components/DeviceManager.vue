@@ -1,5 +1,5 @@
 <template>
-  <n-card :bordered="false" class="device-card" size="small">
+  <div class="device-card">
     <div class="card-header">
       <n-icon size="18" color="#22C55E"><Smartphone /></n-icon>
       <span class="card-title">{{ t('device.devices') }}</span>
@@ -43,7 +43,7 @@
         {{ t('device.refresh') }}
       </n-button>
     </div>
-  </n-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -82,18 +82,20 @@ const handleDeviceSelection = async (id: string) => {
 .device-card {
   background: #1E293B;
   border-radius: 10px;
+  padding: 16px;
 }
 .card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 .card-title {
   font-family: Inter, sans-serif;
   font-size: 15px;
   font-weight: 600;
   color: #F8FAFC;
+  flex: 1;
 }
 .card-footer {
   margin-top: 12px;
@@ -119,21 +121,7 @@ const handleDeviceSelection = async (id: string) => {
 .device-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #EF4444; }
 .device-dot.online { background: #22C55E; }
 .device-dot.warning { background: #F59E0B; }
-</style>
-
-<style>
-.device-card .n-card-header,
-.device-card .n-card-header__main {
-  background: transparent !important;
-}
-.device-card .n-list-item,
-.device-card .n-list-item * {
-  background: transparent !important;
-}
-.device-card .n-list-item:hover {
-  background: rgba(255,255,255,0.03) !important;
-}
-.device-card .n-list-item.selected {
-  background: rgba(34,197,94,0.08) !important;
-}
+:deep(.device-list .n-list-item) { background: transparent !important; }
+:deep(.device-list .n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
+:deep(.device-list .n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }
 </style>
