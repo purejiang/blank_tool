@@ -112,39 +112,29 @@ const handleDeviceSelection = async (id: string) => {
 .empty-title { font-size: 14px; font-weight: 600; color: #94A3B8; margin-top: 4px !important; }
 .empty-desc { font-size: 12px; color: #64748B; max-width: 220px; text-align: center; }
 
-/* Device list */
 .device-list { margin: -4px 0; }
-.device-item-content { cursor: pointer; flex: 1; }
-
-/* Override all list item backgrounds */
-:deep(.n-list-item) { background: transparent !important; border-radius: 8px !important; margin: 1px 0 !important; }
-:deep(.n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
-:deep(.n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }
-:deep(.n-list-item .n-list-item__main) { background: transparent !important; }
-:deep(.n-list-item .n-thing) { background: transparent !important; }
-:deep(.n-list-item .n-thing-main) { background: transparent !important; }
-:deep(.n-list-item .n-thing-main__title) { background: transparent !important; }
-
-.device-icon-wrap {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.device-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
+.device-icon-wrap { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.device-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .device-model { font-size: 14px; font-weight: 600; color: #F8FAFC; }
 .device-serial { font-family: 'Fira Code', monospace; font-size: 11px; color: #64748B; }
-.device-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  background: #EF4444;
-}
+.device-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #EF4444; }
 .device-dot.online { background: #22C55E; }
 .device-dot.warning { background: #F59E0B; }
+</style>
+
+<style>
+.device-card .n-list-item,
+.device-card .n-list-item *,
+.device-card .n-list-item__main,
+.device-card .n-thing,
+.device-card .n-thing-main,
+.device-card .n-thing-main__title {
+  background: transparent !important;
+}
+.device-card .n-list-item:hover {
+  background: rgba(255,255,255,0.03) !important;
+}
+.device-card .n-list-item.selected {
+  background: rgba(34,197,94,0.08) !important;
+}
 </style>
