@@ -217,9 +217,12 @@ async function startPythonService(): Promise<ChildProcessWithoutNullStreams | nu
   }
 
   try {
-    const env = { 
+    const userDataPath = app.getPath('userData');
+    const env = {
         ...process.env,
-        BT_RUNTIME_DIR: absRuntimeDir || ''
+        BT_RUNTIME_DIR: absRuntimeDir || '',
+        BT_CACHE_DIR: path.join(userDataPath, 'cache'),
+        BT_OUTPUT_DIR: path.join(userDataPath, 'output')
     };
     log.info(`Spawning Python process with: ${pythonExecutable} ${scriptPath}`);
     pythonProcess = spawn(pythonExecutable, [scriptPath], { env });
