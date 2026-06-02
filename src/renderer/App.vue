@@ -219,6 +219,7 @@ const currentTheme = ref<GlobalTheme | null>(darkTheme)
 const locale = computed(() => i18nLocale.value === 'zh-CN' ? zhCN : enUS)
 const setLocale = (lang: string) => {
   i18nLocale.value = lang
+  unifiedApi.getAPI()?.appConfig?.set('language', lang).catch(() => {})
 }
 const setTheme = async (mode: string) => {
   const themeService = await serviceManager.getService('theme')
@@ -386,6 +387,11 @@ async function loadThemePreference(): Promise<string | null> {
 
 async function prepareUI() {
   await new Promise(resolve => setTimeout(resolve, 100))
+  // Restore saved language preference
+  try {
+    const savedLang = await unifiedApi.getAPI()?.appConfig?.get('language')
+    if (savedLang) i18nLocale.value = savedLang
+  } catch {}
   const themeService = await serviceManager.getService('theme')
   if (themeService) {
     const savedTheme = await loadThemePreference()

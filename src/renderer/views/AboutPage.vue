@@ -18,8 +18,8 @@
         <div class="info-grid">
           <div v-for="tool in tools" :key="tool.name" class="info-row">
             <span class="info-label">{{ tool.name }}</span>
-            <span class="info-val">{{ tool.version || '-' }}</span>
-            <span class="info-path" :title="tool.path">{{ tool.path || '-' }}</span>
+            <span class="info-val">{{ tool.version || t('common.unknown') }}</span>
+            <span class="info-path" :title="tool.path">{{ tool.path || t('common.unknown') }}</span>
           </div>
           <div v-if="tools.length === 0" class="info-empty">{{ t('settings.loading') }}</div>
         </div>
