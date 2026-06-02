@@ -52,6 +52,7 @@ export const useTaskStore = defineStore('task', () => {
 
   const runningCount = computed(() => tasks.value.filter(t => t.status === 'running').length)
   const hasRunning = computed(() => runningCount.value > 0)
+  const hasCompleted = computed(() => tasks.value.some(t => t.status === 'completed' || t.status === 'failed'))
 
   function createTask(partial: Pick<Task, 'source' | 'url' | 'filePath' | 'fileName' | 'operation' | 'operationLabel'>): Task {
     const task: Task = {
@@ -59,7 +60,7 @@ export const useTaskStore = defineStore('task', () => {
       ...partial,
       status: partial.source === 'url' ? 'downloading' : 'queued',
       progress: 0,
-      progressLabel: partial.source === 'url' ? '下载中...' : '排队中',
+      progressLabel: '',
       result: '',
       outputPath: '',
       logs: [],
@@ -109,5 +110,5 @@ export const useTaskStore = defineStore('task', () => {
     persist()
   }
 
-  return { tasks, runningCount, hasRunning, maxTasks, createTask, updateTask, appendLog, removeTask, clearCompleted, clearAll }
+  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, appendLog, removeTask, clearCompleted, clearAll }
 })

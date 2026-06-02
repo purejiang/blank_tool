@@ -101,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, onMounted, onUnmounted, getCurrentInstance, computed, provide } from 'vue'
+import { ref, h, onMounted, onUnmounted, getCurrentInstance, computed, provide, watch } from 'vue'
 import type { GlobalTheme } from 'naive-ui'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -250,6 +250,11 @@ function handleMenuSelect(key: string) {
   activeMenuKey.value = key
   router.push(key)
 }
+
+// Sync active menu key with current route (e.g., after redirect / -> /package)
+watch(() => route.path, (p) => {
+  if (p !== '/') activeMenuKey.value = p
+}, { immediate: true })
 
 // Loading state
 const isLoading = ref(true)

@@ -6,10 +6,10 @@
         <p class="page-subtitle">{{ t('package.subtitle') }}</p>
       </div>
       <n-space :size="8">
-        <n-button size="tiny" quaternary @click="taskStore.clearCompleted" :disabled="!hasCompleted">
+        <n-button size="tiny" quaternary @click="taskStore.clearCompleted" :disabled="!taskStore.hasCompleted">
           {{ t('task.clearCompleted') }}
         </n-button>
-        <n-button size="tiny" quaternary type="error" @click="taskStore.clearAll" :disabled="tasks.length === 0">
+        <n-button size="tiny" quaternary type="error" @click="taskStore.clearAll" :disabled="taskStore.tasks.length === 0">
           {{ t('task.clearAll') }}
         </n-button>
       </n-space>
@@ -26,7 +26,7 @@
         <n-input
           v-if="newSource === 'url'"
           v-model:value="newUrl"
-          placeholder="https://example.com/app.apk"
+          :placeholder="t('task.urlPlaceholder')"
           size="small"
           clearable
         />
@@ -60,14 +60,14 @@
     </div>
 
     <!-- Task List -->
-    <div v-if="tasks.length === 0" class="empty-state">
+    <div v-if="taskStore.tasks.length === 0" class="empty-state">
       <n-icon size="48" color="var(--app-text-dim)"><Inbox /></n-icon>
       <p class="empty-title">{{ t('task.empty') }}</p>
       <p class="empty-desc">{{ t('task.emptyDesc') }}</p>
     </div>
 
     <div v-else class="task-list">
-      <div v-for="task in tasks"
+      <div v-for="task in taskStore.tasks"
         :key="task.id"
         class="task-card"
         :class="'task-' + task.status"
@@ -129,6 +129,13 @@
         <!-- Expanded detail -->
         <div v-if="!task.collapsed" class="task-detail">
           <div v-if="task.error" class="task-error">{{ task.error }}</div>
+          <div v-if="task.filePath" class="task-output">
+            <n-icon size="14" color="var(--app-text-dim)"><FolderOpen /></n-icon>
+            <span class="task-output-path">{{ t('task.source') }}: {{ task.filePath }}</span>
+            <n-button size="tiny" quaternary @click.stop="openInExplorer(task.filePath)">
+              <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
+            </n-button>
+          </div>
           <div v-if="task.outputPath" class="task-output">
             <n-icon size="14" color="var(--app-green)"><FolderOpen /></n-icon>
             <span class="task-output-path">{{ t('task.output') }}: {{ task.outputPath }}</span>
@@ -147,11 +154,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
-  Play, Link, FolderOpen, Download, CheckCircle, XCircle, Loader,
+  Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
   ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
@@ -159,14 +166,25 @@ import { useTaskStore } from '@stores/index'
 import { useSignatureStore } from '@stores/signatureStore'
 import type { Task } from '@stores/taskStore'
 import serviceManager from '@services/ServiceManager'
-import unifiedApi from '@api/unifiedApi'
 
 const { t } = useI18n()
 const taskStore = useTaskStore()
-const { tasks, hasCompleted } = taskStore
-const { showError } = useNotification()
 const sigStore = useSignatureStore()
-sigStore.loadConfigs()
+if (sigStore.configs.length === 0) sigStore.loadConfigs()
+
+const OP_TAG_MAP: Record<Task['operation'], string> = {
+  analyze: 'info', install: 'success', decompile: 'warning', recompile: 'warning', resign: 'error'
+}
+
+const activeIntervals = new Set<ReturnType<typeof setInterval>>()
+const activeStreamCleanups = new Set<() => void>()
+
+onUnmounted(() => {
+  activeIntervals.forEach(clearInterval)
+  activeIntervals.clear()
+  activeStreamCleanups.forEach(fn => fn())
+  activeStreamCleanups.clear()
+})
 
 // New task form
 const newSource = ref<'url' | 'local'>('local')
@@ -174,7 +192,6 @@ const newUrl = ref('')
 const newOperation = ref<Task['operation']>('analyze')
 const newLocalPath = ref('')
 const newLocalName = ref('')
-const localFileInput = ref<HTMLInputElement | null>(null)
 const newSignId = ref('')
 const decompileResources = ref(true)
 const decompileSources = ref(true)
@@ -183,26 +200,18 @@ const signOptions = computed(() =>
   sigStore.configs.map((c: any) => ({ label: c.name, value: c.id }))
 )
 
-const operationOptions = computed(() => [
-  { label: t('task.analyze'), value: 'analyze' },
-  { label: t('task.install'), value: 'install' },
-  { label: t('task.decompile'), value: 'decompile' },
-  { label: t('task.recompile'), value: 'recompile' },
-  { label: t('task.resign'), value: 'resign' },
-])
+const OPERATIONS_ORDERED: Task['operation'][] = ['analyze', 'install', 'decompile', 'recompile', 'resign']
+const operationOptions = computed(() =>
+  OPERATIONS_ORDERED.map(op => ({ label: t(`task.${op}`), value: op }))
+)
 
 const canStart = computed(() => {
   if (newSource.value === 'url') return !!newUrl.value.trim()
   return !!newLocalPath.value
 })
 
-const hasOpts = computed(() =>
-  ['resign', 'recompile', 'decompile'].includes(newOperation.value)
-)
-
 function opTagType(op: string) {
-  const map: Record<string, string> = { analyze: 'info', install: 'success', decompile: 'warning', recompile: 'warning', resign: 'error' }
-  return map[op] || 'default'
+  return OP_TAG_MAP[op as Task['operation']] || 'default'
 }
 
 function formatTime(ts: number) {
@@ -212,22 +221,18 @@ function formatTime(ts: number) {
 
 async function openInExplorer(filePath: string) {
   try {
-    const api = window.electronAPI as any
-    if (api && typeof api.openPath === 'function') {
-      await api.openPath(filePath)
-    }
-  } catch (e) {
-    console.error('openInExplorer error:', e)
-  }
+    const svc = await serviceManager.getService('system') as any
+    if (svc && typeof svc.openPath === 'function') svc.openPath(filePath)
+  } catch (e) { /* ignore */ }
 }
 
 async function pickLocalFile() {
   try {
-    const api = window.electronAPI as any
-    const result = await api.selectFile({
-      title: t('task.selectFile'),
-      filters: [{ name: 'APK/AAB', extensions: ['apk', 'aab'] }]
-    })
+    const svc = await serviceManager.getService('system') as any
+    const isDir = newOperation.value === 'recompile'
+    const result = isDir
+      ? await svc.selectDirectory({ title: t('task.selectDir') })
+      : await svc.selectFile({ title: t('task.selectFile'), filters: [{ name: 'APK/AAB', extensions: ['apk', 'aab'] }] })
     if (result && !result.canceled && result.filePaths?.length) {
       const fp = result.filePaths[0]
       newLocalPath.value = fp
@@ -235,16 +240,6 @@ async function pickLocalFile() {
     }
   } catch (e) {
     console.error('pickLocalFile error:', e)
-  }
-}
-
-function onLocalFilePicked(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) {
-    newLocalName.value = file.name
-    const fp = (file as any).path
-    newLocalPath.value = (fp && fp !== file.name) ? fp : file.name
   }
 }
 
@@ -275,219 +270,166 @@ async function startNewTask() {
 }
 
 async function executeTask(task: Task) {
+  let streamCleanup: (() => void) | null = null
   try {
     let localPath = task.filePath
-
-    // Set up streaming listener BEFORE any operations
     const api = window.electronAPI as any
     let streamResolve: ((v: any) => void) | null = null
     let streamReject: ((e: Error) => void) | null = null
 
     const onStream = (raw: any) => {
       if (!raw) return
-      // Main process wraps stream events as { stream_id, data: {...} }
       const data = raw.data || raw
-      const tid = data.task_id || (data.payload && data.payload.task_id)
+      const tid = data.task_id || (data.payload?.['task_id'])
       if (tid !== String(task.id)) return
-      // Handle progress events (download or operation)
       if (data.type === 'progress' && data.payload) {
-        const pct = data.payload.progress || 0
-        taskStore.updateTask(task.id, { progress: pct, progressLabel: data.payload.label || `${pct}%` })
+        taskStore.updateTask(task.id, { progress: data.payload.progress || 0, progressLabel: data.payload.label || `${data.payload.progress || 0}%` })
       }
-      // Handle stream completion (download done)
-      if (data.type === 'complete' && streamResolve) {
-        streamResolve(data.payload || data)
-      }
-      // Handle stream error
+      if (data.type === 'complete' && streamResolve) streamResolve(data.payload || data)
       if (data.type === 'error' && streamReject) {
-        const msg = (data.payload && data.payload.message) || data.message || '流式操作失败'
+        const msg = (data.payload?.message) || data.message || t('task.streamOpFailed')
         streamReject(new Error(msg))
       }
-      // Handle log lines
       const line = data.line || data.message || data.output || ''
       if (line) taskStore.appendLog(task.id, line)
     }
-    if (api && typeof api.onStreamEvent === 'function') {
-      api.onStreamEvent(onStream)
+
+    if (api?.onStreamEvent) {
+      streamCleanup = api.onStreamEvent(onStream)
+      if (streamCleanup) activeStreamCleanups.add(streamCleanup)
     }
 
-    // Step 1: Download if URL source
+    // Download if URL source
     if (task.source === 'url' && task.url) {
-      taskStore.updateTask(task.id, { status: 'downloading', progress: 0, progressLabel: '下载中...' })
-      taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 开始下载 ${task.url}`)
-      if (!api || typeof api.downloadFile !== 'function') throw new Error('下载API不可用')
-
-      const dlPromise = new Promise((resolve, reject) => {
-        streamResolve = resolve
-        streamReject = reject
-      })
-      // Fire the download (returns stream_id immediately)
+      taskStore.updateTask(task.id, { status: 'downloading', progress: 0, progressLabel: t('task.downloading') })
+      log(task, t('task.downloading') + ' ' + task.url)
+      if (!api || typeof api.downloadFile !== 'function') throw new Error(t('task.downloadAPINotAvailable'))
+      const dlPromise = new Promise<any>((resolve, reject) => { streamResolve = resolve; streamReject = reject })
       api.downloadFile(task.url, task.fileName, String(task.id))
-      // Wait for streaming complete/error
       const dlResult = await dlPromise
       localPath = dlResult.file_path
-      taskStore.updateTask(task.id, { progress: 100, progressLabel: '下载完成' })
-      taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 下载完成 (${(dlResult.size / 1024 / 1024).toFixed(1)}MB)`)
-      // Clear stream handlers
-      streamResolve = null
-      streamReject = null
+      taskStore.updateTask(task.id, { filePath: dlResult.file_path, progress: 100, progressLabel: t('task.completed') })
+      log(task, t('task.completed') + ` (${(dlResult.size / 1024 / 1024).toFixed(1)}MB)`)
     }
 
-    // Step 2: Execute operation
-    taskStore.updateTask(task.id, { status: 'running', progress: 0, progressLabel: '执行中...' })
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 开始执行 ${task.operationLabel}`)
-
-    switch (task.operation) {
-      case 'analyze':
-        await runAnalyze(task, localPath)
-        break
-      case 'install':
-        await runInstall(task, localPath)
-        break
-      case 'decompile':
-        await runDecompile(task, localPath)
-        break
-      case 'recompile':
-        await runRecompile(task, localPath)
-        break
-      case 'resign':
-        await runResign(task, localPath)
-        break
-      default:
-        taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', finishedAt: Date.now() })
-        taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 此功能开发中`)
-        break
-    }
+    // Execute operation
+    taskStore.updateTask(task.id, { status: 'running', progress: 0, progressLabel: t('task.running') })
+    log(task, t('task.running') + ' ' + task.operationLabel)
+    await runOperation(task, localPath)
   } catch (e: any) {
     taskStore.updateTask(task.id, { status: 'failed', error: e.message || String(e), finishedAt: Date.now() })
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 错误: ${e.message || e}`)
+    log(task, t('task.failed') + ': ' + (e.message || e))
+  } finally {
+    if (streamCleanup) {
+      streamCleanup()
+      activeStreamCleanups.delete(streamCleanup)
+    }
   }
 }
 
-async function runAnalyze(task: Task, localPath: string) {
-  const svc = await serviceManager.getService('apk') as any
-  if (typeof svc?.analyzeApk !== 'function') throw new Error('分析服务不可用')
-  const iv = startProgress(task, '分析中')
-  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在分析 ${task.fileName}...`)
-  const result = await svc.analyzeApk(localPath)
-  if (result.success) {
-    finishProgress(task, iv)
-    const html = renderApkInfo(result.data)
-    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', result: html, finishedAt: Date.now() })
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 分析完成`)
-  } else {
-    clearInterval(iv)
-    throw new Error(result.error || '分析失败')
-  }
+function log(task: Task, msg: string) {
+  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] ${msg}`)
 }
 
-async function runInstall(task: Task, localPath: string) {
-  const svc = await serviceManager.getService('device') as any
-  if (typeof svc?.installApp !== 'function') throw new Error('安装服务不可用')
-  const iv = startProgress(task, '安装中')
-  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在安装到设备...`)
-  const result = await svc.installApp(localPath)
+async function runOperation(task: Task, localPath: string) {
+  const op = task.operation
+  const ingLabel = t(`task.${op}ing`)
+  const svcName = op === 'install' ? 'device' : 'apk'
+  const methodName = op === 'analyze' ? 'analyzeApk'
+    : op === 'install' ? 'installApp'
+    : op === 'decompile' ? 'decompileApk'
+    : op === 'recompile' ? 'recompileApk'
+    : 'signApk'
+
+  const svc = await serviceManager.getService(svcName) as any
+  if (typeof svc?.[methodName] !== 'function') throw new Error(t(`task.${op}SvcUnavailable`))
+
+  // Prepare operation-specific options
+  let opts: any = undefined
+  let logExtra = ''
+  if (op === 'decompile') {
+    opts = { resources: decompileResources.value, sources: decompileSources.value }
+    logExtra = ` (${t('task.decompileResources')}:${opts.resources}, ${t('task.decompileSources')}:${opts.sources})`
+  } else if (op === 'recompile') {
+    opts = { sign: false, align: true, optimize: true }
+    const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
+    if (cfg) {
+      opts = { ...opts, sign: true, v2: true, keystore: { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass } }
+      logExtra = ` (${t('task.resign')}:${cfg.name})`
+    }
+  } else if (op === 'resign') {
+    const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
+    if (!cfg) throw new Error(t('task.noSignConfig'))
+    opts = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass }
+    logExtra = ` (${cfg.name})`
+  }
+
+  const iv = startProgress(task, ingLabel)
+  log(task, ingLabel + logExtra)
+  let result: any
+  try {
+    result = opts ? await svc[methodName](localPath, opts) : await svc[methodName](localPath)
+  } catch (err) {
+    clearIntervalAndForget(iv)
+    throw err
+  }
+
   if (result.success) {
     finishProgress(task, iv)
-    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', finishedAt: Date.now() })
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 安装成功`)
+    const updates: any = { status: 'completed', progress: 100, progressLabel: t('task.completed'), finishedAt: Date.now() }
+    if (result.outputPath) updates.outputPath = result.outputPath
+    if (op === 'analyze' && result.data) updates.result = renderApkInfo(result.data)
+    taskStore.updateTask(task.id, updates)
+    log(task, t(`task.${op}Done`) + (result.outputPath ? ' → ' + result.outputPath : ''))
   } else {
-    clearInterval(iv)
-    throw new Error(result.error || '安装失败')
-  }
-}
-
-async function runDecompile(task: Task, localPath: string) {
-  const svc = await serviceManager.getService('apk') as any
-  if (typeof svc?.decompileApk !== 'function') throw new Error('反编译服务不可用')
-  const opts = { resources: decompileResources.value, sources: decompileSources.value }
-  const iv = startProgress(task, '反编译中')
-  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在反编译 (资源:${opts.resources}, 源码:${opts.sources})...`)
-  const result = await svc.decompileApk(localPath, opts)
-  if (result.success) {
-    finishProgress(task, iv)
-    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', outputPath: result.outputPath, finishedAt: Date.now() })
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 反编译完成 → ${result.outputPath}`)
-  } else {
-    clearInterval(iv)
-    throw new Error(result.error || '反编译失败')
-  }
-}
-
-async function runRecompile(task: Task, localPath: string) {
-  const svc = await serviceManager.getService('apk') as any
-  if (typeof svc?.recompileApk !== 'function') throw new Error('重编译服务不可用')
-
-  let signOpts: any = { sign: false, align: true, optimize: true }
-  const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
-  if (cfg) {
-    signOpts.sign = true
-    signOpts.v2 = true
-    signOpts.keystore = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass }
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在重编译 (签名:${cfg.name})...`)
-  } else {
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在重编译 (无签名)...`)
-  }
-  const iv = startProgress(task, '重编译中')
-  const result = await svc.recompileApk(localPath, signOpts)
-  if (result.success) {
-    finishProgress(task, iv)
-    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', outputPath: result.outputPath, finishedAt: Date.now() })
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 重编译完成 → ${result.outputPath}`)
-  } else {
-    clearInterval(iv)
-    throw new Error(result.error || '重编译失败')
-  }
-}
-
-async function runResign(task: Task, localPath: string) {
-  const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
-  if (!cfg) throw new Error('没有签名配置，请先在设置中添加签名配置')
-
-  const svc = await serviceManager.getService('apk') as any
-  if (typeof svc?.signApk !== 'function') throw new Error('签名服务不可用')
-  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在签名 (${cfg.name})...`)
-  const iv = startProgress(task, '签名中')
-  const keystore = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass }
-  const result = await svc.signApk(localPath, keystore, { v2: true })
-  if (result.success) {
-    finishProgress(task, iv)
-    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', outputPath: result.outputPath, finishedAt: Date.now() })
-    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 签名完成 → ${result.outputPath}`)
-  } else {
-    clearInterval(iv)
-    throw new Error(result.error || '签名失败')
+    clearIntervalAndForget(iv)
+    throw new Error(result.error || t(`task.${op}Failed`))
   }
 }
 
 function renderApkInfo(data: any) {
   if (!data) return ''
   const perms = data.permissions || []
+  const labels = {
+    appName: t('task.appName'),
+    packageName: t('task.packageName'),
+    version: t('task.version'),
+    minSdk: t('task.minSdk'),
+    targetSdk: t('task.targetSdk'),
+    permissions: t('task.permissions'),
+    noPermissions: t('task.noPermissions'),
+  }
   return `<div style="display:flex;flex-direction:column;gap:5px;font-size:13px;line-height:1.6">
-    <div><span style="color:var(--app-text-dim)">名称：</span><span style="color:var(--app-text-primary)">${data.applicationLabel || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">包名：</span><span style="color:var(--app-text-secondary);font-family:monospace">${data.packageName || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">版本：</span><span style="color:var(--app-text-secondary)">${data.versionName || '-'} (${data.versionCode || '-'})</span></div>
-    <div><span style="color:var(--app-text-dim)">最小 SDK：</span><span style="color:var(--app-text-secondary)">${data.minSdkVersion || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">目标 SDK：</span><span style="color:var(--app-text-secondary)">${data.targetSdkVersion || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">权限 (${perms.length})：</span><span style="color:var(--app-text-dim);font-size:12px">${perms.length ? perms.slice(0, 20).join(', ') + (perms.length > 20 ? '...' : '') : '无'}</span></div>
+    <div><span style="color:var(--app-text-dim)">${labels.appName}：</span><span style="color:var(--app-text-primary)">${data.applicationLabel || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">${labels.packageName}：</span><span style="color:var(--app-text-secondary);font-family:monospace">${data.packageName || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">${labels.version}：</span><span style="color:var(--app-text-secondary)">${data.versionName || '-'} (${data.versionCode || '-'})</span></div>
+    <div><span style="color:var(--app-text-dim)">${labels.minSdk}：</span><span style="color:var(--app-text-secondary)">${data.minSdkVersion || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">${labels.targetSdk}：</span><span style="color:var(--app-text-secondary)">${data.targetSdkVersion || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">${labels.permissions} (${perms.length})：</span><span style="color:var(--app-text-dim);font-size:12px">${perms.length ? perms.slice(0, 20).join(', ') + (perms.length > 20 ? '...' : '') : labels.noPermissions}</span></div>
   </div>`
 }
 
 function startProgress(task: Task, label: string) {
   let p = 0
   const iv = setInterval(() => {
+    if (p >= 85) { clearInterval(iv); activeIntervals.delete(iv); return }
     if (p < 30) p += 2
     else if (p < 60) p += 1
-    else if (p < 85) p += 0.5
-    else { /* hold at 85, jump on complete */ return }
+    else p += 0.5
     taskStore.updateTask(task.id, { progress: Math.round(Math.min(p, 85)), progressLabel: label })
   }, 500)
+  activeIntervals.add(iv)
   return iv
 }
 
-function finishProgress(task: Task, iv: ReturnType<typeof setInterval>) {
+function clearIntervalAndForget(iv: ReturnType<typeof setInterval>) {
   clearInterval(iv)
-  taskStore.updateTask(task.id, { progress: 100, progressLabel: '完成' })
+  activeIntervals.delete(iv)
+}
+
+function finishProgress(task: Task, iv: ReturnType<typeof setInterval>) {
+  clearIntervalAndForget(iv)
+  taskStore.updateTask(task.id, { progress: 100, progressLabel: t('task.completed') })
 }
 </script>
 

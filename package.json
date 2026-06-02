@@ -41,7 +41,15 @@
       {
         "from": "backend",
         "to": "backend",
-        "filter": ["**/*", "!cache", "!cache/**", "!output", "!output/**", "!logs", "!logs/**"]
+        "filter": [
+          "**/*",
+          "!cache",
+          "!cache/**",
+          "!output",
+          "!output/**",
+          "!logs",
+          "!logs/**"
+        ]
       },
       {
         "from": "runtime",

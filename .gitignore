@@ -3,6 +3,8 @@
 /build/
 /cache/
 /output/
+.playwright-mcp/
+cli-notify-plugin/
 dist/
 .trae/
 .vscode/

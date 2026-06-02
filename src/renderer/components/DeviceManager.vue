@@ -47,7 +47,7 @@
       <div class="dm-remote-row">
         <n-input
           v-model:value="remoteAddress"
-          placeholder="192.168.1.100:5555"
+          :placeholder="t('device.remoteAddressPlaceholder')"
           size="tiny"
           clearable
           class="dm-remote-input"
