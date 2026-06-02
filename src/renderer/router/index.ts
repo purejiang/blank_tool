@@ -6,12 +6,9 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫
-router.beforeEach((to, from, next) => {
-  // 设置页面标题
-  const baseTitle = 'Blank Tool'
-  const pageTitle = to.meta?.title || baseTitle
-  document.title = `${pageTitle} - ${baseTitle}`
+router.beforeEach((to, _from, next) => {
+  const pageTitle = to.meta?.title as string | undefined
+  document.title = pageTitle ? `${pageTitle} - Blank Tool` : 'Blank Tool'
   next()
 })
 

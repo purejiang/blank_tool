@@ -6,19 +6,11 @@ const otherToolsRoutes = [
     path: '/plugins',
     name: 'plugins',
     component: OtherToolsPage,
-    meta: {
-      title: '其他工具',
-      icon: '🛠️'
-    }
   },
   {
     path: '/about',
     name: 'about',
     component: AboutPage,
-    meta: {
-      title: '关于',
-      icon: 'ℹ️'
-    }
   }
 ]
 
