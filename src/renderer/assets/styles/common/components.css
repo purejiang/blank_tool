@@ -29,10 +29,10 @@
 /* Section Header & Actions (Extracted from components) */
 .section-header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 20px;
+    justify-content: flex-start;
+    align-items: center;
     position: relative;
+    gap: 10px;
 }
   
 .section-actions {

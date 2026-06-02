@@ -1,88 +1,72 @@
-import serviceManager from '@services/ServiceManager'
+import { ref } from 'vue'
+import { useNotification as useNaiveNotification } from 'naive-ui'
+
+const idCounter = ref(0)
+const loadingMap = new Map<number, { destroy: () => void }>()
 
 export function useNotification() {
-  // Helper to access the service instance safely
-  const getService = () => {
-    return serviceManager.getServiceSync('notification')
+  const notify = useNaiveNotification()
+
+  const showSuccess = (title: string, message = '', duration = 5000) => {
+    notify.success({ title, content: message, duration })
+    return 0
   }
 
-  const showSuccess = (title, message = '', duration = 3000) => {
-    const service = getService()
-    if (service) {
-      return service.show('success', title, message, duration)
-    }
-    console.warn('NotificationService not available')
-    return null
+  const showError = (title: string, message = '', duration = 8000) => {
+    notify.error({ title, content: message, duration })
+    return 0
   }
 
-  const showError = (title, message = '', duration = 5000) => {
-    const service = getService()
-    if (service) {
-      return service.show('error', title, message, duration)
-    }
-    console.error('NotificationService not available', title, message)
-    return null
+  const showWarning = (title: string, message = '', duration = 8000) => {
+    notify.warning({ title, content: message, duration })
+    return 0
   }
 
-  const showWarning = (title, message = '', duration = 5000) => {
-    const service = getService()
-    if (service) {
-      return service.show('warning', title, message, duration)
-    }
-    console.warn('NotificationService not available', title, message)
-    return null
+  const showInfo = (title: string, message = '', duration = 5000) => {
+    notify.info({ title, content: message, duration })
+    return 0
   }
 
-  const showInfo = (title, message = '', duration = 3000) => {
-    const service = getService()
-    if (service) {
-      return service.show('info', title, message, duration)
-    }
-    return null
+  const showLoading = (title: string, message = '') => {
+    const id = ++idCounter.value
+    const n = notify.info({ title, content: message, duration: 0 })
+    loadingMap.set(id, n)
+    return id
   }
 
-  const showLoading = (title, message = '') => {
-    const service = getService()
-    if (service) {
-      return service.show('loading', title, message, 0)
-    }
-    return null
-  }
-
-  const hide = (id) => {
-    const service = getService()
-    if (service) {
-      service.hide(id)
+  const hide = (id?: number) => {
+    if (id !== undefined && loadingMap.has(id)) {
+      loadingMap.get(id)!.destroy()
+      loadingMap.delete(id)
+    } else {
+      notify.destroyAll()
     }
   }
 
-  const updateLoading = (id, title, message) => {
-    const service = getService()
-    if (service) {
-      service.update(id, { title, message })
+  const updateLoading = (id: number, title?: string, message?: string) => {
+    if (loadingMap.has(id)) {
+      loadingMap.get(id)!.destroy()
     }
+    const n = notify.info({ title: title || '', content: message || '', duration: 0 })
+    loadingMap.set(id, n)
   }
 
-  const completeLoading = (id, title, message = '', duration = 3000) => {
-    const service = getService()
-    if (service) {
-      // First update content
-      service.update(id, { title, message, type: 'success', duration })
-      // Then set a timeout to hide it, since changing type doesn't automatically trigger auto-close if it was 0 before
-      setTimeout(() => {
-        service.hide(id)
-      }, duration)
+  const completeLoading = (id: number, title: string, message = '', duration = 5000) => {
+    if (loadingMap.has(id)) {
+      loadingMap.get(id)!.destroy()
+      loadingMap.delete(id)
     }
+    notify.success({ title, content: message, duration })
+    return 0
   }
 
-  const failLoading = (id, title, message = '', duration = 5000) => {
-    const service = getService()
-    if (service) {
-      service.update(id, { title, message, type: 'error', duration })
-      setTimeout(() => {
-        service.hide(id)
-      }, duration)
+  const failLoading = (id: number, title: string, message = '', duration = 8000) => {
+    if (loadingMap.has(id)) {
+      loadingMap.get(id)!.destroy()
+      loadingMap.delete(id)
     }
+    notify.error({ title, content: message, duration })
+    return 0
   }
 
   return {
@@ -94,6 +78,6 @@ export function useNotification() {
     hide,
     updateLoading,
     completeLoading,
-    failLoading
+    failLoading,
   }
 }

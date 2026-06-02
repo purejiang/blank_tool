@@ -137,9 +137,12 @@ class ApiHandler:
         """
         def wrapper(params: dict):
             stream_id = f"{handler.__name__}-{str(uuid.uuid4())}"
+            task_id = params.get("task_id", "")
             stop_event = threading.Event()
 
             def stream_callback(data: dict):
+                if task_id and isinstance(data, dict):
+                    data["task_id"] = str(task_id)
                 response = {
                     "id": request_id,
                     "result": data,

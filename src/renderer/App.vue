@@ -1,6 +1,6 @@
 <template>
-  <n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides" :locale="locale">
-    <n-notification-provider>
+  <n-config-provider :theme="currentTheme" :theme-overrides="themeOverrides" :locale="locale">
+    <n-notification-provider placement="bottom-right">
       <n-message-provider>
         <div id="app">
           <!-- Loading Screen -->
@@ -16,9 +16,8 @@
               <n-progress
                 type="line"
                 :percentage="loadingProgress"
-                :indicator-placement="'inside'"
-                :height="4"
-                :border-radius="2"
+                :height="6"
+                :border-radius="3"
                 color="#22C55E"
                 rail-color="rgba(255,255,255,0.1)"
               />
@@ -57,6 +56,18 @@
                     <Terminal />
                   </n-icon>
                   <span v-if="!sidebarCollapsed" class="brand-text">{{ $t('app.title') }}</span>
+                  <div class="brand-collapse">
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      @click="sidebarCollapsed = !sidebarCollapsed"
+                    >
+                      <template #icon>
+                        <n-icon size="16"><ChevronsLeft v-if="!sidebarCollapsed" /><ChevronsRight v-else /></n-icon>
+                      </template>
+                    </n-button>
+                  </div>
                 </div>
 
                 <!-- Navigation Menu -->
@@ -71,22 +82,8 @@
                   class="sider-menu"
                 />
 
-                <!-- Status Bar (inside sidebar) -->
+                <!-- Status Bar (bottom of sidebar) -->
                 <StatusBar :collapsed="sidebarCollapsed" />
-
-                <!-- Bottom Actions -->
-                <div class="sider-footer" :class="{ collapsed: sidebarCollapsed }">
-                  <n-button
-                    quaternary
-                    circle
-                    size="small"
-                    @click="sidebarCollapsed = !sidebarCollapsed"
-                  >
-                    <template #icon>
-                      <n-icon><ChevronsLeft v-if="!sidebarCollapsed" /><ChevronsRight v-else /></n-icon>
-                    </template>
-                  </n-button>
-                </div>
               </div>
             </n-layout-sider>
 
@@ -105,12 +102,13 @@
 
 <script setup lang="ts">
 import { ref, h, onMounted, onUnmounted, getCurrentInstance, computed, provide } from 'vue'
+import type { GlobalTheme } from 'naive-ui'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { darkTheme, NIcon, zhCN, enUS } from 'naive-ui'
 import {
   Smartphone, Package, Settings, Wrench, Terminal,
-  ChevronsLeft, ChevronsRight
+  ChevronsLeft, ChevronsRight, Info
 } from 'lucide-vue-next'
 import type { MenuOption } from 'naive-ui'
 import StatusBar from '@components/common/StatusBar.vue'
@@ -125,6 +123,8 @@ import ApkService from '@services/ApkService'
 import CacheService from '@services/CacheService'
 import DeviceService from '@services/DeviceService'
 import SystemService from '@services/SystemService'
+import StoreService from '@services/StoreService'
+import SettingsService from '@services/SettingsService'
 import { useToolStore, useAppConfigStore, useSystemStore } from '@stores/index'
 
 const router = useRouter()
@@ -132,7 +132,7 @@ const route = useRoute()
 const { t, locale: i18nLocale } = useI18n()
 
 // Theme overrides for OLED dark mode
-const themeOverrides = {
+const themeOverridesDark = {
   common: {
     bodyColor: '#0F172A',
     cardColor: '#1E293B',
@@ -153,20 +153,83 @@ const themeOverrides = {
     scrollbarColor: '#334155',
     inputColor: '#1E293B',
     actionColor: '#334155',
-    hoverColor: 'rgba(34,197,94,0.1)',
+    hoverColor: 'rgba(34,197,94,0.12)',
+  },
+  Input: {
+    border: '1px solid #475569',
+    borderHover: '1px solid #22C55E',
+    borderFocus: '1px solid #22C55E',
+    borderRadius: '8px',
+  },
+  InternalSelection: {
+    border: '1px solid #475569',
+    borderHover: '1px solid #22C55E',
+    borderFocus: '1px solid #22C55E',
+    borderRadius: '8px',
   },
 }
 
+const themeOverridesLight = {
+  common: {
+    bodyColor: '#F1F5F9',
+    cardColor: '#FFFFFF',
+    modalColor: '#FFFFFF',
+    popoverColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+    borderRadius: '8px',
+    primaryColor: '#16A34A',
+    primaryColorHover: '#15803D',
+    primaryColorPressed: '#166534',
+    infoColor: '#2563EB',
+    successColor: '#16A34A',
+    warningColor: '#D97706',
+    errorColor: '#DC2626',
+    textColor1: '#0F172A',
+    textColor2: '#475569',
+    textColor3: '#94A3B8',
+    scrollbarColor: '#CBD5E1',
+    inputColor: '#FFFFFF',
+    actionColor: '#E2E8F0',
+    hoverColor: 'rgba(22,163,74,0.08)',
+  },
+  Input: {
+    border: '1px solid #CBD5E1',
+    borderHover: '1px solid #16A34A',
+    borderFocus: '1px solid #16A34A',
+    borderRadius: '8px',
+  },
+  InternalSelection: {
+    border: '1px solid #CBD5E1',
+    borderHover: '1px solid #16A34A',
+    borderFocus: '1px solid #16A34A',
+    borderRadius: '8px',
+  },
+}
+
+const themeOverrides = computed(() =>
+  currentTheme.value ? themeOverridesDark : themeOverridesLight
+)
+
 // Sidebar
 const sidebarCollapsed = ref(false)
-const activeMenuKey = ref(route.path || '/device')
+const activeMenuKey = ref(route.path || '/package')
+const currentTheme = ref<GlobalTheme | null>(darkTheme)
 
 // Locale for Naive UI i18n
 const locale = computed(() => i18nLocale.value === 'zh-CN' ? zhCN : enUS)
 const setLocale = (lang: string) => {
   i18nLocale.value = lang
 }
+const setTheme = async (mode: string) => {
+  const themeService = await serviceManager.getService('theme')
+  if (themeService) {
+    currentTheme.value = await themeService.setTheme(mode)
+  }
+}
+const getCurrentTheme = () => currentTheme.value
 provide('setLocale', setLocale)
+provide('setTheme', setTheme)
+provide('getCurrentTheme', getCurrentTheme)
 
 const renderMenuLabel = (option: MenuOption) => {
   return option.label as string
@@ -176,12 +239,12 @@ function renderIcon(icon: any) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
 
-const menuOptions: MenuOption[] = [
-  { label: t('nav.device'), key: '/device', icon: renderIcon(Smartphone) },
+const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.package'), key: '/package', icon: renderIcon(Package) },
-  { label: t('nav.tools'), key: '/tools', icon: renderIcon(Wrench) },
+  { label: t('nav.tools'), key: '/plugins', icon: renderIcon(Wrench) },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(Settings) },
-]
+  { label: t('nav.about'), key: '/about', icon: renderIcon(Info) },
+])
 
 function handleMenuSelect(key: string) {
   activeMenuKey.value = key
@@ -210,6 +273,8 @@ function registerServices() {
   serviceManager.register('system', SystemService)
   serviceManager.register('apk', ApkService, ['config'])
   serviceManager.register('cache', CacheService, ['config'])
+  serviceManager.register('store', StoreService)
+  serviceManager.register('settings', SettingsService, ['store'])
 }
 
 function createErrorHandler() {
@@ -302,10 +367,34 @@ async function checkToolsStatus() {
   await toolStore.fetchTools(true)
 }
 
+async function loadThemePreference(): Promise<string | null> {
+  try {
+    const settingsSvc = await serviceManager.getService('settings')
+    const model = await settingsSvc.loadSettingsModel()
+    if (model?.settings) {
+      const s = model.settings as Record<string, unknown>
+      return typeof s.theme === 'string' ? s.theme : null
+    }
+  } catch {}
+  return null
+}
+
 async function prepareUI() {
   await new Promise(resolve => setTimeout(resolve, 100))
   const themeService = await serviceManager.getService('theme')
-  if (themeService) { await themeService.applyTheme() }
+  if (themeService) {
+    const savedTheme = await loadThemePreference()
+    if (savedTheme && typeof themeService.setTheme === 'function') {
+      currentTheme.value = await themeService.setTheme(savedTheme)
+    } else if (typeof themeService.applyTheme === 'function') {
+      currentTheme.value = await themeService.applyTheme()
+    }
+    if (typeof themeService.onChange === 'function') {
+      themeService.onChange((theme: GlobalTheme | null) => {
+        currentTheme.value = theme
+      })
+    }
+  }
   const cacheService = await serviceManager.getService('cache')
   if (cacheService) { await cacheService.getCacheInfo().catch(() => {}) }
 }
@@ -337,7 +426,7 @@ onUnmounted(() => {
 .loading-screen {
   position: fixed;
   inset: 0;
-  background: #0F172A;
+  background: var(--app-body-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -354,13 +443,13 @@ onUnmounted(() => {
   font-family: Inter, sans-serif;
   font-size: 24px;
   font-weight: 700;
-  color: #F8FAFC;
+  color: var(--app-text-primary);
   margin: 12px 0 0;
 }
 .loading-subtitle {
   font-family: Inter, sans-serif;
   font-size: 13px;
-  color: #94A3B8;
+  color: var(--app-text-muted);
   margin: 4px 0 0;
 }
 .loading-info {
@@ -371,12 +460,12 @@ onUnmounted(() => {
 }
 .loading-step {
   font-size: 13px;
-  color: #94A3B8;
+  color: var(--app-text-muted);
   margin: 0;
 }
 .loading-timer {
   font-size: 12px;
-  color: #64748B;
+  color: var(--app-text-muted);
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
@@ -389,7 +478,7 @@ onUnmounted(() => {
   height: 100vh;
 }
 .app-sider {
-  background: #0C1322;
+  background: var(--app-sidebar-bg);
 }
 .sider-inner {
   display: flex;
@@ -401,37 +490,38 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 20px 18px 16px;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid var(--app-sidebar-border);
   flex-shrink: 0;
+}
+.brand-collapse {
+  margin-left: auto;
 }
 .sider-brand.collapsed {
   justify-content: center;
   padding: 20px 0 16px;
 }
+.sider-brand.collapsed {
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0 12px;
+}
+.sider-brand.collapsed .brand-collapse {
+  margin-left: 0;
+}
 .brand-text {
   font-family: Inter, sans-serif;
   font-size: 16px;
   font-weight: 700;
-  color: #F8FAFC;
+  color: var(--app-text-primary);
   letter-spacing: -0.02em;
 }
 .sider-menu {
   flex: 1;
   overflow-y: auto;
 }
-.sider-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 8px 12px;
-  border-top: 1px solid #1E293B;
-  flex-shrink: 0;
-}
-.sider-footer.collapsed {
-  justify-content: center;
-}
 .main-content {
   padding: 24px;
-  background: #0F172A;
+  background: var(--app-body-bg);
   height: 100vh;
   overflow-y: auto;
 }
@@ -445,7 +535,7 @@ onUnmounted(() => {
   transition: all 0.15s ease;
 }
 .n-menu .n-menu-item-content--selected {
-  background: rgba(34,197,94,0.12) !important;
+  background: var(--app-hover-strong) !important;
 }
 
 /* Card header backgrounds - transparent everywhere */
@@ -462,10 +552,10 @@ onUnmounted(() => {
   background: transparent !important;
 }
 .n-menu .n-menu-item-content:hover {
-  background: rgba(34,197,94,0.06) !important;
+  background: var(--app-hover) !important;
 }
 .n-menu .n-menu-item-content:active {
-  background: rgba(34,197,94,0.1) !important;
+  background: var(--app-hover-strong) !important;
 }
 /* Center icons when sidebar is collapsed */
 .n-menu--collapsed .n-menu-item-content {
@@ -476,19 +566,24 @@ onUnmounted(() => {
 .n-menu--collapsed .n-menu-item-content .n-menu-item-content__icon {
   margin-right: 0 !important;
 }
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Sidebar scroll container fill sider height */
+.n-layout-sider .n-scrollbar-container,
+.n-layout-sider .n-scrollbar-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+.n-layout-sider .n-scrollbar {
+  height: 100%;
 }
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+
+/* Notification toasts — smaller font */
+.n-notification .n-notification__main {
+  font-size: 12px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+.n-notification .n-notification__main__title {
+  font-size: 13px;
+  font-weight: 600;
 }
+
 </style>

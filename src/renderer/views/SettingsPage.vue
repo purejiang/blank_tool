@@ -44,6 +44,11 @@
           <n-form-item :label="t('settings.notifications')">
             <n-switch v-model:value="general.enableNotifications" @update:value="saveGeneral" />
           </n-form-item>
+          <n-form-item :label="t('settings.timeout')">
+            <n-input-number v-model:value="general.timeout" :min="10" :max="600" :step="10" @update:value="saveGeneral" style="width: 120px">
+              <template #suffix>{{ t('settings.seconds') }}</template>
+            </n-input-number>
+          </n-form-item>
         </n-form>
       </n-card>
 
@@ -75,10 +80,39 @@
         </n-form>
       </n-card>
 
+      <!-- Signature Configs -->
+      <n-card :bordered="false" class="settings-card">
+        <div class="section-header" style="margin-bottom:12px">
+          <n-icon size="18" color="#F59E0B"><Key /></n-icon>
+          <span class="section-title">{{ t('signature.title') }}</span>
+          <n-button size="tiny" type="primary" secondary style="margin-left:auto" @click="openAddSignature">
+            <template #icon><n-icon size="14"><Plus /></n-icon></template>
+          </n-button>
+        </div>
+        <div v-if="sigConfigs.length === 0" class="info-empty">{{ t('signature.empty') }}</div>
+        <div v-else class="sig-list">
+          <div v-for="cfg in sigConfigs" :key="cfg.id" class="sig-item">
+            <div class="sig-info">
+              <span class="sig-name">{{ cfg.name }}</span>
+              <span class="sig-detail">{{ cfg.alias }}</span>
+              <span class="sig-path" :title="cfg.path">{{ cfg.path }}</span>
+            </div>
+            <n-space :size="4">
+              <n-button size="tiny" quaternary @click="openEditSignature(cfg)">
+                <template #icon><n-icon size="14"><Edit /></n-icon></template>
+              </n-button>
+              <n-button size="tiny" quaternary type="error" @click="deleteSignature(cfg.id)">
+                <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
+              </n-button>
+            </n-space>
+          </div>
+        </div>
+      </n-card>
+
       <!-- Storage -->
       <n-card :bordered="false" class="settings-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div class="section-header">
+          <div class="section-header" style="margin-bottom:0">
             <n-icon size="18" color="#8B5CF6"><Database /></n-icon>
             <span class="section-title">{{ t('settings.storage') }}</span>
           </div>
@@ -114,46 +148,9 @@
         </div>
       </n-card>
 
-      <!-- System Info -->
-      <n-card :bordered="false" class="settings-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div class="section-header">
-            <n-icon size="18" color="#64748B"><Cpu /></n-icon>
-            <span class="section-title">{{ t('settings.systemInfo') }}</span>
-          </div>
-          <n-button size="tiny" quaternary @click="systemStore.fetchSystemInfo()">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-          </n-button>
-        </div>
-        <div class="info-grid">
-          <div class="info-row"><span class="info-label">{{ t('settings.os') }}</span><span class="info-val">{{ systemInfo.platform || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.architecture') }}</span><span class="info-val">{{ systemInfo.architecture || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.hostname') }}</span><span class="info-val">{{ systemInfo.hostname || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.cpu') }}</span><span class="info-val">{{ cpuText }}</span></div>
-        </div>
-      </n-card>
-
-      <!-- Build Info -->
-      <n-card :bordered="false" class="settings-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div class="section-header">
-            <n-icon size="18" color="#64748B"><Layers /></n-icon>
-            <span class="section-title">{{ t('settings.buildInfo') }}</span>
-          </div>
-          <n-button size="tiny" quaternary @click="systemStore.fetchBuildInfo()">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-          </n-button>
-        </div>
-        <div class="info-grid">
-          <div class="info-row"><span class="info-label">{{ t('settings.appVersion') }}</span><span class="info-val">{{ buildInfo.appVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || '-' }}</span></div>
-        </div>
-      </n-card>
-
     </div>
+
+    <SignatureEditModal :visible="sigModalVisible" :data="sigEditing" @update:visible="(v: boolean) => sigModalVisible = v" @save="handleSignatureSave" />
   </div>
 </template>
 
@@ -161,15 +158,45 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
-import { FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers, Settings2, Database, CheckCircle } from 'lucide-vue-next'
+import { FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers, Settings2, Database, CheckCircle, Wrench, Key, Plus, Edit } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
-import { useSystemStore } from '@stores/index'
+import { useSystemStore, useToolStore } from '@stores/index'
+import { useSignatureStore } from '@stores/signatureStore'
+import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 
 const { t } = useI18n()
 const { showSuccess, showError } = useNotification()
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
+const setTheme = inject<(mode: string) => Promise<void>>('setTheme', async () => {})
 const systemStore = useSystemStore()
+const toolStore = useToolStore()
+const tools = toolStore.tools
+const sigStore = useSignatureStore()
+const sigConfigs = sigStore.configs
+const sigModalVisible = ref(false)
+const sigEditing = ref<any>(null)
+
+const openAddSignature = () => { sigEditing.value = null; sigModalVisible.value = true }
+const openEditSignature = (cfg: any) => { sigEditing.value = cfg; sigModalVisible.value = true }
+
+const handleSignatureSave = async (data: any) => {
+  try {
+    if (data.id) {
+      await sigStore.updateConfig(data)
+    } else {
+      await sigStore.addConfig({ ...data, id: Date.now().toString() })
+    }
+    showSuccess(t('signature.saved'))
+  } catch (e: any) { showError(t('signature.saveFailed'), e.message) }
+}
+
+const deleteSignature = async (id: string) => {
+  try {
+    await sigStore.removeConfig(id)
+    showSuccess(t('signature.deleted'))
+  } catch (e: any) { showError(t('signature.deleteFailed'), e.message) }
+}
 
 const showSaved = ref(false)
 let savedTimer: ReturnType<typeof setTimeout> | null = null
@@ -179,7 +206,7 @@ const triggerSaved = () => {
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-const general = reactive({ language: 'zh-CN', theme: 'auto', autoSave: true, enableNotifications: true })
+const general = reactive({ language: 'zh-CN', theme: 'auto', autoSave: true, enableNotifications: true, timeout: 300 })
 const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
 const displayPaths = reactive({ runtime: '', server: '' })
 const cacheInfo = ref({ cache: { size: 0, files: 0 }, output: { size: 0, files: 0 }, total: { size: 0, files: 0 } })
@@ -232,10 +259,11 @@ const loadSettings = async () => {
 }
 
 const saveGeneral = async () => {
+  setLocale(general.language)
+  await setTheme(general.theme)
   try {
     const svc = await serviceManager.getService('settings')
     await svc.saveSettings({ ...general })
-    setLocale(general.language)
     triggerSaved()
   } catch (e: any) { showError(t('settings.saveFailed'), e.message) }
 }
@@ -288,27 +316,36 @@ const clearStorage = async (target: 'cache' | 'output') => {
   }
 }
 
-onMounted(() => { loadSettings(); refreshCache() })
+onMounted(() => { loadSettings(); refreshCache(); sigStore.loadConfigs() })
 </script>
 
 <style scoped>
 .settings-page { max-width: 740px; margin: 0 auto; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: #F8FAFC; margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: #94A3B8; margin: 4px 0 0; }
+.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
+.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 .settings-content { display: flex; flex-direction: column; gap: 16px; }
-.settings-card { background: #1E293B; border-radius: 10px; }
-.section-header { display: flex; align-items: center; gap: 10px; }
-.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: #F8FAFC; }
+.settings-card { background: var(--app-card-bg); border-radius: 10px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; justify-content: flex-start; }
+.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .storage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.storage-item { text-align: center; padding: 12px; background: rgba(15,23,42,0.5); border-radius: 8px; }
-.storage-label { font-size: 12px; color: #94A3B8; margin-bottom: 4px; }
-.storage-value { font-size: 18px; font-weight: 600; color: #22C55E; font-variant-numeric: tabular-nums; }
-.storage-sub { font-size: 11px; color: #64748B; margin-top: 2px; }
+.storage-item { text-align: center; padding: 12px; background: var(--app-storage-bg); border-radius: 8px; }
+.storage-label { font-size: 12px; color: var(--app-text-muted); margin-bottom: 4px; }
+.storage-value { font-size: 18px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; }
+.storage-sub { font-size: 11px; color: var(--app-text-dim); margin-top: 2px; }
 .info-grid { display: flex; flex-direction: column; gap: 10px; }
 .info-row { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(51,65,85,0.3); }
 .info-row:last-child { border-bottom: none; }
-.info-label { font-size: 13px; color: #94A3B8; min-width: 100px; }
-.info-val { font-size: 13px; color: #E2E8F0; font-family: 'Fira Code', monospace; }
+.info-label { font-size: 13px; color: var(--app-text-muted); min-width: 100px; }
+.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
+.info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
+.info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
+
+.sig-list { display: flex; flex-direction: column; gap: 6px; }
+.sig-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--app-storage-bg); border-radius: 8px; gap: 8px; }
+.sig-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.sig-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); white-space: nowrap; }
+.sig-detail { font-size: 12px; color: var(--app-text-dim); white-space: nowrap; }
+.sig-path { font-size: 11px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 </style>

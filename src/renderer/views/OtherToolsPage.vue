@@ -65,14 +65,13 @@
           <n-li>{{ t('tools.helpStep3') }}</n-li>
           <n-li>{{ t('tools.helpStep4') }}</n-li>
         </n-ol>
-        <n-code code="
-DESCRIPTION = 'Plugin description'
+        <pre class="plugin-result" style="margin-top: 12px">DESCRIPTION = 'Plugin description'
 VERSION = '1.0.0'
 AUTHOR = 'Your Name'
 
 def run(context, **kwargs):
     context.log('Starting...')
-    return {'status': 'ok'}" language="python" show-line-numbers style="margin-top: 12px" />
+    return {'status': 'ok'}</pre>
       </div>
     </n-card>
   </div>
@@ -141,16 +140,16 @@ onMounted(() => loadPlugins())
   font-family: Inter, sans-serif;
   font-size: 22px;
   font-weight: 700;
-  color: #F8FAFC;
+  color: var(--app-text-primary);
   margin: 0;
   letter-spacing: -0.02em;
 }
-.page-subtitle { font-size: 13px; color: #94A3B8; margin: 4px 0 0; }
+.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .card-title {
   font-family: Inter, sans-serif;
   font-size: 14px;
   font-weight: 600;
-  color: #F8FAFC;
+  color: var(--app-text-primary);
 }
 .empty-state {
   display: flex;
@@ -158,18 +157,18 @@ onMounted(() => loadPlugins())
   align-items: center;
   gap: 12px;
   padding: 64px 16px;
-  color: #64748B;
+  color: var(--app-text-dim);
   text-align: center;
 }
-.empty-title { font-size: 15px; font-weight: 600; color: #94A3B8; margin: 0; }
-.empty-desc { font-size: 13px; color: #64748B; margin: 0; max-width: 360px; text-align: center; }
+.empty-title { font-size: 15px; font-weight: 600; color: var(--app-text-muted); margin: 0; }
+.empty-desc { font-size: 13px; color: var(--app-text-dim); margin: 0; max-width: 360px; text-align: center; }
 
 /* Plugin cards */
 .plugin-card {
-  background: #1E293B;
+  background: var(--app-card-bg);
   border-radius: 10px;
   transition: border-color 0.2s;
-  border: 1px solid #1E293B;
+  border: 1px solid var(--app-card-bg);
 }
 .plugin-card:hover {
   border-color: rgba(34,197,94,0.3);
@@ -195,17 +194,17 @@ onMounted(() => loadPlugins())
   gap: 1px;
   min-width: 0;
 }
-.plugin-name { font-size: 14px; font-weight: 600; color: #F8FAFC; }
-.plugin-version { font-size: 11px; color: #64748B; }
-.plugin-desc { color: #94A3B8; font-size: 13px; margin: 0; line-height: 1.5; }
+.plugin-name { font-size: 14px; font-weight: 600; color: var(--app-text-primary); }
+.plugin-version { font-size: 11px; color: var(--app-text-dim); }
+.plugin-desc { color: var(--app-text-muted); font-size: 13px; margin: 0; line-height: 1.5; }
 .plugin-actions { margin-top: 12px; }
 .plugin-result {
-  background: #0C1322;
+  background: var(--app-code-bg);
   padding: 8px 12px;
   border-radius: 6px;
   font-family: 'Fira Code', monospace;
   font-size: 12px;
-  color: #CBD5E1;
+  color: var(--app-text-secondary);
   margin-top: 10px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -216,7 +215,7 @@ onMounted(() => loadPlugins())
 
 /* Help card */
 .help-card {
-  background: #1E293B;
+  background: var(--app-card-bg);
   border-radius: 10px;
   margin-top: 20px;
 }
@@ -228,14 +227,14 @@ onMounted(() => loadPlugins())
   user-select: none;
 }
 .help-content { margin-top: 4px; }
-.help-intro { color: #CBD5E1; font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
-.help-steps { color: #CBD5E1; font-size: 14px; line-height: 1.8; }
+.help-intro { color: var(--app-text-secondary); font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
+.help-steps { color: var(--app-text-secondary); font-size: 14px; line-height: 1.8; }
 .help-steps code {
-  background: #0C1322;
+  background: var(--app-code-bg);
   padding: 1px 6px;
   border-radius: 4px;
   font-family: 'Fira Code', monospace;
   font-size: 12px;
-  color: #22C55E;
+  color: var(--app-green);
 }
 </style>

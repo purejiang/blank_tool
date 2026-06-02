@@ -5,760 +5,604 @@
         <h1 class="page-title">{{ t('package.title') }}</h1>
         <p class="page-subtitle">{{ t('package.subtitle') }}</p>
       </div>
+      <n-space :size="8">
+        <n-button size="tiny" quaternary @click="taskStore.clearCompleted" :disabled="!hasCompleted">
+          {{ t('task.clearCompleted') }}
+        </n-button>
+        <n-button size="tiny" quaternary type="error" @click="taskStore.clearAll" :disabled="tasks.length === 0">
+          {{ t('task.clearAll') }}
+        </n-button>
+      </n-space>
     </div>
 
-    <n-tabs type="line" animated :default-value="'analyze'" class="pkg-tabs">
-      <!-- Tab 1: Analyze & Install -->
-      <n-tab-pane name="analyze" :tab="t('package.analysisInstall')">
-        <n-grid :cols="2" :x-gap="16" responsive="screen">
-          <!-- APK Analysis -->
-          <n-grid-item span="1 800:1">
-            <n-card :bordered="false" size="small" class="pkg-card">
-              <div class="card-header-row">
-                  <n-icon size="18" color="#3B82F6"><Search /></n-icon>
-                  <span class="card-title">{{ t('package.apkAnalysis') }}</span>
-                </div>
-              <div class="drop-zone" @drop="handleDrop($event, handleApkFileSelect)" @dragover.prevent
-                @dragenter.prevent @click="!isAnalyzing && selectApkFile()">
-                <n-icon size="28" color="#475569"><Package /></n-icon>
-                <p class="drop-text">{{ t('package.dropApkHere') }}</p>
-                <input ref="apkFileInput" type="file" accept=".apk" class="hidden-input"
-                  @change="handleFileInputChange($event, handleApkFileSelect)">
-              </div>
-              <div v-if="selectedAnalysisFile" class="file-info-row">
-                <n-icon size="14" color="#64748B"><File /></n-icon>
-                <span class="file-name">{{ selectedAnalysisFile.name }}</span>
-                <span class="file-size">{{ formatFileSize(selectedAnalysisFile.size) }}</span>
-              </div>
-              <div v-if="apkAnalysisResult" class="analysis-result" v-html="apkAnalysisResult" />
-              <div class="card-actions">
-                <n-button type="primary" size="small" :loading="isAnalyzing"
-                  :disabled="!selectedAnalysisFile || isAnalyzing" @click="analyzeApk" block>
-                  <template #icon><n-icon><Search /></n-icon></template>
-                  {{ t('package.analyze') }}
-                </n-button>
-              </div>
-            </n-card>
-          </n-grid-item>
+    <!-- New Task Bar -->
+    <div class="new-task-bar">
+      <div class="task-bar-row">
+        <n-radio-group v-model:value="newSource" size="small">
+          <n-radio-button value="url" :disabled="taskStore.hasRunning">{{ t('task.url') }}</n-radio-button>
+          <n-radio-button value="local">{{ t('task.local') }}</n-radio-button>
+        </n-radio-group>
 
-          <!-- Install -->
-          <n-grid-item span="1 800:1">
-            <n-card :bordered="false" size="small" class="pkg-card">
-              <div class="card-header-row">
-                  <n-icon size="18" color="#22C55E"><Download /></n-icon>
-                  <span class="card-title">{{ t('package.install') }}</span>
-                </div>
-              <div class="drop-zone" :class="{ disabled: isInstalling }"
-                @drop="!isInstalling && handleDrop($event, handleInstallFileSelect)" @dragover.prevent @dragenter.prevent
-                @click="!isInstalling && selectInstallFile()">
-                <n-icon size="28" color="#475569"><Download /></n-icon>
-                <p class="drop-text">{{ t('package.dropToInstall') }}</p>
-                <input ref="installFileInput" type="file" accept=".apk,.aab" class="hidden-input"
-                  @change="handleFileInputChange($event, handleInstallFileSelect)">
-              </div>
-              <div v-if="selectedInstallFile" class="file-info-row">
-                <n-icon size="14" color="#64748B"><File /></n-icon>
-                <span class="file-name">{{ selectedInstallFile.name }}</span>
-                <span class="file-size">{{ formatFileSize(selectedInstallFile.size) }}</span>
-              </div>
-              <div class="card-actions">
-                <n-button type="success" size="small" :loading="isInstalling"
-                  :disabled="!selectedInstallFile || isInstalling" @click="installApp" block>
-                  <template #icon><n-icon><Download /></n-icon></template>
-                  {{ t('package.install') }}
-                </n-button>
-              </div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-      </n-tab-pane>
+        <n-input
+          v-if="newSource === 'url'"
+          v-model:value="newUrl"
+          placeholder="https://example.com/app.apk"
+          size="small"
+          clearable
+        />
+        <div v-else class="local-file-picker" @click="pickLocalFile">
+          <n-icon size="16"><FolderOpen /></n-icon>
+          <span>{{ newLocalName || t('task.selectFile') }}</span>
+        </div>
 
-      <!-- Tab 2: Decompile & Recompile -->
-      <n-tab-pane name="decompile" :tab="t('package.decompileRecompile')">
-        <n-grid :cols="2" :x-gap="16" responsive="screen">
-          <!-- Decompile -->
-          <n-grid-item span="1 800:1">
-            <n-card :bordered="false" size="small" class="pkg-card">
-              <div class="card-header-row">
-                  <n-icon size="18" color="#8B5CF6"><Unlock /></n-icon>
-                  <span class="card-title">{{ t('package.decompile') }}</span>
-                </div>
-              <div class="drop-zone" @drop="handleDrop($event, handleDecompileFileSelect)" @dragover.prevent
-                @dragenter.prevent @click="selectDecompileFile()">
-                <n-icon size="28" color="#475569"><Unlock /></n-icon>
-                <p class="drop-text">{{ t('package.dropToDecompile') }}</p>
-                <input ref="decompileFileInput" type="file" accept=".apk" class="hidden-input"
-                  @change="handleFileInputChange($event, handleDecompileFileSelect)">
-              </div>
-              <div v-if="selectedDecompileFile" class="file-info-row">
-                <n-icon size="14" color="#64748B"><File /></n-icon>
-                <span class="file-name">{{ selectedDecompileFile.name }}</span>
-                <span class="file-size">{{ formatFileSize(selectedDecompileFile.size) }}</span>
-              </div>
-              <div v-if="decompileResult" class="analysis-result" v-html="decompileResult" />
-              <div class="card-actions">
-                <n-button type="primary" size="small" :loading="isDecompiling"
-                  :disabled="!selectedDecompileFile || isDecompiling" @click="startDecompile" block>
-                  <template #icon><n-icon><Unlock /></n-icon></template>
-                  {{ t('package.decompile') }}
-                </n-button>
-                <n-button v-if="decompileOutputPath" size="small" @click="openDecompileOutput">
-                  <template #icon><n-icon><FolderOpen /></n-icon></template>
-                  {{ t('package.open') }}
-                </n-button>
-              </div>
-            </n-card>
-          </n-grid-item>
+        <n-select v-model:value="newOperation" :options="operationOptions" size="small" style="width:120px" />
 
-          <!-- Recompile -->
-          <n-grid-item span="1 800:1">
-            <n-card :bordered="false" size="small" class="pkg-card">
-              <div class="card-header-row">
-                  <n-icon size="18" color="#EF4444"><Lock /></n-icon>
-                  <span class="card-title">{{ t('package.recompile') }}</span>
-                </div>
-              <div class="drop-zone" @click="selectProjectDir">
-                <n-icon size="28" color="#475569"><Lock /></n-icon>
-                <p class="drop-text">{{ t('package.selectProjectDir') }}</p>
-                <n-button size="small" quaternary @click.stop="selectProjectDir">
-                  <template #icon><n-icon><FolderOpen /></n-icon></template>
-                  {{ t('package.browse') }}
-                </n-button>
-              </div>
-              <div v-if="selectedProjectDir" class="file-info-row">
-                <n-icon size="14" color="#64748B"><Folder /></n-icon>
-                <span class="file-name">{{ selectedProjectDir }}</span>
-              </div>
-              <div v-if="selectedProjectDir" class="options-panel">
-                <n-space align="center" wrap>
-                  <n-checkbox v-model:checked="recompileOptions.sign" size="small">{{ t('package.sign') }}</n-checkbox>
-                  <n-select v-if="recompileOptions.sign" v-model:value="recompileSignatureId"
-                    :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                    :placeholder="t('package.signature')" style="width: 150px" size="tiny" />
-                  <n-checkbox v-if="recompileOptions.sign" v-model:checked="recompileOptions.v2" size="small">{{ t('package.v2') }}</n-checkbox>
-                  <n-checkbox v-model:checked="recompileOptions.align" size="small">{{ t('package.zipAlign') }}</n-checkbox>
-                </n-space>
-              </div>
-              <div v-if="recompileProgress && recompileProgress.show" style="margin-top: 12px">
-                <n-progress type="line" :percentage="recompileProgress.value" color="#22C55E" />
-              </div>
-              <div class="card-actions">
-                <n-button type="primary" size="small" :disabled="!selectedProjectDir" @click="startRecompile" block>
-                  <template #icon><n-icon><Lock /></n-icon></template>
-                  {{ t('package.recompile') }}
-                </n-button>
-                <n-button v-if="recompileOutputPath" size="small" @click="openRecompileOutput">
-                  <template #icon><n-icon><FolderOpen /></n-icon></template>
-                  {{ t('package.open') }}
-                </n-button>
-              </div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-      </n-tab-pane>
+        <n-button type="primary" size="small" @click="startNewTask" :disabled="!canStart">
+          <template #icon><n-icon><Play /></n-icon></template>
+          {{ t('task.start') }}
+        </n-button>
+      </div>
 
-      <!-- Tab 3: Resign & Signatures -->
-      <n-tab-pane name="resign" :tab="t('package.resignSignatures')">
-        <n-grid :cols="2" :x-gap="16" responsive="screen">
-          <!-- Resign -->
-          <n-grid-item span="1 800:1">
-            <n-card :bordered="false" size="small" class="pkg-card">
-              <div class="card-header-row">
-                  <n-icon size="18" color="#EC4899"><PenTool /></n-icon>
-                  <span class="card-title">{{ t('package.resign') }}</span>
-                </div>
-              <div class="drop-zone" @drop="handleDrop($event, handleResignFileSelect)" @dragover.prevent
-                @dragenter.prevent @click="selectResignFile()">
-                <n-icon size="28" color="#475569"><PenTool /></n-icon>
-                <p class="drop-text">{{ t('package.dropToResign') }}</p>
-                <input type="file" accept=".apk" class="hidden-input"
-                  @change="handleFileInputChange($event, handleResignFileSelect)">
-              </div>
-              <div v-if="selectedResignFile" class="file-info-row">
-                <n-icon size="14" color="#64748B"><File /></n-icon>
-                <span class="file-name">{{ selectedResignFile.name }}</span>
-                <span class="file-size">{{ formatFileSize(selectedResignFile.size) }}</span>
-              </div>
-              <div class="options-panel" v-if="selectedResignFile">
-                <n-space align="center">
-                  <n-select v-model:value="selectedSignatureId"
-                    :options="signatureConfigs.map(c => ({ label: c.name, value: c.id }))"
-                    :placeholder="t('package.selectSignature')" style="width: 180px" size="small" />
-                  <n-checkbox v-model:checked="resignOptions.v2" size="small">{{ t('package.v2sign') }}</n-checkbox>
-                </n-space>
-              </div>
-              <div v-if="resignResult" class="analysis-result" v-html="resignResult" />
-              <div class="card-actions">
-                <n-button type="primary" size="small" :loading="isResigning"
-                  :disabled="!selectedResignFile || !selectedSignatureId || isResigning" @click="resignApk" block>
-                  <template #icon><n-icon><PenTool /></n-icon></template>
-                  {{ t('package.resign2') }}
-                </n-button>
-                <n-button v-if="resignOutputPath" size="small" @click="openResignOutput">
-                  <template #icon><n-icon><FolderOpen /></n-icon></template>
-                  {{ t('package.open') }}
-                </n-button>
-              </div>
-            </n-card>
-          </n-grid-item>
+      <div class="task-bar-opts">
+        <span class="op-desc">{{ t('task.' + newOperation + 'Desc') }}</span>
 
-          <!-- Signature Configs -->
-          <n-grid-item span="1 800:1">
-            <n-card :bordered="false" size="small" class="pkg-card">
-              <div class="card-header-row">
-                  <n-icon size="18" color="#F59E0B"><Key /></n-icon>
-                  <span class="card-title">{{ t('package.signatureConfigs') }}</span>
-                </div>
-                <n-button size="tiny" quaternary @click="openSignatureModal()">
-                  <template #icon><n-icon><Plus /></n-icon></template>
-                  {{ t('package.add') }}
-                </n-button>
-              <div v-if="signatureConfigs.length > 0" class="sig-list">
-                <div v-for="config in signatureConfigs" :key="config.id" class="sig-item">
-                  <div class="sig-info">
-                    <span class="sig-name">{{ config.name }}</span>
-                    <span class="sig-alias">{{ config.alias }}</span>
-                  </div>
-                  <n-space size="small">
-                    <n-button size="tiny" quaternary @click="openSignatureModal(config)">
-                      <template #icon><n-icon size="14"><Edit /></n-icon></template>
-                    </n-button>
-                    <n-button size="tiny" quaternary type="error" @click="deleteSignature(config.id)">
-                      <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
-                    </n-button>
-                  </n-space>
-                </div>
-              </div>
-              <div v-else class="empty-state">
-                <n-icon size="24" color="#475569"><Key /></n-icon>
-                <p>{{ t('package.noSignatureConfigs') }}</p>
-              </div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-      </n-tab-pane>
-    </n-tabs>
+        <template v-if="newOperation === 'resign' || newOperation === 'recompile'">
+          <span class="op-label">{{ t('task.signConfig') }}</span>
+          <n-select v-model:value="newSignId" :options="signOptions" size="tiny" style="width:180px" :placeholder="t('signature.select')" />
+        </template>
 
-    <!-- Signature Edit Modal -->
-    <SignatureEditModal
-      v-model:visible="showSignatureModal"
-      :data="editingSignature"
-      @save="handleSaveSignature"
-    />
+        <template v-if="newOperation === 'decompile'">
+          <span class="op-label">{{ t('task.decompileOpts') }}</span>
+          <n-checkbox v-model:checked="decompileResources" size="small">{{ t('task.decompileResources') }}</n-checkbox>
+          <n-checkbox v-model:checked="decompileSources" size="small">{{ t('task.decompileSources') }}</n-checkbox>
+        </template>
+      </div>
+    </div>
+
+    <!-- Task List -->
+    <div v-if="tasks.length === 0" class="empty-state">
+      <n-icon size="48" color="var(--app-text-dim)"><Inbox /></n-icon>
+      <p class="empty-title">{{ t('task.empty') }}</p>
+      <p class="empty-desc">{{ t('task.emptyDesc') }}</p>
+    </div>
+
+    <div v-else class="task-list">
+      <div v-for="task in tasks"
+        :key="task.id"
+        class="task-card"
+        :class="'task-' + task.status"
+      >
+        <div class="task-header" @click="task.collapsed = !task.collapsed">
+          <div class="task-header-left">
+            <span class="task-id">#{{ task.id }}</span>
+            <n-icon size="16" :color="task.source === 'url' ? 'var(--app-blue)' : 'var(--app-text-dim)'">
+              <Link v-if="task.source === 'url'" />
+              <FolderOpen v-else />
+            </n-icon>
+            <n-tag :type="opTagType(task.operation)" size="tiny" :bordered="false">
+              {{ task.operationLabel }}
+            </n-tag>
+            <span class="task-filename" :title="task.fileName">{{ task.fileName }}</span>
+          </div>
+          <div class="task-header-right">
+            <n-tag v-if="task.status === 'completed'" type="success" size="tiny" :bordered="false">
+              <template #icon><n-icon size="12"><CheckCircle /></n-icon></template>
+              {{ t('task.completed') }}
+            </n-tag>
+            <n-tag v-else-if="task.status === 'failed'" type="error" size="tiny" :bordered="false">
+              <template #icon><n-icon size="12"><XCircle /></n-icon></template>
+              {{ t('task.failed') }}
+            </n-tag>
+            <n-tag v-else-if="task.status === 'running'" type="success" size="tiny" :bordered="false">
+              <template #icon><n-icon size="12"><Loader /></n-icon></template>
+              {{ task.progressLabel }}
+            </n-tag>
+            <n-tag v-else-if="task.status === 'downloading'" type="info" size="tiny" :bordered="false">
+              <template #icon><n-icon size="12"><Download /></n-icon></template>
+              {{ task.progressLabel }}
+            </n-tag>
+            <n-tag v-else type="default" size="tiny" :bordered="false">
+              {{ t('task.queued') }}
+            </n-tag>
+            <span class="task-time">{{ formatTime(task.createdAt) }}</span>
+            <n-button
+              v-if="task.status === 'completed' || task.status === 'failed'"
+              size="tiny"
+              quaternary
+              type="error"
+              @click.stop="taskStore.removeTask(task.id)"
+            >
+              <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
+            </n-button>
+            <n-icon size="16" color="var(--app-text-dim)">
+              <ChevronDown v-if="!task.collapsed" />
+              <ChevronRight v-else />
+            </n-icon>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div v-if="task.status === 'running' || task.status === 'downloading'" class="task-progress">
+          <n-progress type="line" :percentage="task.progress" :height="3" color="#22C55E" :indicator-placement="'none'" />
+        </div>
+
+        <!-- Expanded detail -->
+        <div v-if="!task.collapsed" class="task-detail">
+          <div v-if="task.error" class="task-error">{{ task.error }}</div>
+          <div v-if="task.outputPath" class="task-output">
+            <n-icon size="14" color="var(--app-green)"><FolderOpen /></n-icon>
+            <span class="task-output-path">{{ t('task.output') }}: {{ task.outputPath }}</span>
+            <n-button size="tiny" quaternary type="info" @click.stop="openInExplorer(task.outputPath)">
+              <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
+            </n-button>
+          </div>
+          <div v-if="task.result" class="task-result" v-html="task.result" />
+          <div v-if="task.logs.length > 0" class="task-logs">
+            <div v-for="(line, i) in task.logs" :key="i" class="task-log-line">{{ line }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { storeToRefs } from 'pinia'
-import serviceManager from '@services/ServiceManager'
-import { useNotification } from '@composables/useNotification'
-import { usePackageStore } from '@stores/packageStore'
-import { useSignatureStore } from '@stores/signatureStore'
-import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 import { NIcon } from 'naive-ui'
 import {
-  Package, Download, Unlock, Lock, PenTool, Search, FolderOpen,
-  Plus, Edit, Trash2, File, Folder, Key
+  Play, Link, FolderOpen, Download, CheckCircle, XCircle, Loader,
+  ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink
 } from 'lucide-vue-next'
+import { useNotification } from '@composables/useNotification'
+import { useTaskStore } from '@stores/index'
+import { useSignatureStore } from '@stores/signatureStore'
+import type { Task } from '@stores/taskStore'
+import serviceManager from '@services/ServiceManager'
+import unifiedApi from '@api/unifiedApi'
 
 const { t } = useI18n()
+const taskStore = useTaskStore()
+const { tasks, hasCompleted } = taskStore
+const { showError } = useNotification()
+const sigStore = useSignatureStore()
+sigStore.loadConfigs()
 
-const packageStore = usePackageStore()
-const signatureStore = useSignatureStore()
+// New task form
+const newSource = ref<'url' | 'local'>('local')
+const newUrl = ref('')
+const newOperation = ref<Task['operation']>('analyze')
+const newLocalPath = ref('')
+const newLocalName = ref('')
+const localFileInput = ref<HTMLInputElement | null>(null)
+const newSignId = ref('')
+const decompileResources = ref(true)
+const decompileSources = ref(true)
 
-const {
-  selectedAnalysisFile, selectedInstallFile, selectedDecompileFile,
-  selectedProjectDir, isInstalling, isDecompiling, isRecompiling,
-  isAnalyzing, apkAnalysisResult, decompileResult, recompileResult,
-  decompileOutputPath, recompileOutputPath, installProgress,
-  decompileProgress, recompileProgress, decompileOptions,
-  recompileOptions, resignOptions
-} = storeToRefs(packageStore)
+const signOptions = computed(() =>
+  sigStore.configs.map((c: any) => ({ label: c.name, value: c.id }))
+)
 
-const { configs: signatureConfigs } = storeToRefs(signatureStore)
+const operationOptions = computed(() => [
+  { label: t('task.analyze'), value: 'analyze' },
+  { label: t('task.install'), value: 'install' },
+  { label: t('task.decompile'), value: 'decompile' },
+  { label: t('task.recompile'), value: 'recompile' },
+  { label: t('task.resign'), value: 'resign' },
+])
 
-const selectedResignFile = ref<any>(null)
-const selectedSignatureId = ref('')
-const recompileSignatureId = ref('')
-const isResigning = ref(false)
-const resignResult = ref<any>(null)
-const resignOutputPath = ref<any>(null)
-const showSignatureModal = ref(false)
-const editingSignature = ref<any>(null)
+const canStart = computed(() => {
+  if (newSource.value === 'url') return !!newUrl.value.trim()
+  return !!newLocalPath.value
+})
 
-const { showLoading, completeLoading, failLoading } = useNotification()
-const errorServiceRef = ref<any>(null)
-const apkServiceRef = ref<any>(null)
+const hasOpts = computed(() =>
+  ['resign', 'recompile', 'decompile'].includes(newOperation.value)
+)
 
-const getErrorService = async () => {
-  if (!errorServiceRef.value) errorServiceRef.value = await serviceManager.getService('error')
-  return errorServiceRef.value
+function opTagType(op: string) {
+  const map: Record<string, string> = { analyze: 'info', install: 'success', decompile: 'warning', recompile: 'warning', resign: 'error' }
+  return map[op] || 'default'
 }
 
-const getApkService = async () => {
-  if (!apkServiceRef.value) apkServiceRef.value = await serviceManager.getService('apk')
-  return apkServiceRef.value
+function formatTime(ts: number) {
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}-${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
-const handleDrop = (event: DragEvent, callback: (file: File) => void) => {
-  event.preventDefault()
-  if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-    callback(event.dataTransfer.files[0])
+async function openInExplorer(filePath: string) {
+  try {
+    const api = window.electronAPI as any
+    if (api && typeof api.openPath === 'function') {
+      await api.openPath(filePath)
+    }
+  } catch (e) {
+    console.error('openInExplorer error:', e)
   }
 }
 
-const handleFileInputChange = (event: Event, callback: (file: File) => void) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (file) callback(file)
-  target.value = ''
+async function pickLocalFile() {
+  try {
+    const api = window.electronAPI as any
+    const result = await api.selectFile({
+      title: t('task.selectFile'),
+      filters: [{ name: 'APK/AAB', extensions: ['apk', 'aab'] }]
+    })
+    if (result && !result.canceled && result.filePaths?.length) {
+      const fp = result.filePaths[0]
+      newLocalPath.value = fp
+      newLocalName.value = fp.split(/[/\\]/).pop() || 'file'
+    }
+  } catch (e) {
+    console.error('pickLocalFile error:', e)
+  }
 }
 
-const selectFileWithStats = async (targetRef: any, extensions = ['apk']) => {
+function onLocalFilePicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) {
+    newLocalName.value = file.name
+    const fp = (file as any).path
+    newLocalPath.value = (fp && fp !== file.name) ? fp : file.name
+  }
+}
+
+async function startNewTask() {
+  let source: Task['source'], url: string | undefined, fp: string, fn: string
+
+  if (newSource.value === 'url') {
+    source = 'url'
+    url = newUrl.value.trim()
+    fn = url.split('/').pop() || 'app.apk'
+    fp = ''
+  } else {
+    source = 'local'
+    fp = newLocalPath.value
+    fn = newLocalName.value || fp.split(/[/\\]/).pop() || 'file'
+  }
+
+  const opLabel = operationOptions.value.find(o => o.value === newOperation.value)?.label || newOperation.value
+  const task = taskStore.createTask({ source, url, filePath: fp, fileName: fn, operation: newOperation.value, operationLabel: opLabel })
+
+  // Clear inputs
+  newUrl.value = ''
+  newLocalName.value = ''
+  newLocalPath.value = ''
+
+  // Execute task
+  await executeTask(task)
+}
+
+async function executeTask(task: Task) {
   try {
-    const systemSvc = await serviceManager.getService('system') as any
-    const res = await systemSvc.selectFile({
-      title: t('package.selectFile'),
-      filters: [{ name: t('package.androidPackages'), extensions }]
-    })
-    if (res && !res.canceled) {
-      const p = (res.filePath || (res.filePaths && res.filePaths[0]) || '').trim()
-      if (p) {
-        const name = p.split(/[/\\]/).pop()
-        let size = 0
-        try {
-          const stats = await systemSvc.getFileStats(p)
-          if (stats && stats.size) size = stats.size
-        } catch (error) { console.error('File stats error:', error) }
-        targetRef.value = { name, path: p, size }
+    let localPath = task.filePath
+
+    // Set up streaming listener BEFORE any operations
+    const api = window.electronAPI as any
+    let streamResolve: ((v: any) => void) | null = null
+    let streamReject: ((e: Error) => void) | null = null
+
+    const onStream = (raw: any) => {
+      if (!raw) return
+      // Main process wraps stream events as { stream_id, data: {...} }
+      const data = raw.data || raw
+      const tid = data.task_id || (data.payload && data.payload.task_id)
+      if (tid !== String(task.id)) return
+      // Handle progress events (download or operation)
+      if (data.type === 'progress' && data.payload) {
+        const pct = data.payload.progress || 0
+        taskStore.updateTask(task.id, { progress: pct, progressLabel: data.payload.label || `${pct}%` })
       }
+      // Handle stream completion (download done)
+      if (data.type === 'complete' && streamResolve) {
+        streamResolve(data.payload || data)
+      }
+      // Handle stream error
+      if (data.type === 'error' && streamReject) {
+        const msg = (data.payload && data.payload.message) || data.message || '流式操作失败'
+        streamReject(new Error(msg))
+      }
+      // Handle log lines
+      const line = data.line || data.message || data.output || ''
+      if (line) taskStore.appendLog(task.id, line)
     }
-  } catch (error) {
-    const svc = await getErrorService()
-    if (svc) svc.reportError(error)
-  }
-}
-
-const selectApkFile = () => selectFileWithStats(selectedAnalysisFile)
-const selectInstallFile = () => selectFileWithStats(selectedInstallFile, ['apk', 'aab'])
-const selectDecompileFile = () => selectFileWithStats(selectedDecompileFile)
-const selectResignFile = () => selectFileWithStats(selectedResignFile)
-
-const handleApkFileSelect = async (file: File) => {
-  if (file && file.name.toLowerCase().endsWith('.apk')) selectedAnalysisFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApk')), { category: 'ui', severity: 'low' }) }
-}
-
-const handleInstallFileSelect = async (file: File) => {
-  const name = file.name.toLowerCase()
-  if (file && (name.endsWith('.apk') || name.endsWith('.aab'))) selectedInstallFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApkAab')), { category: 'ui', severity: 'low' }) }
-}
-
-const handleDecompileFileSelect = async (file: File) => {
-  if (file && file.name.toLowerCase().endsWith('.apk')) selectedDecompileFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApk')), { category: 'ui', severity: 'low' }) }
-}
-
-const handleResignFileSelect = async (file: File) => {
-  if (file && file.name.toLowerCase().endsWith('.apk')) selectedResignFile.value = file as any
-  else { const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectApk')), { category: 'ui', severity: 'low' }) }
-}
-
-const analyzeApk = async () => {
-  if (!selectedAnalysisFile.value) return
-  let loadingId: any = null
-  try {
-    isAnalyzing.value = true
-    loadingId = showLoading(t('package.analyzing'))
-    const apkService = await getApkService()
-    const result = await apkService.analyzeApk(selectedAnalysisFile.value.path)
-    if (result.success) {
-      apkAnalysisResult.value = displayApkAnalysisResult(result.data)
-      if (loadingId) completeLoading(loadingId, t('package.analysisComplete'), '')
-    } else {
-      if (loadingId) failLoading(loadingId, t('package.analysisFailed'), String(result.error || ''))
+    if (api && typeof api.onStreamEvent === 'function') {
+      api.onStreamEvent(onStream)
     }
-  } catch (error: any) {
-    if (loadingId) failLoading(loadingId, t('package.analysisFailed'), error.message || String(error))
-    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'ui', severity: 'low' })
-  } finally { isAnalyzing.value = false }
-}
 
-const installApp = async () => {
-  if (!selectedInstallFile.value) return
-  let loadingId: any = null
-  try {
-    isInstalling.value = true
-    loadingId = showLoading(t('package.installing'))
-    const deviceSvc = await serviceManager.getService('device') as any
-    const result = await deviceSvc.installApp(selectedInstallFile.value.path)
-    if (result.success) {
-      if (loadingId) completeLoading(loadingId, t('package.installComplete'), '')
-    } else {
-      if (loadingId) failLoading(loadingId, t('package.installFailed'), String(result.error || ''))
+    // Step 1: Download if URL source
+    if (task.source === 'url' && task.url) {
+      taskStore.updateTask(task.id, { status: 'downloading', progress: 0, progressLabel: '下载中...' })
+      taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 开始下载 ${task.url}`)
+      if (!api || typeof api.downloadFile !== 'function') throw new Error('下载API不可用')
+
+      const dlPromise = new Promise((resolve, reject) => {
+        streamResolve = resolve
+        streamReject = reject
+      })
+      // Fire the download (returns stream_id immediately)
+      api.downloadFile(task.url, task.fileName, String(task.id))
+      // Wait for streaming complete/error
+      const dlResult = await dlPromise
+      localPath = dlResult.file_path
+      taskStore.updateTask(task.id, { progress: 100, progressLabel: '下载完成' })
+      taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 下载完成 (${(dlResult.size / 1024 / 1024).toFixed(1)}MB)`)
+      // Clear stream handlers
+      streamResolve = null
+      streamReject = null
     }
-  } catch (error: any) {
-    if (loadingId) failLoading(loadingId, t('package.installFailed'), error.message || String(error))
-    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'device', context: 'device.install' })
-  } finally { isInstalling.value = false }
-}
 
-const startDecompile = async () => {
-  if (!selectedDecompileFile.value) return
-  let loadingId: any = null
-  try {
-    isDecompiling.value = true
-    if (decompileProgress && decompileProgress.value) {
-      decompileProgress.value.show = true; decompileProgress.value.value = 0
+    // Step 2: Execute operation
+    taskStore.updateTask(task.id, { status: 'running', progress: 0, progressLabel: '执行中...' })
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 开始执行 ${task.operationLabel}`)
+
+    switch (task.operation) {
+      case 'analyze':
+        await runAnalyze(task, localPath)
+        break
+      case 'install':
+        await runInstall(task, localPath)
+        break
+      case 'decompile':
+        await runDecompile(task, localPath)
+        break
+      case 'recompile':
+        await runRecompile(task, localPath)
+        break
+      case 'resign':
+        await runResign(task, localPath)
+        break
+      default:
+        taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', finishedAt: Date.now() })
+        taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 此功能开发中`)
+        break
     }
-    loadingId = showLoading(t('package.decompiling'))
-    const options = {
-      resources: decompileOptions.value.resources,
-      sources: decompileOptions.value.sources,
-      manifest: decompileOptions.value.manifest
-    }
-    const apkService = await getApkService()
-    const result = await apkService.decompileApk(selectedDecompileFile.value.path, options)
-    if (result.success) {
-      if (decompileProgress?.value) decompileProgress.value.value = 100
-      decompileOutputPath.value = result.outputPath
-      decompileResult.value = `<div class="apk-info-grid"><div class="info-row"><span class="label">${t('package.status')}:</span><span class="value highlight text-success">${t('package.success')}</span></div><div class="info-row"><span class="label">${t('package.output')}:</span><span class="value code">${result.outputPath}</span></div></div>`
-      if (loadingId) completeLoading(loadingId, t('package.decompileComplete'), `${t('package.output')}: ${result.outputPath}`)
-    } else {
-      if (loadingId) failLoading(loadingId, t('package.decompileFailed'), String(result.error || ''))
-    }
-  } catch (error: any) {
-    if (loadingId) failLoading(loadingId, t('package.decompileFailed'), String(error || ''))
-    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.decompile' })
-  } finally {
-    isDecompiling.value = false
-    setTimeout(() => { if (decompileProgress?.value) { decompileProgress.value.show = false; decompileProgress.value.value = 0 } }, 2000)
+  } catch (e: any) {
+    taskStore.updateTask(task.id, { status: 'failed', error: e.message || String(e), finishedAt: Date.now() })
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 错误: ${e.message || e}`)
   }
 }
 
-const openDecompileOutput = async () => {
-  if (decompileOutputPath.value) {
-    const systemSvc = await serviceManager.getService('system') as any
-    await systemSvc.openPath(decompileOutputPath.value)
+async function runAnalyze(task: Task, localPath: string) {
+  const svc = await serviceManager.getService('apk') as any
+  if (typeof svc?.analyzeApk !== 'function') throw new Error('分析服务不可用')
+  const iv = startProgress(task, '分析中')
+  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在分析 ${task.fileName}...`)
+  const result = await svc.analyzeApk(localPath)
+  if (result.success) {
+    finishProgress(task, iv)
+    const html = renderApkInfo(result.data)
+    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', result: html, finishedAt: Date.now() })
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 分析完成`)
+  } else {
+    clearInterval(iv)
+    throw new Error(result.error || '分析失败')
   }
 }
 
-const selectProjectDir = async () => {
-  try {
-    const systemSvc = await serviceManager.getService('system') as any
-    const result = await systemSvc.selectDirectory()
-    if (result && !result.canceled) selectedProjectDir.value = result.filePaths[0]
-  } catch (error) {
-    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'system', context: 'system.selectDirectory' })
+async function runInstall(task: Task, localPath: string) {
+  const svc = await serviceManager.getService('device') as any
+  if (typeof svc?.installApp !== 'function') throw new Error('安装服务不可用')
+  const iv = startProgress(task, '安装中')
+  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在安装到设备...`)
+  const result = await svc.installApp(localPath)
+  if (result.success) {
+    finishProgress(task, iv)
+    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', finishedAt: Date.now() })
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 安装成功`)
+  } else {
+    clearInterval(iv)
+    throw new Error(result.error || '安装失败')
   }
 }
 
-const startRecompile = async () => {
-  if (!selectedProjectDir.value) return
-  if (recompileOptions.value.sign && !recompileSignatureId.value) {
-    const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectSignature')), { category: 'ui', severity: 'low' })
-    return
-  }
-  let loadingId: any = null
-  try {
-    recompileProgress.value.show = true; recompileProgress.value.value = 0
-    loadingId = showLoading(t('package.recompiling'))
-    const options: any = { sign: recompileOptions.value.sign, align: recompileOptions.value.align, optimize: recompileOptions.value.optimize, v2: recompileOptions.value.v2 }
-    if (options.sign) {
-      const config = signatureStore.getConfigById(recompileSignatureId.value)
-      if (config) options.keystore = { path: config.path, alias: config.alias, storepass: config.storepass, keypass: config.keypass }
-    }
-    const apkService = await getApkService()
-    const result = await apkService.recompileApk(selectedProjectDir.value, options)
-    if (result.success) {
-      recompileProgress.value.value = 100; recompileOutputPath.value = result.outputPath
-      recompileResult.value = `<p>${t('package.recompileComplete')}! ${t('package.output')}: ${result.outputPath}</p>`
-      if (loadingId) completeLoading(loadingId, t('package.recompileComplete'), `${t('package.output')}: ${result.outputPath}`)
-    } else {
-      if (loadingId) failLoading(loadingId, t('package.recompileFailed'), String(result.error || ''))
-    }
-  } catch (error: any) {
-    if (loadingId) failLoading(loadingId, t('package.recompileFailed'), String(error || ''))
-    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.recompile' })
-  } finally {
-    setTimeout(() => { recompileProgress.value.show = false; recompileProgress.value.value = 0 }, 2000)
+async function runDecompile(task: Task, localPath: string) {
+  const svc = await serviceManager.getService('apk') as any
+  if (typeof svc?.decompileApk !== 'function') throw new Error('反编译服务不可用')
+  const opts = { resources: decompileResources.value, sources: decompileSources.value }
+  const iv = startProgress(task, '反编译中')
+  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在反编译 (资源:${opts.resources}, 源码:${opts.sources})...`)
+  const result = await svc.decompileApk(localPath, opts)
+  if (result.success) {
+    finishProgress(task, iv)
+    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', outputPath: result.outputPath, finishedAt: Date.now() })
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 反编译完成 → ${result.outputPath}`)
+  } else {
+    clearInterval(iv)
+    throw new Error(result.error || '反编译失败')
   }
 }
 
-const openRecompileOutput = async () => {
-  if (recompileOutputPath.value) {
-    const svc = await serviceManager.getService('system') as any
-    await svc.openPath(recompileOutputPath.value)
+async function runRecompile(task: Task, localPath: string) {
+  const svc = await serviceManager.getService('apk') as any
+  if (typeof svc?.recompileApk !== 'function') throw new Error('重编译服务不可用')
+
+  let signOpts: any = { sign: false, align: true, optimize: true }
+  const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
+  if (cfg) {
+    signOpts.sign = true
+    signOpts.v2 = true
+    signOpts.keystore = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass }
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在重编译 (签名:${cfg.name})...`)
+  } else {
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在重编译 (无签名)...`)
+  }
+  const iv = startProgress(task, '重编译中')
+  const result = await svc.recompileApk(localPath, signOpts)
+  if (result.success) {
+    finishProgress(task, iv)
+    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', outputPath: result.outputPath, finishedAt: Date.now() })
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 重编译完成 → ${result.outputPath}`)
+  } else {
+    clearInterval(iv)
+    throw new Error(result.error || '重编译失败')
   }
 }
 
-const resignApk = async () => {
-  if (!selectedResignFile.value) return
-  const config = signatureStore.getConfigById(selectedSignatureId.value)
-  if (!config) {
-    const svc = await getErrorService(); if (svc) svc.reportError(new Error(t('package.pleaseSelectSignature')), { category: 'ui', severity: 'low' })
-    return
-  }
-  let loadingId: any = null
-  try {
-    isResigning.value = true
-    loadingId = showLoading(t('package.resigning'))
-    const apkService = await getApkService()
-    const keystore = { path: config.path, alias: config.alias, storepass: config.storepass, keypass: config.keypass }
-    const options = { v2: resignOptions.value.v2 }
-    const result = await apkService.signApk(selectedResignFile.value.path, keystore, options)
-    if (result.success) {
-      resignOutputPath.value = result.outputPath
-      resignResult.value = `<p>${t('package.resignComplete')}! ${t('package.output')}: ${result.outputPath}</p>`
-      if (loadingId) completeLoading(loadingId, t('package.resignComplete'), `${t('package.output')}: ${result.outputPath}`)
-    } else {
-      if (loadingId) failLoading(loadingId, t('package.resignFailed'), String(result.error || ''))
-    }
-  } catch (error: any) {
-    if (loadingId) failLoading(loadingId, t('package.resignFailed'), String(error || ''))
-    const svc = await getErrorService(); if (svc) svc.reportError(error, { category: 'tool', context: 'apk.resign' })
-  } finally { isResigning.value = false }
-}
+async function runResign(task: Task, localPath: string) {
+  const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
+  if (!cfg) throw new Error('没有签名配置，请先在设置中添加签名配置')
 
-const openResignOutput = async () => {
-  if (resignOutputPath.value) {
-    const svc = await serviceManager.getService('system') as any
-    await svc.openPath(resignOutputPath.value)
+  const svc = await serviceManager.getService('apk') as any
+  if (typeof svc?.signApk !== 'function') throw new Error('签名服务不可用')
+  taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 正在签名 (${cfg.name})...`)
+  const iv = startProgress(task, '签名中')
+  const keystore = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass }
+  const result = await svc.signApk(localPath, keystore, { v2: true })
+  if (result.success) {
+    finishProgress(task, iv)
+    taskStore.updateTask(task.id, { status: 'completed', progress: 100, progressLabel: '完成', outputPath: result.outputPath, finishedAt: Date.now() })
+    taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] 签名完成 → ${result.outputPath}`)
+  } else {
+    clearInterval(iv)
+    throw new Error(result.error || '签名失败')
   }
 }
 
-const openSignatureModal = (config: any = null) => {
-  editingSignature.value = config ? { ...config } : null
-  showSignatureModal.value = true
-}
-
-const handleSaveSignature = async (formData: any) => {
-  if (formData.id) await signatureStore.updateConfig({ ...formData })
-  else await signatureStore.addConfig({ ...formData })
-  if (signatureConfigs.value.length === 1) {
-    selectedSignatureId.value = signatureConfigs.value[0].id
-    recompileSignatureId.value = signatureConfigs.value[0].id
-  }
-}
-
-const deleteSignature = async (id: string) => {
-  if (confirm(t('package.deleteSignatureConfirm'))) {
-    await signatureStore.removeConfig(id)
-    if (selectedSignatureId.value === id) selectedSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
-    if (recompileSignatureId.value === id) recompileSignatureId.value = signatureConfigs.value.length > 0 ? signatureConfigs.value[0].id : ''
-  }
-}
-
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return '0 ' + t('package.bytes')
-  const k = 1024
-  const sizes = [t('package.bytes'), t('package.kb'), t('package.mb'), t('package.gb')]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const displayApkAnalysisResult = (data: any) => {
+function renderApkInfo(data: any) {
   if (!data) return ''
-  let permissionsHtml = ''
-  if (data.permissions && data.permissions.length > 0) {
-    const visiblePerms = data.permissions.slice(0, 5)
-    const hiddenPerms = data.permissions.slice(5)
-    permissionsHtml = '<div class="permissions-list">'
-    visiblePerms.forEach((p: any) => {
-      const name = p.name || p
-      permissionsHtml += `<div class="perm-tag">${name.split('.').pop()}</div>`
-    })
-    if (hiddenPerms.length > 0) permissionsHtml += `<div class="perm-tag more">+${hiddenPerms.length}</div>`
-    permissionsHtml += '</div>'
-  }
-  return `<div class="apk-info-grid">
-    <div class="info-row"><span class="label">${t('package.appName')}:</span><span class="value highlight">${data.applicationLabel || t('package.n_a')}</span></div>
-    <div class="info-row"><span class="label">${t('package.packageName')}:</span><span class="value code">${data.packageName || t('package.n_a')}</span></div>
-    <div class="info-group"><div class="info-col"><span class="label">${t('package.version')}:</span><span class="value">${data.versionName || t('package.n_a')}</span></div><div class="info-col"><span class="label">${t('package.code')}:</span><span class="value">${data.versionCode || t('package.n_a')}</span></div></div>
-    <div class="info-group"><div class="info-col"><span class="label">${t('package.minSdk')}:</span><span class="value">${data.minSdkVersion || t('package.n_a')}</span></div><div class="info-col"><span class="label">${t('package.targetSdk')}:</span><span class="value">${data.targetSdkVersion || t('package.n_a')}</span></div></div>
-    <div class="info-row"><span class="label">${t('package.permissions')}:</span><span class="value">${permissionsHtml || t('package.none')}</span></div>
+  const perms = data.permissions || []
+  return `<div style="display:flex;flex-direction:column;gap:5px;font-size:13px;line-height:1.6">
+    <div><span style="color:var(--app-text-dim)">名称：</span><span style="color:var(--app-text-primary)">${data.applicationLabel || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">包名：</span><span style="color:var(--app-text-secondary);font-family:monospace">${data.packageName || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">版本：</span><span style="color:var(--app-text-secondary)">${data.versionName || '-'} (${data.versionCode || '-'})</span></div>
+    <div><span style="color:var(--app-text-dim)">最小 SDK：</span><span style="color:var(--app-text-secondary)">${data.minSdkVersion || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">目标 SDK：</span><span style="color:var(--app-text-secondary)">${data.targetSdkVersion || '-'}</span></div>
+    <div><span style="color:var(--app-text-dim)">权限 (${perms.length})：</span><span style="color:var(--app-text-dim);font-size:12px">${perms.length ? perms.slice(0, 20).join(', ') + (perms.length > 20 ? '...' : '') : '无'}</span></div>
   </div>`
 }
 
-onMounted(async () => {
-  try { apkServiceRef.value = await serviceManager.getService('apk') } catch { /* ignore */ }
-  await signatureStore.loadConfigs()
-  if (signatureConfigs.value.length > 0) {
-    selectedSignatureId.value = signatureConfigs.value[0].id
-    recompileSignatureId.value = signatureConfigs.value[0].id
-  }
-})
+function startProgress(task: Task, label: string) {
+  let p = 0
+  const iv = setInterval(() => {
+    if (p < 30) p += 2
+    else if (p < 60) p += 1
+    else if (p < 85) p += 0.5
+    else { /* hold at 85, jump on complete */ return }
+    taskStore.updateTask(task.id, { progress: Math.round(Math.min(p, 85)), progressLabel: label })
+  }, 500)
+  return iv
+}
+
+function finishProgress(task: Task, iv: ReturnType<typeof setInterval>) {
+  clearInterval(iv)
+  taskStore.updateTask(task.id, { progress: 100, progressLabel: '完成' })
+}
 </script>
 
 <style scoped>
-.package-page {
-  max-width: 1100px;
-  margin: 0 auto;
-}
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-.page-title {
-  font-family: Inter, sans-serif;
-  font-size: 22px;
-  font-weight: 700;
-  color: #F8FAFC;
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-.page-subtitle {
-  font-size: 13px;
-  color: #94A3B8;
-  margin: 4px 0 0;
-}
-.pkg-tabs {
-  margin-top: 4px;
-}
-.pkg-card {
-  background: #1E293B;
+.package-page { max-width: 960px; margin: 0 auto; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
+.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
+
+/* New Task Bar */
+.new-task-bar {
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
   border-radius: 10px;
+  padding: 12px 16px;
   margin-bottom: 16px;
 }
-.card-header-row {
+.task-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.task-bar-row > :nth-child(2) { flex: 1; min-width: 0; }
+.task-bar-opts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--app-card-border);
+}
+.op-desc { font-size: 12px; color: var(--app-text-dim); }
+.op-label { font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
+
+.local-file-picker {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.card-title {
-  font-family: Inter, sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  color: #F8FAFC;
-}
-.drop-zone {
-  border: 2px dashed #334155;
-  border-radius: 10px;
-  padding: 28px 16px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: #64748B;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-.drop-zone:hover {
-  border-color: #22C55E;
-  background: rgba(34,197,94,0.04);
-  color: #94A3B8;
-}
-.drop-zone.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-.drop-text {
-  font-size: 13px;
-  margin: 0;
-}
-.file-info-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 8px 12px;
-  background: #0C1322;
+  padding: 5px 10px;
+  background: var(--app-input-bg);
+  border: 1px solid var(--app-card-border);
   border-radius: 6px;
+  cursor: pointer;
   font-size: 13px;
-}
-.file-name {
-  flex: 1;
-  color: #E2E8F0;
+  color: var(--app-text-dim);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: border-color .2s;
 }
-.file-size {
-  font-family: 'Fira Code', monospace;
-  font-size: 11px;
-  color: #94A3B8;
-  flex-shrink: 0;
-}
-.analysis-result {
-  margin-top: 12px;
-  padding: 12px;
-  background: #0C1322;
-  border-radius: 8px;
-  font-size: 13px;
-}
-.options-panel {
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: #0C1322;
-  border-radius: 8px;
-}
-.card-actions {
-  margin-top: 14px;
-  display: flex;
-  gap: 8px;
-}
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 24px;
-  text-align: center;
-  color: #64748B;
-  font-size: 13px;
-}
-.empty-state p { margin: 0; }
-.sig-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.sig-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #0C1322;
-  border-radius: 8px;
-  transition: background 0.15s;
-}
-.sig-item:hover {
-  background: #162032;
-}
-.sig-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.sig-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: #E2E8F0;
-}
-.sig-alias {
-  font-size: 11px;
-  color: #64748B;
-  font-family: 'Fira Code', monospace;
-}
+.local-file-picker span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-file-picker:hover { border-color: var(--app-green); }
+.local-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hidden-input { display: none; }
-:deep(.text-success) { color: #22C55E; }
-:deep(.apk-info-grid) { display: flex; flex-direction: column; gap: 8px; }
-:deep(.info-row) { display: flex; align-items: baseline; gap: 8px; }
-:deep(.info-group) { display: flex; gap: 16px; }
-:deep(.info-col) { display: flex; align-items: baseline; gap: 6px; flex: 1; }
-:deep(.label) { color: #94A3B8; font-weight: 500; min-width: 80px; }
-:deep(.value) { color: #E2E8F0; word-break: break-all; }
-:deep(.value.code) { font-family: 'Fira Code', monospace; color: #3B82F6; }
-:deep(.value.highlight) { font-weight: 600; font-size: 14px; }
-:deep(.permissions-list) { display: flex; flex-wrap: wrap; gap: 4px; }
-:deep(.perm-tag) { background: #1E293B; padding: 2px 8px; border-radius: 4px; font-size: 11px; color: #94A3B8; border: 1px solid #334155; }
-:deep(.perm-tag.more) { background: rgba(34,197,94,0.12); color: #22C55E; border-color: rgba(34,197,94,0.3); }
+
+/* Empty */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 80px 16px; text-align: center;
+}
+.empty-title { font-size: 15px; font-weight: 600; color: var(--app-text-muted); margin: 0; }
+.empty-desc { font-size: 13px; color: var(--app-text-dim); margin: 0; max-width: 360px; }
+
+/* Task Cards */
+.task-list { display: flex; flex-direction: column; gap: 8px; }
+.task-card {
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.task-card.task-running { border-color: rgba(34,197,94,0.4); }
+.task-card.task-failed { border-color: rgba(239,68,68,0.4); }
+
+.task-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  gap: 10px;
+}
+.task-header:hover { background: var(--app-hover); }
+.task-header-left, .task-header-right { display: flex; align-items: center; gap: 8px; }
+.task-id { font-size: 11px; color: var(--app-text-dim); font-weight: 600; min-width: 24px; }
+.task-filename {
+  font-size: 13px; color: var(--app-text-secondary);
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.task-time { font-size: 11px; color: var(--app-text-dim); }
+
+.task-progress { padding: 0 14px; height: 3px; }
+
+.task-detail {
+  padding: 10px 14px;
+  border-top: 1px solid var(--app-card-border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.task-error {
+  font-size: 12px; color: var(--app-red);
+  padding: 8px 10px; background: rgba(239,68,68,0.08); border-radius: 6px;
+}
+.task-output {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--app-green);
+}
+.task-output-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.task-result { font-size: 13px; }
+.task-logs {
+  background: var(--app-code-bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; word-break: break-all; }
 </style>

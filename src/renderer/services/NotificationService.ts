@@ -50,7 +50,7 @@ class NotificationService {
      * @param {number} duration - 显示时长(毫秒)，0表示不自动关闭
      * @returns {number} 通知ID
      */
-    show(type: NotificationType = 'info', title = '', message = '', duration = 5000) {
+    show(type: NotificationType = 'info', title = '', message = '', duration = 8000) {
         const id = this.nextId++;
         
         const notificationData = {

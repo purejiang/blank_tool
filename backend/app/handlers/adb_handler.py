@@ -417,8 +417,58 @@ def device_export_apk(params, stream_handler):
         raise
 
 
+def adb_connect(params, stream_handler):
+    """Connect to a remote ADB device via TCP/IP."""
+    address = params.get("address", "")
+    if not address:
+        raise ToolException("Missing address (e.g. 192.168.1.100:5555)")
+
+    try:
+        adb_tool = manager.get_tool("adb")
+        if not adb_tool or not adb_tool.is_valid:
+            raise ToolNotFoundError("adb")
+        result = adb_tool.execute(
+            ["connect", address],
+            context=CommandExecutionContext(capture_output=True, log_output=False),
+        )
+        output = result.get("stdout", "") or result.get("stderr", "")
+        success = "connected" in output.lower() or "already connected" in output.lower()
+        return {"success": success, "output": output.strip(), "address": address}
+    except ToolException:
+        raise
+    except Exception as e:
+        logger.error(f"adb connect failed: {e}")
+        raise ToolException(f"Connect failed: {e}")
+
+
+def adb_disconnect(params, stream_handler):
+    """Disconnect from a remote ADB device or all devices."""
+    address = params.get("address", "")
+
+    try:
+        adb_tool = manager.get_tool("adb")
+        if not adb_tool or not adb_tool.is_valid:
+            raise ToolNotFoundError("adb")
+        cmd = ["disconnect"]
+        if address:
+            cmd.append(address)
+        result = adb_tool.execute(
+            cmd,
+            context=CommandExecutionContext(capture_output=True, log_output=False),
+        )
+        output = result.get("stdout", "") or result.get("stderr", "")
+        return {"success": True, "output": output.strip(), "address": address or "all"}
+    except ToolException:
+        raise
+    except Exception as e:
+        logger.error(f"adb disconnect failed: {e}")
+        raise ToolException(f"Disconnect failed: {e}")
+
+
 API_MAP = {
     "adb.devices": adb_devices,
+    "adb.connect": adb_connect,
+    "adb.disconnect": adb_disconnect,
     "adb.logcat": adb_logcat,
     "adb.stop_logcat": adb_stop_logcat,
     "adb.export_logcat": adb_export_logcat,

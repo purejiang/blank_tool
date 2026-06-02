@@ -60,17 +60,25 @@ class DeviceService {
         this.attachLogcatOutputListener(deviceStore, api)
       }
       if (api && typeof api.onLogcatStarted === 'function') {
-        api.onLogcatStarted(() => {
+        api.onLogcatStarted((payload: unknown) => {
+          console.log('[logcat] started event:', JSON.stringify(payload))
           deviceStore.isLogcatRunning = true
+          const p = toLogcatPayload(payload)
+          if (p.process_id) {
+            deviceStore.logcatProcessId = String(p.process_id)
+            console.log('[logcat] processId set:', p.process_id)
+          }
         })
       }
       if (api && typeof api.onLogcatFinished === 'function') {
-        api.onLogcatFinished(() => {
+        api.onLogcatFinished((payload: unknown) => {
+          console.log('[logcat] finished event:', JSON.stringify(payload))
           deviceStore.isLogcatRunning = false
         })
       }
       if (api && typeof api.onLogcatError === 'function') {
-        api.onLogcatError(() => {
+        api.onLogcatError((error: unknown) => {
+          console.error('[logcat] error event:', JSON.stringify(error))
           deviceStore.isLogcatRunning = false
         })
       }
@@ -84,8 +92,6 @@ class DeviceService {
       }
       if (api && typeof api.onLogcatOutput === 'function') {
         api.onLogcatOutput((output: unknown) => {
-          if (!deviceStore.isLogcatRunning) return
-
           const p = toLogcatPayload(output)
           if (p.process_id && !deviceStore.logcatProcessId) {
             deviceStore.logcatProcessId = String(p.process_id)
@@ -93,18 +99,14 @@ class DeviceService {
           const line = p.line || ''
           const lines = p.lines || []
 
-          if (lines && lines.length > 0) {
-            deviceStore.logcatOutput.push(...lines)
-            const maxLines = 5000
-            const excess = deviceStore.logcatOutput.length - maxLines
-            if (excess > 0) {
-              deviceStore.logcatOutput.splice(0, excess)
-            }
+          if (lines.length > 0) {
+            const arr = [...deviceStore.logcatOutput, ...lines]
+            if (arr.length > 5000) arr.splice(0, arr.length - 5000)
+            deviceStore.logcatOutput = arr
           } else if (line) {
-            deviceStore.logcatOutput.push(line)
-            if (deviceStore.logcatOutput.length > 5000) {
-              deviceStore.logcatOutput.shift()
-            }
+            const arr = [...deviceStore.logcatOutput, line]
+            if (arr.length > 5000) arr.splice(0, arr.length - 5000)
+            deviceStore.logcatOutput = arr
           }
         })
       }
@@ -218,20 +220,26 @@ class DeviceService {
   async startLogcat() {
     const store = getDeviceStore()
     const dev = store.selectedDevice
-    if (!dev || !dev.id) return false
+    if (!dev || !dev.id) { console.log('[logcat] no device selected'); return false }
     const api = unifiedApi.getAPI()
+    console.log('[logcat] starting, api:', !!api, 'device:', dev.id)
     store.logcatOutput = []
     if (api && typeof api.onLogcatOutput === 'function') {
       this.attachLogcatOutputListener(store, api)
+      console.log('[logcat] output listener attached')
     }
     try {
       if (api && typeof api.startLogcat === 'function') {
-        await api.startLogcat(dev.id)
+        console.log('[logcat] calling api.startLogcat...')
+        const result = await api.startLogcat(dev.id)
+        console.log('[logcat] api.startLogcat returned:', JSON.stringify(result))
         store.isLogcatRunning = true
       } else {
+        console.log('[logcat] startLogcat API not implemented')
         throw new Error('startLogcat API not implemented')
       }
-    } catch {
+    } catch (e) {
+      console.error('[logcat] startLogcat error:', e)
       store.isLogcatRunning = false
       return false
     }
@@ -241,10 +249,14 @@ class DeviceService {
   async stopLogcat() {
     const store = getDeviceStore()
     const api = unifiedApi.getAPI()
-    if (api && typeof api.stopLogcat === 'function' && store.logcatProcessId) {
-      await api.stopLogcat(store.logcatProcessId)
+    if (api && typeof api.stopLogcat === 'function') {
+      if (store.logcatProcessId) {
+        await api.stopLogcat(store.logcatProcessId)
+      } else {
+        console.log('[logcat] no processId to stop, just marking as stopped')
+      }
     } else {
-      console.error('stopLogcat API not implemented or process ID missing')
+      console.error('stopLogcat API not implemented')
     }
     store.isLogcatRunning = false
     store.logcatProcessId = ''
@@ -411,8 +423,7 @@ class DeviceService {
       throw new Error('Unified API not available')
     }
 
-    if (resp) return { success: true, payload: resp }
-    return { success: false, error: 'Installation failed' }
+    return { success: true, payload: resp }
   }
 }
 

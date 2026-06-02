@@ -41,14 +41,16 @@ class ApkService {
      * 分析APK文件
      * @param {string} apkPath - APK文件路径
      */
-    async analyzeApk(apkPath: string) {
+    async analyzeApk(apkPath: string, taskId = '') {
         try {
             const api = unifiedApi.getAPI()
             if (!api || typeof api.analyzeApk !== 'function') {
                 throw new Error('analyzeApk API not implemented')
             }
 
-            const rawResult = await api.analyzeApk(apkPath);
+            const rawResult = taskId
+              ? await (api as any).callBackendAPI('apk.analyze', { apk_path: apkPath, task_id: taskId })
+              : await (api as any).analyzeApk(apkPath)
 
             // Normalize response - preload.js 已解包，rawResult 即为 payload
             let analysis = null;

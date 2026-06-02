@@ -21,7 +21,8 @@ function isBackendResponse(message: BackendStdioMessage): message is BackendResp
 
 export function setupCommandHandlers(
     getPythonProcess: () => ChildProcessWithoutNullStreams | null,
-    ensurePythonProcess?: () => Promise<ChildProcessWithoutNullStreams | null>
+    ensurePythonProcess?: () => Promise<ChildProcessWithoutNullStreams | null>,
+    requestTimeout = 300000
 ): void {
     const requestCallbacks = new Map<string | number, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
@@ -90,15 +91,16 @@ export function setupCommandHandlers(
                             } else if (response.finished === false) {
                                 const result = (response.result || {}) as JsonObject;
                                 const resultType = typeof result.type === 'string' ? result.type : '';
+                                console.log('[main] streaming chunK:', JSON.stringify(response).substring(0, 200));
                                 if (resultType && sender && !sender.isDestroyed()) {
                                     const channelMap: Record<string, string> = {
                                         'log': IPC_CHANNEL_NAMES.logcatOutput,
                                         'started': IPC_CHANNEL_NAMES.logcatStarted,
-                                        'process_finished': IPC_CHANNEL_NAMES.logcatFinished,
-                                        'error': IPC_CHANNEL_NAMES.logcatError
+                                        'process_finished': IPC_CHANNEL_NAMES.logcatFinished
                                     };
 
                                     const channel = channelMap[resultType];
+                                    console.log('[main] forwarding to channel:', channel, 'resultType:', resultType);
                                     if (channel) {
                                         const resultPayload = typeof result.payload === 'object' && result.payload !== null
                                             ? result.payload as JsonObject
@@ -114,6 +116,8 @@ export function setupCommandHandlers(
                                             data: result
                                         });
                                     }
+                                } else {
+                                    console.log('[main] skipped forwarding, resultType:', resultType, 'sender:', !!sender, 'destroyed:', sender?.isDestroyed());
                                 }
 
                                 if (!callbackInfo.resolved) {
@@ -181,13 +185,12 @@ export function setupCommandHandlers(
                 resolve(createErrorResponse(`发送请求失败: ${message}`));
             }
 
-            // 设置超时 (30秒)
             setTimeout(() => {
                 if (requestCallbacks.has(request.id)) {
                     requestCallbacks.delete(request.id);
                     resolve(createErrorResponse('请求超时'));
                 }
-            }, 30000);
+            }, requestTimeout);
         });
     });
 }

@@ -96,7 +96,9 @@ const electronApi = {
   getApkProgress: (taskId) => callBackendAPI('apk.getProgress', { task_id: taskId }),
   // APK任务取消
   cancelApkTask: (taskId) => callBackendAPI('apk.cancelTask', { task_id: taskId }),
-  
+  // 文件下载
+  downloadFile: (url, filename, taskId) => callBackendAPI('download.file', { url, filename, task_id: taskId }),
+
   // ========== 工具相关 ==========
   // 获取工具列表/检查工具
   getTools: (params) => callBackendAPI('tool.get_tools', params),
@@ -107,6 +109,9 @@ const electronApi = {
   // ========== 设备相关API ==========
   // 设备列表获取
   getAdbDevices: () => callBackendAPI('adb.devices'),
+  // ADB 远程连接
+  adbConnect: (address: string) => callBackendAPI('adb.connect', { address }),
+  adbDisconnect: (address?: string) => callBackendAPI('adb.disconnect', { address: address || '' }),
   // 设备重启
   rebootDevice: (deviceId, mode) => callBackendAPI('device.reboot', { device_id: deviceId, mode }),
   // 设备Shell命令执行
@@ -206,11 +211,15 @@ const electronApi = {
   },
   // 监听配置变化
   onAppConfigChange: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.appConfigChanged, (event, key, value) => callback(key, value));
+    const handler = (_event: any, key: any, value: any) => callback(key, value);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.appConfigChanged, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.appConfigChanged, handler);
   },
   // 监听配置变化
   onUserConfigChange: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.userConfigChanged, (event, key, value) => callback(key, value));
+    const handler = (_event: any, key: any, value: any) => callback(key, value);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.userConfigChanged, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.userConfigChanged, handler);
   },
 
 
@@ -244,34 +253,45 @@ const electronApi = {
 
   // 事件监听 - 保持原有实现
   onDeviceChange: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.deviceChange, callback);
-    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.deviceChange, callback);
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.deviceChange, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.deviceChange, handler);
   },
 
   onLogUpdate: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.logUpdate, callback);
-    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logUpdate, callback);
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.logUpdate, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logUpdate, handler);
   },
 
   onLogcatOutput: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatOutput, callback);
-    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatOutput, callback);
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatOutput, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatOutput, handler);
   },
   onLogcatStarted: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatStarted, callback);
-    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatStarted, callback);
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatStarted, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatStarted, handler);
   },
   onLogcatFinished: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatFinished, callback);
-    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatFinished, callback);
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatFinished, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatFinished, handler);
   },
   onLogcatError: (callback) => {
-    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatError, callback);
-    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatError, callback);
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(IPC_CHANNEL_NAMES.logcatError, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.logcatError, handler);
   },
 
   removeLogcatListener: () => {
     ipcRenderer.removeAllListeners(IPC_CHANNEL_NAMES.logcatOutput);
+  },
+  onStreamEvent: (callback: (data: unknown) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNEL_NAMES.streamEvent, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.streamEvent, handler)
   }
 };
 

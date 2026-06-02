@@ -7,7 +7,7 @@
     </template>
     <!-- Full mode -->
     <template v-else>
-      <div class="status-left">
+      <div class="status-device" @click="goToDevice">
         <div class="device-badge" v-if="connectedDevice">
           <n-icon size="14"><Smartphone /></n-icon>
           <span>{{ connectedDevice.name || connectedDevice.id }}</span>
@@ -19,7 +19,7 @@
           <span class="status-dot offline"></span>
         </div>
       </div>
-      <div class="status-right">
+      <div class="status-version">
         <span class="version-text">v{{ frontendVersion }} | backend {{ backendVersion || 'N/A' }}</span>
       </div>
     </template>
@@ -28,6 +28,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { Smartphone } from 'lucide-vue-next'
@@ -36,8 +37,13 @@ import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
 
 const { t } = useI18n()
+const router = useRouter()
 
 defineProps<{ collapsed?: boolean }>()
+
+const goToDevice = () => {
+  router.push('/device')
+}
 
 const deviceStore = useDeviceStore()
 const { selectedDevice } = storeToRefs(deviceStore)
@@ -72,10 +78,11 @@ onMounted(() => getVersions())
 .status-bar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding: 10px 18px;
-  background: #0C1322;
-  border-top: 1px solid #1E293B;
+  height: auto;
+  background: var(--app-sidebar-bg);
+  border-top: 1px solid var(--app-sidebar-border);
   font-size: 11px;
   font-family: Inter, sans-serif;
   flex-shrink: 0;
@@ -86,8 +93,19 @@ onMounted(() => getVersions())
   justify-content: center;
   gap: 6px;
   padding: 10px 4px;
+  cursor: pointer;
 }
-.status-left, .status-right {
+.status-bar.collapsed:hover {
+  background: var(--app-hover-strong);
+}
+.status-device {
+  cursor: pointer;
+  padding: 2px 0;
+}
+.status-device:hover {
+  opacity: 0.8;
+}
+.status-version {
   display: flex;
   align-items: center;
 }
@@ -95,26 +113,26 @@ onMounted(() => getVersions())
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #CBD5E1;
+  color: var(--app-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.device-badge.off { color: #64748B; }
-.dim { color: #64748B; }
+.device-badge.off { color: var(--app-text-dim); }
+.dim { color: var(--app-text-dim); }
 .status-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #EF4444;
+  background: var(--app-red);
   flex-shrink: 0;
 }
-.status-dot.online { background: #22C55E; }
-.status-dot.connecting { background: #F59E0B; animation: pulse 1.5s infinite; }
-.status-dot.offline { background: #EF4444; }
+.status-dot.online { background: var(--app-green); }
+.status-dot.connecting { background: var(--app-yellow); animation: pulse 1.5s infinite; }
+.status-dot.offline { background: var(--app-red); }
 .version-text {
   font-family: 'Fira Code', monospace;
-  color: #64748B;
+  color: var(--app-text-dim);
   font-size: 10px;
 }
 @keyframes pulse {

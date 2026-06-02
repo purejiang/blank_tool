@@ -23,3 +23,4 @@ export const initializeStores = async () => {
 }
 
 export { useAppConfigStore, useDeviceStore, useToolStore, useSystemStore }
+export { useTaskStore } from './taskStore'

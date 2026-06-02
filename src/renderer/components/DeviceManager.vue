@@ -1,11 +1,16 @@
 <template>
   <n-card :bordered="false" class="device-card" size="small">
-    <div class="card-header">
-      <n-icon size="18" color="#22C55E"><Smartphone /></n-icon>
-      <span class="card-title">{{ t('device.devices') }}</span>
-      <n-tag size="small" :bordered="false" type="info">
-        {{ t('device.connected', { count: devices.length }) }}
-      </n-tag>
+    <div class="dm-header">
+      <div class="dm-header-left">
+        <n-icon size="18" color="#22C55E"><Smartphone /></n-icon>
+        <span class="dm-title">{{ t('device.devices') }}</span>
+      </div>
+      <div class="dm-header-right">
+        <span class="dm-count"><span class="dm-count-label">{{ t('device.connectedLabel') }}</span><span class="dm-count-num">{{ devices.length }}</span></span>
+        <n-button @click="$emit('refreshDevices')" :loading="loading" quaternary circle size="tiny">
+          <template #icon><n-icon size="16"><RefreshCw /></n-icon></template>
+        </n-button>
+      </div>
     </div>
     <n-spin :show="loading">
       <div v-if="devices.length === 0" class="empty-state">
@@ -37,11 +42,24 @@
         </n-list-item>
       </n-list>
     </n-spin>
-    <div class="card-footer">
-      <n-button @click="$emit('refreshDevices')" :loading="loading" secondary size="small" block>
-        <template #icon><n-icon><RefreshCw /></n-icon></template>
-        {{ t('device.refresh') }}
-      </n-button>
+    <div class="dm-remote">
+      <div class="dm-remote-title">{{ t('device.remoteConnect') }}</div>
+      <div class="dm-remote-row">
+        <n-input
+          v-model:value="remoteAddress"
+          placeholder="192.168.1.100:5555"
+          size="tiny"
+          clearable
+          class="dm-remote-input"
+          @keyup.enter="handleConnect"
+        />
+        <n-button size="tiny" type="primary" secondary @click="handleConnect" :loading="isConnecting">
+          {{ t('device.connect') }}
+        </n-button>
+        <n-button size="tiny" secondary @click="handleDisconnect" :loading="isDisconnecting">
+          {{ t('device.disconnect') }}
+        </n-button>
+      </div>
     </div>
   </n-card>
 </template>
@@ -61,8 +79,40 @@ const deviceStore = useDeviceStore()
 const { devices, selectedDeviceId } = storeToRefs(deviceStore)
 
 const loading = ref(false)
+const remoteAddress = ref('')
+const isConnecting = ref(false)
+const isDisconnecting = ref(false)
 
-defineEmits<{ refreshDevices: [] }>()
+const emit = defineEmits<{ refreshDevices: [] }>()
+
+const handleConnect = async () => {
+  const addr = remoteAddress.value.trim()
+  if (!addr) return
+  isConnecting.value = true
+  try {
+    const api = window.electronAPI as any
+    const result = await api.adbConnect(addr)
+    if (result?.success) {
+      remoteAddress.value = ''
+      emit('refreshDevices')
+    }
+  } catch (e: any) {
+    console.error('ADB connect failed:', e)
+  } finally { isConnecting.value = false }
+}
+
+const handleDisconnect = async () => {
+  isDisconnecting.value = true
+  try {
+    const api = window.electronAPI as any
+    const addr = remoteAddress.value.trim()
+    await api.adbDisconnect(addr || undefined)
+    if (addr) remoteAddress.value = ''
+    emit('refreshDevices')
+  } catch (e: any) {
+    console.error('ADB disconnect failed:', e)
+  } finally { isDisconnecting.value = false }
+}
 
 const handleDeviceSelection = async (id: string) => {
   if (loading.value) return
@@ -80,24 +130,61 @@ const handleDeviceSelection = async (id: string) => {
 
 <style scoped>
 .device-card {
-  background: #1E293B;
+  background: var(--app-card-bg);
   border-radius: 10px;
 }
-.card-header {
+.dm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.dm-header-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
 }
-.card-title {
+.dm-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dm-count {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dm-count-label {
+  color: var(--app-text-dim);
+}
+.dm-count-num {
+  color: var(--app-green);
+  font-weight: 600;
+}
+.dm-remote {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--app-card-border);
+}
+.dm-remote-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  margin-bottom: 8px;
+}
+.dm-remote-row {
+  display: flex;
+  gap: 6px;
+}
+.dm-remote-input {
+  flex: 1;
+}
+.dm-title {
   font-family: Inter, sans-serif;
   font-size: 15px;
   font-weight: 600;
-  color: #F8FAFC;
-  flex: 1;
-}
-.card-footer {
-  margin-top: 12px;
+  color: var(--app-text-primary);
 }
 .empty-state {
   display: flex;
@@ -105,21 +192,21 @@ const handleDeviceSelection = async (id: string) => {
   align-items: center;
   gap: 8px;
   padding: 32px 16px;
-  color: #64748B;
+  color: var(--app-text-dim);
   font-size: 14px;
 }
 .empty-state p { margin: 0; }
-.empty-title { font-size: 14px; font-weight: 600; color: #94A3B8; margin-top: 4px !important; }
-.empty-desc { font-size: 12px; color: #64748B; max-width: 220px; text-align: center; }
+.empty-title { font-size: 14px; font-weight: 600; color: var(--app-text-muted); margin-top: 4px !important; }
+.empty-desc { font-size: 12px; color: var(--app-text-dim); max-width: 220px; text-align: center; }
 
 .device-list { margin: -4px 0; }
 .device-icon-wrap { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .device-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.device-model { font-size: 14px; font-weight: 600; color: #F8FAFC; }
-.device-serial { font-family: 'Fira Code', monospace; font-size: 11px; color: #64748B; }
-.device-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #EF4444; }
-.device-dot.online { background: #22C55E; }
-.device-dot.warning { background: #F59E0B; }
+.device-model { font-size: 14px; font-weight: 600; color: var(--app-text-primary); }
+.device-serial { font-family: 'Fira Code', monospace; font-size: 11px; color: var(--app-text-dim); }
+.device-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--app-red); }
+.device-dot.online { background: var(--app-green); }
+.device-dot.warning { background: var(--app-yellow); }
 :deep(.device-list .n-list-item) { background: transparent !important; }
 :deep(.device-list .n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
 :deep(.device-list .n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }
