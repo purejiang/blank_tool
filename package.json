@@ -40,7 +40,8 @@
     "extraResources": [
       {
         "from": "backend",
-        "to": "backend"
+        "to": "backend",
+        "filter": ["**/*", "!cache", "!cache/**", "!output", "!output/**", "!logs", "!logs/**"]
       },
       {
         "from": "runtime",
