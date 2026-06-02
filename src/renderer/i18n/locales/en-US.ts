@@ -373,6 +373,7 @@ export default {
   },
   // Common
   common: {
+    unknown: 'Unknown',
     version: 'v',
     backend: 'backend',
     connected: 'Connected',

@@ -57,13 +57,13 @@ export const useSystemStore = defineStore('system', () => {
         const cpu = sysInfo.cpu || {}
         const memory = sysInfo.memory || {}
         
-        systemInfo.platform = sysInfo.platform || '未知'
-        systemInfo.platform_version = sysInfo.platform_version || '未知'
-        systemInfo.platform_release = sysInfo.platform_release || '未知'
-        systemInfo.architecture = sysInfo.architecture || '未知'
-        systemInfo.hostname = sysInfo.hostname || '未知'
-        systemInfo.cpuCount = sysInfo.cpu_count || cpu.count_logical || cpu.count_physical || '未知'
-        systemInfo.processor = sysInfo.processor || '未知'
+        systemInfo.platform = sysInfo.platform || ''
+        systemInfo.platform_version = sysInfo.platform_version || ''
+        systemInfo.platform_release = sysInfo.platform_release || ''
+        systemInfo.architecture = sysInfo.architecture || ''
+        systemInfo.hostname = sysInfo.hostname || ''
+        systemInfo.cpuCount = sysInfo.cpu_count || cpu.count_logical || cpu.count_physical || ''
+        systemInfo.processor = sysInfo.processor || ''
 
         // Memory info
         const memoryTotal = sysInfo.memoryTotal || memory.total
@@ -98,17 +98,17 @@ export const useSystemStore = defineStore('system', () => {
 
 
       if (frontendInfo) {
-        buildInfo.electronVersion = frontendInfo.electronVersion || '未知'
-        buildInfo.nodeVersion = frontendInfo.nodeVersion || '未知'
-        buildInfo.chromeVersion = frontendInfo.chromeVersion || '未知'
-        buildInfo.appName = frontendInfo.appName || '未知'
-        buildInfo.appVersion = frontendInfo.appVersion || '未知'
-        buildInfo.appDescription = frontendInfo.appDescription || '未知'
+        buildInfo.electronVersion = frontendInfo.electronVersion || ''
+        buildInfo.nodeVersion = frontendInfo.nodeVersion || ''
+        buildInfo.chromeVersion = frontendInfo.chromeVersion || ''
+        buildInfo.appName = frontendInfo.appName || ''
+        buildInfo.appVersion = frontendInfo.appVersion || ''
+        buildInfo.appDescription = frontendInfo.appDescription || ''
       }
       
       if (backendInfo) {
-        buildInfo.pythonVersion = backendInfo.python_version || '未知'
-        buildInfo.javaVersion = backendInfo.java_version || '未知'
+        buildInfo.pythonVersion = backendInfo.python_version || ''
+        buildInfo.javaVersion = backendInfo.java_version || ''
       }
     } catch (err: unknown) {
       console.error('Failed to fetch build info:', err)

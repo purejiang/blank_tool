@@ -374,6 +374,7 @@ export default {
   },
   // Common
   common: {
+    unknown: '未知',
     version: 'v',
     backend: '后端',
     connected: '已连接',

@@ -32,9 +32,9 @@
           <span class="section-title">{{ t('settings.systemInfo') }}</span>
         </div>
         <div class="info-grid">
-          <div class="info-row"><span class="info-label">{{ t('settings.os') }}</span><span class="info-val">{{ systemInfo.platform || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.architecture') }}</span><span class="info-val">{{ systemInfo.architecture || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.hostname') }}</span><span class="info-val">{{ systemInfo.hostname || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.os') }}</span><span class="info-val">{{ systemInfo.platform || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.architecture') }}</span><span class="info-val">{{ systemInfo.architecture || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.hostname') }}</span><span class="info-val">{{ systemInfo.hostname || t('common.unknown') }}</span></div>
           <div class="info-row"><span class="info-label">{{ t('settings.cpu') }}</span><span class="info-val">{{ cpuText }}</span></div>
         </div>
       </n-card>
@@ -46,11 +46,11 @@
           <span class="section-title">{{ t('settings.buildInfo') }}</span>
         </div>
         <div class="info-grid">
-          <div class="info-row"><span class="info-label">{{ t('settings.appVersion') }}</span><span class="info-val">{{ buildInfo.appVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || '-' }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || '-' }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.appVersion') }}</span><span class="info-val">{{ buildInfo.appVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || t('common.unknown') }}</span></div>
         </div>
       </n-card>
 
@@ -73,8 +73,8 @@ const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
 
 const cpuText = computed(() => {
-  const count = systemInfo.cpuCount || '0'
-  return `${count} ${t('device.cores', { count: Number(count) || 0 })}`
+  const count = parseInt(systemInfo.cpuCount) || 0
+  return count ? t('device.cores', { count }) : t('common.unknown')
 })
 </script>
 
