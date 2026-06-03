@@ -29,6 +29,8 @@ export const IPC_CHANNELS = {
   logcatFinished: { name: 'logcat-finished', direction: 'main-to-renderer' },
   logcatError: { name: 'logcat-error', direction: 'main-to-renderer', payload: 'string' },
   streamEvent: { name: 'stream-event', direction: 'main-to-renderer', payload: 'BackendStreamEvent' },
+  showQuitDialog: { name: 'show-quit-dialog', direction: 'main-to-renderer' },
+  respondQuitDialog: { name: 'respond-quit-dialog', direction: 'renderer-to-main', payload: 'string' },
 } as const satisfies Record<string, IpcChannelDefinition>
 
 // Flat accessor for backward compat during migration

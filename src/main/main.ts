@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, dialog } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain } from 'electron';
 import path from 'path';
 import { existsSync, promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
@@ -7,6 +7,7 @@ import log from 'electron-log';
 import { appStore } from './stores/index';
 import { setupAllHandlers } from './ipc/index';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../shared/config/pathConfig';
+import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
 
 // 配置日志
 log.transports.file.level = 'info';
@@ -98,26 +99,26 @@ function createWindow(): void {
 
   createTray();
 
-  // 处理关闭事件
-  mainWindow.on('close', (e) => {
-    // 阻止默认关闭行为
-    e.preventDefault();
+  // Custom quit dialog via renderer IPC (supports frontend i18n)
+  let quitDialogResolver: ((action: string) => void) | null = null
 
-    const response = dialog.showMessageBoxSync(mainWindow, {
-      type: 'question',
-      buttons: ['最小化到托盘', '退出程序', '取消'],
-      defaultId: 0,
-      cancelId: 2,
-      title: '确认退出',
-      message: '确定要退出程序吗？',
-      detail: '您可以选择最小化到系统托盘，以便在后台继续运行服务。'
-    });
+  ipcMain.handle(IPC_CHANNEL_NAMES.respondQuitDialog, (_event, action: string) => {
+    if (quitDialogResolver) {
+      quitDialogResolver(action)
+      quitDialogResolver = null
+    }
+  })
 
-    if (response === 0) {
-      mainWindow.hide();
-    } else if (response === 1) {
-      mainWindow.destroy();
-      app.quit();
+  mainWindow.on('close', async (e) => {
+    if (quitDialogResolver) return
+    e.preventDefault()
+    mainWindow?.webContents.send(IPC_CHANNEL_NAMES.showQuitDialog)
+    const action = await new Promise<string>(resolve => { quitDialogResolver = resolve })
+    if (action === 'quit') {
+      mainWindow?.destroy()
+      app.quit()
+    } else if (action === 'minimize') {
+      mainWindow?.hide()
     }
   });
 
@@ -128,13 +129,14 @@ function createWindow(): void {
 
 function createTray(): void {
   const iconImage = nativeImage.createFromPath(__iconPath);
+  const isZh = app.getLocale().startsWith('zh')
 
   tray = new Tray(iconImage.isEmpty() ? nativeImage.createEmpty() : iconImage);
   tray.setToolTip('Blank Tool');
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: '显示主窗口',
+      label: isZh ? '显示主窗口' : 'Show Window',
       click: () => {
         if (mainWindow) {
           mainWindow.show();
@@ -143,7 +145,7 @@ function createTray(): void {
       }
     },
     {
-      label: '隐藏窗口',
+      label: isZh ? '隐藏窗口' : 'Hide Window',
       click: () => {
         if (mainWindow) {
           mainWindow.hide();
@@ -152,7 +154,7 @@ function createTray(): void {
     },
     { type: 'separator' },
     {
-      label: '退出',
+      label: isZh ? '退出' : 'Quit',
       click: () => {
         app.quit();
       }

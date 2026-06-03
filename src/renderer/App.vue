@@ -91,6 +91,7 @@
             <n-layout>
               <n-layout-content class="main-content">
                 <router-view />
+                <QuitDialog />
               </n-layout-content>
             </n-layout>
           </n-layout>
@@ -112,11 +113,13 @@ import {
 } from 'lucide-vue-next'
 import type { MenuOption } from 'naive-ui'
 import StatusBar from '@components/common/StatusBar.vue'
+import QuitDialog from '@components/QuitDialog.vue'
 import serviceManager from '@services/ServiceManager'
 import { ThemeService } from '@services/ThemeService'
 import ToolService from '@services/ToolService'
 import NotificationService from '@services/NotificationService'
 import unifiedApi from './api/unifiedApi'
+import { persistLocale } from './i18n'
 import ErrorService from '@services/ErrorService'
 import { ConfigService } from '@services/ConfigService'
 import ApkService from '@services/ApkService'
@@ -219,6 +222,7 @@ const currentTheme = ref<GlobalTheme | null>(darkTheme)
 const locale = computed(() => i18nLocale.value === 'zh-CN' ? zhCN : enUS)
 const setLocale = (lang: string) => {
   i18nLocale.value = lang
+  persistLocale(lang)
   unifiedApi.getAPI()?.appConfig?.set('language', lang).catch(() => {})
 }
 const setTheme = async (mode: string) => {

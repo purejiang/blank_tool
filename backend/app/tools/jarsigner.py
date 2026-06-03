@@ -23,4 +23,4 @@ class Jarsigner(BinaryTool):
     def _get_tool_version(self) -> str:
         result = self.execute([])
         output = result.get("stdout", "") if isinstance(result, dict) else ""
-        return "未知"
+        return ""

@@ -26,4 +26,4 @@ class Zipalign(BinaryTool):
     def _get_tool_version(self) -> str:
         # zipalign doesn't have a version flag usually, but let's try
         result = self.execute([])
-        return "未知"
+        return ""

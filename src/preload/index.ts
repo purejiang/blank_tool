@@ -292,6 +292,14 @@ const electronApi = {
     const handler = (_event: any, data: any) => callback(data)
     ipcRenderer.on(IPC_CHANNEL_NAMES.streamEvent, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.streamEvent, handler)
+  },
+  onQuitDialog: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC_CHANNEL_NAMES.showQuitDialog, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.showQuitDialog, handler)
+  },
+  respondQuitDialog: (action: string) => {
+    ipcRenderer.invoke(IPC_CHANNEL_NAMES.respondQuitDialog, action)
   }
 };
 
