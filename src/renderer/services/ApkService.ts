@@ -65,9 +65,10 @@ class ApkService {
                         versionName: p.version_name || p.versionName,
                         minSdkVersion: p.min_sdk_version || p.minSdkVersion,
                         targetSdkVersion: p.target_sdk_version || p.targetSdkVersion,
-                        permissions: p.permissions,
+                        permissions: p.permissions || [],
                         applicationLabel: p.application_label || p.applicationLabel,
-                        // Keep original payload just in case
+                        fileSize: p.file_size || p.fileSize || 0,
+                        nativeLibs: p.native_libs || p.nativeLibs || [],
                         ...p
                     };
                 }

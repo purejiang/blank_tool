@@ -259,6 +259,11 @@ export default {
     targetSdk: 'Target SDK',
     permissions: 'Permissions',
     noPermissions: 'None',
+    fileSize: 'File Size',
+    architecture: 'Architecture',
+    dangerousPerms: 'Dangerous Permissions',
+    otherPermsShow: 'Show {count} permissions',
+    otherPermsHide: 'Hide',
   },
   // Signature Edit Modal
   signature: {
@@ -372,6 +377,14 @@ export default {
     offline: 'Offline',
   },
   // Common
+  quit: {
+    title: 'Confirm Quit',
+    message: 'Are you sure you want to quit?',
+    detail: 'You can minimize to system tray to keep services running in background.',
+    minimize: 'Minimize to Tray',
+    quit: 'Quit',
+    cancel: 'Cancel',
+  },
   common: {
     unknown: 'Unknown',
     version: 'v',

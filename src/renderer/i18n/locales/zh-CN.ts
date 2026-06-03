@@ -259,6 +259,11 @@ export default {
     targetSdk: '目标SDK',
     permissions: '权限',
     noPermissions: '无',
+    fileSize: '文件大小',
+    architecture: '架构',
+    dangerousPerms: '危险权限',
+    otherPermsShow: '显示全部 {count} 项权限',
+    otherPermsHide: '隐藏',
   },
   // Signature Edit Modal
   signature: {
@@ -373,6 +378,14 @@ export default {
     offline: '离线',
   },
   // Common
+  quit: {
+    title: '确认退出',
+    message: '确定要退出程序吗？',
+    detail: '您可以选择最小化到系统托盘，以便在后台继续运行服务。',
+    minimize: '最小化到托盘',
+    quit: '退出程序',
+    cancel: '取消',
+  },
   common: {
     unknown: '未知',
     version: 'v',

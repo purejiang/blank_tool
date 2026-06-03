@@ -58,6 +58,14 @@ def apk_analyze(params, stream_handler):
         )
         info["permissions"] = permissions
 
+        native_libs = re.findall(r"native-code:\s*(.+)", output)
+        if native_libs:
+            info["native_libs"] = [
+                abi.strip("'") for abi in re.findall(r"'([^']+)'", native_libs[0])
+            ]
+
+        info["file_size"] = os.path.getsize(apk_path)
+
         return info
     except ToolException:
         raise

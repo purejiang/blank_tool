@@ -389,24 +389,92 @@ async function runOperation(task: Task, localPath: string) {
 
 function renderApkInfo(data: any) {
   if (!data) return ''
-  const perms = data.permissions || []
-  const labels = {
-    appName: t('task.appName'),
-    packageName: t('task.packageName'),
-    version: t('task.version'),
-    minSdk: t('task.minSdk'),
-    targetSdk: t('task.targetSdk'),
-    permissions: t('task.permissions'),
-    noPermissions: t('task.noPermissions'),
+  const perms: string[] = data.permissions || []
+  const nativeLibs: string[] = data.nativeLibs || []
+
+  // Classify permissions
+  const DANGEROUS = new Set([
+    'android.permission.READ_CONTACTS', 'android.permission.WRITE_CONTACTS', 'android.permission.GET_ACCOUNTS',
+    'android.permission.READ_CALENDAR', 'android.permission.WRITE_CALENDAR',
+    'android.permission.CAMERA',
+    'android.permission.BODY_SENSORS',
+    'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_BACKGROUND_LOCATION',
+    'android.permission.RECORD_AUDIO',
+    'android.permission.READ_PHONE_STATE', 'android.permission.READ_PHONE_NUMBERS', 'android.permission.CALL_PHONE', 'android.permission.ANSWER_PHONE_CALLS',
+    'android.permission.READ_CALL_LOG', 'android.permission.WRITE_CALL_LOG',
+    'android.permission.SEND_SMS', 'android.permission.RECEIVE_SMS', 'android.permission.READ_SMS', 'android.permission.RECEIVE_MMS', 'android.permission.RECEIVE_WAP_PUSH',
+    'android.permission.READ_EXTERNAL_STORAGE', 'android.permission.WRITE_EXTERNAL_STORAGE', 'android.permission.MANAGE_EXTERNAL_STORAGE',
+    'android.permission.ACTIVITY_RECOGNITION',
+    'android.permission.BLUETOOTH_CONNECT', 'android.permission.BLUETOOTH_SCAN', 'android.permission.BLUETOOTH_ADVERTISE',
+    'android.permission.POST_NOTIFICATIONS',
+    'android.permission.READ_MEDIA_IMAGES', 'android.permission.READ_MEDIA_VIDEO', 'android.permission.READ_MEDIA_AUDIO',
+    'android.permission.NEARBY_WIFI_DEVICES',
+    'android.permission.UWB_RANGING',
+  ])
+  const dangerous = perms.filter(p => DANGEROUS.has(p))
+  const normal = perms.filter(p => !DANGEROUS.has(p))
+
+  const label = (k: string) => t(`task.${k}`)
+  const esc = (s: string) => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '-'
+  const fmtSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return '-'
+    const u = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(1024))
+    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + u[i]
   }
-  return `<div style="display:flex;flex-direction:column;gap:5px;font-size:13px;line-height:1.6">
-    <div><span style="color:var(--app-text-dim)">${labels.appName}：</span><span style="color:var(--app-text-primary)">${data.applicationLabel || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">${labels.packageName}：</span><span style="color:var(--app-text-secondary);font-family:monospace">${data.packageName || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">${labels.version}：</span><span style="color:var(--app-text-secondary)">${data.versionName || '-'} (${data.versionCode || '-'})</span></div>
-    <div><span style="color:var(--app-text-dim)">${labels.minSdk}：</span><span style="color:var(--app-text-secondary)">${data.minSdkVersion || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">${labels.targetSdk}：</span><span style="color:var(--app-text-secondary)">${data.targetSdkVersion || '-'}</span></div>
-    <div><span style="color:var(--app-text-dim)">${labels.permissions} (${perms.length})：</span><span style="color:var(--app-text-dim);font-size:12px">${perms.length ? perms.slice(0, 20).join(', ') + (perms.length > 20 ? '...' : '') : labels.noPermissions}</span></div>
-  </div>`
+
+  const archColors: Record<string, string> = {
+    arm64: '#22c55e', armeabi: '#3b82f6', x86_64: '#f59e0b', x86: '#ef4444', mips: '#8b5cf6', riscv: '#ec4899'
+  }
+  const archChips = nativeLibs.map(abi => {
+    const prefix = Object.keys(archColors).find(k => abi.startsWith(k)) || ''
+    const color = archColors[prefix] || '#6b7280'
+    return `<span style="display:inline-block;background:${color}18;color:${color};border:1px solid ${color}40;border-radius:4px;padding:1px 7px;font-size:11px;font-family:monospace;margin-right:4px">${esc(abi)}</span>`
+  }).join('')
+
+  const permBadge = (p: string, danger: boolean) => {
+    const name = p.replace('android.permission.', '')
+    const style = danger
+      ? 'display:inline-block;background:rgba(220,38,38,0.1);color:var(--app-red);border:1px solid rgba(220,38,38,0.25);border-radius:3px;padding:1px 6px;font-size:11px;font-family:monospace;margin:1px 2px'
+      : 'display:inline-block;background:var(--app-card-border);color:var(--app-text-dim);border-radius:3px;padding:1px 6px;font-size:11px;font-family:monospace;margin:1px 2px'
+    return `<span title="${esc(p)}" style="${style}">${esc(name)}</span>`
+  }
+
+  let html = `<div style="display:flex;flex-direction:column;gap:6px;font-size:13px;line-height:1.6">`
+
+  // Basic info
+  html += `<div><span style="color:var(--app-text-dim)">${label('appName')}：</span><span style="color:var(--app-text-primary)">${esc(data.applicationLabel)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('packageName')}：</span><span style="color:var(--app-text-secondary);font-family:monospace">${esc(data.packageName)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('version')}：</span><span style="color:var(--app-text-secondary)">${esc(data.versionName)} (${esc(data.versionCode)})</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('minSdk')}：</span><span style="color:var(--app-text-secondary)">${esc(data.minSdkVersion)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('targetSdk')}：</span><span style="color:var(--app-text-secondary)">${esc(data.targetSdkVersion)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('fileSize')}：</span><span style="color:var(--app-text-secondary);font-weight:600">${fmtSize(data.fileSize)}</span></div>`
+
+  // Architecture
+  if (archChips) {
+    html += `<div><span style="color:var(--app-text-dim)">${label('architecture')}：</span>${archChips}</div>`
+  }
+
+  // Dangerous permissions
+  if (dangerous.length > 0) {
+    html += `<div><span style="color:var(--app-text-dim)">${label('dangerousPerms')} (${dangerous.length})：</span></div>`
+    html += `<div style="display:flex;flex-wrap:wrap;gap:1px">${dangerous.map(p => permBadge(p, true)).join('')}</div>`
+  }
+
+  // Normal permissions (collapsible)
+  if (normal.length > 0) {
+    const showLabel = t('task.otherPermsShow', { count: normal.length })
+    const hideLabel = t('task.otherPermsHide')
+    html += `<details style="margin-top:2px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;user-select:none">${showLabel}</summary>`
+    html += `<div style="display:flex;flex-wrap:wrap;gap:1px;margin-top:3px">${normal.map(p => permBadge(p, false)).join('')}</div></details>`
+  }
+
+  if (perms.length === 0) {
+    html += `<div><span style="color:var(--app-text-dim)">${label('permissions')}：</span><span style="color:var(--app-text-dim)">${label('noPermissions')}</span></div>`
+  }
+
+  html += `</div>`
+  return html
 }
 
 function startProgress(task: Task, label: string) {
