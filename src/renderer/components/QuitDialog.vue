@@ -6,7 +6,6 @@
     :mask-closable="false"
     :closable="false"
     style="width: 420px"
-    @after-leave="cleanup"
   >
     <p class="qd-message">{{ t('quit.message') }}</p>
     <p class="qd-detail">{{ t('quit.detail') }}</p>
