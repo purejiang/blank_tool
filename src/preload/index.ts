@@ -128,9 +128,9 @@ const electronApi = {
   // 设备信息获取
   getDeviceInfo: (deviceId) => callBackendAPI('device.get_device_info', { device_id: deviceId }),
   // 设备安装apk、aab、apks
-  installApk: (apkPath, deviceId) => callBackendAPI('device.install_apk', { apk_path: apkPath, device_id: deviceId }),
-  installAab: (aabPath, deviceId) => callBackendAPI('device.install_aab', { aab_path: aabPath, device_id: deviceId }),
-  installApks: (apksPath, deviceId) => callBackendAPI('device.install_apks', { apks_path: apksPath, device_id: deviceId }),
+  installApk: (apkPath, deviceId, taskId = '') => callBackendAPI('device.install_apk', { apk_path: apkPath, device_id: deviceId, task_id: taskId }),
+  installAab: (aabPath, deviceId, taskId = '') => callBackendAPI('device.install_aab', { aab_path: aabPath, device_id: deviceId, task_id: taskId }),
+  installApks: (apksPath, deviceId, taskId = '') => callBackendAPI('device.install_apks', { apks_path: apksPath, device_id: deviceId, task_id: taskId }),
   // 设备转换aab为apks
   convertAabToApks: (aabPath, deviceId) => callBackendAPI('device.convert_aab_to_apks', { aab_path: aabPath, device_id: deviceId }),
   // 设备卸载应用
@@ -242,7 +242,35 @@ const electronApi = {
   openDevTools: () => ipcInvoke('open-dev-tools'),
   
   // 更新相关 - 系统调用
-  checkForUpdates: () => ipcInvoke('check-for-updates'),
+  checkForUpdates: () => ipcInvoke(IPC_CHANNEL_NAMES.checkForUpdates),
+  quitAndInstall: () => ipcInvoke(IPC_CHANNEL_NAMES.quitAndInstall),
+
+  // 更新事件监听 (each returns unsubscribe function)
+  onUpdateAvailable: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNEL_NAMES.updateAvailable, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.updateAvailable, handler)
+  },
+  onUpdateNotAvailable: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNEL_NAMES.updateNotAvailable, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.updateNotAvailable, handler)
+  },
+  onDownloadProgress: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNEL_NAMES.downloadProgress, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.downloadProgress, handler)
+  },
+  onUpdateDownloaded: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNEL_NAMES.updateDownloaded, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.updateDownloaded, handler)
+  },
+  onUpdateError: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNEL_NAMES.updateError, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.updateError, handler)
+  },
 
   // 系统相关 - 系统调用
   restart: () => ipcInvoke('restart'),
