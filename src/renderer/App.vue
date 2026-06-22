@@ -90,7 +90,9 @@
             <!-- Main Content -->
             <n-layout>
               <n-layout-content class="main-content">
-                <router-view />
+                <n-dialog-provider>
+                  <router-view />
+                </n-dialog-provider>
                 <QuitDialog />
               </n-layout-content>
             </n-layout>
@@ -126,6 +128,7 @@ import ApkService from '@services/ApkService'
 import CacheService from '@services/CacheService'
 import DeviceService from '@services/DeviceService'
 import SystemService from '@services/SystemService'
+import UpdateService from '@services/UpdateService'
 import StoreService from '@services/StoreService'
 import SettingsService from '@services/SettingsService'
 import { useToolStore, useAppConfigStore, useSystemStore } from '@stores/index'
@@ -285,6 +288,7 @@ function registerServices() {
   serviceManager.register('cache', CacheService, ['config'])
   serviceManager.register('store', StoreService)
   serviceManager.register('settings', SettingsService, ['store'])
+  serviceManager.register('update', UpdateService)
 }
 
 function createErrorHandler() {
@@ -412,6 +416,14 @@ async function prepareUI() {
   }
   const cacheService = await serviceManager.getService('cache')
   if (cacheService) { await cacheService.getCacheInfo().catch(() => {}) }
+
+  // Initialize update service (set up event listeners)
+  try {
+    const updateService = await serviceManager.getService('update')
+    if (updateService) {
+      await updateService.initialize()
+    }
+  } catch {}
 }
 
 function retryInitialization() {
