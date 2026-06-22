@@ -25,12 +25,32 @@
             <div v-if="notification.message" class="notification-message">
               {{ notification.message }}
             </div>
+            <!-- 进度条 -->
+            <div v-if="notification.progress !== undefined" class="notification-progress">
+              <div class="notification-progress-track">
+                <div
+                  class="notification-progress-fill"
+                  :style="{ width: Math.min(100, Math.max(0, notification.progress)) + '%' }"
+                ></div>
+              </div>
+            </div>
+            <!-- 操作按钮 -->
+            <div v-if="notification.actions && notification.actions.length > 0" class="notification-actions">
+              <button
+                v-for="(action, idx) in notification.actions"
+                :key="idx"
+                :class="['notification-action-btn', action.type === 'primary' ? 'primary' : 'default']"
+                @click="action.onClick"
+              >
+                {{ action.label }}
+              </button>
+            </div>
           </div>
-          
+
           <!-- 关闭按钮 -->
-          <button 
+          <button
             v-if="notification.type !== 'loading'"
-            class="notification-close" 
+            class="notification-close"
             @click="hideNotification(notification.id)"
             aria-label="Close notification"
           >
@@ -288,6 +308,63 @@ defineExpose({
   color: var(--text-color-secondary, #666666);
   line-height: 1.4;
   word-wrap: break-word;
+}
+
+/* 进度条 */
+.notification-progress {
+  margin-top: 10px;
+}
+
+.notification-progress-track {
+  width: 100%;
+  height: 4px;
+  background: var(--hover-bg-color, #f0f0f0);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.notification-progress-fill {
+  height: 100%;
+  background: #1890ff;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* 操作按钮 */
+.notification-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  justify-content: flex-end;
+}
+
+.notification-action-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.notification-action-btn.default {
+  background: transparent;
+  border-color: var(--border-color, #e1e5e9);
+  color: var(--text-color, #333);
+}
+
+.notification-action-btn.default:hover {
+  background: var(--hover-bg-color, #f5f5f5);
+}
+
+.notification-action-btn.primary {
+  background: #1890ff;
+  color: #fff;
+}
+
+.notification-action-btn.primary:hover {
+  background: #1677cc;
 }
 
 /* 关闭按钮 */

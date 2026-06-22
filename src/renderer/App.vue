@@ -90,41 +90,10 @@
             <!-- Main Content -->
             <n-layout>
               <n-layout-content class="main-content">
-                <!-- Update download progress bar (non-blocking) -->
-                <div v-if="updateStore.status === 'downloading' || updateStore.status === 'downloaded'" class="update-bar">
-                  <div :class="['update-bar-inner', updateStore.status === 'downloaded' ? 'ready' : '']">
-                    <span class="update-bar-icon">{{ updateStore.status === 'downloaded' ? '✅' : '⬇️' }}</span>
-                    <div class="update-bar-content">
-                      <div class="update-bar-title">
-                        {{ updateStore.status === 'downloaded' ? $t('update.downloaded') : $t('update.downloading', { version: updateStore.latestVersion || '' }) }}
-                      </div>
-                      <div v-if="updateStore.status === 'downloading'" class="update-bar-sub">
-                        {{ updateStore.downloadPercent.toFixed(2) }}% · {{ formatUpdateSpeed(updateStore.downloadSpeed || 0) }}
-                      </div>
-                      <div v-if="updateStore.status === 'downloading'" class="update-bar-track">
-                        <div class="update-bar-fill" :style="{ width: updateStore.downloadPercent + '%' }"></div>
-                      </div>
-                    </div>
-                    <n-button
-                      v-if="updateStore.status === 'downloaded'"
-                      size="small"
-                      type="primary"
-                      @click="handleUpdateRestart"
-                    >
-                      {{ $t('update.restartNow') }}
-                    </n-button>
-                  </div>
-                </div>
                 <n-dialog-provider>
                   <router-view />
                 </n-dialog-provider>
                 <QuitDialog />
-                <UpdateDialog
-                  @close="handleUpdateClose"
-                  @download="handleUpdateDownload"
-                  @restart="handleUpdateRestart"
-                  @retry="handleUpdateRetry"
-                />
               </n-layout-content>
             </n-layout>
           </n-layout>
@@ -163,8 +132,6 @@ import UpdateService from '@services/UpdateService'
 import StoreService from '@services/StoreService'
 import SettingsService from '@services/SettingsService'
 import { useToolStore, useAppConfigStore, useSystemStore } from '@stores/index'
-import UpdateDialog from '@components/UpdateDialog.vue'
-import { useUpdateStore } from '@stores/updateStore'
 
 const router = useRouter()
 const route = useRoute()
@@ -306,39 +273,6 @@ const showRetryButton = ref(false)
 const retryCount = ref(0)
 const maxRetries = 3
 
-const updateStore = useUpdateStore()
-
-function formatUpdateSpeed(bytesPerSecond: number): string {
-  if (!bytesPerSecond) return ''
-  if (bytesPerSecond < 1024) return `${bytesPerSecond} B/s`
-  if (bytesPerSecond < 1048576) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`
-  return `${(bytesPerSecond / 1048576).toFixed(1)} MB/s`
-}
-
-async function handleUpdateClose(): Promise<void> {
-  updateStore.reset()
-}
-
-async function handleUpdateDownload(): Promise<void> {
-  const updateService = await serviceManager.getService('update')
-  if (updateService) {
-    await updateService.downloadUpdate()
-  }
-}
-
-async function handleUpdateRestart(): Promise<void> {
-  const updateService = await serviceManager.getService('update')
-  if (updateService) {
-    await updateService.quitAndInstall()
-  }
-}
-
-async function handleUpdateRetry(): Promise<void> {
-  const updateService = await serviceManager.getService('update')
-  if (updateService) {
-    await updateService.checkForUpdates()
-  }
-}
 
 const loadingTime = ref('0.0')
 let timerInterval: ReturnType<typeof setInterval> | null = null
@@ -621,36 +555,6 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-/* Update progress bar */
-.update-bar {
-  position: fixed;
-  top: 0;
-  left: 220px;
-  right: 0;
-  z-index: 100;
-  padding: 0 24px;
-}
-.update-bar-inner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: #f0fdf4;
-  border: 1px solid #86efac;
-  border-radius: 0 0 10px 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-}
-.update-bar-inner.ready {
-  background: #eff6ff;
-  border-color: #93c5fd;
-}
-.update-bar-icon { font-size: 16px; flex-shrink: 0; }
-.update-bar-content { flex: 1; min-width: 0; }
-.update-bar-title { font-size: 13px; font-weight: 600; color: #166534; }
-.update-bar-inner.ready .update-bar-title { color: #1e40af; }
-.update-bar-sub { font-size: 12px; color: #15803d; margin-top: 2px; }
-.update-bar-track { height: 3px; background: #dcfce7; border-radius: 2px; margin-top: 4px; }
-.update-bar-fill { height: 100%; background: #22c55e; border-radius: 2px; transition: width 0.3s ease; }
 </style>
 
 <style>

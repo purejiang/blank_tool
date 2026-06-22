@@ -3,6 +3,12 @@
  */
 type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'loading' | string;
 
+export interface NotificationAction {
+    label: string
+    type?: 'primary' | 'default'
+    onClick: () => void
+}
+
 interface NotificationData {
     id: number;
     type: NotificationType;
@@ -10,6 +16,8 @@ interface NotificationData {
     message: string;
     duration: number;
     timestamp: number;
+    progress?: number;        // 0-100, 显示进度条
+    actions?: NotificationAction[];  // 操作按钮
 }
 
 type NotificationCallback = (...args: unknown[]) => void;
@@ -50,24 +58,33 @@ class NotificationService {
      * @param {number} duration - 显示时长(毫秒)，0表示不自动关闭
      * @returns {number} 通知ID
      */
-    show(type: NotificationType = 'info', title = '', message = '', duration = 8000) {
+    show(
+        type: NotificationType = 'info',
+        title = '',
+        message = '',
+        duration = 8000,
+        progress?: number,
+        actions?: NotificationAction[]
+    ) {
         const id = this.nextId++;
-        
-        const notificationData = {
+
+        const notificationData: NotificationData = {
             id,
             type,
             title,
             message,
             duration,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            progress,
+            actions,
         };
-        
+
         // 存储通知数据
         this.notifications.set(id, notificationData);
-        
+
         // 触发显示事件
         this.emit('show', notificationData);
-        
+
         return id;
     }
 
@@ -151,21 +168,23 @@ class NotificationService {
     /**
      * 更新加载通知
      */
-    updateLoading(id: number, title: string, message: string) {
-        this.update(id, { title, message });
+    updateLoading(id: number, title: string, message: string, progress?: number) {
+        this.update(id, { title, message, progress });
     }
 
     /**
      * 完成加载通知（转换为成功通知）
      */
-    completeLoading(id: number, title: string, message: string, duration = 3000) {
-        this.update(id, { 
-            type: 'success', 
-            title, 
-            message, 
-            duration 
+    completeLoading(id: number, title: string, message: string, actions?: NotificationAction[], duration = 3000) {
+        this.update(id, {
+            type: 'success',
+            title,
+            message,
+            duration,
+            progress: undefined,
+            actions,
         });
-        
+
         // 自动关闭
         if (duration > 0) {
             setTimeout(() => {
@@ -177,14 +196,16 @@ class NotificationService {
     /**
      * 失败加载通知（转换为错误通知）
      */
-    failLoading(id: number, title: string, message: string, duration = 0) {
-        this.update(id, { 
-            type: 'error', 
-            title, 
-            message, 
-            duration 
+    failLoading(id: number, title: string, message: string, actions?: NotificationAction[], duration = 0) {
+        this.update(id, {
+            type: 'error',
+            title,
+            message,
+            duration,
+            progress: undefined,
+            actions,
         });
-        
+
         // 自动关闭
         if (duration > 0) {
             setTimeout(() => {
