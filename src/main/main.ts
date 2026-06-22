@@ -8,6 +8,7 @@ import { appStore } from './stores/index';
 import { setupAllHandlers } from './ipc/index';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../shared/config/pathConfig';
 import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
+import { initAutoUpdater, autoCheckForUpdates } from './updater/updater';
 
 // 配置日志
 log.transports.file.level = 'info';
@@ -294,6 +295,12 @@ app.whenReady().then(async () => {
   setupAllHandlers(() => pythonProcess, ensurePythonService);
 
   createWindow();
+
+  // Auto-update check (3s delay to avoid impacting startup)
+  setTimeout(() => {
+    initAutoUpdater()
+    autoCheckForUpdates()
+  }, 3000)
 });
 
 app.on('window-all-closed', () => {
