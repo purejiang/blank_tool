@@ -30,6 +30,9 @@ export function initAutoUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.allowDowngrade = false
   autoUpdater.allowPrerelease = false
+  if (DEV_FORCE) {
+    autoUpdater.forceDevUpdateConfig = true
+  }
 
   autoUpdater.on('checking-for-update', () => {
     log.info('AutoUpdater: checking for update...')
