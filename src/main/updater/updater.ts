@@ -4,9 +4,6 @@ import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 
 let initialized = false
-const DEV_FORCE = process.env.BT_FORCE_UPDATE === '1'
-const enabled = app.isPackaged || DEV_FORCE
-log.info(`AutoUpdater: packaged=${app.isPackaged} dev_force=${DEV_FORCE} enabled=${enabled}`)
 
 function sendToAllWindows(channel: string, data: unknown): void {
   const wins = BrowserWindow.getAllWindows()
@@ -21,8 +18,8 @@ export function initAutoUpdater(): void {
   if (initialized) return
   initialized = true
 
-  if (!enabled) {
-    log.info('AutoUpdater: disabled (not packaged and BT_FORCE_UPDATE != 1)')
+  if (!app.isPackaged) {
+    log.info('AutoUpdater: disabled in dev mode')
     return
   }
 
@@ -30,9 +27,6 @@ export function initAutoUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.allowDowngrade = false
   autoUpdater.allowPrerelease = false
-  if (DEV_FORCE) {
-    autoUpdater.forceDevUpdateConfig = true
-  }
 
   autoUpdater.on('checking-for-update', () => {
     log.info('AutoUpdater: checking for update...')
@@ -77,8 +71,7 @@ export async function checkForUpdatesManual(): Promise<{
   version?: string
   releaseNotes?: string
 }> {
-  if (!enabled) {
-    log.info('AutoUpdater: checkForUpdatesManual skipped (disabled)')
+  if (!app.isPackaged) {
     return { updateAvailable: false }
   }
   try {
@@ -97,7 +90,7 @@ export async function checkForUpdatesManual(): Promise<{
 }
 
 export async function autoCheckForUpdates(): Promise<void> {
-  if (!enabled) return
+  if (!app.isPackaged) return
   try {
     await autoUpdater.checkForUpdates()
   } catch {
