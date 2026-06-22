@@ -119,19 +119,19 @@ def download_file(params, stream_handler):
         logger.error(f"Download HTTP error: {e.code} {e.reason}")
         stream_handler({
             "type": "error",
-            "payload": {"message": f"下载失败: HTTP {e.code} {e.reason}"},
+            "payload": {"task_id": task_id, "message": f"下载失败: HTTP {e.code} {e.reason}"},
         })
     except URLError as e:
         logger.error(f"Download URL error: {e.reason}")
         stream_handler({
             "type": "error",
-            "payload": {"message": f"下载失败: {e.reason}"},
+            "payload": {"task_id": task_id, "message": f"下载失败: {e.reason}"},
         })
     except Exception as e:
         logger.error(f"Download error: {e}")
         stream_handler({
             "type": "error",
-            "payload": {"message": str(e)},
+            "payload": {"task_id": task_id, "message": str(e)},
         })
 
 
