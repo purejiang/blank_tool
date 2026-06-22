@@ -99,7 +99,7 @@
                         {{ updateStore.status === 'downloaded' ? $t('update.downloaded') : $t('update.downloading', { version: updateStore.latestVersion || '' }) }}
                       </div>
                       <div v-if="updateStore.status === 'downloading'" class="update-bar-sub">
-                        {{ updateStore.downloadPercent.toFixed(0) }}% · {{ formatUpdateSpeed(updateStore.downloadSpeed || 0) }}
+                        {{ updateStore.downloadPercent.toFixed(2) }}% · {{ formatUpdateSpeed(updateStore.downloadSpeed || 0) }}
                       </div>
                       <div v-if="updateStore.status === 'downloading'" class="update-bar-track">
                         <div class="update-bar-fill" :style="{ width: updateStore.downloadPercent + '%' }"></div>
@@ -320,7 +320,10 @@ async function handleUpdateClose(): Promise<void> {
 }
 
 async function handleUpdateDownload(): Promise<void> {
-  // Triggered from UpdateDialog; auto-download is already running
+  const updateService = await serviceManager.getService('update')
+  if (updateService) {
+    await updateService.downloadUpdate()
+  }
 }
 
 async function handleUpdateRestart(): Promise<void> {

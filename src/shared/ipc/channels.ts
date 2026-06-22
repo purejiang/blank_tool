@@ -34,6 +34,7 @@ export const IPC_CHANNELS = {
 
   // Update — Renderer → Main
   checkForUpdates: { name: 'check-for-updates', direction: 'renderer-to-main' },
+  downloadUpdate: { name: 'download-update', direction: 'renderer-to-main' },
   quitAndInstall: { name: 'quit-and-install', direction: 'renderer-to-main' },
 
   // Update — Main → Renderer

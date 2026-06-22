@@ -35,7 +35,7 @@
     <!-- Downloading state -->
     <div v-else-if="store.status === 'downloading'" class="update-body">
       <div class="download-info">
-        <span>{{ store.downloadPercent.toFixed(0) }}%</span>
+        <span>{{ store.downloadPercent.toFixed(2) }}%</span>
         <span v-if="store.downloadSpeed">{{ formatSpeed(store.downloadSpeed) }}</span>
       </div>
       <n-progress
@@ -93,8 +93,9 @@ const emit = defineEmits<{
   retry: []
 }>()
 
+// 下载进度在顶部进度条显示，弹窗只处理需要用户操作的阶段
 const visible = computed(() =>
-  ['checking', 'available', 'downloading', 'downloaded', 'error'].includes(store.status)
+  ['checking', 'available', 'error'].includes(store.status)
 )
 
 const statusIcon = computed(() => {
@@ -126,7 +127,6 @@ function formatSpeed(bytesPerSecond: number): string {
 }
 
 function handleClose(): void {
-  if (store.status === 'downloading') return // prevent closing during download
   emit('close')
 }
 

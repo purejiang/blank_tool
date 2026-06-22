@@ -108,6 +108,25 @@ class UpdateService {
     }
   }
 
+  async downloadUpdate(): Promise<void> {
+    const store = this.getStore()
+    store.setStatus('downloading')
+    store.setError(null)
+
+    const api = unifiedApi.getAPI()
+    try {
+      if (api && typeof api.downloadUpdate === 'function') {
+        await api.downloadUpdate()
+      } else {
+        throw new Error('downloadUpdate not available')
+      }
+    } catch (err: any) {
+      store.setError(err.message || 'Download failed')
+      store.setStatus('error')
+      throw err
+    }
+  }
+
   async quitAndInstall(): Promise<void> {
     const api = unifiedApi.getAPI()
     try {

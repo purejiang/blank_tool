@@ -247,6 +247,7 @@ const electronApi = {
   
   // 更新相关 - 系统调用
   checkForUpdates: () => ipcInvoke(IPC_CHANNEL_NAMES.checkForUpdates),
+  downloadUpdate: () => ipcInvoke(IPC_CHANNEL_NAMES.downloadUpdate),
   quitAndInstall: () => ipcInvoke(IPC_CHANNEL_NAMES.quitAndInstall),
 
   // 更新事件监听 (each returns unsubscribe function)

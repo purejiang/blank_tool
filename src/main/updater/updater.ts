@@ -24,7 +24,7 @@ export function initAutoUpdater(): void {
   }
 
   autoUpdater.logger = log
-  autoUpdater.autoDownload = true
+  autoUpdater.autoDownload = false
   autoUpdater.allowDowngrade = false
   autoUpdater.allowPrerelease = false
 
@@ -98,6 +98,16 @@ export async function autoCheckForUpdates(): Promise<void> {
     await autoUpdater.checkForUpdates()
   } catch {
     // "no update available" throws in electron-updater; silently ignore for auto-check
+  }
+}
+
+export async function downloadUpdate(): Promise<void> {
+  if (!app.isPackaged) return
+  try {
+    await autoUpdater.downloadUpdate()
+  } catch (e: any) {
+    log.error('AutoUpdater: download failed:', e.message)
+    throw e
   }
 }
 
