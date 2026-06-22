@@ -222,12 +222,16 @@ const toolPaths = reactive<Record<string, string>>({})
 
 const toolList = computed(() => {
   const names = ['adb', 'aapt', 'apktool', 'bundletool', 'zipalign', 'apksigner', 'jarsigner']
-  return names.map(name => ({
-    name,
-    status: tools[name]?.status || 'unavailable',
-    version: tools[name]?.version || '',
-    defaultPath: tools[name]?.path || '',
-  }))
+  const toolsArr = tools.value || tools
+  return names.map(name => {
+    const tool = Array.isArray(toolsArr) ? toolsArr.find((t: any) => t.name === name || t.key === name) : toolsArr[name]
+    return {
+      name,
+      status: tool?.status || 'unavailable',
+      version: tool?.version || '',
+      defaultPath: tool?.path || '',
+    }
+  })
 })
 
 const openAddSignature = () => { sigEditing.value = null; sigModalVisible.value = true }
