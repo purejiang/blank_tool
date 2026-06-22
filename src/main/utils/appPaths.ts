@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import path from 'path'
+import { existsSync, mkdirSync } from 'fs'
 
 const APP_DIR_NAME = 'blank_tool'
 
@@ -42,8 +43,7 @@ export function getAppRoamingDataPath(): string {
  * 确保指定目录存在（递归创建）
  */
 export function ensureDir(dirPath: string): void {
-  const fs = require('fs')
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true })
+  if (!existsSync(dirPath)) {
+    mkdirSync(dirPath, { recursive: true })
   }
 }
