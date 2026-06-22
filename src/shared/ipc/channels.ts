@@ -31,6 +31,17 @@ export const IPC_CHANNELS = {
   streamEvent: { name: 'stream-event', direction: 'main-to-renderer', payload: 'BackendStreamEvent' },
   showQuitDialog: { name: 'show-quit-dialog', direction: 'main-to-renderer' },
   respondQuitDialog: { name: 'respond-quit-dialog', direction: 'renderer-to-main', payload: 'string' },
+
+  // Update — Renderer → Main
+  checkForUpdates: { name: 'check-for-updates', direction: 'renderer-to-main' },
+  quitAndInstall: { name: 'quit-and-install', direction: 'renderer-to-main' },
+
+  // Update — Main → Renderer
+  updateAvailable: { name: 'update-available', direction: 'main-to-renderer', payload: '{ version: string, releaseNotes: string, releaseDate: string }' },
+  updateNotAvailable: { name: 'update-not-available', direction: 'main-to-renderer', payload: '{ version: string }' },
+  downloadProgress: { name: 'download-progress', direction: 'main-to-renderer', payload: '{ percent: number, bytesPerSecond: number, transferred: number, total: number }' },
+  updateDownloaded: { name: 'update-downloaded', direction: 'main-to-renderer', payload: '{ version: string }' },
+  updateError: { name: 'update-error', direction: 'main-to-renderer', payload: '{ message: string }' },
 } as const satisfies Record<string, IpcChannelDefinition>
 
 // Flat accessor for backward compat during migration
