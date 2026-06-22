@@ -60,7 +60,7 @@
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
           <n-form-item :label="t('settings.runtime')">
-            <div style="display:flex;align-items:center;gap:8px">
+            <div class="environ-path-input" style="display:flex;align-items:center;gap:8px">
               <n-input :value="displayPaths.runtime" readonly style="width: 320px" placeholder=".\runtime" />
               <n-button size="small" @click="handleBrowseDirectory('runtime')">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
@@ -69,7 +69,7 @@
             </div>
           </n-form-item>
           <n-form-item :label="t('settings.backend')">
-            <div style="display:flex;align-items:center;gap:8px">
+            <div class="environ-path-input" style="display:flex;align-items:center;gap:8px">
               <n-input :value="displayPaths.server" readonly style="width: 320px" placeholder=".\backend" />
               <n-button size="small" @click="handleBrowseDirectory('server')">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
@@ -461,6 +461,7 @@ onMounted(() => {
 .tool-path-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 90px; font-family: 'Fira Code', monospace; padding-left: 4px; }
 .tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
 .tool-path-input-wrap :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
+.environ-path-input :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
