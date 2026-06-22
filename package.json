@@ -1,6 +1,6 @@
 {
   "name": "blank_tool",
-  "version": "1.0.1",
+  "version": "2.0.5",
   "main": "dist/main/main.js",
   "type": "module",
   "scripts": {
@@ -69,6 +69,11 @@
     },
     "linux": {
       "target": "AppImage"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "purejiang",
+      "repo": "blank_tool"
     }
   },
   "devDependencies": {
@@ -94,6 +99,7 @@
     "@vicons/ionicons5": "^0.13.0",
     "@vitejs/plugin-vue": "^5.2.4",
     "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2",
     "electron-store": "^11.0.2",
     "lucide-vue-next": "^1.0.0",
     "naive-ui": "^2.44.1",
