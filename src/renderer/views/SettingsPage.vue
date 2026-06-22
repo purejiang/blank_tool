@@ -458,8 +458,9 @@ onMounted(() => {
 
 .tool-path-list { display: flex; flex-direction: column; gap: 8px; }
 .tool-path-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-.tool-path-name { font-size: 13px; color: var(--app-text-muted); min-width: 90px; }
+.tool-path-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 90px; font-family: 'Fira Code', monospace; }
 .tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
+.tool-path-input-wrap :deep(.n-input__input-el) { font-family: 'Fira Code', monospace; font-size: 13px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
