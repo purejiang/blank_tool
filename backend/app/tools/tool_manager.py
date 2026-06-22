@@ -9,7 +9,7 @@ import platform
 import pkgutil
 import importlib
 import threading
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from app.tools.base_tool import BaseTool
 from app.utils.logger import Logger
@@ -29,6 +29,7 @@ class ToolRegistry:
         self.search_system = search_system or env_flag
         self.logger = Logger.get_logger("ToolRegistry")
         self._tools: Dict[str, BaseTool] = {}
+        self._custom_paths: Dict[str, str] = {}
         self._discovered: Dict[str, type] = {}
         self._discover_lock = threading.Lock()
         self._initialized = False
@@ -85,6 +86,13 @@ class ToolRegistry:
         if not tool_cls:
             raise ToolNotFoundError(name)
 
+        # Check for custom path override first
+        custom_path = self._custom_paths.get(name)
+        if custom_path:
+            instance = tool_cls(name=name, path=custom_path, search_system=False)
+            self._tools[name] = instance
+            return instance
+
         default_path = self._default_tool_path(name)
 
         # Same construction logic as the original ToolManager for backward
@@ -130,6 +138,40 @@ class ToolRegistry:
     def refresh(self):
         """Clear cached instances so the next get() re-instantiates."""
         self._tools.clear()
+
+    # ------------------------------------------------------------------
+    # Custom path management
+    # ------------------------------------------------------------------
+
+    def set_custom_path(self, name: str, path: str) -> Dict[str, Any]:
+        """Set a custom path for a tool and re-validate it."""
+        self._custom_paths[name] = path
+        # Clear cached instance so next get() re-instantiates
+        self._tools.pop(name, None)
+        # Re-instantiate and validate
+        tool = self.get(name)
+        return {
+            "name": name,
+            "path": getattr(tool, "tool_path", ""),
+            "is_valid": bool(getattr(tool, "is_valid", False)),
+            "version": getattr(tool, "version", "") if getattr(tool, "is_valid", False) else "",
+        }
+
+    def reset_custom_path(self, name: str) -> Dict[str, Any]:
+        """Reset a tool to its default path."""
+        self._custom_paths.pop(name, None)
+        self._tools.pop(name, None)
+        tool = self.get(name)
+        return {
+            "name": name,
+            "path": getattr(tool, "tool_path", ""),
+            "is_valid": bool(getattr(tool, "is_valid", False)),
+            "version": getattr(tool, "version", "") if getattr(tool, "is_valid", False) else "",
+        }
+
+    def get_custom_paths(self) -> Dict[str, str]:
+        """Return all custom path overrides."""
+        return dict(self._custom_paths)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -231,6 +273,15 @@ class ToolManager:
 
     def refresh_tools(self):
         self._registry.refresh()
+
+    def set_custom_path(self, name: str, path: str):
+        return self._registry.set_custom_path(name, path)
+
+    def reset_custom_path(self, name: str):
+        return self._registry.reset_custom_path(name)
+
+    def get_custom_paths(self):
+        return self._registry.get_custom_paths()
 
     def _default_tool_path(self, key: str) -> str:
         return self._registry._default_tool_path(key)
