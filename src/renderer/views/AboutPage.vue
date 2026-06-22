@@ -9,10 +9,39 @@
 
     <div class="about-content">
 
+      <!-- Build Info -->
+      <n-card :bordered="false" class="about-card">
+        <div class="section-header">
+          <n-icon size="18" color="#22C55E"><Layers /></n-icon>
+          <span class="section-title">{{ t('settings.buildInfo') }}</span>
+        </div>
+        <div class="info-grid">
+          <div class="info-row"><span class="info-label">{{ t('settings.appVersion') }}</span><span class="info-val">{{ buildInfo.appVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || t('common.unknown') }}</span></div>
+        </div>
+        <div class="update-section">
+          <div class="update-status">
+            <span class="update-label">{{ $t('update.title') }}</span>
+            <span v-if="updateStatusText" class="update-status-text">{{ updateStatusText }}</span>
+          </div>
+          <n-button
+            size="small"
+            :disabled="updateButtonDisabled"
+            :loading="updateStore.status === 'checking'"
+            @click="checkForUpdate"
+          >
+            {{ updateButtonText }}
+          </n-button>
+        </div>
+      </n-card>
+
       <!-- Bundled Tools -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
-          <n-icon size="18" color="#22C55E"><Wrench /></n-icon>
+          <n-icon size="18" color="#64748B"><Wrench /></n-icon>
           <span class="section-title">{{ t('settings.tools') }}</span>
         </div>
         <div class="info-grid">
@@ -39,21 +68,6 @@
         </div>
       </n-card>
 
-      <!-- Build Info -->
-      <n-card :bordered="false" class="about-card">
-        <div class="section-header">
-          <n-icon size="18" color="#64748B"><Layers /></n-icon>
-          <span class="section-title">{{ t('settings.buildInfo') }}</span>
-        </div>
-        <div class="info-grid">
-          <div class="info-row"><span class="info-label">{{ t('settings.appVersion') }}</span><span class="info-val">{{ buildInfo.appVersion || t('common.unknown') }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || t('common.unknown') }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || t('common.unknown') }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || t('common.unknown') }}</span></div>
-          <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || t('common.unknown') }}</span></div>
-        </div>
-      </n-card>
-
     </div>
   </div>
 </template>
@@ -61,9 +75,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
+import { NIcon, useMessage } from 'naive-ui'
 import { Wrench, Cpu, Layers } from 'lucide-vue-next'
 import { useSystemStore, useToolStore } from '@stores/index'
+import { useUpdateStore } from '@stores/updateStore'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
@@ -71,6 +86,40 @@ const toolStore = useToolStore()
 const tools = toolStore.tools
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
+
+const updateStore = useUpdateStore()
+const message = useMessage()
+
+const updateButtonText = computed(() => {
+  if (updateStore.status === 'checking') return t('update.checking')
+  if (updateStore.status === 'available') return t('update.newVersion')
+  if (updateStore.status === 'downloaded') return t('update.restartNow')
+  return t('update.checkUpdate')
+})
+
+const updateButtonDisabled = computed(() =>
+  updateStore.status === 'checking' || updateStore.status === 'downloading'
+)
+
+const updateStatusText = computed(() => {
+  if (updateStore.status === 'not-available') return t('update.upToDate')
+  if (updateStore.status === 'error') return updateStore.error || t('update.error')
+  if (updateStore.status === 'downloaded') return `${t('update.downloaded')} (v${updateStore.latestVersion})`
+  if (updateStore.status === 'available') return `v${updateStore.latestVersion} ${t('update.newVersion')}`
+  return ''
+})
+
+async function checkForUpdate(): Promise<void> {
+  try {
+    const api = window.electronAPI as any
+    const result = await api.checkForUpdates()
+    if (!result || !result.updateAvailable) {
+      message.success(t('update.upToDate'))
+    }
+  } catch (err: any) {
+    message.error(err.message || t('update.error'))
+  }
+}
 
 const cpuText = computed(() => {
   const count = parseInt(systemInfo.cpuCount) || 0
@@ -94,4 +143,8 @@ const cpuText = computed(() => {
 .info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
 .info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
 .info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
+.update-section { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--app-border); gap: 12px; }
+.update-status { display: flex; flex-direction: column; gap: 2px; }
+.update-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
+.update-status-text { font-size: 12px; color: var(--app-text-muted); }
 </style>
