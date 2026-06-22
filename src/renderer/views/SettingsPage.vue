@@ -95,7 +95,7 @@
                 :value="toolPaths[tool.name] || tool.defaultPath"
                 readonly
                 :placeholder="tool.defaultPath || ''"
-                style="width: 320px; --n-text-color: var(--app-text-secondary); --n-placeholder-color: var(--app-text-dim);"
+                style="width: 320px"
               />
               <n-button size="small" @click="handleBrowseToolPath(tool.name)">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
@@ -458,8 +458,9 @@ onMounted(() => {
 
 .tool-path-list { display: flex; flex-direction: column; gap: 8px; }
 .tool-path-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-.tool-path-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 90px; font-family: 'Fira Code', monospace; }
+.tool-path-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 90px; font-family: 'Fira Code', monospace; padding-left: 4px; }
 .tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
+.tool-path-input-wrap :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
