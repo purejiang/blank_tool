@@ -18,11 +18,6 @@ export function initAutoUpdater(): void {
   if (initialized) return
   initialized = true
 
-  if (!app.isPackaged) {
-    log.info('AutoUpdater: disabled in dev mode')
-    return
-  }
-
   autoUpdater.logger = log
   autoUpdater.autoDownload = false
   autoUpdater.allowDowngrade = false
@@ -72,9 +67,6 @@ export async function checkForUpdatesManual(): Promise<{
   releaseNotes?: string
   error?: string
 }> {
-  if (!app.isPackaged) {
-    return { updateAvailable: false }
-  }
   try {
     const result = await autoUpdater.checkForUpdates()
     if (result?.updateInfo) {
@@ -93,7 +85,6 @@ export async function checkForUpdatesManual(): Promise<{
 }
 
 export async function autoCheckForUpdates(): Promise<void> {
-  if (!app.isPackaged) return
   try {
     await autoUpdater.checkForUpdates()
   } catch {
@@ -102,7 +93,6 @@ export async function autoCheckForUpdates(): Promise<void> {
 }
 
 export async function downloadUpdate(): Promise<void> {
-  if (!app.isPackaged) return
   try {
     await autoUpdater.downloadUpdate()
   } catch (e: any) {

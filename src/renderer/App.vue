@@ -94,6 +94,7 @@
                   <router-view />
                 </n-dialog-provider>
                 <QuitDialog />
+                <Notification />
               </n-layout-content>
             </n-layout>
           </n-layout>
@@ -120,6 +121,7 @@ import serviceManager from '@services/ServiceManager'
 import { ThemeService } from '@services/ThemeService'
 import ToolService from '@services/ToolService'
 import NotificationService from '@services/NotificationService'
+import Notification from '@components/common/Notification.vue'
 import unifiedApi from './api/unifiedApi'
 import { persistLocale } from './i18n'
 import ErrorService from '@services/ErrorService'
