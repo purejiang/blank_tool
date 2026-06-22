@@ -6,6 +6,7 @@ import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 let initialized = false
 const DEV_FORCE = process.env.BT_FORCE_UPDATE === '1'
 const enabled = app.isPackaged || DEV_FORCE
+log.info(`AutoUpdater: packaged=${app.isPackaged} dev_force=${DEV_FORCE} enabled=${enabled}`)
 
 function sendToAllWindows(channel: string, data: unknown): void {
   const wins = BrowserWindow.getAllWindows()
@@ -74,6 +75,7 @@ export async function checkForUpdatesManual(): Promise<{
   releaseNotes?: string
 }> {
   if (!enabled) {
+    log.info('AutoUpdater: checkForUpdatesManual skipped (disabled)')
     return { updateAvailable: false }
   }
   try {
