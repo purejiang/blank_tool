@@ -16,25 +16,23 @@
           <span class="section-title">{{ t('settings.buildInfo') }}</span>
         </div>
         <div class="info-grid">
-          <div class="info-row"><span class="info-label">{{ t('settings.appVersion') }}</span><span class="info-val">{{ buildInfo.appVersion || t('common.unknown') }}</span></div>
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.appVersion') }}</span>
+            <span class="info-val">{{ buildInfo.appVersion || t('common.unknown') }}</span>
+            <n-button
+              size="tiny"
+              :disabled="updateButtonDisabled"
+              :loading="updateStore.status === 'checking'"
+              @click="checkForUpdate"
+            >
+              {{ updateButtonText }}
+            </n-button>
+            <span v-if="updateStatusText" class="update-status-inline">{{ updateStatusText }}</span>
+          </div>
           <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || t('common.unknown') }}</span></div>
           <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || t('common.unknown') }}</span></div>
           <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || t('common.unknown') }}</span></div>
           <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || t('common.unknown') }}</span></div>
-        </div>
-        <div class="update-section">
-          <div class="update-status">
-            <span class="update-label">{{ $t('update.title') }}</span>
-            <span v-if="updateStatusText" class="update-status-text">{{ updateStatusText }}</span>
-          </div>
-          <n-button
-            size="small"
-            :disabled="updateButtonDisabled"
-            :loading="updateStore.status === 'checking'"
-            @click="checkForUpdate"
-          >
-            {{ updateButtonText }}
-          </n-button>
         </div>
       </n-card>
 
@@ -143,8 +141,5 @@ const cpuText = computed(() => {
 .info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
 .info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
 .info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
-.update-section { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--app-border); gap: 12px; }
-.update-status { display: flex; flex-direction: column; gap: 2px; }
-.update-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
-.update-status-text { font-size: 12px; color: var(--app-text-muted); }
+.update-status-inline { font-size: 12px; color: #22C55E; white-space: nowrap; }
 </style>
