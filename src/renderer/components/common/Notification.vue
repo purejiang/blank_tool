@@ -93,7 +93,9 @@ const showNotification = (notificationData) => {
     type: notificationData.type || 'info',
     title: notificationData.title || '',
     message: notificationData.message || '',
-    duration: notificationData.duration || 5000
+    duration: notificationData.duration || 5000,
+    progress: notificationData.progress,
+    actions: notificationData.actions,
   }
   
   notifications.value.push(notification)
