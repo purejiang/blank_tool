@@ -92,13 +92,14 @@
             <div class="tool-path-input-wrap">
               <n-input
                 size="small"
-                :value="toolPaths[tool.name] || ''"
+                :value="toolPaths[tool.name] || tool.defaultPath"
+                readonly
                 :placeholder="tool.defaultPath || ''"
-                @blur="(e: any) => handleToolPathChange(tool.name, e.target?.value ?? '')"
-                style="width: 280px"
+                style="width: 320px"
               />
-              <n-button size="tiny" @click="handleBrowseToolPath(tool.name)">
-                <template #icon><n-icon size="14"><FolderOpen /></n-icon></template>
+              <n-button size="small" @click="handleBrowseToolPath(tool.name)">
+                <template #icon><n-icon><FolderOpen /></n-icon></template>
+                {{ t('settings.browse') }}
               </n-button>
             </div>
             <n-button
