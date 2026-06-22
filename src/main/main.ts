@@ -9,6 +9,7 @@ import { setupAllHandlers } from './ipc/index';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../shared/config/pathConfig';
 import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
 import { initAutoUpdater, autoCheckForUpdates } from './updater/updater';
+import { getAppLocalDataPath, ensureDir } from './utils/appPaths';
 
 // 配置日志
 log.transports.file.level = 'info';
@@ -220,12 +221,17 @@ async function startPythonService(): Promise<ChildProcessWithoutNullStreams | nu
   }
 
   try {
-    const userDataPath = app.getPath('userData');
+    const localDataPath = getAppLocalDataPath();
+    const cacheDir = path.join(localDataPath, 'Cache');
+    const outputDir = path.join(localDataPath, 'Output');
+    ensureDir(cacheDir);
+    ensureDir(outputDir);
+
     const env = {
         ...process.env,
         BT_RUNTIME_DIR: absRuntimeDir || '',
-        BT_CACHE_DIR: path.join(userDataPath, 'cache'),
-        BT_OUTPUT_DIR: path.join(userDataPath, 'output')
+        BT_CACHE_DIR: cacheDir,
+        BT_OUTPUT_DIR: outputDir
     };
     log.info(`Spawning Python process with: ${pythonExecutable} ${scriptPath}`);
     pythonProcess = spawn(pythonExecutable, [scriptPath], { env });
