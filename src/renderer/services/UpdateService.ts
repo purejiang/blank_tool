@@ -3,6 +3,7 @@ import type { UpdateStatus } from '@stores/updateStore'
 import unifiedApi from '../api/unifiedApi'
 import NotificationService from './NotificationService'
 import type { NotificationAction } from './NotificationService'
+import i18n from '../i18n'
 
 class UpdateService {
   private store: ReturnType<typeof useUpdateStore> | null = null
@@ -97,54 +98,69 @@ class UpdateService {
     // Dismiss any previous update notification
     this.dismissNotify()
 
+    const { t } = i18n.global
     const ns = await this.getNotificationService()
     const actions: NotificationAction[] = [
       {
-        label: '稍后再说',
+        label: t('update.later'),
         type: 'default',
         onClick: () => this.dismissNotify(),
       },
       {
-        label: '立即下载',
+        label: t('update.download'),
         type: 'primary',
         onClick: () => this.downloadUpdate(),
       },
     ]
-    this.notifyId = ns.show('info', '发现新版本', `版本 ${version} 可用，是否立即下载更新？`, 0, undefined, actions)
+    this.notifyId = ns.show(
+      'info',
+      t('update.newVersion'),
+      `v${version}`,
+      0,
+      undefined,
+      actions,
+    )
   }
 
   private updateDownloadProgress(percent: number): void {
     if (this.notifyId === null) return
-    // Fire-and-forget: the notification service is already resolved
+    const { t } = i18n.global
     this.getNotificationService().then(ns => {
-      ns.updateLoading(this.notifyId!, '', `正在下载... ${percent.toFixed(2)}%`, percent)
+      ns.updateLoading(
+        this.notifyId!,
+        t('update.downloading', { version: this.getStore().latestVersion || '' }),
+        `${percent.toFixed(2)}%`,
+        percent,
+      )
     })
   }
 
   private async showDownloadedNotification(): Promise<void> {
     if (this.notifyId === null) return
+    const { t } = i18n.global
     const ns = await this.getNotificationService()
     const actions: NotificationAction[] = [
       {
-        label: '立即重启',
+        label: t('update.restartNow'),
         type: 'primary',
         onClick: () => this.quitAndInstall(),
       },
     ]
-    ns.completeLoading(this.notifyId, '下载完成', '更新已就绪，点击重启安装新版本', actions, 0)
+    ns.completeLoading(this.notifyId, t('update.downloaded'), t('update.restartToInstall'), actions, 0)
   }
 
   private async showErrorNotification(message: string): Promise<void> {
     this.dismissNotify()
+    const { t } = i18n.global
     const ns = await this.getNotificationService()
     const actions: NotificationAction[] = [
       {
-        label: '重试',
+        label: t('app.retry'),
         type: 'primary',
         onClick: () => this.checkForUpdates(),
       },
     ]
-    this.notifyId = ns.show('error', '更新失败', message, 0, undefined, actions)
+    this.notifyId = ns.show('error', t('update.error'), message, 0, undefined, actions)
   }
 
   private dismissNotify(): void {
@@ -194,11 +210,12 @@ class UpdateService {
 
     // Switch notification to loading state
     if (this.notifyId !== null) {
+      const { t } = i18n.global
       const ns = await this.getNotificationService()
       ns.update(this.notifyId, {
         type: 'loading',
-        title: '正在下载',
-        message: '准备下载...',
+        title: t('update.downloading', { version: store.latestVersion || '' }),
+        message: '0.00%',
         duration: 0,
         progress: 0,
         actions: [],
