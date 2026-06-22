@@ -9,7 +9,7 @@ export interface Task {
   fileName: string
   operation: 'analyze' | 'install' | 'decompile' | 'recompile' | 'resign'
   operationLabel: string
-  status: 'downloading' | 'queued' | 'running' | 'completed' | 'failed'
+  status: 'downloading' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancelling'
   progress: number
   progressLabel: string
   result: string
@@ -35,7 +35,7 @@ function loadTasks(): Task[] {
 
 function saveTasks(tasks: Task[]) {
   try {
-    const toSave = tasks.filter(t => t.status === 'completed' || t.status === 'failed').slice(0, 100)
+    const toSave = tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled').slice(0, 100)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   } catch {}
 }
@@ -83,7 +83,11 @@ export const useTaskStore = defineStore('task', () => {
     const idx = tasks.value.findIndex(t => t.id === id)
     if (idx !== -1) {
       Object.assign(tasks.value[idx], updates)
-      if (updates.status === 'completed' || updates.status === 'failed') persist()
+      // Auto-collapse when task reaches a terminal state
+      if (updates.status === 'completed' || updates.status === 'failed' || updates.status === 'cancelled') {
+        tasks.value[idx].collapsed = true
+        persist()
+      }
     }
   }
 
@@ -101,7 +105,7 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   function clearCompleted() {
-    tasks.value = tasks.value.filter(t => t.status !== 'completed' && t.status !== 'failed')
+    tasks.value = tasks.value.filter(t => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled')
     persist()
   }
 

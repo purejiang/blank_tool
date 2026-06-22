@@ -1,0 +1,5 @@
+2026-06-09 10:47:22 - TaskManager - INFO - Task download_1: cancel requested
+2026-06-09 10:47:22 - TaskManager - INFO - Task download_1: setting stop_event
+2026-06-09 10:47:22 - TaskManager - INFO - Task install_1: registered (holder_id=2156728770112)
+2026-06-09 10:47:22 - TaskManager - INFO - Task install_1: cancel requested
+2026-06-09 10:47:22 - TaskManager - INFO - Task nonexistent: cancel called but task not found

@@ -9,24 +9,27 @@ export class ThemeService {
   private systemDark: boolean
   private mediaQuery: MediaQueryList | null
   private listeners: Set<ThemeChangeCallback>
+  private mediaQueryListener: ((e: MediaQueryListEvent) => void) | null
 
   constructor() {
     this.mode = 'auto'
     this.systemDark = false
     this.mediaQuery = null
     this.listeners = new Set()
+    this.mediaQueryListener = null
   }
 
   async initialize() {
     if (typeof window !== 'undefined' && window.matchMedia) {
       this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
       this.systemDark = this.mediaQuery.matches
-      this.mediaQuery.addEventListener('change', (e) => {
+      this.mediaQueryListener = (e) => {
         this.systemDark = e.matches
         if (this.mode === 'auto') {
           this.notifyListeners()
         }
-      })
+      }
+      this.mediaQuery.addEventListener('change', this.mediaQueryListener)
     }
   }
 
@@ -69,8 +72,9 @@ export class ThemeService {
   }
 
   destroy() {
-    if (this.mediaQuery) {
-      this.mediaQuery.removeEventListener('change', () => {})
+    if (this.mediaQuery && this.mediaQueryListener) {
+      this.mediaQuery.removeEventListener('change', this.mediaQueryListener)
+      this.mediaQueryListener = null
       this.mediaQuery = null
     }
     this.listeners.clear()

@@ -359,13 +359,14 @@ class ApkService {
     async decompileApk(filePath: string, options: any = {}) {
         try {
             const api = unifiedApi.getAPI()
-            
+
             if (api && typeof api.decompileApk === 'function') {
                 const payload = await api.decompileApk(filePath, options)
-                
+
                 const normalizedResult = {
-                    success: !!(payload && payload.output_dir),
+                    success: !!(payload && payload.output_dir && !payload.cancelled),
                     outputPath: payload ? payload.output_dir : null,
+                    cancelled: !!(payload && payload.cancelled),
                     error: null
                 };
 
@@ -389,8 +390,9 @@ class ApkService {
             if (api && typeof api.recompileApk === 'function') {
                 const payload = await api.recompileApk(projectPath, options)
                 const result = {
-                    success: true,
+                    success: !!(payload && payload.output_apk && !payload.cancelled),
                     outputPath: payload ? payload.output_apk : null,
+                    cancelled: !!(payload && payload.cancelled),
                     error: null
                 }
                 this.notifyListeners('recompile-progress', result);
@@ -413,8 +415,9 @@ class ApkService {
             if (api && typeof api.signApk === 'function') {
                 const payload = await api.signApk(apkPath, keystore, options)
                 const result = {
-                    success: true, // 假设成功，因为错误会抛出
+                    success: !!(payload && payload.apk_path && !payload.cancelled),
                     outputPath: payload ? payload.apk_path : null,
+                    cancelled: !!(payload && payload.cancelled),
                     error: null
                 }
                 this.notifyListeners('sign-progress', result);

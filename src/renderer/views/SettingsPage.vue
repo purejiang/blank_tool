@@ -80,6 +80,44 @@
         </n-form>
       </n-card>
 
+      <!-- Tool Paths -->
+      <n-card :bordered="false" class="settings-card">
+        <div class="section-header">
+          <n-icon size="18" color="#22C55E"><Wrench /></n-icon>
+          <span class="section-title">{{ t('settings.toolPaths') }}</span>
+        </div>
+        <div class="tool-path-list">
+          <div v-for="tool in toolList" :key="tool.name" class="tool-path-row">
+            <span class="tool-path-name">{{ tool.name }}</span>
+            <div class="tool-path-input-wrap">
+              <n-input
+                size="small"
+                :value="toolPaths[tool.name] || ''"
+                :placeholder="tool.defaultPath || ''"
+                @blur="(e: any) => handleToolPathChange(tool.name, e.target?.value ?? '')"
+                style="width: 280px"
+              />
+              <n-button size="tiny" @click="handleBrowseToolPath(tool.name)">
+                <template #icon><n-icon size="14"><FolderOpen /></n-icon></template>
+              </n-button>
+            </div>
+            <n-button
+              v-if="customPathOverrides[tool.name]"
+              size="tiny"
+              quaternary
+              type="warning"
+              @click="handleResetToolPath(tool.name)"
+              :loading="resettingTool === tool.name"
+            >
+              {{ t('settings.reset') }}
+            </n-button>
+            <n-icon v-if="validatingTool === tool.name" size="16"><Loader2 class="spin" /></n-icon>
+            <n-icon v-else-if="tool.status === 'available'" size="16" color="#22C55E"><CheckCircle /></n-icon>
+            <n-icon v-else size="16" color="#F59E0B"><AlertCircle /></n-icon>
+          </div>
+        </div>
+      </n-card>
+
       <!-- Signature Configs -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header" style="margin-bottom:12px">
@@ -158,7 +196,7 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
-import { FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers, Settings2, Database, CheckCircle, Wrench, Key, Plus, Edit } from 'lucide-vue-next'
+import { FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers, Settings2, Database, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
@@ -176,6 +214,21 @@ const sigStore = useSignatureStore()
 const sigConfigs = sigStore.configs
 const sigModalVisible = ref(false)
 const sigEditing = ref<any>(null)
+
+const validatingTool = ref<string | null>(null)
+const resettingTool = ref<string | null>(null)
+const customPathOverrides = reactive<Record<string, string>>({})
+const toolPaths = reactive<Record<string, string>>({})
+
+const toolList = computed(() => {
+  const names = ['adb', 'aapt', 'apktool', 'bundletool', 'zipalign', 'apksigner', 'jarsigner']
+  return names.map(name => ({
+    name,
+    status: tools[name]?.status || 'unavailable',
+    version: tools[name]?.version || '',
+    defaultPath: tools[name]?.path || '',
+  }))
+})
 
 const openAddSignature = () => { sigEditing.value = null; sigModalVisible.value = true }
 const openEditSignature = (cfg: any) => { sigEditing.value = cfg; sigModalVisible.value = true }
@@ -316,7 +369,56 @@ const clearStorage = async (target: 'cache' | 'output') => {
   }
 }
 
-onMounted(() => { loadSettings(); refreshCache(); sigStore.loadConfigs() })
+const handleToolPathChange = async (toolName: string, path: string) => {
+  if (!path.trim()) return
+  validatingTool.value = toolName
+  try {
+    const result = await toolStore.setCustomPath(toolName, path.trim())
+    if (result) {
+      toolPaths[toolName] = path.trim()
+      customPathOverrides[toolName] = path.trim()
+    }
+  } catch (e: any) {
+    showError(t('settings.toolPathFailed'), e.message)
+  } finally {
+    validatingTool.value = null
+  }
+}
+
+const handleBrowseToolPath = async (toolName: string) => {
+  try {
+    const svc = await serviceManager.getService('system')
+    const result = await svc.selectFile({ title: `${t('settings.selectToolPath')} - ${toolName}` })
+    if (result?.filePaths?.length) {
+      const filePath = result.filePaths[0]
+      toolPaths[toolName] = filePath
+      await handleToolPathChange(toolName, filePath)
+    }
+  } catch (e) { /* user cancelled */ }
+}
+
+const handleResetToolPath = async (toolName: string) => {
+  resettingTool.value = toolName
+  try {
+    await toolStore.resetCustomPath(toolName)
+    delete customPathOverrides[toolName]
+    toolPaths[toolName] = ''
+  } catch (e: any) {
+    showError(t('settings.toolPathFailed'), e.message)
+  } finally {
+    resettingTool.value = null
+  }
+}
+
+onMounted(() => {
+  loadSettings()
+  refreshCache()
+  sigStore.loadConfigs()
+  toolStore.fetchCustomPaths().then(() => {
+    Object.assign(customPathOverrides, toolStore.customPaths)
+    Object.assign(toolPaths, toolStore.customPaths)
+  })
+})
 </script>
 
 <style scoped>
@@ -348,4 +450,11 @@ onMounted(() => { loadSettings(); refreshCache(); sigStore.loadConfigs() })
 .sig-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); white-space: nowrap; }
 .sig-detail { font-size: 12px; color: var(--app-text-dim); white-space: nowrap; }
 .sig-path { font-size: 11px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+.tool-path-list { display: flex; flex-direction: column; gap: 8px; }
+.tool-path-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.tool-path-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 90px; font-family: 'Fira Code', monospace; }
+.tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

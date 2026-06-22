@@ -1,0 +1,104 @@
+<h2>更新流水线总览</h2>
+<p class="subtitle">从构建到用户获取更新的完整链路</p>
+
+<div class="section">
+  <h3>🏗️ 第一步：构建 & 发布</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">CI / 手动发布流程</div>
+  <div class="mockup-body" style="padding:20px">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <div style="background:var(--color-bg);padding:12px 18px;border-radius:8px;font-family:monospace;font-size:14px">npm run build:win</div>
+      <span style="font-size:20px">→</span>
+      <div style="background:var(--color-bg);padding:12px 18px;border-radius:8px;font-family:monospace;font-size:14px">build/Blank Tool Setup 2.0.6.exe</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="background:var(--color-bg);padding:12px 18px;border-radius:8px;font-family:monospace;font-size:14px">npm run build:mac</div>
+      <span style="font-size:20px">→</span>
+      <div style="background:var(--color-bg);padding:12px 18px;border-radius:8px;font-family:monospace;font-size:14px">build/Blank Tool-2.0.6.dmg</div>
+    </div>
+    <div style="margin-top:20px;padding:16px;background:#f0fdf4;border-radius:8px;border-left:3px solid #22c55e">
+      <strong>关键：electron-builder 发布配置</strong><br/>
+      <code style="font-size:13px">package.json</code> 中加入 <code style="font-size:13px">"publish": { "provider": "github", "owner": "purejiang", "repo": "blank_tool" }</code><br/>
+      然后运行 <code style="font-size:13px">npm run build:win</code> 时加环境变量 <code style="font-size:13px">GH_TOKEN=xxx</code> 即可自动上传到 Release
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>📦 第二步：GitHub Release 存储</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">GitHub Releases 页面</div>
+  <div class="mockup-body" style="padding:20px">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:8px">v2.0.6 (Latest)</div>
+      <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:12px">Release notes: 修复了 xxx 问题，新增了 yyy 功能</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:white;border-radius:6px;border:1px solid #e2e8f0">
+          <span style="font-size:18px">📦</span>
+          <span style="font-family:monospace;font-size:13px">Blank-Tool-Setup-2.0.6.exe</span>
+          <span style="font-size:12px;color:var(--color-text-muted)">128 MB</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:white;border-radius:6px;border:1px solid #e2e8f0">
+          <span style="font-size:18px">🍎</span>
+          <span style="font-family:monospace;font-size:13px">Blank-Tool-2.0.6.dmg</span>
+          <span style="font-size:12px;color:var(--color-text-muted)">145 MB</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:white;border-radius:6px;border:1px solid #e2e8f0">
+          <span style="font-size:18px">🐧</span>
+          <span style="font-family:monospace;font-size:13px">Blank-Tool-2.0.6.AppImage</span>
+          <span style="font-size:12px;color:var(--color-text-muted)">150 MB</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>🔄 第三步：应用内检测 & 下载</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">electron-updater 内部流程</div>
+  <div class="mockup-body" style="padding:20px">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="background:#dbeafe;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;min-width:80px;text-align:center">步骤 1</div>
+        <div>请求 <code style="font-size:12px">api.github.com/repos/purejiang/blank_tool/releases/latest</code></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="background:#dbeafe;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;min-width:80px;text-align:center">步骤 2</div>
+        <div>解析 JSON，比对 <code style="font-size:12px">tag_name</code>（如 v2.0.6）vs 当前 <code style="font-size:12px">app.getVersion()</code></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="background:#dbeafe;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;min-width:80px;text-align:center">步骤 3</div>
+        <div>筛选 assets 中匹配当前平台的安装包（Windows→.exe, macOS→.dmg, Linux→.AppImage）</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="background:#dbeafe;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;min-width:80px;text-align:center">步骤 4</div>
+        <div>下载至用户数据目录，校验 SHA512，完成后触发 <code style="font-size:12px">update-downloaded</code> 事件</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>🚀 第四步：安装</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">NSIS 静默安装</div>
+  <div class="mockup-body" style="padding:20px">
+    <p style="font-size:14px;line-height:1.6">
+      下载的 .exe 就是 NSIS 安装包（和你手动安装的是同一个）。<br/>
+      <code style="font-size:13px">electron-updater</code> 调用 <code style="font-size:13px">Blank-Tool-Setup-2.0.6.exe /S</code>（静默模式），<br/>
+      安装完成后应用自动重启为新版本。
+    </p>
+    <div style="margin-top:12px;padding:12px;background:#fffbeb;border-radius:8px;border-left:3px solid #f59e0b">
+      <strong>⚠️ 注意</strong>：NSIS 静默安装需要权限（写入 Program Files），如果用户安装路径在系统盘，可能会弹 UAC 对话框。这是 Windows 的安全机制，无法绕过。
+    </div>
+  </div>
+</div>

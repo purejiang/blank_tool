@@ -105,6 +105,10 @@ const electronApi = {
   checkTool: (toolName, refresh) => callBackendAPI('tool.get_tools', { tool_name: toolName, refresh }),
   // 设置系统查找模式
   setToolSearchMode: (systemSearch) => callBackendAPI('tool.set_search_mode', { system_search: systemSearch }),
+  // 工具自定义路径
+  setToolCustomPath: (toolName: string, path: string) => callBackendAPI('tool.set_custom_path', { tool_name: toolName, path }),
+  resetToolCustomPath: (toolName: string) => callBackendAPI('tool.reset_custom_path', { tool_name: toolName }),
+  getToolCustomPaths: () => callBackendAPI('tool.get_custom_paths'),
 
   // ========== 设备相关API ==========
   // 设备列表获取

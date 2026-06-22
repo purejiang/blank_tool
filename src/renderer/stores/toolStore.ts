@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import serviceManager from '../services/ServiceManager'
+import api from '../api/unifiedApi'
 
 export const useToolStore = defineStore('tool', () => {
   const tools = ref([])
@@ -11,6 +12,53 @@ export const useToolStore = defineStore('tool', () => {
   // Getters
   const getTool = (name) => tools.value.find(t => t.name === name || t.key === name)
   const availableTools = computed(() => tools.value.filter(t => t.status === 'available'))
+
+  // Custom tool paths
+  const customPaths = ref<Record<string, string>>({})
+
+  async function setCustomPath(toolName: string, path: string) {
+    const electronApi = api.getAPI()
+    if (electronApi?.setToolCustomPath) {
+      const result = await electronApi.setToolCustomPath(toolName, path) as Record<string, any> | undefined
+      if (result) {
+        const index = tools.value.findIndex((t: any) => t.name === toolName || t.key === toolName)
+        if (index !== -1) {
+          const updated = { ...tools.value[index], ...result, path: result.path || path }
+          tools.value[index] = updated
+        }
+        customPaths.value[toolName] = path
+      }
+      return result
+    }
+    throw new Error('setToolCustomPath not available')
+  }
+
+  async function resetCustomPath(toolName: string) {
+    const electronApi = api.getAPI()
+    if (electronApi?.resetToolCustomPath) {
+      const result = await electronApi.resetToolCustomPath(toolName) as Record<string, any> | undefined
+      if (result) {
+        const index = tools.value.findIndex((t: any) => t.name === toolName || t.key === toolName)
+        if (index !== -1) {
+          const updated = { ...tools.value[index], ...result, path: result.path || '' }
+          tools.value[index] = updated
+        }
+        delete customPaths.value[toolName]
+      }
+      return result
+    }
+    throw new Error('resetToolCustomPath not available')
+  }
+
+  async function fetchCustomPaths() {
+    const electronApi = api.getAPI()
+    if (electronApi?.getToolCustomPaths) {
+      const result = await electronApi.getToolCustomPaths()
+      if (result) {
+        customPaths.value = result as Record<string, string>
+      }
+    }
+  }
 
   // Actions
   const fetchTools = async (force = false) => {
@@ -26,8 +74,8 @@ export const useToolStore = defineStore('tool', () => {
       const toolService = await serviceManager.getService('tools')
       // Note: ToolService.checkTools returns an array of tool info objects
       const result = await toolService.checkTools({ refresh: force })
-      
-      // Map result to ensure consistent structure if needed, 
+
+      // Map result to ensure consistent structure if needed,
       // but ToolService seems to return a good structure already.
       tools.value = result
       lastFetched.value = Date.now()
@@ -56,6 +104,10 @@ export const useToolStore = defineStore('tool', () => {
     getTool,
     availableTools,
     fetchTools,
-    updateTool
+    updateTool,
+    customPaths,
+    setCustomPath,
+    resetCustomPath,
+    fetchCustomPaths,
   }
 })

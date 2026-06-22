@@ -15,6 +15,7 @@ import uuid
 from typing import Callable, Any
 
 from app.utils.logger import Logger
+from app.common.task_manager import TaskManager
 from app.protocol import (
     BackendResponse,
     BackendSuccessPayload,
@@ -46,9 +47,12 @@ class ApiHandler:
         for _, name, _ in pkgutil.walk_packages(
             package.__path__, package.__name__ + '.'
         ):
-            module = importlib.import_module(name)
-            if hasattr(module, 'API_MAP'):
-                api_map.update(module.API_MAP)
+            try:
+                module = importlib.import_module(name)
+                if hasattr(module, 'API_MAP'):
+                    api_map.update(module.API_MAP)
+            except Exception as e:
+                self.logger.warning(f"Failed to load handler module '{name}': {e}")
         return api_map
 
     # ------------------------------------------------------------------
@@ -140,6 +144,11 @@ class ApiHandler:
             task_id = params.get("task_id", "")
             stop_event = threading.Event()
 
+            # Register with TaskManager so cancel can signal this stream
+            task_manager = TaskManager()
+            if task_id:
+                task_manager.register_stream(str(task_id), stop_event)
+
             def stream_callback(data: dict):
                 if task_id and isinstance(data, dict):
                     data["task_id"] = str(task_id)
@@ -155,6 +164,7 @@ class ApiHandler:
                 stop_event: threading.Event,
                 stream_callback: Callable[[dict], None],
                 params_dict: dict,
+                stream_id: str,
             ):
                 try:
                     handler(params_dict, stream_callback)
@@ -165,15 +175,18 @@ class ApiHandler:
                         "payload": {"message": str(e)},
                     })
                 finally:
+                    if task_id:
+                        task_manager.unregister(str(task_id))
                     self.send_response({
                         "id": request_id,
                         "stream_id": stream_id,
                         "finished": True,
                     })
+                    self.streaming_threads.pop(stream_id, None)
 
             thread = threading.Thread(
                 target=stream_worker,
-                args=(stop_event, stream_callback, params),
+                args=(stop_event, stream_callback, params, stream_id),
             )
             thread.start()
 

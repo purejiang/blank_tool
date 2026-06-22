@@ -11,11 +11,17 @@ from app.common.exceptions import TimeoutException
 
 
 class ProcessExecutor:
-    """Manages subprocess lifecycle: spawn, monitor, kill."""
+    """Manages subprocess lifecycle: spawn, monitor, kill.
 
-    def __init__(self, timeout: int = 600):
+    If *process_holder* is provided it must be a dict; the running
+    ``subprocess.Popen`` is stored as ``process_holder['process']`` so
+    an external coordinator (e.g. TaskManager) can kill it on cancel.
+    """
+
+    def __init__(self, timeout: int = 600, process_holder: Optional[dict] = None):
         self.timeout = timeout
         self.process: Optional[subprocess.Popen] = None
+        self._process_holder = process_holder
 
     def run(
         self,
@@ -40,6 +46,13 @@ class ProcessExecutor:
             encoding=encoding,
             errors=errors,
         )
+        if self._process_holder is not None:
+            self._process_holder["process"] = self.process
+            self._process_holder["_pid"] = self.process.pid
+            # Cancel may have arrived before the subprocess was spawned
+            if self._process_holder.get("_cancel_pending"):
+                self._kill()
+                return self.process.returncode or -1, "", ""
 
         try:
             stdout, stderr = self.process.communicate(timeout=self.timeout)

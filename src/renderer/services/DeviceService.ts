@@ -403,18 +403,19 @@ class DeviceService {
     if (!dev || !dev.id) return { success: false, error: 'No device selected' }
     const api = unifiedApi.getAPI()
     const isAab = /\.aab$/i.test(apkPath)
+    const taskId = typeof options.task_id === 'string' ? options.task_id : ''
     let resp = null
 
     if (api) {
       if (isAab) {
         if (typeof api.installAab === 'function') {
-          resp = await api.installAab(apkPath, dev.id)
+          resp = await api.installAab(apkPath, dev.id, taskId)
         } else {
           throw new Error('installAab API not implemented')
         }
       } else {
         if (typeof api.installApk === 'function') {
-          resp = await api.installApk(apkPath, dev.id)
+          resp = await api.installApk(apkPath, dev.id, taskId)
         } else {
           throw new Error('installApk API not implemented')
         }
@@ -423,7 +424,8 @@ class DeviceService {
       throw new Error('Unified API not available')
     }
 
-    return { success: true, payload: resp }
+    const cancelled = !!(resp && (resp as any).cancelled)
+    return { success: !cancelled, cancelled, payload: resp }
   }
 }
 

@@ -13,6 +13,7 @@ from urllib.error import URLError, HTTPError
 from app.utils.logger import Logger
 from app.utils.env import get_env, resolve_path
 from app.common.decorators import streaming
+from app.common.task_manager import TaskManager
 
 logger = Logger.get_logger("DownloadHandler")
 
@@ -44,6 +45,8 @@ def download_file(params, stream_handler):
     dest_dir = _downloads_dir()
     dest_path = os.path.join(dest_dir, filename)
 
+    task_manager = TaskManager()
+
     try:
         req = Request(url, headers={"User-Agent": "BlankTool/1.0"})
         resp = urlopen(req, timeout=30)
@@ -55,6 +58,19 @@ def download_file(params, stream_handler):
 
         with open(dest_path, "wb") as f:
             while True:
+                if task_id and task_manager.is_cancelled(task_id):
+                    resp.close()
+                    f.close()
+                    try:
+                        os.remove(dest_path)
+                    except OSError:
+                        pass
+                    stream_handler({
+                        "type": "cancelled",
+                        "payload": {"task_id": task_id},
+                    })
+                    return
+
                 chunk = resp.read(8192)
                 if not chunk:
                     break
@@ -73,11 +89,21 @@ def download_file(params, stream_handler):
                             "downloaded": downloaded,
                             "total": total,
                             "speed": speed,
-                            "label": f"下载中 {pct}%",
                         },
                     })
 
         resp.close()
+
+        if task_id and task_manager.is_cancelled(task_id):
+            try:
+                os.remove(dest_path)
+            except OSError:
+                pass
+            stream_handler({
+                "type": "cancelled",
+                "payload": {"task_id": task_id},
+            })
+            return
 
         stream_handler({
             "type": "complete",

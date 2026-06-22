@@ -1,0 +1,111 @@
+<h2>更新功能 UI 设计</h2>
+<p class="subtitle">三个关键交互界面</p>
+
+<div class="section">
+  <h3>1️⃣ 关于页面 — 检查更新入口</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">AboutPage.vue — 在「构建信息」卡片内增加</div>
+  <div class="mockup-body" style="padding:20px;background:var(--app-bg, #f8fafc)">
+    <!-- Mock card -->
+    <div style="background:white;border-radius:10px;padding:20px;max-width:600px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <span style="font-size:18px">🟢</span>
+        <span style="font-weight:700;font-size:16px;font-family:Inter,sans-serif">构建信息</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;font-family:monospace;color:#475569">
+        <div style="display:flex;justify-content:space-between"><span style="color:#94a3b8">应用版本</span><span>2.0.5</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#94a3b8">Electron</span><span>38.3.0</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#94a3b8">Node.js</span><span>22.12.0</span></div>
+      </div>
+      <!-- Update button -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#1e293b">更新</div>
+          <div style="font-size:12px;color:#94a3b8">当前已是最新版本</div>
+        </div>
+        <button class="mock-button" style="background:var(--app-primary,#6366f1);color:white;border:none;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer">检查更新</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div>
+    <div class="section"><h3>2️⃣ 下载中 — 进度提示条</h3></div>
+    <div class="mockup">
+      <div class="mockup-header">顶部非阻断提示 (App.vue 层级)</div>
+      <div class="mockup-body" style="padding:20px">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;max-width:500px">
+          <span style="font-size:18px">⬇️</span>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:#166534">正在下载 v2.0.6</div>
+            <div style="font-size:12px;color:#15803d">54% · 12.3 MB/s · 剩余 8s</div>
+            <div style="margin-top:4px;height:3px;background:#dcfce7;border-radius:2px">
+              <div style="width:54%;height:100%;background:#22c55e;border-radius:2px"></div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center">后台静默下载，不影响使用</div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="section"><h3>3️⃣ 下载完成 — 安装提示</h3></div>
+    <div class="mockup">
+      <div class="mockup-header">非阻断提示条 或 对话框</div>
+      <div class="mockup-body" style="padding:20px">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:white;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.08);max-width:500px">
+          <span style="font-size:20px">✅</span>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:#1e293b">更新已就绪</div>
+            <div style="font-size:12px;color:#64748b">重启后将自动安装 v2.0.6</div>
+          </div>
+          <button class="mock-button" style="background:#6366f1;color:white;border:none;padding:6px 14px;border-radius:7px;font-size:12px;cursor:pointer">重启安装</button>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center">用户可选择稍后再重启</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:28px">
+  <h3>4️⃣ 手动检查 — 完整对话框</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">UpdateDialog.vue — 用户从关于页手动触发</div>
+  <div class="mockup-body" style="padding:20px;background:var(--app-bg,#f8fafc)">
+    <div style="background:white;border-radius:12px;padding:24px;max-width:440px;margin:0 auto;box-shadow:0 8px 32px rgba(0,0,0,0.1)">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:36px;margin-bottom:8px">🎉</div>
+        <div style="font-size:16px;font-weight:700;font-family:Inter,sans-serif">发现新版本</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px">
+          <span style="font-size:13px;color:#64748b">v2.0.5</span>
+          <span style="font-size:14px;color:#94a3b8">→</span>
+          <span style="font-size:15px;font-weight:700;color:#22c55e">v2.0.6</span>
+          <span style="font-size:11px;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;margin-left:4px">Latest</span>
+        </div>
+      </div>
+
+      <div style="background:#f8fafc;border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:8px">更新日志</div>
+        <div style="font-size:13px;color:#334155;line-height:1.6">
+          ✨ 修复了 xxx 问题<br/>
+          🐛 优化了 yyy 性能<br/>
+          📦 新增了 zzz 功能
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:16px">
+        <span class="mock-input" style="width:100%;display:inline-block;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px">下载大小约 128 MB</span>
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button class="mock-button" style="flex:1;background:white;border:1px solid #e2e8f0;padding:10px;border-radius:8px;font-size:13px;color:#64748b;cursor:pointer">稍后再说</button>
+        <button class="mock-button" style="flex:1;background:#6366f1;color:white;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer">立即下载</button>
+      </div>
+    </div>
+  </div>
+</div>

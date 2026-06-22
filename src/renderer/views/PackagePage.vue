@@ -6,10 +6,10 @@
         <p class="page-subtitle">{{ t('package.subtitle') }}</p>
       </div>
       <n-space :size="8">
-        <n-button size="tiny" quaternary @click="taskStore.clearCompleted" :disabled="!taskStore.hasCompleted">
+        <n-button size="tiny" quaternary @click="confirmClearCompleted" :disabled="!taskStore.hasCompleted">
           {{ t('task.clearCompleted') }}
         </n-button>
-        <n-button size="tiny" quaternary type="error" @click="taskStore.clearAll" :disabled="taskStore.tasks.length === 0">
+        <n-button size="tiny" quaternary type="error" @click="confirmClearAll" :disabled="taskStore.tasks.length === 0">
           {{ t('task.clearAll') }}
         </n-button>
       </n-space>
@@ -93,6 +93,14 @@
               <template #icon><n-icon size="12"><XCircle /></n-icon></template>
               {{ t('task.failed') }}
             </n-tag>
+            <n-tag v-else-if="task.status === 'cancelled'" type="warning" size="tiny" :bordered="false">
+              <template #icon><n-icon size="12"><AlertCircle /></n-icon></template>
+              {{ t('task.cancelled') }}
+            </n-tag>
+            <n-tag v-else-if="task.status === 'cancelling'" type="warning" size="tiny" :bordered="false">
+              <template #icon><n-icon size="12"><Loader /></n-icon></template>
+              {{ t('task.cancelling') }}
+            </n-tag>
             <n-tag v-else-if="task.status === 'running'" type="success" size="tiny" :bordered="false">
               <template #icon><n-icon size="12"><Loader /></n-icon></template>
               {{ task.progressLabel }}
@@ -106,7 +114,17 @@
             </n-tag>
             <span class="task-time">{{ formatTime(task.createdAt) }}</span>
             <n-button
-              v-if="task.status === 'completed' || task.status === 'failed'"
+              v-if="task.status === 'running' || task.status === 'downloading'"
+              size="tiny"
+              quaternary
+              type="warning"
+              :title="t('task.cancel')"
+              @click.stop="cancelTask(task)"
+            >
+              <template #icon><n-icon size="14"><StopCircle /></n-icon></template>
+            </n-button>
+            <n-button
+              v-if="task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled'"
               size="tiny"
               quaternary
               type="error"
@@ -156,10 +174,10 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
+import { NIcon, useDialog } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink
+  ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
@@ -168,6 +186,7 @@ import type { Task } from '@stores/taskStore'
 import serviceManager from '@services/ServiceManager'
 
 const { t } = useI18n()
+const dialog = useDialog()
 const taskStore = useTaskStore()
 const sigStore = useSignatureStore()
 if (sigStore.configs.length === 0) sigStore.loadConfigs()
@@ -286,6 +305,11 @@ async function executeTask(task: Task) {
         taskStore.updateTask(task.id, { progress: data.payload.progress || 0, progressLabel: data.payload.label || `${data.payload.progress || 0}%` })
       }
       if (data.type === 'complete' && streamResolve) streamResolve(data.payload || data)
+      if (data.type === 'cancelled') {
+        if (streamReject) streamReject(new Error('cancelled'))
+        taskStore.updateTask(task.id, { status: 'cancelled', progressLabel: t('task.cancelled'), finishedAt: Date.now() })
+        log(task, t('task.cancelled'))
+      }
       if (data.type === 'error' && streamReject) {
         const msg = (data.payload?.message) || data.message || t('task.streamOpFailed')
         streamReject(new Error(msg))
@@ -317,8 +341,11 @@ async function executeTask(task: Task) {
     log(task, t('task.running') + ' ' + task.operationLabel)
     await runOperation(task, localPath)
   } catch (e: any) {
-    taskStore.updateTask(task.id, { status: 'failed', error: e.message || String(e), finishedAt: Date.now() })
-    log(task, t('task.failed') + ': ' + (e.message || e))
+    const isCancelled = e?.message === 'cancelled'
+    if (!isCancelled) {
+      taskStore.updateTask(task.id, { status: 'failed', error: e.message || String(e), finishedAt: Date.now() })
+      log(task, t('task.failed') + ': ' + (e.message || e))
+    }
   } finally {
     if (streamCleanup) {
       streamCleanup()
@@ -329,6 +356,47 @@ async function executeTask(task: Task) {
 
 function log(task: Task, msg: string) {
   taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] ${msg}`)
+}
+
+async function cancelTask(task: Task) {
+  const name = task.fileName || task.operationLabel
+  dialog.warning({
+    title: t('task.cancel'),
+    content: t('task.cancelConfirm', { name }),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      const api = window.electronAPI as any
+      taskStore.updateTask(task.id, { status: 'cancelling' as any, progressLabel: t('task.cancelling') })
+      if (api && typeof api.cancelApkTask === 'function') {
+        try {
+          await api.cancelApkTask(String(task.id))
+        } catch (e) {
+          console.error('Cancel error:', e)
+        }
+      }
+    }
+  })
+}
+
+function confirmClearCompleted() {
+  dialog.warning({
+    title: t('task.clearCompleted'),
+    content: t('task.clearCompletedConfirm'),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => { taskStore.clearCompleted() }
+  })
+}
+
+function confirmClearAll() {
+  dialog.error({
+    title: t('task.clearAll'),
+    content: t('task.clearAllConfirm'),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => { taskStore.clearAll() }
+  })
 }
 
 async function runOperation(task: Task, localPath: string) {
@@ -344,14 +412,14 @@ async function runOperation(task: Task, localPath: string) {
   const svc = await serviceManager.getService(svcName) as any
   if (typeof svc?.[methodName] !== 'function') throw new Error(t(`task.${op}SvcUnavailable`))
 
-  // Prepare operation-specific options
+  // Prepare operation-specific options (include task_id for cancellation)
   let opts: any = undefined
   let logExtra = ''
   if (op === 'decompile') {
-    opts = { resources: decompileResources.value, sources: decompileSources.value }
+    opts = { resources: decompileResources.value, sources: decompileSources.value, task_id: String(task.id) }
     logExtra = ` (${t('task.decompileResources')}:${opts.resources}, ${t('task.decompileSources')}:${opts.sources})`
   } else if (op === 'recompile') {
-    opts = { sign: false, align: true, optimize: true }
+    opts = { sign: false, align: true, optimize: true, task_id: String(task.id) }
     const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
     if (cfg) {
       opts = { ...opts, sign: true, v2: true, keystore: { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass } }
@@ -360,21 +428,27 @@ async function runOperation(task: Task, localPath: string) {
   } else if (op === 'resign') {
     const cfg = sigStore.configs.find((c: any) => c.id === newSignId.value) || sigStore.configs[0]
     if (!cfg) throw new Error(t('task.noSignConfig'))
-    opts = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass }
+    opts = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass, task_id: String(task.id) }
     logExtra = ` (${cfg.name})`
+  } else if (op === 'install') {
+    opts = { task_id: String(task.id) }
   }
 
   const iv = startProgress(task, ingLabel)
   log(task, ingLabel + logExtra)
   let result: any
   try {
-    result = opts ? await svc[methodName](localPath, opts) : await svc[methodName](localPath)
+    result = await svc[methodName](localPath, opts || { task_id: String(task.id) })
   } catch (err) {
     clearIntervalAndForget(iv)
     throw err
   }
 
-  if (result.success) {
+  if (result.cancelled) {
+    clearIntervalAndForget(iv)
+    taskStore.updateTask(task.id, { status: 'cancelled', progressLabel: t('task.cancelled'), finishedAt: Date.now() })
+    log(task, t('task.cancelled'))
+  } else if (result.success) {
     finishProgress(task, iv)
     const updates: any = { status: 'completed', progress: 100, progressLabel: t('task.completed'), finishedAt: Date.now() }
     if (result.outputPath) updates.outputPath = result.outputPath
@@ -481,6 +555,11 @@ function startProgress(task: Task, label: string) {
   let p = 0
   const iv = setInterval(() => {
     if (p >= 85) { clearInterval(iv); activeIntervals.delete(iv); return }
+    // Stop updating if task was cancelled
+    const current = taskStore.tasks.find(t => t.id === task.id)
+    if (current && (current.status === 'cancelled' || current.status === 'cancelling' as any)) {
+      clearInterval(iv); activeIntervals.delete(iv); return
+    }
     if (p < 30) p += 2
     else if (p < 60) p += 1
     else p += 0.5

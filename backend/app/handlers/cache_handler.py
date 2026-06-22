@@ -78,8 +78,8 @@ def _clear_directory(path):
                 os.remove(p)
             elif os.path.isdir(p):
                 shutil.rmtree(p, ignore_errors=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to remove cache entry '{p}': {e}")
     return True
 
 

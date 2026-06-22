@@ -175,14 +175,14 @@ describe('DeviceService', () => {
       mockApi.installApk.mockResolvedValue({ success: true })
       const result = await service.installApp('/test.apk')
       expect(result.success).toBe(true)
-      expect(mockApi.installApk).toHaveBeenCalledWith('/test.apk', 'device1')
+      expect(mockApi.installApk).toHaveBeenCalledWith('/test.apk', 'device1', '')
     })
 
     it('installs AAB successfully', async () => {
       mockApi.installAab.mockResolvedValue({ success: true })
       const result = await service.installApp('/test.aab')
       expect(result.success).toBe(true)
-      expect(mockApi.installAab).toHaveBeenCalledWith('/test.aab', 'device1')
+      expect(mockApi.installAab).toHaveBeenCalledWith('/test.aab', 'device1', '')
     })
   })
 })

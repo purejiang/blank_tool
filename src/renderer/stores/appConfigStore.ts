@@ -37,18 +37,42 @@ export const useAppConfigStore = defineStore('appConfig', () => {
 
   // 设置应用配置值
   const set = async (key: string, value: unknown) => {
-    config.value[key] = value
-    saving.value = false
-    return true
+    saving.value = true
+    try {
+      const configService = await serviceManager.getService('config')
+      if (configService) {
+        await configService.setAppConfig(key, value)
+      }
+      config.value[key] = value
+      return true
+    } catch (err: unknown) {
+      console.error('Failed to save app config:', err)
+      error.value = err instanceof Error ? err.message : String(err)
+      return false
+    } finally {
+      saving.value = false
+    }
   }
 
   // 批量更新应用配置
   const update = async (updates: Record<string, unknown>) => {
-    // 应用更新
-    Object.assign(config.value, updates)
-
-    saving.value = false
-    return true
+    saving.value = true
+    try {
+      const configService = await serviceManager.getService('config')
+      if (configService) {
+        for (const [key, value] of Object.entries(updates)) {
+          await configService.setAppConfig(key, value)
+        }
+      }
+      Object.assign(config.value, updates)
+      return true
+    } catch (err: unknown) {
+      console.error('Failed to update app config:', err)
+      error.value = err instanceof Error ? err.message : String(err)
+      return false
+    } finally {
+      saving.value = false
+    }
   }
 
   // 重置应用配置

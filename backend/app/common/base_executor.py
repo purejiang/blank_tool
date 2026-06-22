@@ -4,6 +4,7 @@
 Base command executor — template method pattern with ProcessExecutor delegation.
 """
 
+import re
 import subprocess
 import traceback
 import shutil
@@ -41,7 +42,8 @@ class CommandExecutionContext:
                  capture_output: bool = True,
                  env: Dict[str, str] = None,
                  stream: bool = False,
-                 log_output: bool = True):
+                 log_output: bool = True,
+                 process_holder: Dict[str, Any] = None):
         self.cwd = cwd
         self.timeout = timeout
         self.encoding = encoding
@@ -52,6 +54,7 @@ class CommandExecutionContext:
         self.env = env
         self.stream = stream
         self.log_output = log_output
+        self.process_holder = process_holder
 
 
 class BaseCommandExecutor(ABC):
@@ -109,6 +112,24 @@ class BaseCommandExecutor(ABC):
 class CommandExecutor(BaseCommandExecutor):
     """Command-line executor — delegates subprocess lifecycle to ProcessExecutor."""
 
+    _SENSITIVE_PATTERNS = [
+        # apksigner --ks-pass pass:XXX
+        (re.compile(r'(--ks-pass\s+pass:)[^\s]+', re.IGNORECASE), r'\1***'),
+        (re.compile(r'(--key-pass\s+pass:)[^\s]+', re.IGNORECASE), r'\1***'),
+        # jarsigner -storepass XXX, -keypass XXX
+        (re.compile(r'(-storepass\s+)[^\s]+', re.IGNORECASE), r'\1***'),
+        (re.compile(r'(-keypass\s+)[^\s]+', re.IGNORECASE), r'\1***'),
+        # generic pass: prefix in combined args
+        (re.compile(r'(pass:)[^\s,\]]+', re.IGNORECASE), r'\1***'),
+    ]
+
+    @staticmethod
+    def _redact_sensitive_args(cmd_str: str) -> str:
+        """Mask passwords and secrets in command strings before logging."""
+        for pattern, replacement in CommandExecutor._SENSITIVE_PATTERNS:
+            cmd_str = pattern.sub(replacement, cmd_str)
+        return cmd_str
+
     def execute(self, command: Union[str, List[str]],
                 context: CommandExecutionContext) -> Union[Dict[str, Any], subprocess.Popen]:
         """
@@ -136,14 +157,14 @@ class CommandExecutor(BaseCommandExecutor):
             if context.shell is None:
                 context.shell = False
 
-        self._log_info(f"[COMMAND] Executing: {cmd_str}")
+        self._log_info(f"[COMMAND] Executing: {self._redact_sensitive_args(cmd_str)}")
         self._log_debug(
             f"[CONTEXT] cwd={context.cwd} shell={context.shell} stream={context.stream}"
         )
 
         # Streaming mode: return a live Popen object for line-by-line reading
         if context.stream:
-            return subprocess.Popen(
+            proc = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -154,10 +175,13 @@ class CommandExecutor(BaseCommandExecutor):
                 shell=context.shell,
                 env=context.env,
             )
+            if context.process_holder is not None:
+                context.process_holder["process"] = proc
+            return proc
 
         # Non-streaming mode: delegate to ProcessExecutor
         try:
-            executor = ProcessExecutor(timeout=context.timeout)
+            executor = ProcessExecutor(timeout=context.timeout, process_holder=context.process_holder)
             returncode, stdout, stderr = executor.run(
                 cmd=command,
                 cwd=context.cwd,
@@ -194,11 +218,11 @@ class CommandExecutor(BaseCommandExecutor):
             }
 
         except TimeoutException:
-            error_msg = f"Command timed out ({context.timeout}s): {cmd_str}"
+            error_msg = f"Command timed out ({context.timeout}s): {self._redact_sensitive_args(cmd_str)}"
             self._log_error(f"[COMMAND] {error_msg}")
             raise
         except Exception as e:
-            error_msg = f"Command execution error: {cmd_str}, error: {str(e)}"
+            error_msg = f"Command execution error: {self._redact_sensitive_args(cmd_str)}, error: {str(e)}"
             tb = traceback.format_exc()
             self._log_error(f"[COMMAND] {error_msg}\n{tb}")
             raise
