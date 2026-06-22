@@ -5,6 +5,7 @@ import unifiedApi from '../api/unifiedApi'
 class UpdateService {
   private store: ReturnType<typeof useUpdateStore> | null = null
   private unsubscribers: Array<() => void> = []
+  private manualCheckInProgress = false
 
   private getStore(): ReturnType<typeof useUpdateStore> {
     if (!this.store) {
@@ -65,14 +66,19 @@ class UpdateService {
 
     if (api && typeof api.onUpdateError === 'function') {
       this.unsubscribers.push(api.onUpdateError((data: any) => {
-        store.setError(data.message || 'Update failed')
-        store.setStatus('error')
+        // Only show error UI for manual checks; auto-check failures are silent
+        if (this.manualCheckInProgress) {
+          store.setError(data.message || 'Update failed')
+          store.setStatus('error')
+          this.manualCheckInProgress = false
+        }
       }))
     }
   }
 
   async checkForUpdates(): Promise<{ updateAvailable: boolean; version?: string; releaseNotes?: string }> {
     const store = this.getStore()
+    this.manualCheckInProgress = true
     store.setStatus('checking')
     store.setError(null)
 
@@ -90,12 +96,14 @@ class UpdateService {
         } else {
           store.setStatus('not-available')
         }
+        this.manualCheckInProgress = false
         return typed
       }
       throw new Error('checkForUpdates not available')
     } catch (err: any) {
       store.setError(err.message || 'Check failed')
       store.setStatus('error')
+      this.manualCheckInProgress = false
       throw err
     }
   }

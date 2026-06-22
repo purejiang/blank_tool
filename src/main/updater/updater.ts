@@ -70,6 +70,7 @@ export async function checkForUpdatesManual(): Promise<{
   updateAvailable: boolean
   version?: string
   releaseNotes?: string
+  error?: string
 }> {
   if (!app.isPackaged) {
     return { updateAvailable: false }
@@ -84,8 +85,10 @@ export async function checkForUpdatesManual(): Promise<{
       }
     }
     return { updateAvailable: false }
-  } catch {
-    return { updateAvailable: false }
+  } catch (e: any) {
+    const msg = e?.message || String(e)
+    log.error('AutoUpdater: manual check failed:', msg)
+    return { updateAvailable: false, error: msg }
   }
 }
 

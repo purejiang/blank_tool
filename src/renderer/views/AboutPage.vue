@@ -111,7 +111,9 @@ async function checkForUpdate(): Promise<void> {
   try {
     const api = window.electronAPI as any
     const result = await api.checkForUpdates()
-    if (!result || !result.updateAvailable) {
+    if (result?.error) {
+      message.error(result.error.includes('ERR_') ? t('update.networkError') : result.error)
+    } else if (!result || !result.updateAvailable) {
       message.success(t('update.upToDate'))
     }
   } catch (err: any) {
