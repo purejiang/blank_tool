@@ -93,7 +93,7 @@ const showNotification = (notificationData) => {
     type: notificationData.type || 'info',
     title: notificationData.title || '',
     message: notificationData.message || '',
-    duration: notificationData.duration || 5000,
+    duration: notificationData.duration ?? 5000,
     progress: notificationData.progress,
     actions: notificationData.actions,
   }
@@ -440,6 +440,16 @@ defineExpose({
   }
   
   .notification-close:hover {
+    background: var(--hover-bg-color-dark, #404040);
+    color: var(--text-color-dark, #ffffff);
+  }
+
+  .notification-action-btn.default {
+    color: var(--text-color-dark, #cccccc);
+    border-color: var(--border-color-dark, #555);
+  }
+
+  .notification-action-btn.default:hover {
     background: var(--hover-bg-color-dark, #404040);
     color: var(--text-color-dark, #ffffff);
   }
