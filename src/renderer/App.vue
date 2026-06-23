@@ -423,10 +423,7 @@ async function prepareUI() {
 
   // Initialize update service (set up event listeners)
   try {
-    const updateService = await serviceManager.getService('update')
-    if (updateService) {
-      await updateService.initialize()
-    }
+    await serviceManager.getService('update')
   } catch {}
 }
 
