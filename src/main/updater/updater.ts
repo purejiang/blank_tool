@@ -4,6 +4,18 @@ import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 
 let initialized = false
+let isInstalling = false
+
+export function isUpdateInstallInProgress(): boolean {
+  return isInstalling
+}
+
+function normalizeReleaseNotes(notes: unknown): string {
+  if (!notes) return ''
+  if (typeof notes === 'string') return notes
+  if (Array.isArray(notes)) return notes.map(n => typeof n === 'string' ? n : (n?.note ?? '')).join('\n')
+  return ''
+}
 
 function sendToAllWindows(channel: string, data: unknown): void {
   const wins = BrowserWindow.getAllWindows()
@@ -31,7 +43,7 @@ export function initAutoUpdater(): void {
     log.info('AutoUpdater: update available', info.version)
     sendToAllWindows(IPC_CHANNEL_NAMES.updateAvailable, {
       version: info.version,
-      releaseNotes: (info.releaseNotes as string) || '',
+      releaseNotes: normalizeReleaseNotes(info.releaseNotes),
       releaseDate: info.releaseDate || '',
     })
   })
@@ -73,7 +85,7 @@ export async function checkForUpdatesManual(): Promise<{
       return {
         updateAvailable: true,
         version: result.updateInfo.version,
-        releaseNotes: (result.updateInfo.releaseNotes as string) || '',
+        releaseNotes: normalizeReleaseNotes(result.updateInfo.releaseNotes),
       }
     }
     return { updateAvailable: false }
@@ -102,5 +114,6 @@ export async function downloadUpdate(): Promise<void> {
 }
 
 export function quitAndInstall(): void {
+  isInstalling = true
   autoUpdater.quitAndInstall(false, true)
 }

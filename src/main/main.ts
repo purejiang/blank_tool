@@ -8,7 +8,7 @@ import { appStore } from './stores/index';
 import { setupAllHandlers } from './ipc/index';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../shared/config/pathConfig';
 import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
-import { initAutoUpdater, autoCheckForUpdates } from './updater/updater';
+import { initAutoUpdater, autoCheckForUpdates, isUpdateInstallInProgress } from './updater/updater';
 import { getAppLocalDataPath, ensureDir } from './utils/appPaths';
 
 // 配置日志
@@ -112,6 +112,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('close', async (e) => {
+    if (isUpdateInstallInProgress()) return
     if (quitDialogResolver) return
     e.preventDefault()
     mainWindow?.webContents.send(IPC_CHANNEL_NAMES.showQuitDialog)
@@ -305,7 +306,9 @@ app.whenReady().then(async () => {
   // Auto-update check (3s delay to avoid impacting startup)
   setTimeout(() => {
     initAutoUpdater()
-    autoCheckForUpdates()
+    if (app.isPackaged) {
+      autoCheckForUpdates()
+    }
   }, 3000)
 });
 
@@ -326,9 +329,11 @@ app.on('before-quit', () => {
     pythonProcess.kill();
   }
 
-  setTimeout(() => {
-    app.exit(0);
-  }, 100);
+  if (!isUpdateInstallInProgress()) {
+    setTimeout(() => {
+      app.exit(0);
+    }, 100);
+  }
 });
 
 app.on('activate', () => {
