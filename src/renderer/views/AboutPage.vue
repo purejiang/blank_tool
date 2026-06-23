@@ -71,12 +71,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, useMessage } from 'naive-ui'
 import { Wrench, Cpu, Layers } from 'lucide-vue-next'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { useUpdateStore } from '@stores/updateStore'
+import serviceManager from '@services/ServiceManager'
+import type UpdateService from '@services/UpdateService'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
@@ -88,9 +90,19 @@ const buildInfo = systemStore.buildInfo
 const updateStore = useUpdateStore()
 const message = useMessage()
 
+let updateService: UpdateService | null = null
+
+onMounted(async () => {
+  try {
+    updateService = await serviceManager.getService('update') as UpdateService
+  } catch {
+    updateService = null
+  }
+})
+
 const updateButtonText = computed(() => {
   if (updateStore.status === 'checking') return t('update.checking')
-  if (updateStore.status === 'available') return t('update.newVersion')
+  if (updateStore.status === 'available') return t('update.download')
   if (updateStore.status === 'downloaded') return t('update.restartNow')
   return t('update.checkUpdate')
 })
@@ -103,17 +115,24 @@ const updateStatusText = computed(() => {
   if (updateStore.status === 'not-available') return t('update.upToDate')
   if (updateStore.status === 'error') return updateStore.error || t('update.error')
   if (updateStore.status === 'downloaded') return `${t('update.downloaded')} (v${updateStore.latestVersion})`
-  if (updateStore.status === 'available') return `v${updateStore.latestVersion} ${t('update.newVersion')}`
+  if (updateStore.status === 'available') return `${t('update.newVersion')}: v${updateStore.latestVersion}`
   return ''
 })
 
 async function checkForUpdate(): Promise<void> {
+  if (!updateService) return
+  const status = updateStore.status
+  if (status === 'available') {
+    await updateService.downloadUpdate()
+    return
+  }
+  if (status === 'downloaded') {
+    await updateService.quitAndInstall()
+    return
+  }
   try {
-    const api = window.electronAPI as any
-    const result = await api.checkForUpdates()
-    if (result?.error) {
-      message.error(result.error.includes('ERR_') ? t('update.networkError') : result.error)
-    } else if (!result || !result.updateAvailable) {
+    const result = await updateService.checkForUpdates()
+    if (result && !result.updateAvailable) {
       message.success(t('update.upToDate'))
     }
   } catch (err: any) {
