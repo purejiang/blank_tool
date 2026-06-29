@@ -1,7 +1,9 @@
 import { autoUpdater } from 'electron-updater'
 import { BrowserWindow, app } from 'electron'
+import path from 'path'
 import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
+import { getAppLocalDataPath, ensureDir } from '../utils/appPaths'
 
 let initialized = false
 let isInstalling = false
@@ -34,6 +36,10 @@ export function initAutoUpdater(): void {
   autoUpdater.autoDownload = false
   autoUpdater.allowDowngrade = false
   autoUpdater.allowPrerelease = false
+  // 更新下载目录统一到 LOCALAPPDATA
+  const updateCacheDir = path.join(getAppLocalDataPath(), 'updates')
+  ensureDir(updateCacheDir)
+  autoUpdater.cacheDir = updateCacheDir
 
   autoUpdater.on('checking-for-update', () => {
     log.info('AutoUpdater: checking for update...')
