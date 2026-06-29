@@ -3,6 +3,7 @@ import sys
 import platform
 import shutil
 import json
+import subprocess
 from typing import Dict, Optional, Set
 
 # JAVA 环境变量
@@ -153,12 +154,27 @@ def get_runtime_dir() -> str:
         
     return ""
 
+def _is_executable_usable(path: str) -> bool:
+    """Test whether an executable actually works by running it with -version."""
+    if not path or not os.path.exists(path):
+        return False
+    try:
+        result = subprocess.run(
+            [path, "-version"],
+            capture_output=True, text=True, timeout=10
+        )
+        # Some tools (like java) write version to stderr
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def get_java_bin() -> str:
     # 1. First priority: Environment variable override
     override = os.environ.get(ENV_BT_JAVA_BIN)
     if override:
         resolved = resolve_path(override)
-        if os.path.exists(resolved):
+        if _is_executable_usable(resolved):
             return resolved
 
     # 2. Second priority: Bundled JRE in runtime dir (The User's Request)
@@ -176,18 +192,20 @@ def get_java_bin() -> str:
         ]
         
         for candidate in candidates:
-            if os.path.exists(candidate):
+            if _is_executable_usable(candidate):
                 return candidate
 
     # 3. Third priority: JAVA_HOME / JRE_HOME
     jh = os.environ.get('JAVA_HOME') or os.environ.get('JRE_HOME')
     if jh:
         candidate = os.path.join(jh, 'bin', 'java.exe' if platform.system() == 'Windows' else 'java')
-        if os.path.exists(candidate):
+        if _is_executable_usable(candidate):
             return candidate
         
     # 4. Last priority: System PATH
     which = shutil.which('java')
+    if which and _is_executable_usable(which):
+        return which
     return which or 'java'
 
 def get_python_bin() -> str:
