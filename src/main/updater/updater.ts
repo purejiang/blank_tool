@@ -82,9 +82,15 @@ export async function checkForUpdatesManual(): Promise<{
   try {
     const result = await autoUpdater.checkForUpdates()
     if (result?.updateInfo) {
+      const latestVersion = result.updateInfo.version
+      const currentVersion = app.getVersion()
+      // Only prompt update if latest is actually newer
+      if (latestVersion === currentVersion) {
+        return { updateAvailable: false }
+      }
       return {
         updateAvailable: true,
-        version: result.updateInfo.version,
+        version: latestVersion,
         releaseNotes: normalizeReleaseNotes(result.updateInfo.releaseNotes),
       }
     }
