@@ -201,6 +201,7 @@ import { FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers, Settings
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
+import { storeToRefs } from 'pinia'
 import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 
@@ -212,7 +213,7 @@ const systemStore = useSystemStore()
 const toolStore = useToolStore()
 const tools = toolStore.tools
 const sigStore = useSignatureStore()
-const sigConfigs = sigStore.configs
+const { configs: sigConfigs } = storeToRefs(sigStore)
 const sigModalVisible = ref(false)
 const sigEditing = ref<any>(null)
 

@@ -17,7 +17,7 @@ export const useSignatureStore = defineStore('signature', () => {
     try {
       const api = unifiedApi.getAPI()
       if (api && api.appConfig) {
-        const storedConfigs = await api.appConfig.get('signature_configs')
+        const storedConfigs = await api.appConfig.get('signatureConfigs')
         if (Array.isArray(storedConfigs)) {
           configs.value = storedConfigs
         } else {
@@ -37,7 +37,7 @@ export const useSignatureStore = defineStore('signature', () => {
       const api = unifiedApi.getAPI()
       if (api && api.appConfig) {
         // Ensure we are saving a plain array
-        await api.appConfig.set('signature_configs', JSON.parse(JSON.stringify(configs.value)))
+        await api.appConfig.set('signatureConfigs', JSON.parse(JSON.stringify(configs.value)))
       }
     } catch (error) {
       console.error('Failed to save signature configs:', error)

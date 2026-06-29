@@ -7,9 +7,7 @@
           <div v-if="isLoading" class="loading-screen">
             <div class="loading-container">
               <div class="loading-brand">
-                <n-icon size="48" color="#22C55E">
-                  <Terminal />
-                </n-icon>
+                <img src="@assets/images/logo.svg" class="loading-logo" alt="Blank Tool" />
                 <h1 class="loading-title">{{ $t('app.title') }}</h1>
                 <p class="loading-subtitle">{{ $t('app.subtitle') }}</p>
               </div>
@@ -52,9 +50,7 @@
               <div class="sider-inner">
                 <!-- App Brand -->
                 <div class="sider-brand" :class="{ collapsed: sidebarCollapsed }">
-                  <n-icon size="28" color="#22C55E">
-                    <Terminal />
-                  </n-icon>
+                  <img src="@assets/images/logo.svg" class="brand-logo" alt="Blank Tool" />
                   <span v-if="!sidebarCollapsed" class="brand-text">{{ $t('app.title') }}</span>
                   <div class="brand-collapse">
                     <n-button
@@ -111,7 +107,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { darkTheme, NIcon, zhCN, enUS } from 'naive-ui'
 import {
-  Smartphone, Package, Settings, Wrench, Terminal,
+  Smartphone, Package, Settings, Wrench,
   ChevronsLeft, ChevronsRight, Info
 } from 'lucide-vue-next'
 import type { MenuOption } from 'naive-ui'
@@ -467,6 +463,12 @@ onUnmounted(() => {
 .loading-brand {
   margin-bottom: 32px;
 }
+.loading-logo {
+  width: 48px;
+  height: 48px;
+  display: block;
+  margin: 0 auto;
+}
 .loading-title {
   font-family: Inter, sans-serif;
   font-size: 24px;
@@ -523,6 +525,11 @@ onUnmounted(() => {
 }
 .brand-collapse {
   margin-left: auto;
+}
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
 }
 .sider-brand.collapsed {
   justify-content: center;

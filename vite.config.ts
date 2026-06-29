@@ -14,6 +14,7 @@ export default defineConfig({
       main: {
         entry: resolve(__dirname, 'src/main/main.ts'),
         vite: {
+          publicDir: resolve(__dirname, 'src/main/public'),
           build: {
             outDir: resolve(__dirname, 'dist/main'),
           },

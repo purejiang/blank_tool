@@ -194,6 +194,10 @@ const schema = {
     javaPath: {
         type: 'string',
         default: LEGACY_SETTINGS_DEFAULTS.javaPath
+    },
+    signatureConfigs: {
+        type: 'array',
+        default: []
     }
 };
 

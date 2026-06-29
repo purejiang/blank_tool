@@ -26,7 +26,7 @@ let isAppQuitting = false;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const __iconPath = !app.isPackaged
-  ? path.join(__dirname, '..', '..', 'src', 'main', 'assets', 'images', 'icon.png')
+  ? path.join(__dirname, '..', '..', 'src', 'main', 'public', 'assets', 'images', 'icon.png')
   : path.join(__dirname, 'assets', 'images', 'icon.png');
 
 function getBaseDir(): string {
