@@ -66,12 +66,14 @@ def bootstrap():
     dotenv_keys = load_dotenv()
     load_server_config(override_keys=dotenv_keys)
 
-    cache_dir = get_env('BT_CACHE_DIR', './cache')
-    resolved_cache_dir = resolve_path(cache_dir)
-    logs_file_path = Path(resolved_cache_dir) / "logs"
+    log_dir = get_env('BT_LOG_DIR')
+    if not log_dir:
+        cache_dir = get_env('BT_CACHE_DIR', './cache')
+        resolved_cache_dir = resolve_path(cache_dir)
+        log_dir = str(Path(resolved_cache_dir) / "logs")
 
     log_level = get_env('BT_LOG_LEVEL', 'DEBUG')
-    Logger.initialize(log_dir=logs_file_path, log_level=log_level)
+    Logger.initialize(log_dir=log_dir, log_level=log_level)
 
 
 # ------------------------------------------------------------------

@@ -11,8 +11,9 @@ import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
 import { initAutoUpdater, autoCheckForUpdates, isUpdateInstallInProgress } from './updater/updater';
 import { getAppLocalDataPath, ensureDir } from './utils/appPaths';
 
-// 配置日志 — 放在 LOCALAPPDATA，不随账号漫游
-log.transports.file.resolvePathFn = () => path.join(getAppLocalDataPath(), 'logs', 'main.log');
+// 配置日志 — 放在 LOCALAPPDATA，不随账号漫游；单文件上限 20MB
+log.transports.file.resolvePathFn = () => path.join(getAppLocalDataPath(), 'logs', 'electron.log');
+log.transports.file.maxSize = 20 * 1024 * 1024;
 log.transports.file.level = 'info';
 log.transports.console.level = 'info';
 // 可选：将 console 输出重定向到 electron-log
@@ -226,14 +227,17 @@ async function startPythonService(): Promise<ChildProcessWithoutNullStreams | nu
     const localDataPath = getAppLocalDataPath();
     const cacheDir = path.join(localDataPath, 'Cache');
     const outputDir = path.join(localDataPath, 'Output');
+    const logsDir = path.join(localDataPath, 'logs');
     ensureDir(cacheDir);
     ensureDir(outputDir);
+    ensureDir(logsDir);
 
     const env = {
         ...process.env,
         BT_RUNTIME_DIR: absRuntimeDir || '',
         BT_CACHE_DIR: cacheDir,
-        BT_OUTPUT_DIR: outputDir
+        BT_OUTPUT_DIR: outputDir,
+        BT_LOG_DIR: logsDir
     };
     log.info(`Spawning Python process with: ${pythonExecutable} ${scriptPath}`);
     pythonProcess = spawn(pythonExecutable, [scriptPath], { env });

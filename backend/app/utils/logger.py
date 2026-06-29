@@ -39,7 +39,7 @@ class DailyRotatingFileHandler(BaseRotatingHandler):
     def _get_current_log_file(self) -> Path:
         """获取当前应该使用的日志文件路径"""
         today = datetime.now().strftime('%Y-%m-%d')
-        base_file = self.log_dir / f"{today}.log"
+        base_file = self.log_dir / f"backend-{today}.log"
         
         # 如果基础文件不存在或大小未超限，直接使用
         if not base_file.exists() or base_file.stat().st_size < self.max_bytes:
@@ -48,7 +48,7 @@ class DailyRotatingFileHandler(BaseRotatingHandler):
         # 查找下一个可用的文件名
         counter = 2
         while True:
-            numbered_file = self.log_dir / f"{today}_{counter}.log"
+            numbered_file = self.log_dir / f"backend-{today}_{counter}.log"
             if not numbered_file.exists() or numbered_file.stat().st_size < self.max_bytes:
                 return numbered_file
             counter += 1
@@ -57,7 +57,9 @@ class DailyRotatingFileHandler(BaseRotatingHandler):
         """判断是否需要切换文件"""
         # 检查日期是否变化
         today = datetime.now().strftime('%Y-%m-%d')
-        current_date = self.current_log_file.stem.split('_')[0]
+        # 从 backend-YYYY-MM-DD.log 提取日期
+        stem = self.current_log_file.stem
+        current_date = stem.replace('backend-', '').split('_')[0]
         
         if today != current_date:
             return True
@@ -156,6 +158,9 @@ class Logger:
         
         cls._initialized = True
         
+        # 清理超过3天的旧日志
+        cls.cleanup_old_logs(days_to_keep=3)
+        
     @classmethod
     def get_logger(cls, name: str) -> logging.Logger:
         """获取指定名称的日志器"""
@@ -195,8 +200,8 @@ class Logger:
         return cls._log_dir
     
     @classmethod
-    def cleanup_old_logs(cls, days_to_keep: int = 30):
-        """清理旧的日志文件"""
+    def cleanup_old_logs(cls, days_to_keep: int = 3):
+        """清理旧的日志文件（默认保留3天）"""
         if not cls._log_dir or not cls._log_dir.exists():
             return
         
@@ -204,16 +209,16 @@ class Logger:
         cutoff_date = datetime.now() - timedelta(days=days_to_keep)
         
         try:
-            for log_file in cls._log_dir.glob("*.log"):
-                # 从文件名提取日期
-                file_date_str = log_file.stem.split('_')[0]
+            for log_file in cls._log_dir.glob("backend-*.log"):
+                # 从 backend-YYYY-MM-DD.log 提取日期
+                stem = log_file.stem
+                file_date_str = stem.replace('backend-', '').split('_')[0]
                 try:
                     file_date = datetime.strptime(file_date_str, '%Y-%m-%d')
                     if file_date < cutoff_date:
                         log_file.unlink()
                         print(f"已删除旧日志文件: {log_file}", file=sys.stderr)
                 except ValueError:
-                    # 文件名格式不匹配，跳过
                     continue
         except Exception as e:
             print(f"清理日志文件时出错: {e}", file=sys.stderr)
