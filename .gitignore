@@ -3,8 +3,12 @@
 /build/
 /cache/
 /output/
+dist/
+package.json.bak
+.codegraph/
+.omo/
+tests/reports/
 .playwright-mcp/
 cli-notify-plugin/
-dist/
 .trae/
 .vscode/
