@@ -96,6 +96,21 @@ Python Backend (backend/main.py)
 
 **坑**：构建过程中如果 `package.json.bak` 残留（上次崩溃），下次构建会覆盖；CI 中途 kill 进程可能留下脏状态。`package.json` 里的 `"version": "2.0.5"` **不是**发布版本，发布版本完全由 git tag 决定。
 
+### 分支策略
+
+```
+dev     ← 日常开发，所有 commit 先到这里
+main    ← 主线分支，只从 dev 合并，不打 commit
+```
+
+发布流程：
+1. `dev` 开发完成 → `git checkout main && git merge dev`
+2. 在 `main` 上打 tag：`git tag -a vX.Y.Z -m "..."` + `git push`
+3. 打包 → 创建 GitHub Release
+4. 切回 `dev` 继续开发
+
+**tag 必须打在 `main` 上，不要打在 `dev` 上。**
+
 发布：`git tag -a vX.Y.Z -m "..."` + `git push origin vX.Y.Z`。`electron-builder` 配置了 GitHub 自动更新（`publish.provider: github`，仓库 `purejiang/blank_tool`），主进程 `src/main/updater/` + `updateHandlers.ts` 负责检查和安装。
 
 ### Release 维护（释放 GitHub 存储空间）
