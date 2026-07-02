@@ -287,6 +287,7 @@ export default {
     pageSizeSkipped: 'Skipped {count} non-64bit/non-ELF',
     // Warnings
     warnings: 'Analysis Warnings',
+    metaData: 'Meta Data Config',
     // Plugin
     pluginDev: 'Feature in Development',
     pluginDevDesc: 'Plugin feature is under development, stay tuned',

@@ -287,6 +287,7 @@ export default {
     pageSizeSkipped: '已跳过 {count} 个非 64 位/非 ELF',
     // Warnings
     warnings: '分析警告',
+    metaData: 'Meta Data 配置',
     // Plugin
     pluginDev: '功能开发中',
     pluginDevDesc: '插件功能正在开发中，敬请期待',

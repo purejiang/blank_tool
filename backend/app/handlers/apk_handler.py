@@ -99,6 +99,13 @@ def apk_analyze(params, stream_handler):
             logger.warning(f"16KB page check failed: {e}")
             info["warnings"].append(f"16KB page check failed: {e}")
 
+        # C4: Meta-data from AndroidManifest.xml
+        try:
+            info["meta_data"] = _parse_manifest_meta_data(apk_path)
+        except Exception as e:
+            logger.warning(f"Meta-data extraction failed: {e}")
+            info["warnings"].append(f"Meta-data extraction failed: {e}")
+
         return info
     except ToolException:
         raise
@@ -250,6 +257,82 @@ def _get_task_id(params: dict) -> str:
     options = params.get("options", {}) or {}
     keystore = params.get("keystore", {}) or {}
     return str(options.get("task_id") or keystore.get("task_id", ""))
+
+
+def _parse_manifest_meta_data(apk_path):
+    """
+    Extract all <meta-data> entries from AndroidManifest.xml using aapt dump xmltree.
+    Returns a list of dicts: [{parent, name, value}, ...]
+    Groups metadata by parent element (application, activity, service, receiver, provider).
+    """
+    try:
+        aapt = manager.get_tool("aapt")
+        if not aapt or not aapt.is_valid:
+            return []
+        context = CommandExecutionContext()
+        result = aapt.execute(["dump", "xmltree", "--file", "AndroidManifest.xml", apk_path], context)
+        output = result.get("stdout", "")
+        lines = output.split("\n")
+
+        meta_list = []
+        current_parent = "application"
+        in_meta = False
+        meta_name = ""
+        meta_value = ""
+
+        for line in lines:
+            # Track parent element (non-meta-data E: lines)
+            if re.match(r'\s+E: ', line):
+                elem_name = line.split("E: ")[1].split(" ")[0].strip()
+                if elem_name == "meta-data":
+                    # Flush previous meta-data entry if any (consecutive meta-data)
+                    if in_meta:
+                        meta_list.append({
+                            "parent": current_parent,
+                            "name": meta_name,
+                            "value": meta_value
+                        })
+                    in_meta = True
+                    meta_name = ""
+                    meta_value = ""
+                else:
+                    # Flush previous meta-data entry if any
+                    if in_meta:
+                        meta_list.append({
+                            "parent": current_parent,
+                            "name": meta_name,
+                            "value": meta_value
+                        })
+                        in_meta = False
+                    current_parent = elem_name
+            elif in_meta and "android:name" in line:
+                m = re.search(r'Raw: \"([^\"]*)\"', line)
+                if m:
+                    meta_name = m.group(1)
+            elif in_meta and "android:value" in line:
+                m = re.search(r'Raw: \"([^\"]*)\"', line)
+                if m:
+                    meta_value = m.group(1)
+                else:
+                    # Try numeric value (e.g. android:value=2.2) or empty string (e.g. android:value="")
+                    m2 = re.search(r'android:value[^=]*=([^\s]+)', line)
+                    if m2:
+                        raw_val = m2.group(1)
+                        meta_value = raw_val if raw_val != '""' else ""
+
+        # Flush last entry
+        if in_meta:
+            meta_list.append({
+                "parent": current_parent,
+                "name": meta_name,
+                "value": meta_value
+            })
+
+        # Filter out entries with no name
+        return [m for m in meta_list if m["name"]]
+    except Exception as e:
+        logger.warning(f"Meta-data parsing failed: {e}")
+        return []
 
 
 def apk_sign(params, stream_handler):

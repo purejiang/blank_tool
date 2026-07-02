@@ -666,6 +666,41 @@ function renderApkInfo(data: any) {
       html += '</div></details>'
     }
 
+    // v2.1.1: Meta Data
+    const metaData = data.meta_data
+    if (metaData && Array.isArray(metaData) && metaData.length > 0) {
+      // Group by parent
+      const grouped: Record<string, any[]> = {}
+      for (const m of metaData) {
+        const p = m.parent || 'unknown'
+        if (!grouped[p]) grouped[p] = []
+        grouped[p].push(m)
+      }
+      const metaCount = metaData.length
+      html += `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('metaData')} (${metaCount} entries)</summary>`
+      html += '<div style="margin-top:4px;display:flex;flex-direction:column;gap:4px;font-size:12px">'
+      for (const [parent, entries] of Object.entries(grouped)) {
+        const e = entries as any[]
+        html += `<div style="margin-bottom:2px"><span style="color:var(--app-green);font-weight:500;font-size:11px">&lt;${esc(parent)}&gt;</span>`
+        html += '<div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">'
+        for (const item of e) {
+          const name = item.name || ''
+          const value = item.value || ''
+          html += '<div style="display:flex;align-items:flex-start;gap:8px;padding-left:12px">'
+          html += `<span style="color:var(--app-text-primary);font-family:monospace;font-size:11px;min-width:0;flex-shrink:0">${esc(name)}</span>`
+          html += `<span style="color:var(--app-text-dim);margin:0 4px">→</span>`
+          if (value) {
+            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1">${esc(value)}</span>`
+          } else {
+            html += `<span style="color:var(--app-text-dim);font-style:italic;font-size:11px">(empty)</span>`
+          }
+          html += '</div>'
+        }
+        html += '</div></div>'
+      }
+      html += '</div></details>'
+    }
+
     html += '</div>'
   }
 
