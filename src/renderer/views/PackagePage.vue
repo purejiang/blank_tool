@@ -698,7 +698,7 @@ function renderApkInfo(data: any) {
           html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:3px">'
           html += `<span style="color:var(--app-text-primary);font-family:monospace;font-size:11px;min-width:120px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${esc(name)}">${esc(name)}</span>`
 
-          if (value) {
+          if (value && !value.startsWith('@')) {
             html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
             html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(value)}</span>`
           }
