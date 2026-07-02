@@ -392,12 +392,12 @@ async function cancelTask(task: Task) {
 }
 
 async function retryTask(task: Task) {
-  // Reset task state to queued
+  // Reset task state to queued, keep existing logs and append below them
+  taskStore.appendLog(task.id, `--- ${t('app.retry')} ---`)
   taskStore.updateTask(task.id, {
     status: 'queued',
     error: '',
     result: '',
-    logs: [],
     progress: 0,
     progressLabel: ''
   })
