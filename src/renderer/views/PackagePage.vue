@@ -125,6 +125,16 @@
               <template #icon><n-icon size="14"><StopCircle /></n-icon></template>
             </n-button>
             <n-button
+              v-if="task.status === 'failed' || task.status === 'cancelled'"
+              size="tiny"
+              quaternary
+              type="warning"
+              :title="t('app.retry')"
+              @click.stop="retryTask(task)"
+            >
+              <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
+            </n-button>
+            <n-button
               v-if="task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled'"
               size="tiny"
               quaternary
@@ -179,7 +189,7 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, useDialog } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download
+  ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
@@ -379,6 +389,21 @@ async function cancelTask(task: Task) {
       }
     }
   })
+}
+
+async function retryTask(task: Task) {
+  // Reset task state to queued
+  taskStore.updateTask(task.id, {
+    status: 'queued',
+    error: '',
+    result: '',
+    logs: [],
+    progress: 0,
+    progressLabel: ''
+  })
+  task.collapsed = true
+  // Re-execute the same task
+  await executeTask(task)
 }
 
 function confirmClearCompleted() {
