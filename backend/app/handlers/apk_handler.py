@@ -275,46 +275,57 @@ def _parse_manifest_meta_data(apk_path):
         lines = output.split("\n")
 
         meta_list = []
-        current_parent = "application"
+        # Use indent-based stack to properly track parent scope
+        # Format: indent 6=E:manifest, 8=E:application, 10=E:activity/meta-data/etc
+        stack = [("manifest", 0)]
         in_meta = False
         meta_name = ""
         meta_value = ""
 
         for line in lines:
-            # Track parent element (non-meta-data E: lines)
-            if re.match(r'\s+E: ', line):
-                elem_name = line.split("E: ")[1].split(" ")[0].strip()
-                if elem_name == "meta-data":
-                    # Flush previous meta-data entry if any (consecutive meta-data)
-                    if in_meta:
-                        meta_list.append({
-                            "parent": current_parent,
-                            "name": meta_name,
-                            "value": meta_value
-                        })
-                    in_meta = True
-                    meta_name = ""
-                    meta_value = ""
-                else:
-                    # Flush previous meta-data entry if any
-                    if in_meta:
-                        meta_list.append({
-                            "parent": current_parent,
-                            "name": meta_name,
-                            "value": meta_value
-                        })
-                        in_meta = False
-                    current_parent = elem_name
-            elif in_meta and "android:name" in line:
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            indent = len(line) - len(line.lstrip())
+
+            if stripped.startswith("E: meta-data"):
+                # Flush previous entry before starting new one
+                if in_meta:
+                    parent = stack[-1][0] if stack else "unknown"
+                    meta_list.append({
+                        "parent": parent,
+                        "name": meta_name,
+                        "value": meta_value
+                    })
+                in_meta = True
+                meta_name = ""
+                meta_value = ""
+            elif stripped.startswith("E:"):
+                # Pop stack until we're at the right depth (going back up)
+                while stack and stack[-1][1] >= indent:
+                    stack.pop()
+                elem_name = stripped.split(" ")[1].split("(")[0].strip()
+                stack.append((elem_name, indent))
+                # Flush any pending meta-data before switching context
+                if in_meta:
+                    parent = stack[-2][0] if len(stack) >= 2 else stack[-1][0]
+                    meta_list.append({
+                        "parent": parent,
+                        "name": meta_name,
+                        "value": meta_value
+                    })
+                    in_meta = False
+            elif in_meta and "android:name" in stripped:
                 m = re.search(r'Raw: \"([^\"]*)\"', line)
                 if m:
                     meta_name = m.group(1)
-            elif in_meta and "android:value" in line:
+            elif in_meta and "android:value" in stripped:
                 m = re.search(r'Raw: \"([^\"]*)\"', line)
                 if m:
                     meta_value = m.group(1)
                 else:
-                    # Try numeric value (e.g. android:value=2.2) or empty string (e.g. android:value="")
+                    # Try numeric value (e.g. android:value=2.2) or empty string
                     m2 = re.search(r'android:value[^=]*=([^\s]+)', line)
                     if m2:
                         raw_val = m2.group(1)
@@ -322,8 +333,9 @@ def _parse_manifest_meta_data(apk_path):
 
         # Flush last entry
         if in_meta:
+            parent = stack[-1][0] if stack else "unknown"
             meta_list.append({
-                "parent": current_parent,
+                "parent": parent,
                 "name": meta_name,
                 "value": meta_value
             })
