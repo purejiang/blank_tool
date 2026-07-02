@@ -703,6 +703,12 @@ function renderApkInfo(data: any) {
             html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(value)}</span>`
           }
 
+          // Scalar resource value (string/integer resolved from aapt2 dump resources)
+          if (item.resource_value) {
+            if (!value) html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
+            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(item.resource_value)}</span>`
+          }
+
           // Resource reference with resolved content
           if (resContent && resContent.length > 0) {
             if (!value) html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`

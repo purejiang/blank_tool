@@ -366,11 +366,17 @@ def _resolve_resource_refs(apk_path, meta_list):
     """
     if not meta_list:
         return
-    # Collect unique resource refs
+    # Collect unique resource refs (both android:resource and android:value @0x refs)
     refs = set()
-    for m in meta_list:
+    value_ref_map = {}  # entry index -> ref from android:value
+    for i, m in enumerate(meta_list):
         if m.get("resource_ref"):
             refs.add(m["resource_ref"])
+        # Also resolve android:value references like @0x7f0a00e7 (string/integer refs)
+        val = m.get("value", "")
+        if val and re.match(r'^@(0x[0-9a-fA-F]+)$', val):
+            value_ref_map[i] = val[1:]  # strip @ prefix
+            refs.add(value_ref_map[i])
     if not refs:
         return
 
@@ -381,25 +387,53 @@ def _resolve_resource_refs(apk_path, meta_list):
         context = CommandExecutionContext()
         result = aapt.execute(["dump", "resources", apk_path], context)
         output = result.get("stdout", "")
+        lines = output.split("\n")
 
-        # Build lookup: 0x7f0f0000 -> xml/file_paths
+        # Build lookup for ONLY the refs we need: id -> {path, type, value}
+        # aapt2 dump resources format:
+        #   resource 0x7f0a0000 string/app_name
+        #     () "My App"              ← value for string (next line)
+        #   resource 0x7f0f0004 integer/google_play_services_version
+        #     () 12451000              ← value for integer (next line)
         lookup = {}
-        for line in output.split("\n"):
+        for i, line in enumerate(lines):
             m = re.search(r'resource (0x[0-9a-fA-F]+)\s+(\S+)', line)
-            if m:
-                lookup[m.group(1)] = m.group(2)
+            if m and m.group(1) in refs:
+                rid = m.group(1)
+                rpath = m.group(2)
+                rtype = rpath.split("/")[0] if "/" in rpath else rpath
+                rvalue = None
+                # Check next line for scalar value (string/integer/bool)
+                if i + 1 < len(lines):
+                    nxt = lines[i + 1].strip()
+                    ms = re.search(r'^\(\)\s*"([^"]*)"', nxt)
+                    mi = re.search(r'^\(\)\s*(-?\d+)', nxt)
+                    mb = re.search(r'^\(\)\s*(true|false)', nxt, re.I)
+                    if ms:
+                        rvalue = ms.group(1)
+                    elif mi:
+                        rvalue = mi.group(1)
+                    elif mb:
+                        rvalue = mb.group(1)
+                lookup[rid] = {"path": rpath, "type": rtype, "value": rvalue}
 
-        # Step 1: Resolve refs to paths
-        for m in meta_list:
-            ref = m.get("resource_ref")
+        # Step 1: Resolve all refs — set resource_resolved (path) + resource_value (scalar)
+        for i, m in enumerate(meta_list):
+            ref = m.get("resource_ref") or value_ref_map.get(i)
             if ref and ref in lookup:
-                m["resource_resolved"] = lookup[ref]
+                entry = lookup[ref]
+                m["resource_resolved"] = entry["path"]
+                if entry.get("value") is not None:
+                    m["resource_value"] = entry["value"]
 
         # Step 2: For xml/ resources, read actual content via aapt2 dump xmltree
         for m in meta_list:
             rpath = m.get("resource_resolved")
-            if not rpath or not (rpath.startswith("xml/") or rpath.startswith("layout/")):
+            if not rpath:
                 continue
+            rtype = rpath.split("/")[0] if "/" in rpath else rpath
+            if rtype not in ("xml", "layout"):
+                continue  # string/integer already resolved via resource_value
 
             xml_file = f"res/{rpath}.xml"
             try:
