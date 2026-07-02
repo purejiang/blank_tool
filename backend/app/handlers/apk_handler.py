@@ -102,6 +102,7 @@ def apk_analyze(params, stream_handler):
         # C4: Meta-data from AndroidManifest.xml
         try:
             info["meta_data"] = _parse_manifest_meta_data(apk_path)
+            _resolve_resource_refs(apk_path, info["meta_data"])
         except Exception as e:
             logger.warning(f"Meta-data extraction failed: {e}")
             info["warnings"].append(f"Meta-data extraction failed: {e}")
@@ -281,6 +282,7 @@ def _parse_manifest_meta_data(apk_path):
         in_meta = False
         meta_name = ""
         meta_value = ""
+        meta_resource = ""
 
         for line in lines:
             stripped = line.strip()
@@ -296,11 +298,13 @@ def _parse_manifest_meta_data(apk_path):
                     meta_list.append({
                         "parent": parent,
                         "name": meta_name,
-                        "value": meta_value
+                        "value": meta_value,
+                        "resource_ref": meta_resource if meta_resource else None
                     })
                 in_meta = True
                 meta_name = ""
                 meta_value = ""
+                meta_resource = ""
             elif stripped.startswith("E:"):
                 # Pop stack until we're at the right depth (going back up)
                 while stack and stack[-1][1] >= indent:
@@ -313,7 +317,8 @@ def _parse_manifest_meta_data(apk_path):
                     meta_list.append({
                         "parent": parent,
                         "name": meta_name,
-                        "value": meta_value
+                        "value": meta_value,
+                        "resource_ref": meta_resource if meta_resource else None
                     })
                     in_meta = False
             elif in_meta and "android:name" in stripped:
@@ -330,6 +335,10 @@ def _parse_manifest_meta_data(apk_path):
                     if m2:
                         raw_val = m2.group(1)
                         meta_value = raw_val if raw_val != '""' else ""
+            elif in_meta and "android:resource" in stripped:
+                m = re.search(r'@(0x[0-9a-fA-F]+)', line)
+                if m:
+                    meta_resource = m.group(1)
 
         # Flush last entry
         if in_meta:
@@ -337,7 +346,8 @@ def _parse_manifest_meta_data(apk_path):
             meta_list.append({
                 "parent": parent,
                 "name": meta_name,
-                "value": meta_value
+                "value": meta_value,
+                "resource_ref": meta_resource if meta_resource else None
             })
 
         # Filter out entries with no name
@@ -345,6 +355,100 @@ def _parse_manifest_meta_data(apk_path):
     except Exception as e:
         logger.warning(f"Meta-data parsing failed: {e}")
         return []
+
+
+def _resolve_resource_refs(apk_path, meta_list):
+    """
+    Resolve android:resource=@0xNNNNNNNN references to human-readable paths
+    using aapt2 dump resources, then read actual XML content for xml/ resources.
+    Mutates meta_list in-place, adding 'resource_resolved' and optionally
+    'resource_content' to each entry that has a resource_ref.
+    """
+    if not meta_list:
+        return
+    # Collect unique resource refs
+    refs = set()
+    for m in meta_list:
+        if m.get("resource_ref"):
+            refs.add(m["resource_ref"])
+    if not refs:
+        return
+
+    try:
+        aapt = manager.get_tool("aapt")
+        if not aapt or not aapt.is_valid:
+            return
+        context = CommandExecutionContext()
+        result = aapt.execute(["dump", "resources", apk_path], context)
+        output = result.get("stdout", "")
+
+        # Build lookup: 0x7f0f0000 -> xml/file_paths
+        lookup = {}
+        for line in output.split("\n"):
+            m = re.search(r'resource (0x[0-9a-fA-F]+)\s+(\S+)', line)
+            if m:
+                lookup[m.group(1)] = m.group(2)
+
+        # Step 1: Resolve refs to paths
+        for m in meta_list:
+            ref = m.get("resource_ref")
+            if ref and ref in lookup:
+                m["resource_resolved"] = lookup[ref]
+
+        # Step 2: For xml/ resources, read actual content via aapt2 dump xmltree
+        for m in meta_list:
+            rpath = m.get("resource_resolved")
+            if not rpath or not (rpath.startswith("xml/") or rpath.startswith("layout/")):
+                continue
+
+            xml_file = f"res/{rpath}.xml"
+            try:
+                r2 = aapt.execute(["dump", "xmltree", "--file", xml_file, apk_path], context)
+                xml_out = r2.get("stdout", "")
+
+                # Parse structured content: element + name + value from xmltree output
+                # Format:
+                # E: resources
+                #     E: paths
+                #         E: external-path
+                #           A: name="camera_photos" (Raw: "camera_photos")
+                #           A: path="." (Raw: ".")
+                items = []
+                current_elem = ""
+                current_attrs = {}  # attribute name -> value
+
+                for xline in xml_out.split("\n"):
+                    xs = xline.strip()
+                    if xs.startswith("E:"):
+                        # Flush previous element
+                        if current_elem and current_attrs:
+                            items.append({
+                                "element": current_elem,
+                                "name": current_attrs.get("name", ""),
+                                "value": current_attrs.get("path", current_attrs.get("value", ""))
+                            })
+                        current_elem = xs.split(" ")[1].split("(")[0].strip()
+                        current_attrs = {}
+                    elif "A: " in xs and current_elem and "android:" not in xs:
+                        m_attr = re.search(r'A:\s+(\S+)="([^"]*)"', xs)
+                        if m_attr:
+                            current_attrs[m_attr.group(1)] = m_attr.group(2)
+
+                # Flush last element
+                if current_elem and current_attrs:
+                    items.append({
+                        "element": current_elem,
+                        "name": current_attrs.get("name", ""),
+                        "value": current_attrs.get("path", current_attrs.get("value", ""))
+                    })
+
+                if items:
+                    m["resource_content"] = items
+            except Exception:
+                pass  # Non-critical: content is best-effort
+
+    except Exception as e:
+        logger.warning(f"Resource ref resolution failed: {e}")
 
 
 def apk_sign(params, stream_handler):

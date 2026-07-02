@@ -678,22 +678,47 @@ function renderApkInfo(data: any) {
       }
       const metaCount = metaData.length
       html += `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('metaData')} (${metaCount} entries)</summary>`
-      html += '<div style="margin-top:4px;display:flex;flex-direction:column;gap:4px;font-size:12px">'
+      html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;font-size:12px">'
+
       for (const [parent, entries] of Object.entries(grouped)) {
         const e = entries as any[]
-        html += `<div style="margin-bottom:2px"><span style="color:var(--app-green);font-weight:500;font-size:11px">&lt;${esc(parent)}&gt;</span>`
-        html += '<div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">'
+        html += '<div>'
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+        html += `<span style="display:inline-block;background:var(--app-green);color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;line-height:1.4">&lt;${esc(parent)}&gt;</span>`
+        html += `<span style="color:var(--app-text-dim);font-size:11px">${e.length} entries</span>`
+        html += '</div>'
+        html += '<div style="padding-left:6px;border-left:2px solid var(--app-card-border)">'
+
         for (const item of e) {
           const name = item.name || ''
           const value = item.value || ''
-          html += '<div style="display:flex;align-items:flex-start;gap:8px;padding-left:12px">'
-          html += `<span style="color:var(--app-text-primary);font-family:monospace;font-size:11px;min-width:0;flex-shrink:0">${esc(name)}</span>`
-          html += `<span style="color:var(--app-text-dim);margin:0 4px">→</span>`
+          const resContent = item.resource_content
+          const resResolved = item.resource_resolved
+
+          html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:3px">'
+          html += `<span style="color:var(--app-text-primary);font-family:monospace;font-size:11px;min-width:120px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${esc(name)}">${esc(name)}</span>`
+
           if (value) {
-            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1">${esc(value)}</span>`
-          } else {
-            html += `<span style="color:var(--app-text-dim);font-style:italic;font-size:11px">(empty)</span>`
+            html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
+            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(value)}</span>`
           }
+
+          // Resource reference with resolved content
+          if (resContent && resContent.length > 0) {
+            if (!value) html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
+            html += '<span style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0">'
+            if (resResolved) {
+              html += `<span style="color:var(--app-text-dim);font-size:10px">${esc(resResolved)}</span>`
+            }
+            for (const ci of resContent) {
+              html += `<span style="color:var(--app-text-secondary);font-size:11px;padding-left:8px">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</span>`
+            }
+            html += '</span>'
+          } else if (!value) {
+            html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
+            html += `<span style="color:var(--app-text-dim);font-style:italic;font-size:11px">-</span>`
+          }
+
           html += '</div>'
         }
         html += '</div></div>'
