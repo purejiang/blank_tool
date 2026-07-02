@@ -13,6 +13,12 @@ from app.common.task_manager import TaskManager
 from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 from app.utils.env import get_output_dir
+from app.utils.apk_inspector import (
+    enumerate_so_files,
+    compare_so_across_arches,
+    analyze_compression,
+    check_16kb_page_support,
+)
 
 logger = Logger.get_logger("ApkHandler")
 manager = ToolManager.instance()
@@ -66,6 +72,32 @@ def apk_analyze(params, stream_handler):
             ]
 
         info["file_size"] = os.path.getsize(apk_path)
+
+        # --- v2.1.1: deep APK analysis ---
+        info["warnings"] = []
+
+        # C1: SO file comparison across architectures
+        try:
+            so_map = enumerate_so_files(apk_path)
+            info["native_so_detail"] = so_map
+            info["so_comparison"] = compare_so_across_arches(so_map)
+        except Exception as e:
+            logger.warning(f"SO analysis failed: {e}")
+            info["warnings"].append(f"SO analysis failed: {e}")
+
+        # C2: Compression analysis (assets/lib/dex)
+        try:
+            info["compression_analysis"] = analyze_compression(apk_path)
+        except Exception as e:
+            logger.warning(f"Compression analysis failed: {e}")
+            info["warnings"].append(f"Compression analysis failed: {e}")
+
+        # C3: 16KB page size support for 64-bit .so files
+        try:
+            info["page_size_16kb"] = check_16kb_page_support(apk_path)
+        except Exception as e:
+            logger.warning(f"16KB page check failed: {e}")
+            info["warnings"].append(f"16KB page check failed: {e}")
 
         return info
     except ToolException:

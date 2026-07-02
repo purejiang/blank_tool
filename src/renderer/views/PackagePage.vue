@@ -490,7 +490,7 @@ function renderApkInfo(data: any) {
   const dangerous = perms.filter(p => DANGEROUS.has(p))
   const normal = perms.filter(p => !DANGEROUS.has(p))
 
-  const label = (k: string) => t(`task.${k}`)
+  const label = (k: string, params?: any) => t(`task.${k}`, params)
   const esc = (s: string) => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '-'
   const fmtSize = (bytes: number) => {
     if (!bytes || bytes === 0) return '-'
@@ -529,6 +529,98 @@ function renderApkInfo(data: any) {
   // Architecture
   if (archChips) {
     html += `<div><span style="color:var(--app-text-dim)">${label('architecture')}：</span>${archChips}</div>`
+  }
+
+  // v2.1.1: Warnings
+  if (data.warnings && Array.isArray(data.warnings) && data.warnings.length > 0) {
+    html += '<div style="margin-top:4px;padding:6px 10px;background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.25);border-radius:6px;font-size:12px">'
+    html += `<div style="color:var(--app-yellow,#ca8a04);font-weight:600;margin-bottom:3px">${label('warnings')}</div>`
+    for (const w of data.warnings) {
+      html += `<div style="color:var(--app-text-dim)">${esc(String(w))}</div>`
+    }
+    html += '</div>'
+  }
+
+  // v2.1.1: SO File Comparison
+  const soComp = data.so_comparison
+  if (soComp && !soComp.single_arch && !soComp.no_native && soComp.arches && Object.keys(soComp.arches).length > 0) {
+    html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('soComparison')}</summary>`
+    html += '<div style="margin-top:4px;display:flex;flex-direction:column;gap:4px">'
+    for (const [arch, info] of Object.entries(soComp.arches)) {
+      const a = info as any
+      const archColor = Object.keys(archColors).find(k => arch.startsWith(k)) || '#6b7280'
+      const chip = `<span style="display:inline-block;background:${archColor}18;color:${archColor};border:1px solid ${archColor}40;border-radius:4px;padding:0 7px;font-size:11px;font-family:monospace">${esc(arch)}</span>`
+      const count = a.count || a.so_files?.length || 0
+      const missing = a.missing || []
+      html += '<div style="display:flex;align-items:center;gap:6px;font-size:12px">'
+      html += chip
+      html += `<span style="color:var(--app-text-dim)">${count} .so</span>`
+      if (missing.length > 0) {
+        html += `<span style="color:var(--app-red)">${label('missingInArch', { arch, count: missing.length })}: `
+        html += missing.map((s: string) => `<span style="display:inline-block;background:rgba(239,68,68,0.1);color:var(--app-red);border-radius:3px;padding:0 5px;font-size:10px;font-family:monospace;margin:0 1px">${esc(s)}</span>`).join('')
+        html += '</span>'
+      } else {
+        html += '<span style="color:var(--app-green)">\u2713</span>'
+      }
+      html += '</div>'
+    }
+    html += '</div></details>'
+  } else if (soComp && soComp.single_arch) {
+    html += `<div style="margin-top:4px;font-size:12px;color:var(--app-text-dim)">${label('soComparison')}：${label('singleArch')}</div>`
+  } else if (soComp && soComp.no_native) {
+    html += `<div style="margin-top:4px;font-size:12px;color:var(--app-text-dim)">${label('soComparison')}：${label('noNativeLibs')}</div>`
+  }
+
+  // v2.1.1: Compression Analysis
+  const comp = data.compression_analysis
+  if (comp && Object.keys(comp).length > 0) {
+    html += `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('compressionAnalysis')}</summary>`
+    html += '<div style="margin-top:4px;display:flex;flex-direction:column;gap:2px;font-size:12px">'
+    for (const [category, info] of Object.entries(comp)) {
+      const c = info as any
+      const stored = c.stored || 0
+      const deflated = c.deflated || 0
+      const storedSize = c.stored_size || 0
+      html += `<div style="display:flex;align-items:center;gap:6px"><span style="color:var(--app-text-primary);font-weight:500;min-width:50px">${esc(category)}</span>`
+      html += `<span style="color:var(--app-text-dim)">${label('stored')}：${stored}</span>`
+      html += `<span style="color:var(--app-text-dim)">${label('compressed')}：${deflated}</span>`
+      if (storedSize > 0) {
+        html += `<span style="color:var(--app-yellow,#ca8a04);font-size:11px">${label('storedSize', { size: fmtSize(storedSize) })}</span>`
+      }
+      html += '</div>'
+    }
+    html += '</div></details>'
+  }
+
+  // v2.1.1: 16KB Page Size Support
+  const page16 = data.page_size_16kb
+  if (page16 && !page16.no_64bit_native && Object.keys(page16).filter(k => k !== 'skipped').length > 0) {
+    html += `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('pageSize16kb')}</summary>`
+    html += '<div style="margin-top:4px;display:flex;flex-direction:column;gap:3px;font-size:12px">'
+    for (const [arch, files] of Object.entries(page16)) {
+      if (arch === 'skipped') continue
+      html += `<div style="color:var(--app-text-primary);font-weight:500;margin-bottom:2px">${esc(arch)}</div>`
+      for (const [file, info] of Object.entries(files as any)) {
+        const fi = info as any
+        const ok = fi.supports_16kb
+        html += '<div style="display:flex;align-items:center;gap:6px;padding-left:8px">'
+        html += `<span style="color:var(--app-text-dim);font-family:monospace;font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(file)}</span>`
+        if (ok) {
+          html += `<span style="display:inline-block;background:rgba(34,197,94,0.1);color:var(--app-green);border:1px solid rgba(34,197,94,0.3);border-radius:3px;padding:1px 6px;font-size:10px">${label('supports16kb')}</span>`
+        } else {
+          html += `<span style="display:inline-block;background:rgba(239,68,68,0.1);color:var(--app-red);border:1px solid rgba(239,68,68,0.3);border-radius:3px;padding:1px 6px;font-size:10px">${label('notSupports16kb')}</span>`
+        }
+        if (fi.max_align) {
+          html += `<span style="color:var(--app-text-dim);font-family:monospace;font-size:10px">0x${fi.max_align.toString(16)}</span>`
+        }
+        html += '</div>'
+      }
+    }
+    // Skipped files note
+    if (page16.skipped && page16.skipped.length > 0) {
+      html += `<div style="color:var(--app-text-dim);font-size:11px;margin-top:2px">${label('pageSizeSkipped', { count: page16.skipped.length })}</div>`
+    }
+    html += '</div></details>'
   }
 
   // Dangerous permissions

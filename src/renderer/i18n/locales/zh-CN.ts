@@ -267,6 +267,29 @@ export default {
     noPermissions: '无',
     fileSize: '文件大小',
     architecture: '架构',
+    // v2.1.1 APK analysis: SO comparison
+    soComparison: 'SO 文件对比',
+    soComparisonDesc: '不同架构 SO 文件一致性',
+    noNativeLibs: '无原生库',
+    singleArch: '单架构，无需对比',
+    missingInArch: '{arch} 缺失 {count} 个',
+    // Compression
+    compressionAnalysis: '压缩状态',
+    compressionDesc: 'assets/lib/dex 压缩情况',
+    stored: '未压缩',
+    compressed: '已压缩',
+    storedSize: '未压缩 {size}',
+    // 16KB page
+    pageSize16kb: '16KB 页面对齐',
+    pageSize16kbDesc: '64 位 SO 是否支持 16KB 页面',
+    supports16kb: '支持 16KB',
+    notSupports16kb: '不支持 16KB',
+    pageSizeSkipped: '已跳过 {count} 个非 64 位/非 ELF',
+    // Warnings
+    warnings: '分析警告',
+    // Plugin
+    pluginDev: '功能开发中',
+    pluginDevDesc: '插件功能正在开发中，敬请期待',
     dangerousPerms: '危险权限',
     otherPermsShow: '显示全部 {count} 项权限',
     otherPermsHide: '隐藏',

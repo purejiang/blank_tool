@@ -267,6 +267,29 @@ export default {
     noPermissions: 'None',
     fileSize: 'File Size',
     architecture: 'Architecture',
+    // v2.1.1 APK analysis: SO comparison
+    soComparison: 'SO File Comparison',
+    soComparisonDesc: 'Native lib consistency across architectures',
+    noNativeLibs: 'No native libraries',
+    singleArch: 'Single architecture, no comparison',
+    missingInArch: '{arch} missing {count}',
+    // Compression
+    compressionAnalysis: 'Compression Status',
+    compressionDesc: 'assets/lib/dex compression',
+    stored: 'Stored',
+    compressed: 'Compressed',
+    storedSize: 'Stored {size}',
+    // 16KB page
+    pageSize16kb: '16KB Page Alignment',
+    pageSize16kbDesc: '64-bit SO 16KB page support',
+    supports16kb: 'Supports 16KB',
+    notSupports16kb: 'Not 16KB ready',
+    pageSizeSkipped: 'Skipped {count} non-64bit/non-ELF',
+    // Warnings
+    warnings: 'Analysis Warnings',
+    // Plugin
+    pluginDev: 'Feature in Development',
+    pluginDevDesc: 'Plugin feature is under development, stay tuned',
     dangerousPerms: 'Dangerous Permissions',
     otherPermsShow: 'Show {count} permissions',
     otherPermsHide: 'Hide',
