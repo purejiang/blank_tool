@@ -30,6 +30,7 @@
   "build": {
     "appId": "com.cyanrain.blank-tool",
     "productName": "Blank Tool",
+    "artifactName": "Blank-Tool-Setup-${version}.${ext}",
     "directories": {
       "output": "build"
     },
