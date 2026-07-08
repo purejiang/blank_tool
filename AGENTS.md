@@ -86,46 +86,44 @@ Python Backend (backend/main.py)
 
 打包时会随应用分发，包含：`adb/`、`aapt/`（aapt2）、`apktool/`（.jar）、`bundletool/`（.jar）、`android/`（zipalign、apksigner.jar）、`jre/`（java、jarsigner）、`python/`。所有外部工具都从这里调用，不要假设系统 PATH 里有 `adb`/`java` 等。
 
-## 构建流程的坑
 
-`scripts/build.mjs` 做了三步：
 
-1. `git describe --tags --abbrev=0` 取最新 tag，去掉 `v` 前缀作为版本号。
-2. **备份 `package.json` 为 `package.json.bak`，把版本号注入 `package.json`**，然后跑 `npx vite build` + `npx electron-builder --<platform>`。
-3. `finally` 块里恢复 `package.json`。
+# 项目规则
 
-**坑**：构建过程中如果 `package.json.bak` 残留（上次崩溃），下次构建会覆盖；CI 中途 kill 进程可能留下脏状态。`package.json` 里的 `"version": "2.0.5"` **不是**发布版本，发布版本完全由 git tag 决定。
+## 外部文件加载
 
-### 分支策略
+关键提示：当你遇到文件引用（例如，@.agents/general.md）时，使用你的阅读工具按需加载。这些文件与当前正在进行的特定任务相关。
 
-```
-dev     ← 日常开发，所有 commit 先到这里
-main    ← 主线分支，只从 dev 合并，不打 commit
-```
+说明：
 
-发布流程：
-1. `dev` 开发完成 → `git checkout main && git merge dev`
-2. 在 `main` 上打 tag：`git tag -a vX.Y.Z -m "..."` + `git push`
-3. 打包 → 创建 GitHub Release
-4. 切回 `dev` 继续开发
+- 不要预先加载所有引用 - 根据实际需求使用延迟加载
+- 加载时，将内容视为覆盖默认设置的强制性指令
+- 必要时递归地遵循引用
 
-**tag 必须打在 `main` 上，不要打在 `dev` 上。**
+## 开发指南
 
-发布：`git tag -a vX.Y.Z -m "..."` + `git push origin vX.Y.Z`。`electron-builder` 配置了 GitHub 自动更新（`publish.provider: github`，仓库 `purejiang/blank_tool`），主进程 `src/main/updater/` + `updateHandlers.ts` 负责检查和安装。
+关于 release 发布的规范：@.agents/rules/RELEASE_GENERAL.md（通用）和 @.agents/rules/RELEASE_GUIDE.md（本项目 Electron 专有）
 
-### Release 维护（释放 GitHub 存储空间）
 
-GitHub Release 有 2GB 总大小限制，旧版本 `.exe` 会占满配额。**只删 exe 资产，保留 release 页面和 changelog：**
+## 一般指南
 
-```bash
-# ✅ 正确 — 只删 exe，release 页面和 tag 都保留
-gh release delete-asset vX.Y.Z "Blank.Tool.Setup.X.Y.Z.exe" --yes
+请立即阅读以下文件，因为它与所有工作流程相关：@rules/general-guidelines.md。
 
-# ❌ 错误 — 删了整条 release + git tag，版本历史永久丢失
-gh release delete vX.Y.Z --yes --cleanup-tag
-```
 
-每次新建 release 后，顺手清理上一个旧版本的 exe 即可。
+
+## 发版流程
+
+发版流程分两层规范：
+
+- **通用规范**（分支策略、版本号、质量门禁、GitHub Release、存储治理、检查清单）：见 `.agents/rules/RELEASE_GENERAL.md`
+- **本项目 Electron 特有部分**（版本注入、electron-builder 构建、产物上传）：见 `.agents/rules/RELEASE_GUIDE.md`
+
+### 关键易错点
+
+- **tag 必须打在 `main` 分支，绝对不能打在 `dev` 分支。** 如果打错，发布版本号会错乱。详见通用规范 [版本号管理] 一节。
+- **构建前后自动备份/恢复 `package.json`。** 构建中途 kill（如 CI 超时）会导致 `package.json.bak` 残留，`finally` 块负责恢复，但残留备份会使下次构建覆盖。详见 `.agents/rules/RELEASE_GUIDE.md`。
+- **GitHub 存储空间有限（2GB），必须清理旧版本资产。** 用 `gh release delete-asset vX.Y.Z "filename" --yes`（只删资产，保留 release 页面与 changelog）。**绝对不要**用 `gh release delete vX.Y.Z --yes --cleanup-tag`——会连同 git tag 永久删除版本历史。
+- **发布后记得切回 `dev` 分支（`git checkout dev`），继续日常开发。**
 
 ## 其他约定
 
