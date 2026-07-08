@@ -18,6 +18,7 @@ export const IPC_CHANNELS = {
   resetUserConfig: { name: 'reset-user-config', direction: 'renderer-to-main' },
   getSettingsViewModel: { name: 'get-settings-view-model', direction: 'renderer-to-main' },
   resolveSettingsPaths: { name: 'resolve-settings-paths', direction: 'renderer-to-main', payload: '{ runtime?, server? }' },
+  showSystemNotification: { name: 'show-system-notification', direction: 'renderer-to-main', payload: '{ title: string, body: string }' },
 
   // Main → Renderer (send/on)
   appConfigChanged: { name: 'app-config-changed', direction: 'main-to-renderer', payload: '{ key: string, value: unknown }' },

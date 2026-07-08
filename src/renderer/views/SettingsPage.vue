@@ -38,11 +38,11 @@
           <span class="section-title">{{ t('settings.behavior') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
-          <n-form-item :label="t('settings.autoSave')">
-            <n-switch v-model:value="general.autoSave" @update:value="saveGeneral" />
-          </n-form-item>
           <n-form-item :label="t('settings.notifications')">
             <n-switch v-model:value="general.enableNotifications" @update:value="saveGeneral" />
+          </n-form-item>
+          <n-form-item :label="t('settings.autoDeleteOutput')">
+            <n-switch v-model:value="general.autoDeleteOutputOnTaskRemove" @update:value="saveGeneral" />
           </n-form-item>
           <n-form-item :label="t('settings.timeout')">
             <n-input-number v-model:value="general.timeout" :min="10" :max="600" :step="10" @update:value="saveGeneral" style="width: 120px">
@@ -265,7 +265,7 @@ const triggerSaved = () => {
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-const general = reactive({ language: 'zh-CN', theme: 'auto', autoSave: true, enableNotifications: true, timeout: 300 })
+const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, timeout: 300 })
 const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
 const displayPaths = reactive({ runtime: '', server: '' })
 const cacheInfo = ref({ cache: { size: 0, files: 0 }, output: { size: 0, files: 0 }, total: { size: 0, files: 0 } })

@@ -97,7 +97,7 @@ describe('IPC Channel Consistency', () => {
     it('has expected number of channels', () => {
       const count = Object.keys(IPC_CHANNELS).length
       expect(count).toBeGreaterThanOrEqual(20)
-      expect(count).toBeLessThanOrEqual(30)
+      expect(count).toBeLessThanOrEqual(40)
     })
   })
 })

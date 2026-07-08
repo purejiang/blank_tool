@@ -1,8 +1,25 @@
-import { ipcMain, dialog, shell, BrowserWindow, app, clipboard, IpcMainInvokeEvent } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, app, clipboard, Notification, IpcMainInvokeEvent } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 
 export function setupElectronHandlers(): void {
+  ipcMain.handle(IPC_CHANNEL_NAMES.showSystemNotification, async (event: IpcMainInvokeEvent, payload: { title?: string; body?: string }) => {
+    try {
+      if (!Notification.isSupported()) return false
+      const n = new Notification({ title: payload?.title ?? '', body: payload?.body ?? '' })
+      n.on('click', () => {
+        const win = BrowserWindow.fromWebContents(event.sender)
+        if (win && !win.isDestroyed()) { win.show(); win.focus() }
+      })
+      n.show()
+      return true
+    } catch (e) {
+      console.error('showSystemNotification failed:', e)
+      return false
+    }
+  })
+
   ipcMain.handle('show-open-dialog', async (event: IpcMainInvokeEvent, options: any) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return { canceled: true, filePaths: [] }

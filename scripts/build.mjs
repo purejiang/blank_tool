@@ -20,8 +20,10 @@ function getTagVersion() {
 
 async function main() {
   const args = process.argv.slice(2);
-  const platformArg = args.find(a => a.startsWith('--'));
-  const platform = platformArg ? platformArg.replace('--', '') : 'win';
+  // Platform is the first non-flag argument, defaults to 'win'
+  const platformIdx = args.findIndex(a => !a.startsWith('--'));
+  const platform = platformIdx >= 0 ? args[platformIdx] : 'win';
+  const extraArgs = args.filter(a => a !== platform).join(' ');
 
   const gitVersion = getTagVersion();
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
@@ -41,7 +43,7 @@ async function main() {
     execSync('npx vite build', { cwd: root, stdio: 'inherit' });
 
     // Step 2: Package with electron-builder
-    const cmd = `npx electron-builder --${platform}`;
+    const cmd = `npx electron-builder --${platform}${extraArgs ? ' ' + extraArgs : ''}`;
     console.log(`[build] Running: ${cmd}`);
     execSync(cmd, { cwd: root, stdio: 'inherit' });
 
