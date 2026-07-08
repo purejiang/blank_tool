@@ -333,7 +333,8 @@ const electronApi = {
   },
   respondQuitDialog: (action: string) => {
     ipcRenderer.invoke(IPC_CHANNEL_NAMES.respondQuitDialog, action)
-  }
+  },
+  showSystemNotification: (title: string, body: string) => ipcInvoke(IPC_CHANNEL_NAMES.showSystemNotification, { title, body }),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronApi);

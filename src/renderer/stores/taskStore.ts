@@ -40,6 +40,61 @@ function saveTasks(tasks: Task[]) {
   } catch {}
 }
 
+// Collect deletable output paths from terminal tasks (completed/failed/cancelled)
+// with a non-empty outputPath. Deduped.
+function collectDeletablePaths(list: Task[]): string[] {
+  const seen = new Set<string>()
+  for (const t of list) {
+    if (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled') {
+      if (typeof t.outputPath === 'string' && t.outputPath.length > 0) {
+        seen.add(t.outputPath)
+      }
+    }
+  }
+  return Array.from(seen)
+}
+
+// Fire-and-forget best-effort deletion of task output paths via the backend.
+// Never throws; only console.errors on failure. Respects the
+// `autoDeleteOutputOnTaskRemove` toggle.
+async function tryDeleteOutputs(paths: string[]): Promise<void> {
+  if (paths.length === 0) return
+  if (!window.electronAPI?.appConfig?.get) return
+  try {
+    const enabled = await window.electronAPI.appConfig.get('autoDeleteOutputOnTaskRemove')
+    if (enabled !== true) return
+    await window.electronAPI.callBackendAPI('task.delete_output', { paths })
+  } catch (err) {
+    console.error('[taskStore] auto-delete output failed', err)
+  }
+}
+
+// Fire-and-forget OS notification when a task reaches a terminal state.
+// Never throws; only console.errors on failure. Respects the
+// `enableNotifications` toggle. Uses plain strings (store stays i18n-decoupled).
+async function notifyTaskTerminal(task: Task): Promise<void> {
+  const notify = window.electronAPI?.showSystemNotification as
+    | ((title: string, body: string) => Promise<boolean>)
+    | undefined
+  if (!window.electronAPI?.appConfig?.get || typeof notify !== 'function') return
+  try {
+    const enabled = await window.electronAPI.appConfig.get('enableNotifications')
+    if (enabled !== true) return
+    const title = `${task.operationLabel || 'Task'} ${task.fileName || ''}`.trim()
+    let body: string
+    if (task.status === 'completed') {
+      body = '已完成'
+    } else if (task.status === 'failed') {
+      body = `失败${task.error ? ': ' + task.error : ''}`
+    } else {
+      body = '已取消'
+    }
+    await notify(title, body)
+  } catch (err) {
+    console.error('[taskStore] notify failed', err)
+  }
+}
+
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>(loadTasks())
   const maxTasks = 50
@@ -87,6 +142,7 @@ export const useTaskStore = defineStore('task', () => {
       if (updates.status === 'completed' || updates.status === 'failed' || updates.status === 'cancelled') {
         tasks.value[idx].collapsed = true
         persist()
+        void notifyTaskTerminal(tasks.value[idx])
       }
     }
   }
@@ -101,15 +157,23 @@ export const useTaskStore = defineStore('task', () => {
 
   function removeTask(id: number) {
     const idx = tasks.value.findIndex(t => t.id === id)
-    if (idx !== -1) { tasks.value.splice(idx, 1); persist() }
+    if (idx !== -1) {
+      const task = tasks.value[idx]
+      void tryDeleteOutputs(collectDeletablePaths([task]))
+      tasks.value.splice(idx, 1)
+      persist()
+    }
   }
 
   function clearCompleted() {
+    const removed = tasks.value.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
+    void tryDeleteOutputs(collectDeletablePaths(removed))
     tasks.value = tasks.value.filter(t => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled')
     persist()
   }
 
   function clearAll() {
+    void tryDeleteOutputs(collectDeletablePaths(tasks.value))
     tasks.value = []
     persist()
   }

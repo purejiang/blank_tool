@@ -7,8 +7,8 @@ export { PATH_CONFIG_DEFAULTS };
 const LEGACY_SETTINGS_DEFAULTS = {
     language: 'zh-CN',
     theme: 'auto',
-    autoSave: true,
     enableNotifications: true,
+    autoDeleteOutputOnTaskRemove: false,
     adbPath: '',
     aaptPath: '',
     apktoolPath: '',
@@ -94,10 +94,6 @@ const schema = {
                 minimum: 10,
                 default: 100
             },
-            autoSave: {
-                type: 'boolean',
-                default: true
-            },
             outputFormat: {
                 type: 'string',
                 enum: ['json', 'text'],
@@ -107,7 +103,6 @@ const schema = {
         default: {
             timeout: 30000,
             maxHistory: 100,
-            autoSave: true,
             outputFormat: 'json'
         }
     },
@@ -167,13 +162,13 @@ const schema = {
         enum: ['auto', 'light', 'dark'],
         default: LEGACY_SETTINGS_DEFAULTS.theme
     },
-    autoSave: {
-        type: 'boolean',
-        default: LEGACY_SETTINGS_DEFAULTS.autoSave
-    },
     enableNotifications: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.enableNotifications
+    },
+    autoDeleteOutputOnTaskRemove: {
+        type: 'boolean',
+        default: LEGACY_SETTINGS_DEFAULTS.autoDeleteOutputOnTaskRemove
     },
     adbPath: {
         type: 'string',
@@ -248,7 +243,6 @@ function mergeMissingDefaults(currentValue: any, defaultValue: any): any {
 const MIGRATIONS: Record<number, () => void> = {
     1: () => {
         const appConfig = appStore.get('app');
-        const commandConfig = appStore.get('commands');
 
         if (!appStore.has('language') && appConfig && typeof appConfig.language === 'string') {
             appStore.set('language', appConfig.language);
@@ -258,10 +252,6 @@ const MIGRATIONS: Record<number, () => void> = {
                 appStore.set('theme', appConfig.theme);
             }
         }
-        if (!appStore.has('autoSave') && commandConfig && typeof commandConfig.autoSave === 'boolean') {
-            appStore.set('autoSave', commandConfig.autoSave);
-        }
-
         const preloadCandidates = appStore.get('preloadCandidates');
         if (!Array.isArray(preloadCandidates)) {
             appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));

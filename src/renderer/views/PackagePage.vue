@@ -139,7 +139,7 @@
               size="tiny"
               quaternary
               type="error"
-              @click.stop="taskStore.removeTask(task.id)"
+              @click.stop="confirmRemoveTask(task)"
             >
               <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
             </n-button>
@@ -406,24 +406,42 @@ async function retryTask(task: Task) {
   await executeTask(task)
 }
 
-function confirmClearCompleted() {
+async function confirmClearCompleted() {
+  const del = await window.electronAPI?.appConfig?.get('autoDeleteOutputOnTaskRemove')
   dialog.warning({
     title: t('task.clearCompleted'),
-    content: t('task.clearCompletedConfirm'),
+    content: del === true ? t('task.clearCompletedConfirmDelete') : t('task.clearCompletedConfirm'),
     positiveText: t('common.confirm'),
     negativeText: t('common.cancel'),
     onPositiveClick: () => { taskStore.clearCompleted() }
   })
 }
 
-function confirmClearAll() {
+async function confirmClearAll() {
+  const del = await window.electronAPI?.appConfig?.get('autoDeleteOutputOnTaskRemove')
   dialog.error({
     title: t('task.clearAll'),
-    content: t('task.clearAllConfirm'),
+    content: del === true ? t('task.clearAllConfirmDelete') : t('task.clearAllConfirm'),
     positiveText: t('common.confirm'),
     negativeText: t('common.cancel'),
     onPositiveClick: () => { taskStore.clearAll() }
   })
+}
+
+async function confirmRemoveTask(task: Task) {
+  const del = await window.electronAPI?.appConfig?.get('autoDeleteOutputOnTaskRemove')
+  const isTerminal = ['completed', 'failed', 'cancelled'].includes(task.status)
+  if (del === true && isTerminal && task.outputPath) {
+    dialog.warning({
+      title: t('task.clearCompleted'),
+      content: t('task.removeConfirmDelete'),
+      positiveText: t('common.confirm'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: () => { taskStore.removeTask(task.id) }
+    })
+  } else {
+    taskStore.removeTask(task.id)
+  }
 }
 
 async function runOperation(task: Task, localPath: string) {

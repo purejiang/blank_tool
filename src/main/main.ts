@@ -303,6 +303,10 @@ async function ensurePythonService(): Promise<ChildProcessWithoutNullStreams | n
 
 
 app.whenReady().then(async () => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.cyanrain.blank-tool');
+  }
+
   await ensurePythonService();
   setupAllHandlers(() => pythonProcess, ensurePythonService);
 
