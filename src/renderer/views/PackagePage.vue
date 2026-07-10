@@ -175,12 +175,21 @@
           </div>
           <div v-if="task.result" class="task-result" v-html="task.result" />
           <!-- Terminal task: has file log content → show it with refresh -->
-          <div v-if="isTerminal(task.status) && taskLogCache.has(task.id) && taskLogCache.get(task.id)" class="task-logs">
+          <div v-if="isTerminal(task.status) && taskLogCache.has(task.id) && taskLogCache.get(task.id)?.length" class="task-logs">
             <div class="task-logs-header" style="display:flex;justify-content:flex-end;margin-bottom:4px;">
               <n-button size="tiny" quaternary @click.stop="refreshTaskLog(task)">↻</n-button>
               <n-button size="tiny" quaternary @click.stop="loadFullTaskLog(task)">📄</n-button>
             </div>
-            <div class="task-log-line" style="white-space:pre-wrap;word-break:break-all;">{{ taskLogCache.get(task.id) }}</div>
+            <n-virtual-list
+              :items="taskLogCache.get(task.id) || []"
+              :item-size="18"
+              item-resizable
+              style="max-height: 170px"
+            >
+              <template #default="{ item }">
+                <div class="task-log-line">{{ item.text }}</div>
+              </template>
+            </n-virtual-list>
           </div>
           <!-- Fallback: show in-memory logs (running tasks, OR terminal tasks without file log) -->
           <div v-else-if="task.logs.length > 0" class="task-logs">
@@ -188,7 +197,20 @@
               <n-button size="tiny" quaternary @click.stop="refreshTaskLog(task)">↻</n-button>
               <n-button size="tiny" quaternary @click.stop="loadFullTaskLog(task)">📄</n-button>
             </div>
-            <div v-for="(line, i) in task.logs" :key="i" class="task-log-line">{{ line }}</div>
+            <n-virtual-list
+              v-if="task.logs.length > 100"
+              :items="task.logs.map((text, i) => ({ key: i, text }))"
+              :item-size="18"
+              item-resizable
+              style="max-height: 170px"
+            >
+              <template #default="{ item }">
+                <div class="task-log-line">{{ item.text }}</div>
+              </template>
+            </n-virtual-list>
+            <div v-else>
+              <div v-for="(line, i) in task.logs" :key="i" class="task-log-line">{{ line }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -200,7 +222,7 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, useDialog } from 'naive-ui'
+import { NIcon, NVirtualList, useDialog } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
   ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw
@@ -226,7 +248,7 @@ const activeStreamCleanups = new Set<() => void>()
 // Active progress interval for the currently-executing task operation phase.
 // Set by runOperation(), read by onStream's complete/error handlers in executeTask().
 let activeIv: ReturnType<typeof setInterval> | null = null
-const taskLogCache = ref<Map<number, string>>(new Map())
+const taskLogCache = ref<Map<number, { key: number; text: string }[]>>(new Map())
 
 // Log buffering: batch high-volume stream events to avoid UI jank
 const logBuffers = new Map<number, string[]>()
@@ -317,11 +339,15 @@ async function loadTaskLog(task: Task) {
     const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id), tail_bytes: 100 * 1024 })
     const content = (result.content || '').trim()
     if (content) {
-      taskLogCache.value.set(task.id, result.content)
+      taskLogCache.value.set(task.id, splitLogLines(content))
     }
   } catch (e) {
-    taskLogCache.value.set(task.id, `[Error loading log: ${e}]`)
+    taskLogCache.value.set(task.id, [{ key: 0, text: `[Error loading log: ${e}]` }])
   }
+}
+
+function splitLogLines(content: string): { key: number; text: string }[] {
+  return content.split('\n').map((text, i) => ({ key: i, text }))
 }
 
 async function refreshTaskLog(task: Task) {
@@ -335,7 +361,7 @@ async function loadFullTaskLog(task: Task) {
     const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id) })
     const content = (result.content || '').trim()
     if (content) {
-      taskLogCache.value.set(task.id, result.content)
+      taskLogCache.value.set(task.id, splitLogLines(content))
     }
   } catch (e) {
     // keep existing cache on error
@@ -1053,5 +1079,5 @@ function finishProgress(task: Task, iv: ReturnType<typeof setInterval>) {
   font-size: 11px;
   line-height: 1.6;
 }
-.task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; word-break: break-all; }
+.task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
