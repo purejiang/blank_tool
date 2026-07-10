@@ -141,7 +141,12 @@ class ApiHandler:
         """
         def wrapper(params: dict):
             stream_id = f"{handler.__name__}-{str(uuid.uuid4())}"
-            task_id = params.get("task_id", "")
+            task_id = str(
+                params.get("task_id") or
+                params.get("options", {}).get("task_id") or
+                params.get("keystore", {}).get("task_id") or
+                ""
+            )
             stop_event = threading.Event()
 
             # Register with TaskManager so cancel can signal this stream
