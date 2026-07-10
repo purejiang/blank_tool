@@ -2,6 +2,12 @@
 
 本文件为 OpenCode / Claude Code 会话提供本仓库的工作指引。仅记录容易踩坑、文件名看不出来、与默认约定不同的高信号信息。
 
+## 分支纪律（最高优先级）
+
+- **所有开发必须在 `dev` 分支上进行**，禁止在 `main` 上直接写代码。
+- `main` 只用于发版（`dev → main` merge + tag），始终保持可发布状态。
+- 进入会话后第一件事：`git branch --show-current`，如果不是 `dev` 立即 `git checkout dev`。
+
 ## 常用命令
 
 ```bash
