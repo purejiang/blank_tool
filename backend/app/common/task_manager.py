@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 from app.utils.logger import Logger
+from app.utils.task_log_writer import cleanup_task_log
 
 
 class TaskManager:
@@ -172,6 +173,14 @@ class TaskManager:
             return task["cancelled"] if task else False
 
     def unregister(self, task_id: str) -> None:
-        """Cleanly remove a task entry after successful completion."""
+        """Cleanly remove a task entry after successful completion.
+        
+        Also flushes any pending buffered log lines to disk via
+        :func:`~app.utils.task_log_writer.cleanup_task_log`.
+        """
+        try:
+            cleanup_task_log(task_id)
+        except Exception:
+            pass  # best-effort; log cleanup failure shouldn't block task teardown
         with self._tasks_lock:
             self._tasks.pop(task_id, None)

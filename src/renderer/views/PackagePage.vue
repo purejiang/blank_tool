@@ -614,7 +614,7 @@ async function runOperation(task: Task, localPath: string) {
 function renderApkInfo(data: any) {
   if (!data) return ''
   const perms: string[] = data.permissions || []
-  const nativeLibs: string[] = data.nativeLibs || []
+  const nativeLibs: string[] = data.native_libs || []
 
   // Classify permissions
   const DANGEROUS = new Set([
@@ -702,13 +702,13 @@ function renderApkInfo(data: any) {
   html += '<div style="background:var(--app-card-bg);border:1px solid var(--app-card-border);border-radius:8px;padding:10px 14px;margin-top:6px">'
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:13px">'
   // Row 1: appName | packageName
-  html += `<div><span style="color:var(--app-text-dim)">${label('appName')}：</span><span style="color:var(--app-text-primary)">${esc(data.applicationLabel)}</span></div>`
-  html += `<div><span style="color:var(--app-text-dim)">${label('packageName')}：</span><span style="color:var(--app-text-secondary);font-family:monospace;font-size:12px">${esc(data.packageName)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('appName')}：</span><span style="color:var(--app-text-primary)">${esc(data.application_label)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('packageName')}：</span><span style="color:var(--app-text-secondary);font-family:monospace;font-size:12px">${esc(data.package_name)}</span></div>`
   // Row 2: version | fileSize
-  html += `<div><span style="color:var(--app-text-dim)">${label('version')}：</span><span style="color:var(--app-text-secondary)">${esc(data.versionName)} (${esc(data.versionCode)})</span></div>`
-  html += `<div><span style="color:var(--app-text-dim)">${label('fileSize')}：</span><span style="color:var(--app-text-secondary);font-weight:600">${fmtSize(data.fileSize)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('version')}：</span><span style="color:var(--app-text-secondary)">${esc(data.version_name)} (${esc(data.version_code)})</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('fileSize')}：</span><span style="color:var(--app-text-secondary);font-weight:600">${fmtSize(data.file_size)}</span></div>`
   // Row 3: minSdk + targetSdk | architecture
-  html += `<div><span style="color:var(--app-text-dim)">${label('minSdk')}：</span><span style="color:var(--app-text-secondary)">${esc(data.minSdkVersion)}</span> <span style="color:var(--app-text-dim)">${label('targetSdk')}：</span><span style="color:var(--app-text-secondary)">${esc(data.targetSdkVersion)}</span></div>`
+  html += `<div><span style="color:var(--app-text-dim)">${label('minSdk')}：</span><span style="color:var(--app-text-secondary)">${esc(data.min_sdk_version)}</span> <span style="color:var(--app-text-dim)">${label('targetSdk')}：</span><span style="color:var(--app-text-secondary)">${esc(data.target_sdk_version)}</span></div>`
   if (archChips) {
     html += `<div><span style="color:var(--app-text-dim)">${label('architecture')}：</span>${archChips}</div>`
   } else {

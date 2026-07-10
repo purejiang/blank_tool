@@ -32,17 +32,26 @@ def apk_analyze(params, stream_handler):
     if not apk_path or not os.path.exists(apk_path):
         raise ToolException(f"APK path does not exist: {apk_path}")
 
+    task_id = str(params.get("task_id", ""))
+    task_manager = TaskManager()
+    process_holder: dict = {}
+    if task_id:
+        task_manager.register(task_id, process_holder)
+
     try:
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
             raise ToolNotFoundError("aapt")
 
-        task_id = str(params.get("task_id", ""))
-        context = CommandExecutionContext(stream=True, task_id=task_id)
+        context = CommandExecutionContext(stream=True, task_id=task_id, process_holder=process_holder)
 
         proc = aapt.execute(["dump", "badging", apk_path], context)
         output = ""
         for line in iter(proc.stdout.readline, ''):
+            if task_id and task_manager.is_cancelled(task_id):
+                proc.kill()
+                stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                return
             line = line.rstrip('\n')
             if line:
                 if task_id:
@@ -50,6 +59,10 @@ def apk_analyze(params, stream_handler):
                 stream_handler({"type": "log", "line": line})
                 output += line + "\n"
         proc.wait()
+
+        if task_id and task_manager.is_cancelled(task_id):
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+            return
 
         if proc.returncode != 0:
             stream_handler({
@@ -136,11 +149,18 @@ def apk_analyze(params, stream_handler):
             stream_handler({"type": "log", "line": f"[Meta-data Extraction] Failed: {e}"})
 
         stream_handler({"type": "complete", "payload": info})
-    except ToolException:
-        raise
+    except ToolException as e:
+        logger.error(f"APK analysis tool error: {e}")
+        stream_handler({"type": "error", "payload": {"message": str(e)}})
     except Exception as e:
-        logger.error(f"APK analysis failed: {e}")
-        raise
+        if task_id and task_manager.is_cancelled(task_id):
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+        else:
+            logger.error(f"APK analysis failed: {e}")
+            stream_handler({"type": "error", "payload": {"message": str(e)}})
+    finally:
+        if task_id:
+            task_manager.unregister(task_id)
 
 
 @streaming

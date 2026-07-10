@@ -8,15 +8,14 @@ import os
 import shutil
 
 from app.utils.logger import Logger
-from app.utils.env import get_env, resolve_path, get_output_dir
+from app.utils.env import get_cache_dir, get_output_dir, get_tasks_root
 from app.common.exceptions import ToolException
 
 logger = Logger.get_logger("CacheHandler")
 
 
 def _cache_root():
-    cache_dir = get_env("BT_CACHE_DIR", "./cache")
-    return resolve_path(cache_dir)
+    return get_cache_dir()
 
 
 def _output_root():
@@ -41,10 +40,12 @@ def _get_dir_size(path):
 def cache_info(params, stream_handler):
     cache_root = _cache_root()
     output_root = _output_root()
+    tasks_root = get_tasks_root()
 
     try:
         cache_size, cache_files = _get_dir_size(cache_root)
         output_size, output_files = _get_dir_size(output_root)
+        tasks_size, tasks_files = _get_dir_size(tasks_root)
 
         return {
             "cache": {
@@ -57,9 +58,14 @@ def cache_info(params, stream_handler):
                 "size": output_size,
                 "files": output_files,
             },
+            "tasks": {
+                "path": tasks_root,
+                "size": tasks_size,
+                "files": tasks_files,
+            },
             "total": {
-                "size": cache_size + output_size,
-                "files": cache_files + output_files,
+                "size": cache_size + output_size + tasks_size,
+                "files": cache_files + output_files + tasks_files,
             },
         }
     except Exception as e:
@@ -119,9 +125,24 @@ def storage_clear(params, stream_handler):
             if _clear_directory(output_root):
                 cleared_paths.append(output_root)
 
+        if target in ["all", "tasks"]:
+            tasks_root = get_tasks_root()
+            if _clear_directory(tasks_root):
+                cleared_paths.append(tasks_root)
+
         return {"success": True, "cleared_paths": cleared_paths}
     except Exception as e:
         logger.error(f"Failed to clear storage: {e}")
+        raise
+
+
+def tasks_clear(params, stream_handler):
+    root = get_tasks_root()
+    try:
+        _clear_directory(root)
+        return {"path": root, "size": 0, "files": 0}
+    except Exception as e:
+        logger.error(f"Failed to clear tasks: {e}")
         raise
 
 
@@ -130,5 +151,6 @@ API_MAP = {
     "cache.info": cache_info,
     "cache.clear": cache_clear,
     "output.clear": output_clear,
+    "tasks.clear": tasks_clear,
     "storage.clear": storage_clear,
 }

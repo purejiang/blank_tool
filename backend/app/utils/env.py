@@ -154,6 +154,77 @@ def get_runtime_dir() -> str:
         
     return ""
 
+def get_cache_dir() -> str:
+    """
+    Return the resolved cache directory path.
+
+    Uses the ``BT_CACHE_DIR`` environment variable, falling back to ``./cache``
+    (resolved relative to the backend root). Creates the directory on disk if
+    it does not exist.
+    """
+    cache_dir = get_env("BT_CACHE_DIR", "./cache")
+    root = resolve_path(cache_dir)
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def get_tasks_root() -> str:
+    """
+    Return the root directory for all per-task working directories.
+
+    This is placed *inside* the cache directory so that cache management
+    (e.g. ``storage.clear``) can reach it.  Returns
+    ``<cache_dir>/Tasks/`` and creates it on disk if missing.
+    """
+    tasks_root = os.path.join(get_cache_dir(), "Tasks")
+    os.makedirs(tasks_root, exist_ok=True)
+    return tasks_root
+
+
+def get_task_dir(task_id: str) -> str:
+    """
+    Return the per-task working directory under the tasks root.
+
+    Creates ``<tasks_root>/<task_id>/`` on disk (``exist_ok=True``) and
+    returns the absolute path. Raises ``ValueError`` when *task_id* is empty
+    or contains path traversal characters.
+    """
+    if not task_id:
+        raise ValueError("task_id must be a non-empty string")
+
+    task_id_str = str(task_id)
+
+    # Reject "." as the exact id — resolves to current dir
+    if task_id_str == ".":
+        raise ValueError(f"task_id contains invalid characters: {task_id_str}")
+
+    # Reject path separators and parent-dir traversal in any position
+    invalid_chars = os.sep
+    if os.sep == "\\":
+        # On Windows, "/" is also a valid path separator
+        invalid_chars += "/"
+    if any(c in task_id_str for c in invalid_chars):
+        raise ValueError(f"task_id contains invalid characters: {task_id_str}")
+
+    # Reject ".." as a path component (handles "..", "a/..", etc.)
+    if ".." in task_id_str:
+        raise ValueError(f"task_id contains invalid characters: {task_id_str}")
+
+    task_dir = os.path.join(get_tasks_root(), task_id_str)
+    os.makedirs(task_dir, exist_ok=True)
+    return task_dir
+
+def get_task_subdir(task_id: str, name: str) -> str:
+    """
+    Return the absolute path to a named subdirectory of a task's working dir.
+
+    *name* is typically ``"input"``, ``"output"`` or ``"logs"``.
+    Creates the subdirectory on disk (``exist_ok=True``).
+    """
+    subdir = os.path.join(get_task_dir(task_id), name)
+    os.makedirs(subdir, exist_ok=True)
+    return subdir
+
 def _is_executable_usable(path: str) -> bool:
     """Test whether an executable actually works by running it with -version."""
     if not path or not os.path.exists(path):
