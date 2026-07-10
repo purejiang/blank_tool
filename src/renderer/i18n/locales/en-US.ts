@@ -232,6 +232,7 @@ export default {
     clearAllConfirm: 'Remove ALL tasks including running ones? This cannot be undone.',
     clearAllConfirmDelete: 'Remove ALL tasks including running ones? Their output files will also be deleted. This cannot be undone.',
     removeConfirmDelete: 'Delete this task record and clean up its output files?',
+    duration: 'Duration',
     empty: 'No Tasks',
     emptyDesc: 'Choose a remote URL or local file, then select an operation to start a new task',
     // Execution errors & labels

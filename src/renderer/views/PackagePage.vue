@@ -73,7 +73,7 @@
         class="task-card"
         :class="'task-' + task.status"
       >
-        <div class="task-header" @click="task.collapsed = !task.collapsed">
+        <div class="task-header" @click="toggleTask(task)">
           <div class="task-header-left">
             <span class="task-id">#{{ task.id }}</span>
             <n-icon size="16" :color="task.source === 'url' ? 'var(--app-blue)' : 'var(--app-text-dim)'">
@@ -114,6 +114,7 @@
               {{ t('task.queued') }}
             </n-tag>
             <span class="task-time">{{ formatTime(task.createdAt) }}</span>
+            <span v-if="task.finishedAt" class="task-duration">{{ formatDuration(task) }}</span>
             <n-button
               v-if="task.status === 'running' || task.status === 'downloading'"
               size="tiny"
@@ -173,7 +174,20 @@
             </n-button>
           </div>
           <div v-if="task.result" class="task-result" v-html="task.result" />
-          <div v-if="task.logs.length > 0" class="task-logs">
+          <!-- Terminal task: has file log content → show it with refresh -->
+          <div v-if="isTerminal(task.status) && taskLogCache.has(task.id) && taskLogCache.get(task.id)" class="task-logs">
+            <div class="task-logs-header" style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+              <n-button size="tiny" quaternary @click.stop="refreshTaskLog(task)">↻</n-button>
+              <n-button size="tiny" quaternary @click.stop="loadFullTaskLog(task)">📄</n-button>
+            </div>
+            <div class="task-log-line" style="white-space:pre-wrap;word-break:break-all;">{{ taskLogCache.get(task.id) }}</div>
+          </div>
+          <!-- Fallback: show in-memory logs (running tasks, OR terminal tasks without file log) -->
+          <div v-else-if="task.logs.length > 0" class="task-logs">
+            <div v-if="isTerminal(task.status)" class="task-logs-header" style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+              <n-button size="tiny" quaternary @click.stop="refreshTaskLog(task)">↻</n-button>
+              <n-button size="tiny" quaternary @click.stop="loadFullTaskLog(task)">📄</n-button>
+            </div>
             <div v-for="(line, i) in task.logs" :key="i" class="task-log-line">{{ line }}</div>
           </div>
         </div>
@@ -209,6 +223,23 @@ const OP_TAG_MAP: Record<Task['operation'], string> = {
 
 const activeIntervals = new Set<ReturnType<typeof setInterval>>()
 const activeStreamCleanups = new Set<() => void>()
+// Active progress interval for the currently-executing task operation phase.
+// Set by runOperation(), read by onStream's complete/error handlers in executeTask().
+let activeIv: ReturnType<typeof setInterval> | null = null
+const taskLogCache = ref<Map<number, string>>(new Map())
+
+// Log buffering: batch high-volume stream events to avoid UI jank
+const logBuffers = new Map<number, string[]>()
+const logTimers = new Map<number, ReturnType<typeof setTimeout>>()
+
+function flushLogBuffer(taskId: number) {
+  const buf = logBuffers.get(taskId)
+  if (buf && buf.length > 0) {
+    taskStore.appendLogBatch(taskId, [...buf])
+    buf.length = 0
+  }
+  logTimers.delete(taskId)
+}
 
 onUnmounted(() => {
   activeIntervals.forEach(clearInterval)
@@ -250,11 +281,65 @@ function formatTime(ts: number) {
   return `${d.getMonth() + 1}-${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
+function formatDuration(task: Task): string {
+  if (!task.finishedAt) return ''
+  const ms = task.finishedAt - task.createdAt
+  if (ms < 0) return ''
+  const secs = Math.floor(ms / 1000)
+  const mins = Math.floor(secs / 60)
+  const hrs = Math.floor(mins / 60)
+  if (hrs > 0) return `${hrs}h ${mins % 60}m ${secs % 60}s`
+  if (mins > 0) return `${mins}m ${secs % 60}s`
+  return `${secs}s`
+}
+
 async function openInExplorer(filePath: string) {
   try {
     const svc = await serviceManager.getService('system') as any
     if (svc && typeof svc.openPath === 'function') svc.openPath(filePath)
   } catch (e) { /* ignore */ }
+}
+
+function isTerminal(status: string): boolean {
+  return ['completed', 'failed', 'cancelled'].includes(status)
+}
+
+function toggleTask(task: Task) {
+  task.collapsed = !task.collapsed
+  if (!task.collapsed && isTerminal(task.status) && !taskLogCache.value.has(task.id)) {
+    loadTaskLog(task)
+  }
+}
+
+async function loadTaskLog(task: Task) {
+  try {
+    const api = window.electronAPI as any
+    const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id), tail_bytes: 100 * 1024 })
+    const content = (result.content || '').trim()
+    if (content) {
+      taskLogCache.value.set(task.id, result.content)
+    }
+  } catch (e) {
+    taskLogCache.value.set(task.id, `[Error loading log: ${e}]`)
+  }
+}
+
+async function refreshTaskLog(task: Task) {
+  taskLogCache.value.delete(task.id)
+  await loadTaskLog(task)
+}
+
+async function loadFullTaskLog(task: Task) {
+  try {
+    const api = window.electronAPI as any
+    const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id) })
+    const content = (result.content || '').trim()
+    if (content) {
+      taskLogCache.value.set(task.id, result.content)
+    }
+  } catch (e) {
+    // keep existing cache on error
+  }
 }
 
 async function pickLocalFile() {
@@ -305,8 +390,9 @@ async function executeTask(task: Task) {
   try {
     let localPath = task.filePath
     const api = window.electronAPI as any
-    let streamResolve: ((v: any) => void) | null = null
-    let streamReject: ((e: Error) => void) | null = null
+    let phase: 'download' | 'operation' = task.source === 'url' ? 'download' : 'operation'
+    let phaseResolve: ((v: any) => void) | null = null
+    let phaseReject: ((e: Error) => void) | null = null
 
     const onStream = (raw: any) => {
       if (!raw) return
@@ -316,18 +402,44 @@ async function executeTask(task: Task) {
       if (data.type === 'progress' && data.payload) {
         taskStore.updateTask(task.id, { progress: data.payload.progress || 0, progressLabel: data.payload.label || `${data.payload.progress || 0}%` })
       }
-      if (data.type === 'complete' && streamResolve) streamResolve(data.payload || data)
+      if (data.type === 'complete' && phaseResolve) {
+        const payload = data.payload || data
+        if (phase === 'operation') {
+          if (activeIv) finishProgress(task, activeIv)
+          const updates: any = { status: 'completed', progress: 100, progressLabel: t('task.completed'), finishedAt: Date.now() }
+          if (payload.output_dir) updates.outputPath = payload.output_dir
+          if (payload.output_apk) updates.outputPath = payload.output_apk
+          if (payload.package_name) updates.result = renderApkInfo(payload)
+          if (payload.apk_path) updates.outputPath = payload.apk_path
+          taskStore.updateTask(task.id, updates)
+          log(task, t(`task.${task.operation}Done`) + (updates.outputPath ? ' → ' + updates.outputPath : ''))
+        }
+        phaseResolve(payload)
+      }
       if (data.type === 'cancelled') {
-        if (streamReject) streamReject(new Error('cancelled'))
+        if (phaseReject) phaseReject(new Error('cancelled'))
         taskStore.updateTask(task.id, { status: 'cancelled', progressLabel: t('task.cancelled'), finishedAt: Date.now() })
         log(task, t('task.cancelled'))
       }
-      if (data.type === 'error' && streamReject) {
+      if (data.type === 'error' && phaseReject) {
         const msg = (data.payload?.message) || data.message || t('task.streamOpFailed')
-        streamReject(new Error(msg))
+        if (phase === 'operation') {
+          if (activeIv) clearIntervalAndForget(activeIv)
+          taskStore.updateTask(task.id, { status: 'failed', error: msg, finishedAt: Date.now() })
+          log(task, t('task.failed') + ': ' + msg)
+        }
+        phaseReject(new Error(msg))
       }
       const line = data.line || data.message || data.output || ''
-      if (line) taskStore.appendLog(task.id, line)
+      if (line) {
+        if (!logBuffers.has(task.id)) logBuffers.set(task.id, [])
+        logBuffers.get(task.id)!.push(line)
+        if (logBuffers.get(task.id)!.length >= 20) {
+          flushLogBuffer(task.id)
+        } else if (!logTimers.has(task.id)) {
+          logTimers.set(task.id, setTimeout(() => flushLogBuffer(task.id), 100))
+        }
+      }
     }
 
     if (api?.onStreamEvent) {
@@ -340,18 +452,23 @@ async function executeTask(task: Task) {
       taskStore.updateTask(task.id, { status: 'downloading', progress: 0, progressLabel: t('task.downloading') })
       log(task, t('task.downloading') + ' ' + task.url)
       if (!api || typeof api.downloadFile !== 'function') throw new Error(t('task.downloadAPINotAvailable'))
-      const dlPromise = new Promise<any>((resolve, reject) => { streamResolve = resolve; streamReject = reject })
+      const dlPromise = new Promise<any>((resolve, reject) => { phaseResolve = resolve; phaseReject = reject })
       api.downloadFile(task.url, task.fileName, String(task.id))
       const dlResult = await dlPromise
       localPath = dlResult.file_path
       taskStore.updateTask(task.id, { filePath: dlResult.file_path, progress: 100, progressLabel: t('task.completed') })
       log(task, t('task.completed') + ` (${(dlResult.size / 1024 / 1024).toFixed(1)}MB)`)
+      phase = 'operation'
     }
 
-    // Execute operation
+    // Execute operation as streaming
     taskStore.updateTask(task.id, { status: 'running', progress: 0, progressLabel: t('task.running') })
     log(task, t('task.running') + ' ' + task.operationLabel)
+
+    // Create new promise for operation phase
+    const opPromise = new Promise<any>((resolve, reject) => { phaseResolve = resolve; phaseReject = reject })
     await runOperation(task, localPath)
+    await opPromise
   } catch (e: any) {
     const isCancelled = e?.message === 'cancelled'
     if (!isCancelled) {
@@ -437,9 +554,10 @@ async function confirmRemoveTask(task: Task) {
       content: t('task.removeConfirmDelete'),
       positiveText: t('common.confirm'),
       negativeText: t('common.cancel'),
-      onPositiveClick: () => { taskStore.removeTask(task.id) }
+      onPositiveClick: () => { taskLogCache.value.delete(task.id); taskStore.removeTask(task.id) }
     })
   } else {
+    taskLogCache.value.delete(task.id)
     taskStore.removeTask(task.id)
   }
 }
@@ -480,29 +598,16 @@ async function runOperation(task: Task, localPath: string) {
   }
 
   const iv = startProgress(task, ingLabel)
+  activeIv = iv
   log(task, ingLabel + logExtra)
-  let result: any
+
+  // Call the service — returns {stream_id} immediately
+  // Result comes via onStream → phaseResolve
   try {
-    result = await svc[methodName](localPath, opts || { task_id: String(task.id) })
+    await svc[methodName](localPath, opts || { task_id: String(task.id) })
   } catch (err) {
     clearIntervalAndForget(iv)
     throw err
-  }
-
-  if (result.cancelled) {
-    clearIntervalAndForget(iv)
-    taskStore.updateTask(task.id, { status: 'cancelled', progressLabel: t('task.cancelled'), finishedAt: Date.now() })
-    log(task, t('task.cancelled'))
-  } else if (result.success) {
-    finishProgress(task, iv)
-    const updates: any = { status: 'completed', progress: 100, progressLabel: t('task.completed'), finishedAt: Date.now() }
-    if (result.outputPath) updates.outputPath = result.outputPath
-    if (op === 'analyze' && result.data) updates.result = renderApkInfo(result.data)
-    taskStore.updateTask(task.id, updates)
-    log(task, t(`task.${op}Done`) + (result.outputPath ? ' → ' + result.outputPath : ''))
-  } else {
-    clearIntervalAndForget(iv)
-    throw new Error(result.error || t(`task.${op}Failed`))
   }
 }
 
@@ -919,6 +1024,7 @@ function finishProgress(task: Task, iv: ReturnType<typeof setInterval>) {
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .task-time { font-size: 11px; color: var(--app-text-dim); }
+.task-duration { font-size: 11px; color: var(--app-text-muted); margin-left: 6px; font-family: monospace; }
 
 .task-progress { padding: 0 14px; height: 3px; }
 

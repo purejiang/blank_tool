@@ -232,6 +232,7 @@ export default {
     clearAllConfirm: '确定要清除全部任务吗（包括正在执行的）？此操作不可撤销。',
     clearAllConfirmDelete: '确定要清除全部任务吗（包括正在执行的）？相关输出文件也会被删除，此操作不可撤销。',
     removeConfirmDelete: '删除此任务记录并清理其输出文件？',
+    duration: '耗时',
     empty: '没有任务',
     emptyDesc: '选择远程URL或本地文件，选择操作类型来创建一个新任务',
     // Execution errors & labels

@@ -11,8 +11,10 @@ from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
 from app.common.exceptions import ToolNotFoundError, ToolException
+from app.common.decorators import streaming
 from app.utils.logger import Logger
-from app.utils.env import get_output_dir
+from app.utils.env import get_output_dir, get_task_subdir
+from app.utils.task_log_writer import append_task_log
 from app.utils.apk_inspector import (
     enumerate_so_files,
     compare_so_across_arches,
@@ -24,6 +26,7 @@ logger = Logger.get_logger("ApkHandler")
 manager = ToolManager.instance()
 
 
+@streaming
 def apk_analyze(params, stream_handler):
     apk_path = params.get("apk_path")
     if not apk_path or not os.path.exists(apk_path):
@@ -34,9 +37,26 @@ def apk_analyze(params, stream_handler):
         if not aapt or not aapt.is_valid:
             raise ToolNotFoundError("aapt")
 
-        context = CommandExecutionContext()
-        result = aapt.execute(["dump", "badging", apk_path], context)
-        output = result.get("stdout", "")
+        task_id = str(params.get("task_id", ""))
+        context = CommandExecutionContext(stream=True, task_id=task_id)
+
+        proc = aapt.execute(["dump", "badging", apk_path], context)
+        output = ""
+        for line in iter(proc.stdout.readline, ''):
+            line = line.rstrip('\n')
+            if line:
+                if task_id:
+                    append_task_log(task_id, line)
+                stream_handler({"type": "log", "line": line})
+                output += line + "\n"
+        proc.wait()
+
+        if proc.returncode != 0:
+            stream_handler({
+                "type": "error",
+                "payload": {"message": f"aapt dump badging failed (exit={proc.returncode})"},
+            })
+            return
 
         info = {}
         pkg_match = re.search(
@@ -77,6 +97,7 @@ def apk_analyze(params, stream_handler):
         info["warnings"] = []
 
         # C1: SO file comparison across architectures
+        stream_handler({"type": "log", "line": "[SO Analysis] Starting..."})
         try:
             so_map = enumerate_so_files(apk_path)
             info["native_so_detail"] = so_map
@@ -84,30 +105,37 @@ def apk_analyze(params, stream_handler):
         except Exception as e:
             logger.warning(f"SO analysis failed: {e}")
             info["warnings"].append(f"SO analysis failed: {e}")
+            stream_handler({"type": "log", "line": f"[SO Analysis] Failed: {e}"})
 
         # C2: Compression analysis (assets/lib/dex)
+        stream_handler({"type": "log", "line": "[Compression Analysis] Starting..."})
         try:
             info["compression_analysis"] = analyze_compression(apk_path)
         except Exception as e:
             logger.warning(f"Compression analysis failed: {e}")
             info["warnings"].append(f"Compression analysis failed: {e}")
+            stream_handler({"type": "log", "line": f"[Compression Analysis] Failed: {e}"})
 
         # C3: 16KB page size support for 64-bit .so files
+        stream_handler({"type": "log", "line": "[16KB Page Check] Starting..."})
         try:
             info["page_size_16kb"] = check_16kb_page_support(apk_path)
         except Exception as e:
             logger.warning(f"16KB page check failed: {e}")
             info["warnings"].append(f"16KB page check failed: {e}")
+            stream_handler({"type": "log", "line": f"[16KB Page Check] Failed: {e}"})
 
         # C4: Meta-data from AndroidManifest.xml
+        stream_handler({"type": "log", "line": "[Meta-data Extraction] Starting..."})
         try:
-            info["meta_data"] = _parse_manifest_meta_data(apk_path)
-            _resolve_resource_refs(apk_path, info["meta_data"])
+            info["meta_data"] = _parse_manifest_meta_data(apk_path, task_id=task_id)
+            _resolve_resource_refs(apk_path, info["meta_data"], task_id=task_id)
         except Exception as e:
             logger.warning(f"Meta-data extraction failed: {e}")
             info["warnings"].append(f"Meta-data extraction failed: {e}")
+            stream_handler({"type": "log", "line": f"[Meta-data Extraction] Failed: {e}"})
 
-        return info
+        stream_handler({"type": "complete", "payload": info})
     except ToolException:
         raise
     except Exception as e:
@@ -115,6 +143,7 @@ def apk_analyze(params, stream_handler):
         raise
 
 
+@streaming
 def apk_decompile(params, stream_handler):
     file_path = params.get("file_path")
     options = params.get("options", {})
@@ -124,7 +153,10 @@ def apk_decompile(params, stream_handler):
 
     if not options.get("output_dir"):
         base_name = os.path.splitext(os.path.basename(file_path))[0]
-        output_dir = os.path.join(get_output_dir(), "decompiled", base_name)
+        if task_id:
+            output_dir = os.path.join(get_task_subdir(task_id, "output"), "decompiled", base_name)
+        else:
+            output_dir = os.path.join(get_output_dir(), "decompiled", base_name)
     else:
         output_dir = options.get("output_dir")
 
@@ -140,21 +172,45 @@ def apk_decompile(params, stream_handler):
 
         context = CommandExecutionContext(
             cwd=options.get("cwd"), timeout=600,
+            stream=True,
+            task_id=task_id,
             process_holder=process_holder,
         )
-        result = apktool.execute(
+        proc = apktool.execute(
             ["d", file_path, "-f", "-o", output_dir], context
         )
-        if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
-        if result.get("returncode", 1) != 0:
-            raise ToolException(result.get("stderr", "Decompile failed"))
-        return {"output_dir": output_dir}
+
+        for line in iter(proc.stdout.readline, ''):
+            if task_id and task_manager.is_cancelled(task_id):
+                proc.kill()
+                stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                return
+            line = line.rstrip('\n')
+            if line:
+                if task_id:
+                    append_task_log(task_id, line)
+                stream_handler({"type": "log", "line": line})
+
+        proc.wait()
+
+        if task_id and task_manager.is_cancelled(task_id):
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+            return
+
+        if proc.returncode != 0:
+            stream_handler({
+                "type": "error",
+                "payload": {"message": f"Decompile failed (exit={proc.returncode})"},
+            })
+            return
+
+        stream_handler({"type": "complete", "payload": {"output_dir": output_dir}})
     except ToolException:
         raise
     except Exception as e:
         if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+            return
         logger.error(f"Decompile failed: {e}")
         raise
     finally:
@@ -162,6 +218,7 @@ def apk_decompile(params, stream_handler):
             task_manager.unregister(task_id)
 
 
+@streaming
 def apk_recompile(params, stream_handler):
     project_path = params.get("project_path")
     options = params.get("options", {})
@@ -171,9 +228,13 @@ def apk_recompile(params, stream_handler):
 
     if not options.get("output_apk"):
         base_name = os.path.basename(project_path)
-        output_apk = os.path.join(
-            get_output_dir(), "recompiled", f"{base_name}.apk"
-        )
+        if task_id:
+            output_dir = get_task_subdir(task_id, "output")
+            output_apk = os.path.join(output_dir, "recompiled", f"{base_name}.apk")
+        else:
+            output_apk = os.path.join(
+                get_output_dir(), "recompiled", f"{base_name}.apk"
+            )
         os.makedirs(os.path.dirname(output_apk), exist_ok=True)
     else:
         output_apk = options.get("output_apk")
@@ -187,6 +248,8 @@ def apk_recompile(params, stream_handler):
         """Build a context that captures the process for cancellation."""
         return CommandExecutionContext(
             cwd=options.get("cwd"),
+            stream=True,
+            task_id=task_id,
             process_holder=process_holder,
         )
 
@@ -195,25 +258,57 @@ def apk_recompile(params, stream_handler):
         if not apktool or not apktool.is_valid:
             raise ToolNotFoundError("apktool")
 
-        result = apktool.execute(
+        proc = apktool.execute(
             ["b", project_path, "-o", output_apk], _ctx()
         )
-        if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
-        if result.get("returncode", 1) != 0:
-            raise ToolException(result.get("stderr", "Recompile failed"))
+        for line in iter(proc.stdout.readline, ''):
+            if task_id and task_manager.is_cancelled(task_id):
+                proc.kill()
+                stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                return
+            line = line.rstrip('\n')
+            if line:
+                if task_id:
+                    append_task_log(task_id, line)
+                stream_handler({"type": "log", "line": line})
+
+        proc.wait()
+
+        if task_id and task_manager.is_cancelled(task_id):
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+            return
+        if proc.returncode != 0:
+            stream_handler({
+                "type": "error",
+                "payload": {"message": f"Recompile failed (exit={proc.returncode})"},
+            })
+            return
 
         if options.get("zipalign"):
             zipalign = manager.get_tool("zipalign")
             if zipalign and zipalign.is_valid:
                 aligned_apk = output_apk.replace(".apk", "-aligned.apk")
-                zr = zipalign.execute(
+                zproc = zipalign.execute(
                     ["-f", "4", output_apk, aligned_apk],
                     _ctx(),
                 )
-                if task_manager.is_cancelled(task_id):
-                    return {"cancelled": True, "task_id": task_id}
-                if zr.get("returncode", 1) == 0:
+                for line in iter(zproc.stdout.readline, ''):
+                    if task_id and task_manager.is_cancelled(task_id):
+                        zproc.kill()
+                        stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                        return
+                    line = line.rstrip('\n')
+                    if line:
+                        if task_id:
+                            append_task_log(task_id, line)
+                        stream_handler({"type": "log", "line": line})
+
+                zproc.wait()
+
+                if task_id and task_manager.is_cancelled(task_id):
+                    stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                    return
+                if zproc.returncode == 0:
                     output_apk = aligned_apk
 
         if options.get("sign") and options.get("keystore"):
@@ -234,18 +329,37 @@ def apk_recompile(params, stream_handler):
                 if options.get("v2") is False:
                     args += ["--v2-signing-enabled", "false"]
                 args += [output_apk]
-                sr = apksigner.execute(args, _ctx())
-                if task_manager.is_cancelled(task_id):
-                    return {"cancelled": True, "task_id": task_id}
-                if sr.get("returncode", 1) != 0:
-                    raise ToolException(sr.get("stderr", "Signing failed"))
+                sproc = apksigner.execute(args, _ctx())
+                for line in iter(sproc.stdout.readline, ''):
+                    if task_id and task_manager.is_cancelled(task_id):
+                        sproc.kill()
+                        stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                        return
+                    line = line.rstrip('\n')
+                    if line:
+                        if task_id:
+                            append_task_log(task_id, line)
+                        stream_handler({"type": "log", "line": line})
 
-        return {"output_apk": output_apk}
+                sproc.wait()
+
+                if task_id and task_manager.is_cancelled(task_id):
+                    stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                    return
+                if sproc.returncode != 0:
+                    stream_handler({
+                        "type": "error",
+                        "payload": {"message": f"Signing failed (exit={sproc.returncode})"},
+                    })
+                    return
+
+        stream_handler({"type": "complete", "payload": {"output_apk": output_apk}})
     except ToolException:
         raise
     except Exception as e:
         if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+            return
         logger.error(f"Recompile failed: {e}")
         raise
     finally:
@@ -260,7 +374,7 @@ def _get_task_id(params: dict) -> str:
     return str(options.get("task_id") or keystore.get("task_id", ""))
 
 
-def _parse_manifest_meta_data(apk_path):
+def _parse_manifest_meta_data(apk_path, task_id: str = ""):
     """
     Extract all <meta-data> entries from AndroidManifest.xml using aapt dump xmltree.
     Returns a list of dicts: [{parent, name, value}, ...]
@@ -270,7 +384,7 @@ def _parse_manifest_meta_data(apk_path):
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
             return []
-        context = CommandExecutionContext()
+        context = CommandExecutionContext(task_id=task_id)
         result = aapt.execute(["dump", "xmltree", "--file", "AndroidManifest.xml", apk_path], context)
         output = result.get("stdout", "")
         lines = output.split("\n")
@@ -357,7 +471,7 @@ def _parse_manifest_meta_data(apk_path):
         return []
 
 
-def _resolve_resource_refs(apk_path, meta_list):
+def _resolve_resource_refs(apk_path, meta_list, task_id: str = ""):
     """
     Resolve android:resource=@0xNNNNNNNN references to human-readable paths
     using aapt2 dump resources, then read actual XML content for xml/ resources.
@@ -384,7 +498,7 @@ def _resolve_resource_refs(apk_path, meta_list):
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
             return
-        context = CommandExecutionContext()
+        context = CommandExecutionContext(task_id=task_id)
         result = aapt.execute(["dump", "resources", apk_path], context)
         output = result.get("stdout", "")
         lines = output.split("\n")
@@ -485,6 +599,7 @@ def _resolve_resource_refs(apk_path, meta_list):
         logger.warning(f"Resource ref resolution failed: {e}")
 
 
+@streaming
 def apk_sign(params, stream_handler):
     apk_path = params.get("apk_path")
     keystore = params.get("keystore", {})
@@ -495,9 +610,12 @@ def apk_sign(params, stream_handler):
     if not keystore.get("path") or not keystore.get("alias"):
         raise ToolException("Missing keystore info for signing")
 
-    dir_name = os.path.dirname(apk_path)
     base_name = os.path.basename(apk_path)
     name_without_ext = os.path.splitext(base_name)[0]
+    if task_id:
+        dir_name = get_task_subdir(task_id, "output")
+    else:
+        dir_name = os.path.dirname(apk_path)
     if name_without_ext.endswith("-signed"):
         output_apk = os.path.join(dir_name, f"{name_without_ext}_new.apk")
     else:
@@ -532,19 +650,43 @@ def apk_sign(params, stream_handler):
         args += [apk_path]
 
         context = CommandExecutionContext(
+            stream=True,
+            task_id=task_id,
             process_holder=process_holder,
         )
-        result = apksigner.execute(args, context)
-        if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
-        if result.get("returncode", 1) != 0:
-            raise ToolException(result.get("stderr", "Signing failed"))
-        return {"apk_path": output_apk}
+        proc = apksigner.execute(args, context)
+
+        for line in iter(proc.stdout.readline, ''):
+            if task_id and task_manager.is_cancelled(task_id):
+                proc.kill()
+                stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+                return
+            line = line.rstrip('\n')
+            if line:
+                if task_id:
+                    append_task_log(task_id, line)
+                stream_handler({"type": "log", "line": line})
+
+        proc.wait()
+
+        if task_id and task_manager.is_cancelled(task_id):
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+            return
+
+        if proc.returncode != 0:
+            stream_handler({
+                "type": "error",
+                "payload": {"message": f"Signing failed (exit={proc.returncode})"},
+            })
+            return
+
+        stream_handler({"type": "complete", "payload": {"apk_path": output_apk}})
     except ToolException:
         raise
     except Exception as e:
         if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
+            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
+            return
         logger.error(f"Signing failed: {e}")
         raise
     finally:
@@ -552,6 +694,7 @@ def apk_sign(params, stream_handler):
             task_manager.unregister(task_id)
 
 
+@streaming
 def apk_getinfo(params, stream_handler):
     return apk_analyze(params, stream_handler)
 

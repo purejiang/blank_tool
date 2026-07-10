@@ -19,6 +19,7 @@ export interface Task {
   collapsed: boolean
   createdAt: number
   finishedAt: number | null
+  taskDir: string
 }
 
 let nextId = 1
@@ -40,32 +41,49 @@ function saveTasks(tasks: Task[]) {
   } catch {}
 }
 
-// Collect deletable output paths from terminal tasks (completed/failed/cancelled)
-// with a non-empty outputPath. Deduped.
-function collectDeletablePaths(list: Task[]): string[] {
+// Collect deletable task IDs from terminal tasks (completed/failed/cancelled).
+// Deduped.
+function collectDeletableTaskIds(list: Task[]): string[] {
   const seen = new Set<string>()
   for (const t of list) {
     if (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled') {
-      if (typeof t.outputPath === 'string' && t.outputPath.length > 0) {
-        seen.add(t.outputPath)
-      }
+      const id = String(t.id)
+      if (id.length > 0) seen.add(id)
     }
   }
   return Array.from(seen)
 }
 
-// Fire-and-forget best-effort deletion of task output paths via the backend.
+// Fire-and-forget best-effort deletion of task dirs via the backend.
 // Never throws; only console.errors on failure. Respects the
 // `autoDeleteOutputOnTaskRemove` toggle.
-async function tryDeleteOutputs(paths: string[]): Promise<void> {
-  if (paths.length === 0) return
+async function tryDeleteTaskDirs(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
   if (!window.electronAPI?.appConfig?.get) return
   try {
     const enabled = await window.electronAPI.appConfig.get('autoDeleteOutputOnTaskRemove')
     if (enabled !== true) return
-    await window.electronAPI.callBackendAPI('task.delete_output', { paths })
+    for (const id of ids) {
+      if (!id) continue
+      try {
+        await window.electronAPI.callBackendAPI('task.delete_task_dir', { task_id: id })
+      } catch (err) {
+        console.error('[taskStore] auto-delete task dir failed for', id, err)
+      }
+    }
   } catch (err) {
-    console.error('[taskStore] auto-delete output failed', err)
+    console.error('[taskStore] auto-delete config check failed', err)
+  }
+}
+
+// Fire-and-forget best-effort persistence of a single log line to the
+// per-task log file via the backend.  Never throws.
+async function persistLine(id: number, line: string): Promise<void> {
+  if (!window.electronAPI?.callBackendAPI) return
+  try {
+    await window.electronAPI.callBackendAPI('task.append_log', { task_id: String(id), line })
+  } catch {
+    // silently ignore — persistence is best-effort
   }
 }
 
@@ -123,6 +141,7 @@ export const useTaskStore = defineStore('task', () => {
       collapsed: false,
       createdAt: Date.now(),
       finishedAt: null,
+      taskDir: '',
     }
     tasks.value.unshift(task)
     if (tasks.value.length > maxTasks) tasks.value.pop()
@@ -138,9 +157,8 @@ export const useTaskStore = defineStore('task', () => {
     const idx = tasks.value.findIndex(t => t.id === id)
     if (idx !== -1) {
       Object.assign(tasks.value[idx], updates)
-      // Auto-collapse when task reaches a terminal state
+      // Persist and notify when task reaches a terminal state
       if (updates.status === 'completed' || updates.status === 'failed' || updates.status === 'cancelled') {
-        tasks.value[idx].collapsed = true
         persist()
         void notifyTaskTerminal(tasks.value[idx])
       }
@@ -151,15 +169,27 @@ export const useTaskStore = defineStore('task', () => {
     const task = tasks.value.find(t => t.id === id)
     if (task) {
       task.logs.push(line)
-      if (task.logs.length > 1000) task.logs.shift()
+      if (task.logs.length > 500) task.logs.shift()
     }
+    // Persist to per-task log file (fire-and-forget, best-effort)
+    void persistLine(id, line)
+  }
+
+  function appendLogBatch(id: number, lines: string[]) {
+    const task = tasks.value.find(t => t.id === id)
+    if (task) {
+      task.logs.push(...lines)
+      if (task.logs.length > 500) task.logs.splice(0, task.logs.length - 500)
+    }
+    // Persist lines in background (fire-and-forget, best-effort)
+    for (const line of lines) void persistLine(id, line)
   }
 
   function removeTask(id: number) {
     const idx = tasks.value.findIndex(t => t.id === id)
     if (idx !== -1) {
       const task = tasks.value[idx]
-      void tryDeleteOutputs(collectDeletablePaths([task]))
+      void tryDeleteTaskDirs(collectDeletableTaskIds([task]))
       tasks.value.splice(idx, 1)
       persist()
     }
@@ -167,16 +197,16 @@ export const useTaskStore = defineStore('task', () => {
 
   function clearCompleted() {
     const removed = tasks.value.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
-    void tryDeleteOutputs(collectDeletablePaths(removed))
+    void tryDeleteTaskDirs(collectDeletableTaskIds(removed))
     tasks.value = tasks.value.filter(t => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled')
     persist()
   }
 
   function clearAll() {
-    void tryDeleteOutputs(collectDeletablePaths(tasks.value))
+    void tryDeleteTaskDirs(collectDeletableTaskIds(tasks.value))
     tasks.value = []
     persist()
   }
 
-  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, appendLog, removeTask, clearCompleted, clearAll }
+  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll }
 })
