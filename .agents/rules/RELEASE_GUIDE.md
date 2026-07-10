@@ -59,16 +59,20 @@ npm run build:linux  # Linux
 | `Setup X.Y.Z.exe.blockmap` | 增量更新块映射 | ✅ |
 | `latest.yml` | 自动更新清单 | ✅ |
 
-### latest.yml 文件名修正
+### latest.yml 文件名校验
 
-> ⚠️ `latest.yml` 中的文件名可能包含连字符（`Blank-Tool-Setup`），GitHub 会将空格转为点号（`Blank.Tool.Setup`）。**上传前将 `latest.yml` 中的文件名修正为点号格式**，否则自动更新会 404。
+> ⚠️ `latest.yml` 中的 `url` / `path` 字段必须与 GitHub Release 上实际资产的文件名**完全一致**，否则自动更新会 404。electron-builder 默认用连字符命名产物（`Blank-Tool-Setup-X.Y.Z.exe`）。
+
+上传前校验 `latest.yml` 里的文件名与 `build/` 下实际 exe 文件名一致：
 
 ```bash
-# Linux / macOS
-sed -i 's/Blank-Tool-Setup/Blank.Tool.Setup/g' build/latest.yml
+# 检查 latest.yml 里的文件名
+grep -E '^\s*(url|path):' build/latest.yml
 
-# Windows (PowerShell)
-(Get-Content build/latest.yml) -replace 'Blank-Tool-Setup','Blank.Tool.Setup' | Set-Content build/latest.yml
+# 检查 build/ 下实际产物名
+ls build/*.exe
+
+# 两者必须完全一致；如不一致，修正 latest.yml（保持连字符）
 ```
 
 ### 上传产物
@@ -100,12 +104,10 @@ try {
   unlinkSync(pkgPath + '.bak');
 }
 
-// 2. 修正 latest.yml 文件名
+// 2. 校验 latest.yml 文件名与实际产物一致（electron-builder 默认连字符命名）
 const latestYml = 'build/latest.yml';
 if (existsSync(latestYml)) {
-  let content = readFileSync(latestYml, 'utf8');
-  content = content.replace(/Setup-/g, 'Setup.');
-  writeFileSync(latestYml, content);
+  // 无需替换；仅确认 latest.yml 里的文件名与 build/ 下 exe 一致
 }
 
 // 3. 删除旧版本 exe
@@ -126,6 +128,6 @@ execSync(`gh release create ${version} "${setupExe}" "${setupExe}.blockmap" "${l
 通用检查清单项见 [第 8 节 检查清单](./RELEASE_GENERAL.md#8-检查清单发布前逐项确认)，以下仅为本项目 Electron 特有项：
 
 - [ ] `npm run build:win` — 构建成功
-- [ ] `latest.yml` 文件名已修正为点号格式
+- [ ] `latest.yml` 文件名与 Release 实际资产名一致（保持连字符）
 - [ ] `gh release create` — 三个文件全部上传（exe + blockmap + latest.yml）
 - [ ] 旧版本 exe 已清理（`gh release delete-asset`）

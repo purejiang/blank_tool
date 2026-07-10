@@ -18,6 +18,7 @@ class TestCacheInfo:
         payload = result["payload"]
         assert "cache" in payload
         assert "output" in payload
+        assert "tasks" in payload
         assert "total" in payload
 
     def test_cache_info_alias_works(self, api_handler):
@@ -32,6 +33,7 @@ class TestCacheInfo:
         payload = result["payload"]
         assert "cache" in payload
         assert "output" in payload
+        assert "tasks" in payload
 
 
 class TestCacheClear:

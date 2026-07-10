@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
-from app.utils.env import get_env, load_dotenv, load_server_config, resolve_path
+from app.utils.env import get_env, get_output_dir, load_dotenv, load_server_config, resolve_path
 from app.protocol import ErrorCode
 
 # Thread-safe lock for writing to stdout
@@ -68,12 +68,42 @@ def bootstrap():
 
     log_dir = get_env('BT_LOG_DIR')
     if not log_dir:
-        cache_dir = get_env('BT_CACHE_DIR', './cache')
-        resolved_cache_dir = resolve_path(cache_dir)
-        log_dir = str(Path(resolved_cache_dir) / "logs")
+        # Dev fallback: backend/logs/
+        log_dir = str(Path(ROOT) / "logs")
 
     log_level = get_env('BT_LOG_LEVEL', 'DEBUG')
     Logger.initialize(log_dir=log_dir, log_level=log_level)
+
+    # One-time legacy orphan warning (T8)
+    try:
+        sentinel = os.path.join(log_dir, '.legacy-orphan-warned')
+        if not os.path.exists(sentinel):
+            cache_dir = get_env('BT_CACHE_DIR', './cache')
+            resolved_cache = resolve_path(cache_dir)
+            downloads_dir = os.path.join(resolved_cache, 'downloads')
+            output_decompiled = os.path.join(get_output_dir(), 'decompiled')
+
+            has_apks = (
+                os.path.isdir(downloads_dir)
+                and any(f.endswith('.apk') for f in os.listdir(downloads_dir))
+            )
+            has_decompiled = (
+                os.path.isdir(output_decompiled)
+                and bool(os.listdir(output_decompiled))
+            )
+
+            if has_apks or has_decompiled:
+                logger = Logger.get_logger(__name__)
+                logger.warning(
+                    "检测到旧版下载/反编译产物在 Cache\\downloads 和 Output\\decompiled，"
+                    "新版使用 Tasks\\{任务ID}\\ 目录，旧产物不会自动删除，可在设置中手动清除缓存。"
+                )
+
+            # Write sentinel so the warning fires only once
+            os.makedirs(os.path.dirname(sentinel), exist_ok=True)
+            Path(sentinel).touch()
+    except Exception:
+        pass
 
 
 # ------------------------------------------------------------------

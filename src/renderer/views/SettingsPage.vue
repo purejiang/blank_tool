@@ -152,37 +152,62 @@
       <n-card :bordered="false" class="settings-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="section-header" style="margin-bottom:0">
-            <n-icon size="18" color="#8B5CF6"><Database /></n-icon>
+            <n-icon size="18" color="#8B5CF6"><HardDrive /></n-icon>
             <span class="section-title">{{ t('settings.storage') }}</span>
+            <span class="storage-total-text">{{ formatFileSize(cacheInfo.total.size) }}</span>
           </div>
           <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
           </n-button>
         </div>
-        <div class="storage-grid">
-          <div class="storage-item">
-            <div class="storage-label">{{ t('settings.cache') }}</div>
-            <div class="storage-value">{{ formatFileSize(cacheInfo.cache.size) }}</div>
-            <div class="storage-sub">{{ cacheFilesText }}</div>
-          </div>
-          <div class="storage-item">
-            <div class="storage-label">{{ t('settings.output') }}</div>
-            <div class="storage-value">{{ formatFileSize(cacheInfo.output.size) }}</div>
-            <div class="storage-sub">{{ outputFilesText }}</div>
-          </div>
-          <div class="storage-item">
-            <div class="storage-label">{{ t('settings.total') }}</div>
-            <div class="storage-value">{{ formatFileSize(cacheInfo.total.size) }}</div>
+
+        <!-- Proportional bar -->
+        <div class="storage-bar" v-if="cacheInfo.total.size > 0">
+          <div
+            v-for="cat in storageCategories"
+            :key="cat.key"
+            class="storage-bar-seg"
+            :style="{ width: barWidth(cat.key), background: cat.color }"
+            :title="t(cat.label) + ' ' + formatFileSize(getCatSize(cat.key))"
+          />
+        </div>
+
+        <!-- Category rows -->
+        <div class="storage-rows">
+          <div v-for="cat in storageCategories" :key="cat.key" class="storage-row">
+            <div class="storage-row-icon" :style="{ color: cat.color }">
+              <n-icon size="16"><component :is="cat.icon" /></n-icon>
+            </div>
+            <div class="storage-row-info">
+              <div class="storage-row-label">{{ t(cat.label) }}</div>
+              <div class="storage-row-sub">{{ formatFileSize(getCatSize(cat.key)) }} · {{ getCatFiles(cat.key) }} {{ t('settings.filesUnit') }}</div>
+            </div>
+            <n-button
+              size="tiny"
+              quaternary
+              type="error"
+              :loading="clearingTarget === cat.key"
+              :disabled="getCatSize(cat.key) === 0"
+              @click="confirmClear(cat.key)"
+            >
+              <template #icon><n-icon size="13"><Trash2 /></n-icon></template>
+            </n-button>
           </div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:16px">
-          <n-button type="warning" size="small" @click="clearStorage('cache')" :loading="isClearingCache">
+
+        <!-- Clear all -->
+        <div style="margin-top:12px">
+          <n-button
+            size="small"
+            type="error"
+            ghost
+            block
+            :loading="clearingTarget === 'all'"
+            :disabled="cacheInfo.total.size === 0"
+            @click="confirmClear('all')"
+          >
             <template #icon><n-icon><Trash2 /></n-icon></template>
-            {{ t('settings.clearCache') }}
-          </n-button>
-          <n-button type="warning" size="small" @click="clearStorage('output')" :loading="isClearingOutput">
-            <template #icon><n-icon><Download /></n-icon></template>
-            {{ t('settings.clearOutput') }}
+            {{ t('settings.clearAllStorage') }}
           </n-button>
         </div>
       </n-card>
@@ -196,8 +221,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
-import { FolderOpen, Trash2, Download, RefreshCw, Cpu, Monitor, Layers, Settings2, Database, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle } from 'lucide-vue-next'
+import { NIcon, NButton, useDialog } from 'naive-ui'
+import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
@@ -207,6 +232,7 @@ import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 
 const { t } = useI18n()
 const { showSuccess, showError } = useNotification()
+const dialog = useDialog()
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
 const setTheme = inject<(mode: string) => Promise<void>>('setTheme', async () => {})
 const systemStore = useSystemStore()
@@ -268,10 +294,14 @@ const triggerSaved = () => {
 const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, timeout: 300 })
 const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
 const displayPaths = reactive({ runtime: '', server: '' })
-const cacheInfo = ref({ cache: { size: 0, files: 0 }, output: { size: 0, files: 0 }, total: { size: 0, files: 0 } })
-const isClearingCache = ref(false)
-const isClearingOutput = ref(false)
+const cacheInfo = ref({
+  tasks: { size: 0, files: 0 },
+  output: { size: 0, files: 0 },
+  logs: { size: 0, files: 0 },
+  total: { size: 0, files: 0 }
+})
 const isLoadingCacheInfo = ref(false)
+const clearingTarget = ref<string | null>(null)
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
 
@@ -284,8 +314,20 @@ const themeOptions = computed(() => [
   { label: t('settings.themeLight'), value: 'light' },
   { label: t('settings.themeDark'), value: 'dark' },
 ])
-const cacheFilesText = computed(() => t('settings.files', { count: cacheInfo.value.cache.files }))
-const outputFilesText = computed(() => t('settings.files', { count: cacheInfo.value.output.files }))
+// Storage categories: key → label, icon, color
+const storageCategories = [
+  { key: 'tasks',   label: 'settings.tasks',   icon: Archive,        color: '#F59E0B' },
+  { key: 'output',  label: 'settings.output',  icon: FolderArchive,  color: '#3B82F6' },
+  { key: 'logs',    label: 'settings.logs',    icon: FileText,       color: '#10B981' },
+] as const
+
+const getCatSize = (key: string) => (cacheInfo.value as any)[key]?.size || 0
+const getCatFiles = (key: string) => (cacheInfo.value as any)[key]?.files || 0
+const barWidth = (key: string) => {
+  const total = cacheInfo.value.total.size
+  if (!total) return '0%'
+  return Math.max(0, (getCatSize(key) / total) * 100) + '%'
+}
 const cpuText = computed(() => {
   const count = systemInfo.cpuCount || '0'
   return `${count} ${t('device.cores', { count: Number(count) || 0 })}`
@@ -360,19 +402,33 @@ const refreshCache = async () => {
   finally { isLoadingCacheInfo.value = false }
 }
 
-const clearStorage = async (target: 'cache' | 'output') => {
-  if (target === 'cache') isClearingCache.value = true
-  else isClearingOutput.value = true
-  try {
-    const svc = await serviceManager.getService('cache')
-    const result = await svc.clearStorage(target)
-    if (result.success) { showSuccess(t('settings.storageCleared')); await refreshCache() }
-    else showError(t('settings.clearFailed'), result.error)
-  } catch (e: any) { showError(t('settings.clearFailed'), e.message) }
-  finally {
-    if (target === 'cache') isClearingCache.value = false
-    else isClearingOutput.value = false
-  }
+const confirmClear = (target: string) => {
+  const label = target === 'all'
+    ? t('settings.clearAllStorage')
+    : t(`settings.${target}`)
+  dialog.warning({
+    title: t('settings.clearConfirmTitle'),
+    content: t('settings.clearConfirmContent', { target: label }),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      clearingTarget.value = target
+      try {
+        const svc = await serviceManager.getService('cache')
+        const result = await svc.clearStorage(target)
+        if (result.success) {
+          showSuccess(t('settings.storageCleared'))
+          await refreshCache()
+        } else {
+          showError(t('settings.clearFailed'), result.error)
+        }
+      } catch (e: any) {
+        showError(t('settings.clearFailed'), e.message)
+      } finally {
+        clearingTarget.value = null
+      }
+    }
+  })
 }
 
 const handleToolPathChange = async (toolName: string, path: string) => {
@@ -437,11 +493,16 @@ onMounted(() => {
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; justify-content: flex-start; }
 .section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
-.storage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.storage-item { text-align: center; padding: 12px; background: var(--app-storage-bg); border-radius: 8px; }
-.storage-label { font-size: 12px; color: var(--app-text-muted); margin-bottom: 4px; }
-.storage-value { font-size: 18px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; }
-.storage-sub { font-size: 11px; color: var(--app-text-dim); margin-top: 2px; }
+.storage-total-text { font-size: 16px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 12px; }
+.storage-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }
+.storage-bar-seg { height: 100%; transition: width 0.3s ease; }
+.storage-rows { display: flex; flex-direction: column; gap: 2px; }
+.storage-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: 6px; }
+.storage-row:hover { background: var(--app-storage-bg); }
+.storage-row-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--app-storage-bg); flex-shrink: 0; }
+.storage-row-info { flex: 1; min-width: 0; }
+.storage-row-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
+.storage-row-sub { font-size: 11px; color: var(--app-text-muted); margin-top: 1px; }
 .info-grid { display: flex; flex-direction: column; gap: 10px; }
 .info-row { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(51,65,85,0.3); }
 .info-row:last-child { border-bottom: none; }

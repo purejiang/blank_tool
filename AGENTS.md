@@ -87,7 +87,21 @@ Python Backend (backend/main.py)
 打包时会随应用分发，包含：`adb/`、`aapt/`（aapt2）、`apktool/`（.jar）、`bundletool/`（.jar）、`android/`（zipalign、apksigner.jar）、`jre/`（java、jarsigner）、`python/`。所有外部工具都从这里调用，不要假设系统 PATH 里有 `adb`/`java` 等。
 
 
+## 发版流程
 
+发版流程分两层规范：
+
+- **通用规范**（分支策略、版本号、质量门禁、GitHub Release、存储治理、检查清单）：见 `.agents/rules/RELEASE_GENERAL.md`
+- **本项目 Electron 特有部分**（版本注入、electron-builder 构建、产物上传）：见 `.agents/rules/RELEASE_GUIDE.md`
+
+## 其他约定
+
+- 仓库根有 `dev-app-update.yml`，是 `electron-updater` 在开发模式下的测试配置，**不要提交生产凭证**。
+- `.github/` 目录目前为空（没有 CI workflow），所有检查靠本地 `npm run check`。
+- 国际化在 `src/renderer/i18n/`（zh-CN、en-US），UI 文案改动需同步两个语言文件。
+- 主题系统用 CSS 变量驱动，三模式（浅色/深色/自动）在 `src/renderer/assets/styles/themes/`。
+- 提交信息、文档、注释混用中英文是本仓库的常态，无需统一。
+  
 # 项目规则
 
 ## 外部文件加载
@@ -99,36 +113,3 @@ Python Backend (backend/main.py)
 - 不要预先加载所有引用 - 根据实际需求使用延迟加载
 - 加载时，将内容视为覆盖默认设置的强制性指令
 - 必要时递归地遵循引用
-
-## 开发指南
-
-关于 release 发布的规范：@.agents/rules/RELEASE_GENERAL.md（通用）和 @.agents/rules/RELEASE_GUIDE.md（本项目 Electron 专有）
-
-
-## 一般指南
-
-请立即阅读以下文件，因为它与所有工作流程相关：@rules/general-guidelines.md。
-
-
-
-## 发版流程
-
-发版流程分两层规范：
-
-- **通用规范**（分支策略、版本号、质量门禁、GitHub Release、存储治理、检查清单）：见 `.agents/rules/RELEASE_GENERAL.md`
-- **本项目 Electron 特有部分**（版本注入、electron-builder 构建、产物上传）：见 `.agents/rules/RELEASE_GUIDE.md`
-
-### 关键易错点
-
-- **tag 必须打在 `main` 分支，绝对不能打在 `dev` 分支。** 如果打错，发布版本号会错乱。详见通用规范 [版本号管理] 一节。
-- **构建前后自动备份/恢复 `package.json`。** 构建中途 kill（如 CI 超时）会导致 `package.json.bak` 残留，`finally` 块负责恢复，但残留备份会使下次构建覆盖。详见 `.agents/rules/RELEASE_GUIDE.md`。
-- **GitHub 存储空间有限（2GB），必须清理旧版本资产。** 用 `gh release delete-asset vX.Y.Z "filename" --yes`（只删资产，保留 release 页面与 changelog）。**绝对不要**用 `gh release delete vX.Y.Z --yes --cleanup-tag`——会连同 git tag 永久删除版本历史。
-- **发布后记得切回 `dev` 分支（`git checkout dev`），继续日常开发。**
-
-## 其他约定
-
-- 仓库根有 `dev-app-update.yml`，是 `electron-updater` 在开发模式下的测试配置，**不要提交生产凭证**。
-- `.github/` 目录目前为空（没有 CI workflow），所有检查靠本地 `npm run check`。
-- 国际化在 `src/renderer/i18n/`（zh-CN、en-US），UI 文案改动需同步两个语言文件。
-- 主题系统用 CSS 变量驱动，三模式（浅色/深色/自动）在 `src/renderer/assets/styles/themes/`。
-- 提交信息、文档、注释混用中英文是本仓库的常态，无需统一。

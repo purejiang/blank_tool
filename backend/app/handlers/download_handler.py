@@ -11,17 +11,18 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
 from app.utils.logger import Logger
-from app.utils.env import get_env, resolve_path
+from app.utils.env import get_task_subdir, get_tasks_root
 from app.common.decorators import streaming
 from app.common.task_manager import TaskManager
 
 logger = Logger.get_logger("DownloadHandler")
 
 
-def _downloads_dir():
-    cache_dir = get_env("BT_CACHE_DIR", "./cache")
-    root = resolve_path(cache_dir)
-    dl = os.path.join(root, "downloads")
+def _task_input_dir(task_id):
+    if task_id:
+        return get_task_subdir(task_id, "input")
+    # Fallback for no task_id: use a downloads dir next to tasks
+    dl = os.path.join(os.path.dirname(get_tasks_root()), "downloads")
     os.makedirs(dl, exist_ok=True)
     return dl
 
@@ -42,7 +43,7 @@ def download_file(params, stream_handler):
     if not filename:
         filename = url.rsplit("/", 1)[-1].split("?")[0] or "download"
 
-    dest_dir = _downloads_dir()
+    dest_dir = _task_input_dir(params.get("task_id", ""))
     dest_path = os.path.join(dest_dir, filename)
 
     task_manager = TaskManager()

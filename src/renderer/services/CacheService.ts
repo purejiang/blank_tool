@@ -30,8 +30,9 @@ class CacheService {
             console.error('获取缓存信息失败:', error);
             // Return empty structure on error to prevent UI issues
             return {
-                cache: { size: 0, files: 0 },
+                tasks: { size: 0, files: 0 },
                 output: { size: 0, files: 0 },
+                logs: { size: 0, files: 0 },
                 total: { size: 0, files: 0 }
             };
         }

@@ -225,17 +225,20 @@ async function startPythonService(): Promise<ChildProcessWithoutNullStreams | nu
 
   try {
     const localDataPath = getAppLocalDataPath();
-    const cacheDir = path.join(localDataPath, 'Cache');
-    const outputDir = path.join(localDataPath, 'Output');
+    const cacheDir = path.join(localDataPath, 'cache');
+    const outputDir = path.join(localDataPath, 'output');
+    const tasksDir = path.join(localDataPath, 'tasks');
     const logsDir = path.join(localDataPath, 'logs');
     ensureDir(cacheDir);
     ensureDir(outputDir);
+    ensureDir(tasksDir);
     ensureDir(logsDir);
 
     const env = {
         ...process.env,
         BT_RUNTIME_DIR: absRuntimeDir || '',
         BT_CACHE_DIR: cacheDir,
+        BT_TASKS_DIR: tasksDir,
         BT_OUTPUT_DIR: outputDir,
         BT_LOG_DIR: logsDir
     };

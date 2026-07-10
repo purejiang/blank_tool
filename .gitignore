@@ -12,3 +12,7 @@ tests/reports/
 cli-notify-plugin/
 .trae/
 .vscode/
+.agents/
+tests/
+__pycache__/
+.pyc

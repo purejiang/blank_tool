@@ -172,13 +172,19 @@ def get_tasks_root() -> str:
     """
     Return the root directory for all per-task working directories.
 
-    This is placed *inside* the cache directory so that cache management
-    (e.g. ``storage.clear``) can reach it.  Returns
-    ``<cache_dir>/Tasks/`` and creates it on disk if missing.
+    Uses the ``BT_TASKS_DIR`` environment variable (set by the Electron main
+    process to ``<appdata>/Tasks``), falling back to ``<cache_dir>/Tasks``
+    for development without a parent process.
+
+    Returns ``<tasks_root>/`` and creates it on disk if missing.
     """
-    tasks_root = os.path.join(get_cache_dir(), "Tasks")
-    os.makedirs(tasks_root, exist_ok=True)
-    return tasks_root
+    tasks_dir = get_env("BT_TASKS_DIR")
+    if tasks_dir:
+        root = resolve_path(tasks_dir)
+    else:
+        root = os.path.join(get_cache_dir(), "tasks")
+    os.makedirs(root, exist_ok=True)
+    return root
 
 
 def get_task_dir(task_id: str) -> str:

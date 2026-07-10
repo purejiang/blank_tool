@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Cache and output directory management handlers.
+Storage directory management handlers.
+
+Three top-level directories, each with independent lifecycle:
+  - tasks/   user work products (signed APKs, decompiled sources)
+  - output/  standalone exports
+  - logs/    backend diagnostic logs (3-day rotation)
 """
 
 import os
 import shutil
 
 from app.utils.logger import Logger
-from app.utils.env import get_cache_dir, get_output_dir, get_tasks_root
+from app.utils.env import get_output_dir, get_tasks_root
 from app.common.exceptions import ToolException
 
-logger = Logger.get_logger("CacheHandler")
+logger = Logger.get_logger("StorageHandler")
 
 
-def _cache_root():
-    return get_cache_dir()
+def _tasks_root():
+    return get_tasks_root()
 
 
 def _output_root():
@@ -43,32 +48,25 @@ def _get_dir_size(path):
 
 
 def cache_info(params, stream_handler):
-    cache_root = _cache_root()
+    tasks_root = _tasks_root()
     output_root = _output_root()
-    tasks_root = get_tasks_root()
     logs_root = _logs_root()
 
     try:
-        cache_size, cache_files = _get_dir_size(cache_root)
-        output_size, output_files = _get_dir_size(output_root)
         tasks_size, tasks_files = _get_dir_size(tasks_root)
+        output_size, output_files = _get_dir_size(output_root)
         logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
 
         return {
-            "cache": {
-                "path": cache_root,
-                "size": cache_size,
-                "files": cache_files,
+            "tasks": {
+                "path": tasks_root,
+                "size": tasks_size,
+                "files": tasks_files,
             },
             "output": {
                 "path": output_root,
                 "size": output_size,
                 "files": output_files,
-            },
-            "tasks": {
-                "path": tasks_root,
-                "size": tasks_size,
-                "files": tasks_files,
             },
             "logs": {
                 "path": logs_root,
@@ -76,12 +74,12 @@ def cache_info(params, stream_handler):
                 "files": logs_files,
             },
             "total": {
-                "size": cache_size + output_size + tasks_size + logs_size,
-                "files": cache_files + output_files + tasks_files + logs_files,
+                "size": tasks_size + output_size + logs_size,
+                "files": tasks_files + output_files + logs_files,
             },
         }
     except Exception as e:
-        logger.error(f"Failed to get cache info: {e}")
+        logger.error(f"Failed to get storage info: {e}")
         raise
 
 
@@ -97,18 +95,8 @@ def _clear_directory(path):
             elif os.path.isdir(p):
                 shutil.rmtree(p, ignore_errors=True)
         except Exception as e:
-            logger.warning(f"Failed to remove cache entry '{p}': {e}")
+            logger.warning(f"Failed to remove entry '{p}': {e}")
     return True
-
-
-def cache_clear(params, stream_handler):
-    root = _cache_root()
-    try:
-        _clear_directory(root)
-        return {"path": root, "size": 0, "files": 0}
-    except Exception as e:
-        logger.error(f"Failed to clear cache: {e}")
-        raise
 
 
 def output_clear(params, stream_handler):
@@ -127,20 +115,15 @@ def storage_clear(params, stream_handler):
     cleared_paths = []
 
     try:
-        if target in ["all", "cache"]:
-            cache_root = _cache_root()
-            if _clear_directory(cache_root):
-                cleared_paths.append(cache_root)
+        if target in ["all", "tasks"]:
+            tasks_root = _tasks_root()
+            if _clear_directory(tasks_root):
+                cleared_paths.append(tasks_root)
 
         if target in ["all", "output"]:
             output_root = _output_root()
             if _clear_directory(output_root):
                 cleared_paths.append(output_root)
-
-        if target in ["all", "tasks"]:
-            tasks_root = get_tasks_root()
-            if _clear_directory(tasks_root):
-                cleared_paths.append(tasks_root)
 
         if target in ["all", "logs"]:
             logs_root = _logs_root()
@@ -150,6 +133,16 @@ def storage_clear(params, stream_handler):
         return {"success": True, "cleared_paths": cleared_paths}
     except Exception as e:
         logger.error(f"Failed to clear storage: {e}")
+        raise
+
+
+def tasks_clear(params, stream_handler):
+    root = _tasks_root()
+    try:
+        _clear_directory(root)
+        return {"path": root, "size": 0, "files": 0}
+    except Exception as e:
+        logger.error(f"Failed to clear tasks: {e}")
         raise
 
 
@@ -165,20 +158,9 @@ def logs_clear(params, stream_handler):
         raise
 
 
-def tasks_clear(params, stream_handler):
-    root = get_tasks_root()
-    try:
-        _clear_directory(root)
-        return {"path": root, "size": 0, "files": 0}
-    except Exception as e:
-        logger.error(f"Failed to clear tasks: {e}")
-        raise
-
-
 API_MAP = {
     "cache.get_info": cache_info,
     "cache.info": cache_info,
-    "cache.clear": cache_clear,
     "output.clear": output_clear,
     "tasks.clear": tasks_clear,
     "logs.clear": logs_clear,
