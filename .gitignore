@@ -15,4 +15,5 @@ cli-notify-plugin/
 .agents/
 tests/
 __pycache__/
-.pyc
+*.pyc
+backend/app/cache/logs/
