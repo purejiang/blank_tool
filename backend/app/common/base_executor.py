@@ -9,8 +9,9 @@ import subprocess
 import traceback
 import shutil
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Optional
 from app.utils.logger import Logger
+from app.utils.task_log_writer import append_task_log
 from app.common.executor import ProcessExecutor
 from app.common.exceptions import TimeoutException
 
@@ -30,6 +31,8 @@ class CommandExecutionContext:
         env: Environment variables
         stream: Whether to use streaming output
         log_output: Whether to log output
+        task_id: Task identifier for per-task log writing
+        process_holder: Dict for external process cancellation
     """
 
     def __init__(self,
@@ -43,6 +46,7 @@ class CommandExecutionContext:
                  env: Dict[str, str] = None,
                  stream: bool = False,
                  log_output: bool = True,
+                 task_id: Optional[str] = None,
                  process_holder: Dict[str, Any] = None):
         self.cwd = cwd
         self.timeout = timeout
@@ -54,7 +58,20 @@ class CommandExecutionContext:
         self.env = env
         self.stream = stream
         self.log_output = log_output
+        self.task_id = task_id
         self.process_holder = process_holder
+
+
+def _write_task_log(task_id: str, cmd_str: str, returncode: int,
+                    stdout: str, stderr: str) -> None:
+    """Append tool execution output to the per-task log file."""
+    append_task_log(task_id, f"[TOOL] {cmd_str} (exit={returncode})")
+    if stdout:
+        for line in stdout.splitlines():
+            append_task_log(task_id, line)
+    if stderr:
+        for line in stderr.splitlines():
+            append_task_log(task_id, line)
 
 
 class BaseCommandExecutor(ABC):
@@ -167,7 +184,7 @@ class CommandExecutor(BaseCommandExecutor):
             proc = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=context.text,
                 encoding=context.encoding,
                 errors=context.errors,
@@ -209,6 +226,10 @@ class CommandExecutor(BaseCommandExecutor):
                     if stderr:
                         self._log_debug(f"[STDERR] {stderr.strip()}")
 
+            # Write tool output to per-task log file
+            if context.task_id and context.log_output:
+                _write_task_log(context.task_id, cmd_str, returncode, stdout, stderr)
+
             return {
                 "success": success,
                 "stdout": stdout,
@@ -220,6 +241,8 @@ class CommandExecutor(BaseCommandExecutor):
         except TimeoutException:
             error_msg = f"Command timed out ({context.timeout}s): {self._redact_sensitive_args(cmd_str)}"
             self._log_error(f"[COMMAND] {error_msg}")
+            if context.task_id and context.log_output:
+                append_task_log(context.task_id, f"[TOOL] {self._redact_sensitive_args(cmd_str)} (TIMEOUT after {context.timeout}s)")
             raise
         except Exception as e:
             error_msg = f"Command execution error: {self._redact_sensitive_args(cmd_str)}, error: {str(e)}"
