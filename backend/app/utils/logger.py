@@ -14,17 +14,20 @@ from logging.handlers import BaseRotatingHandler
 class DailyRotatingFileHandler(BaseRotatingHandler):
     """按日期和大小分割的日志处理器"""
     
-    def __init__(self, log_dir: Path, max_bytes: int = 10 * 1024 * 1024, encoding: str = 'utf-8'):
+    def __init__(self, log_dir: Path, max_bytes: int = 3 * 1024 * 1024,
+                 max_files_per_day: int = 3, encoding: str = 'utf-8'):
         """
         初始化处理器
         
         Args:
             log_dir: 日志目录
             max_bytes: 单个文件最大字节数，默认3MB
+            max_files_per_day: 每天最多保留的日志文件数，默认3
             encoding: 文件编码
         """
         self.log_dir = Path(log_dir)
         self.max_bytes = max_bytes
+        self.max_files_per_day = max_files_per_day
         self.encoding = encoding
         
         # 确保日志目录存在
@@ -45,13 +48,15 @@ class DailyRotatingFileHandler(BaseRotatingHandler):
         if not base_file.exists() or base_file.stat().st_size < self.max_bytes:
             return base_file
         
-        # 查找下一个可用的文件名
-        counter = 2
-        while True:
+        # 查找下一个可用的文件名，最多 max_files_per_day 个
+        # 超过上限后循环覆盖最早的编号文件
+        for counter in range(2, self.max_files_per_day + 1):
             numbered_file = self.log_dir / f"backend-{today}_{counter}.log"
             if not numbered_file.exists() or numbered_file.stat().st_size < self.max_bytes:
                 return numbered_file
-            counter += 1
+        
+        # 所有文件都满了，覆盖 _2 号文件重新开始
+        return self.log_dir / f"backend-{today}_2.log"
     
     def shouldRollover(self, record):
         """判断是否需要切换文件"""
@@ -96,7 +101,8 @@ class Logger:
     
     @classmethod
     def initialize(cls, log_level: str = "INFO", log_dir: Optional[Path] = None, 
-                   enable_console: bool = True, max_file_size: int = 3 * 1024 * 1024):
+                   enable_console: bool = True, max_file_size: int = 3 * 1024 * 1024,
+                   max_files_per_day: int = 3):
         """
         初始化日志系统
         
@@ -105,6 +111,7 @@ class Logger:
             log_dir: 日志目录
             enable_console: 是否启用控制台输出
             max_file_size: 单个日志文件最大大小（字节），默认3MB
+            max_files_per_day: 每天最多保留的日志文件数，默认3
         """
         if cls._initialized:
             return
@@ -141,7 +148,8 @@ class Logger:
             # 创建自定义的日志处理器
             cls._file_handler = DailyRotatingFileHandler(
                 log_dir=cls._log_dir,
-                max_bytes=max_file_size
+                max_bytes=max_file_size,
+                max_files_per_day=max_files_per_day
             )
             cls._file_handler.setFormatter(formatter)
             root_logger.addHandler(cls._file_handler)
@@ -158,8 +166,8 @@ class Logger:
         
         cls._initialized = True
         
-        # 清理超过3天的旧日志
-        cls.cleanup_old_logs(days_to_keep=3)
+        # 清理超过3天的旧日志，每天最多3个文件
+        cls.cleanup_old_logs(days_to_keep=3, max_files_per_day=3)
         
     @classmethod
     def get_logger(cls, name: str) -> logging.Logger:
@@ -200,25 +208,42 @@ class Logger:
         return cls._log_dir
     
     @classmethod
-    def cleanup_old_logs(cls, days_to_keep: int = 3):
-        """清理旧的日志文件（默认保留3天）"""
+    def cleanup_old_logs(cls, days_to_keep: int = 3, max_files_per_day: int = 3):
+        """清理旧的日志文件（默认保留3天，每天最多保留3个文件）"""
         if not cls._log_dir or not cls._log_dir.exists():
             return
         
         from datetime import timedelta
+        from collections import defaultdict
+        
         cutoff_date = datetime.now() - timedelta(days=days_to_keep)
         
         try:
+            # Group log files by date
+            files_by_date: dict[str, list[Path]] = defaultdict(list)
             for log_file in cls._log_dir.glob("backend-*.log"):
-                # 从 backend-YYYY-MM-DD.log 提取日期
                 stem = log_file.stem
                 file_date_str = stem.replace('backend-', '').split('_')[0]
+                files_by_date[file_date_str].append(log_file)
+            
+            for date_str, files in files_by_date.items():
                 try:
-                    file_date = datetime.strptime(file_date_str, '%Y-%m-%d')
-                    if file_date < cutoff_date:
-                        log_file.unlink()
-                        print(f"已删除旧日志文件: {log_file}", file=sys.stderr)
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d')
                 except ValueError:
                     continue
+                
+                # Delete files older than retention period
+                if file_date < cutoff_date:
+                    for f in files:
+                        f.unlink()
+                        print(f"已删除旧日志文件: {f}", file=sys.stderr)
+                    continue
+                
+                # Enforce per-day file count limit
+                # Sort: base file (no _N suffix) first, then _2, _3, ...
+                files.sort(key=lambda p: int(p.stem.split('_')[-1]) if '_' in p.stem else 1)
+                for f in files[max_files_per_day:]:
+                    f.unlink()
+                    print(f"已删除超额日志文件: {f}", file=sys.stderr)
         except Exception as e:
             print(f"清理日志文件时出错: {e}", file=sys.stderr)

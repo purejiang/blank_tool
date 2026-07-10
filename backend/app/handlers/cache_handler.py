@@ -22,6 +22,11 @@ def _output_root():
     return get_output_dir()
 
 
+def _logs_root():
+    d = Logger.get_log_directory()
+    return str(d) if d else None
+
+
 def _get_dir_size(path):
     total_size = 0
     total_files = 0
@@ -41,11 +46,13 @@ def cache_info(params, stream_handler):
     cache_root = _cache_root()
     output_root = _output_root()
     tasks_root = get_tasks_root()
+    logs_root = _logs_root()
 
     try:
         cache_size, cache_files = _get_dir_size(cache_root)
         output_size, output_files = _get_dir_size(output_root)
         tasks_size, tasks_files = _get_dir_size(tasks_root)
+        logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
 
         return {
             "cache": {
@@ -63,9 +70,14 @@ def cache_info(params, stream_handler):
                 "size": tasks_size,
                 "files": tasks_files,
             },
+            "logs": {
+                "path": logs_root,
+                "size": logs_size,
+                "files": logs_files,
+            },
             "total": {
-                "size": cache_size + output_size + tasks_size,
-                "files": cache_files + output_files + tasks_files,
+                "size": cache_size + output_size + tasks_size + logs_size,
+                "files": cache_files + output_files + tasks_files + logs_files,
             },
         }
     except Exception as e:
@@ -130,9 +142,26 @@ def storage_clear(params, stream_handler):
             if _clear_directory(tasks_root):
                 cleared_paths.append(tasks_root)
 
+        if target in ["all", "logs"]:
+            logs_root = _logs_root()
+            if logs_root and _clear_directory(logs_root):
+                cleared_paths.append(logs_root)
+
         return {"success": True, "cleared_paths": cleared_paths}
     except Exception as e:
         logger.error(f"Failed to clear storage: {e}")
+        raise
+
+
+def logs_clear(params, stream_handler):
+    root = _logs_root()
+    if not root:
+        raise ToolException("Log directory not available")
+    try:
+        _clear_directory(root)
+        return {"path": root, "size": 0, "files": 0}
+    except Exception as e:
+        logger.error(f"Failed to clear logs: {e}")
         raise
 
 
@@ -152,5 +181,6 @@ API_MAP = {
     "cache.clear": cache_clear,
     "output.clear": output_clear,
     "tasks.clear": tasks_clear,
+    "logs.clear": logs_clear,
     "storage.clear": storage_clear,
 }
