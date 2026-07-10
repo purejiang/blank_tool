@@ -4,12 +4,11 @@
 Per-task log writer with thread safety, buffering, and soft size cap.
 
 Separate from the global Logger — this is a simple file appender that lives
-alongside each task's working directory.  Uses per-task buffering to reduce
-file operations: lines are accumulated in memory and flushed to disk in
-batches (every ``_BUFFER_FLUSH_SIZE`` lines) instead of open→write→close
-for every single line.
+alongside each task's working directory.  Lines are accumulated in memory
+during task execution and written to disk in a single batch when the task
+completes, is cancelled, or fails (via :func:`cleanup_task_log`).
 
-The size cap check is also deferred to batch flush time.
+The size cap check is also deferred to flush time (end of task).
 """
 
 import os
@@ -23,9 +22,6 @@ _SIZE_CAP = 50 * 1024 * 1024
 
 #: Number of bytes to keep from the *end* of the file when truncating.
 _TAIL_SIZE = 20 * 1024 * 1024
-
-#: Flush buffer to disk every N lines (per task).
-_BUFFER_FLUSH_SIZE = 100
 
 #: Per-task line buffers — keyed by ``task_id``.
 _per_task_buffers: dict[str, list[str]] = {}
@@ -47,10 +43,9 @@ def append_task_log(task_id: str, line: str) -> None:
     """
     Append *line* to the in-memory buffer for *task_id*.
 
-    Directory structure is created automatically via ``get_task_subdir``.
-    The line is *not* written to disk immediately — it is held in a per-task
-    buffer and flushed in batches (every :data:`_BUFFER_FLUSH_SIZE` lines).
-    Call :func:`flush_task_log` or :func:`cleanup_task_log` to force a flush.
+    The line is held in a per-task buffer and written to disk only when the
+    task ends (completion, cancellation, or failure) via
+    :func:`cleanup_task_log`.  No I/O is performed during task execution.
 
     This function never raises — on failure it writes a message to *stderr*.
     """
@@ -60,8 +55,6 @@ def append_task_log(task_id: str, line: str) -> None:
             if task_id not in _per_task_buffers:
                 _per_task_buffers[task_id] = []
             _per_task_buffers[task_id].append(line)
-            if len(_per_task_buffers[task_id]) >= _BUFFER_FLUSH_SIZE:
-                _flush_buffer(task_id)
     except Exception:
         print(
             f"[task_log_writer] Failed to buffer log for task {task_id}",
