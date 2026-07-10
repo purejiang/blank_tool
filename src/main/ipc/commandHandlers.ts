@@ -83,12 +83,8 @@ export function setupCommandHandlers(
                             }
                             const { resolve, reject, sender } = callbackInfo;
 
-                            if (response.result && (response.result as unknown as JsonObject).type === 'error') {
-                                const errorPayload = ((response.result as unknown as JsonObject).payload) as JsonObject | undefined;
-                                const message = (errorPayload?.message as string) || 'Unknown backend error';
-                                reject(new Error(message));
-                                requestCallbacks.delete(response.id);
-                            } else if (response.finished === false) {
+                            if (response.finished === false) {
+                                // Streaming event — forward to renderer regardless of result type
                                 const result = (response.result || {}) as JsonObject;
                                 const resultType = typeof result.type === 'string' ? result.type : '';
                                 console.log('[main] streaming chunK:', JSON.stringify(response).substring(0, 200));
@@ -124,6 +120,11 @@ export function setupCommandHandlers(
                                     resolve(response.result);
                                     callbackInfo.resolved = true;
                                 }
+                            } else if (response.result && (response.result as unknown as JsonObject).type === 'error') {
+                                const errorPayload = ((response.result as unknown as JsonObject).payload) as JsonObject | undefined;
+                                const message = (errorPayload?.message as string) || 'Unknown backend error';
+                                reject(new Error(message));
+                                requestCallbacks.delete(response.id);
                             } else {
                                 if (!callbackInfo.resolved) {
                                     resolve(response.result);

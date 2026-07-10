@@ -412,6 +412,7 @@ async function startNewTask() {
 }
 
 async function executeTask(task: Task) {
+  const { showError } = useNotification()
   let streamCleanup: (() => void) | null = null
   try {
     let localPath = task.filePath
@@ -449,11 +450,16 @@ async function executeTask(task: Task) {
       }
       if (data.type === 'error' && phaseReject) {
         const msg = (data.payload?.message) || data.message || t('task.streamOpFailed')
+        console.log('[PackagePage] stream error received:', msg, 'phase:', phase)
         if (phase === 'operation') {
           if (activeIv) clearIntervalAndForget(activeIv)
-          taskStore.updateTask(task.id, { status: 'failed', error: msg, finishedAt: Date.now() })
-          log(task, t('task.failed') + ': ' + msg)
         }
+        taskStore.updateTask(task.id, { status: 'failed', error: msg, finishedAt: Date.now() })
+        log(task, t('task.failed') + ': ' + msg)
+        try {
+          const phaseLabel = phase === 'download' ? t('task.download') : task.operationLabel
+          showError(phaseLabel, msg)
+        } catch (e) { console.warn('[PackagePage] showError failed:', e) }
         phaseReject(new Error(msg))
       }
       const line = data.line || data.message || data.output || ''
@@ -498,8 +504,10 @@ async function executeTask(task: Task) {
   } catch (e: any) {
     const isCancelled = e?.message === 'cancelled'
     if (!isCancelled) {
-      taskStore.updateTask(task.id, { status: 'failed', error: e.message || String(e), finishedAt: Date.now() })
-      log(task, t('task.failed') + ': ' + (e.message || e))
+      const errMsg = e.message || String(e)
+      taskStore.updateTask(task.id, { status: 'failed', error: errMsg, finishedAt: Date.now() })
+      log(task, t('task.failed') + ': ' + errMsg)
+      showError(task.operationLabel, errMsg)
     }
   } finally {
     if (streamCleanup) {
@@ -515,6 +523,7 @@ function log(task: Task, msg: string) {
 
 async function cancelTask(task: Task) {
   const name = task.fileName || task.operationLabel
+  const prevStatus = task.status
   dialog.warning({
     title: t('task.cancel'),
     content: t('task.cancelConfirm', { name }),
@@ -525,9 +534,23 @@ async function cancelTask(task: Task) {
       taskStore.updateTask(task.id, { status: 'cancelling' as any, progressLabel: t('task.cancelling') })
       if (api && typeof api.cancelApkTask === 'function') {
         try {
-          await api.cancelApkTask(String(task.id))
+          const result = await api.cancelApkTask(String(task.id))
+          if (result && !result.cancelled) {
+            // Task already finished — restore previous status
+            const current = taskStore.tasks.find(t => t.id === task.id)
+            if (current?.status === ('cancelling' as any)) {
+              taskStore.updateTask(task.id, { status: prevStatus, progressLabel: '' })
+            }
+            const { showInfo } = useNotification()
+            showInfo(name, t('task.alreadyFinished'))
+          }
         } catch (e) {
           console.error('Cancel error:', e)
+          // Restore on error too
+          const current = taskStore.tasks.find(t => t.id === task.id)
+          if (current?.status === ('cancelling' as any)) {
+            taskStore.updateTask(task.id, { status: prevStatus, progressLabel: '' })
+          }
         }
       }
     }
