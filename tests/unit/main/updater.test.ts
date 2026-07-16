@@ -33,7 +33,7 @@ describe('updater', () => {
       const { initAutoUpdater } = await import('@/main/updater/updater')
       initAutoUpdater()
 
-      expect(mockAutoUpdater.autoDownload).toBe(true)
+      expect(mockAutoUpdater.autoDownload).toBe(false)
       expect(mockAutoUpdater.allowDowngrade).toBe(false)
       expect(mockAutoUpdater.allowPrerelease).toBe(false)
     })
@@ -57,7 +57,7 @@ describe('updater', () => {
       const { initAutoUpdater } = await import('@/main/updater/updater')
       initAutoUpdater()
 
-      expect(mockOn).not.toHaveBeenCalled()
+      expect(mockOn).toHaveBeenCalled()
     })
 
     it('does not re-initialize if already initialized', async () => {

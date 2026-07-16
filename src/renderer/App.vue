@@ -398,7 +398,7 @@ async function prepareUI() {
   // Restore saved language preference
   try {
     const savedLang = await unifiedApi.getAPI()?.appConfig?.get('language')
-    if (savedLang) i18nLocale.value = savedLang
+    if (typeof savedLang === 'string') i18nLocale.value = savedLang
   } catch {}
   const themeService = await serviceManager.getService('theme')
   if (themeService) {
