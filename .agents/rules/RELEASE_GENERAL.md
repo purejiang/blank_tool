@@ -60,6 +60,8 @@ git tag -a vX.Y.Z -m "vX.Y.Z - 简短变更摘要"
 质量检查全部通过后，再继续后续步骤。
 
 ```bash
+git checkout dev
+git push origin dev            # 确保 dev 已同步到远程
 git checkout main
 git merge dev
 <!-- 全量质量检查 -->
@@ -155,6 +157,7 @@ git checkout dev
 
 ## 8. 检查清单（发布前逐项确认）
 
+- [ ] `git checkout dev && git push origin dev` -- dev 已同步到远程
 - [ ] `git checkout main && git merge dev` -- main 与 dev 同步
 - [ ] 全量质量检查通过（lint / typecheck / test，占位符：`<!-- 填入质量检查命令 -->`）
 - [ ] `git tag -a vX.Y.Z -m "..."` -- tag 已打在 main 分支上
