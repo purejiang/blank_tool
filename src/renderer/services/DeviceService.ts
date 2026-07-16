@@ -60,19 +60,14 @@ class DeviceService {
         this.attachLogcatOutputListener(deviceStore, api)
       }
       if (api && typeof api.onLogcatStarted === 'function') {
-        api.onLogcatStarted((payload: unknown) => {
-          console.log('[logcat] started event:', JSON.stringify(payload))
+        api.onLogcatStarted(() => {
+          console.log('[logcat] started event')
           deviceStore.isLogcatRunning = true
-          const p = toLogcatPayload(payload)
-          if (p.process_id) {
-            deviceStore.logcatProcessId = String(p.process_id)
-            console.log('[logcat] processId set:', p.process_id)
-          }
         })
       }
       if (api && typeof api.onLogcatFinished === 'function') {
-        api.onLogcatFinished((payload: unknown) => {
-          console.log('[logcat] finished event:', JSON.stringify(payload))
+        api.onLogcatFinished(() => {
+          console.log('[logcat] finished event')
           deviceStore.isLogcatRunning = false
         })
       }

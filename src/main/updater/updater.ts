@@ -39,7 +39,7 @@ export function initAutoUpdater(): void {
   // 更新下载目录统一到 LOCALAPPDATA
   const updateCacheDir = path.join(getAppLocalDataPath(), 'updates')
   ensureDir(updateCacheDir)
-  autoUpdater.cacheDir = updateCacheDir
+  ;(autoUpdater as unknown as { cacheDir?: string }).cacheDir = updateCacheDir
 
   autoUpdater.on('checking-for-update', () => {
     log.info('AutoUpdater: checking for update...')

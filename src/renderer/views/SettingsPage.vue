@@ -134,7 +134,7 @@
             <div class="sig-info">
               <span class="sig-name">{{ cfg.name }}</span>
               <span class="sig-detail">{{ cfg.alias }}</span>
-              <span class="sig-path" :title="cfg.path">{{ cfg.path }}</span>
+              <span class="sig-path" :title="String(cfg.path ?? '')">{{ cfg.path }}</span>
             </div>
             <n-space :size="4">
               <n-button size="tiny" quaternary @click="openEditSignature(cfg)">
@@ -250,7 +250,7 @@ const toolPaths = reactive<Record<string, string>>({})
 
 const toolList = computed(() => {
   const names = ['adb', 'aapt', 'apktool', 'bundletool', 'zipalign', 'apksigner', 'jarsigner']
-  const toolsArr = tools.value || tools
+  const toolsArr = tools
   return names.map(name => {
     const tool = Array.isArray(toolsArr) ? toolsArr.find((t: any) => t.name === name || t.key === name) : toolsArr[name]
     return {
