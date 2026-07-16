@@ -560,12 +560,16 @@ async function cancelTask(task: Task) {
 async function retryTask(task: Task) {
   // Reset task state to queued, keep existing logs and append below them
   taskStore.appendLog(task.id, `--- ${t('app.retry')} ---`)
+  // Clean up any lingering progress interval from the failed attempt
+  if (activeIv) { clearIntervalAndForget(activeIv); activeIv = null }
   taskStore.updateTask(task.id, {
     status: 'queued',
     error: '',
     result: '',
     progress: 0,
-    progressLabel: ''
+    progressLabel: '',
+    startedAt: Date.now(),
+    finishedAt: null,
   })
   task.collapsed = true
   // Re-execute the same task
