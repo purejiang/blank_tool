@@ -114,7 +114,7 @@
               {{ t('task.queued') }}
             </n-tag>
             <span class="task-time">{{ formatTime(task.createdAt) }}</span>
-            <span v-if="task.finishedAt" class="task-duration">{{ formatDuration(task) }}</span>
+            <span v-if="task.startedAt || task.createdAt" class="task-duration">{{ formatDuration(task) }}</span>
             <n-button
               v-if="task.status === 'running' || task.status === 'downloading'"
               size="tiny"
