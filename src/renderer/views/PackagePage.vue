@@ -220,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NVirtualList, useDialog } from 'naive-ui'
 import {
@@ -231,6 +231,7 @@ import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
 import { useSignatureStore } from '@stores/signatureStore'
 import type { Task } from '@stores/taskStore'
+import { formatDuration as formatDurationUtil } from '@utils/formatDuration'
 import serviceManager from '@services/ServiceManager'
 
 const { t } = useI18n()
@@ -248,6 +249,11 @@ const activeStreamCleanups = new Set<() => void>()
 // Active progress interval for the currently-executing task operation phase.
 // Set by runOperation(), read by onStream's complete/error handlers in executeTask().
 let activeIv: ReturnType<typeof setInterval> | null = null
+
+// Reactive clock for real-time duration display.
+// Updated every 1s when there are active (non-terminal) tasks.
+const now = ref(Date.now())
+let nowIv: ReturnType<typeof setInterval> | null = null
 const taskLogCache = ref<Map<number, { key: number; text: string }[]>>(new Map())
 
 // Log buffering: batch high-volume stream events to avoid UI jank
@@ -263,12 +269,40 @@ function flushLogBuffer(taskId: number) {
   logTimers.delete(taskId)
 }
 
+function startNowTimer() {
+  if (nowIv !== null) return
+  const iv = setInterval(() => { now.value = Date.now() }, 1000)
+  activeIntervals.add(iv)
+  nowIv = iv
+}
+
+function stopNowTimer() {
+  if (nowIv !== null) {
+    clearIntervalAndForget(nowIv)
+    nowIv = null
+  }
+}
+
+function syncNowTimer() {
+  const activeStatuses = ['running', 'downloading', 'queued', 'cancelling']
+  const hasActive = taskStore.tasks.some(t => activeStatuses.includes(t.status))
+  if (hasActive && nowIv === null) {
+    startNowTimer()
+  } else if (!hasActive && nowIv !== null) {
+    stopNowTimer()
+  }
+}
+
 onUnmounted(() => {
+  stopNowTimer()
   activeIntervals.forEach(clearInterval)
   activeIntervals.clear()
   activeStreamCleanups.forEach(fn => fn())
   activeStreamCleanups.clear()
 })
+
+// Reactively start/stop the duration clock based on active tasks
+watch(() => taskStore.tasks, () => { syncNowTimer() }, { deep: true })
 
 // New task form
 const newSource = ref<'url' | 'local'>('local')
@@ -304,15 +338,7 @@ function formatTime(ts: number) {
 }
 
 function formatDuration(task: Task): string {
-  if (!task.finishedAt) return ''
-  const ms = task.finishedAt - task.createdAt
-  if (ms < 0) return ''
-  const secs = Math.floor(ms / 1000)
-  const mins = Math.floor(secs / 60)
-  const hrs = Math.floor(mins / 60)
-  if (hrs > 0) return `${hrs}h ${mins % 60}m ${secs % 60}s`
-  if (mins > 0) return `${mins}m ${secs % 60}s`
-  return `${secs}s`
+  return formatDurationUtil(task, now.value)
 }
 
 async function openInExplorer(filePath: string) {
