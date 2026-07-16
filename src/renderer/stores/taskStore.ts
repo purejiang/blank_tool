@@ -18,6 +18,7 @@ export interface Task {
   error: string
   collapsed: boolean
   createdAt: number
+  startedAt: number
   finishedAt: number | null
   taskDir: string
 }
@@ -29,7 +30,11 @@ const STORAGE_KEY = 'task-history'
 function loadTasks(): Task[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as Task[]
+    if (raw) {
+      const tasks: Task[] = JSON.parse(raw)
+      for (const t of tasks) t.startedAt ??= t.createdAt
+      return tasks
+    }
   } catch {}
   return []
 }
@@ -140,6 +145,7 @@ export const useTaskStore = defineStore('task', () => {
       error: '',
       collapsed: false,
       createdAt: Date.now(),
+      startedAt: Date.now(),
       finishedAt: null,
       taskDir: '',
     }
