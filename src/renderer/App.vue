@@ -129,6 +129,7 @@ import SystemService from '@services/SystemService'
 import UpdateService from '@services/UpdateService'
 import StoreService from '@services/StoreService'
 import SettingsService from '@services/SettingsService'
+import TaskStreamService from '@services/TaskStreamService'
 import { useToolStore, useAppConfigStore, useSystemStore } from '@stores/index'
 
 const router = useRouter()
@@ -289,6 +290,7 @@ function registerServices() {
   serviceManager.register('store', StoreService)
   serviceManager.register('settings', SettingsService, ['store'])
   serviceManager.register('update', UpdateService)
+  serviceManager.register('taskStream', TaskStreamService)
 }
 
 function createErrorHandler() {
@@ -420,6 +422,11 @@ async function prepareUI() {
   // Initialize update service (set up event listeners)
   try {
     await serviceManager.getService('update')
+  } catch {}
+
+  // Initialize TaskStreamService (subscribes to stream-event IPC globally)
+  try {
+    await serviceManager.getService('taskStream')
   } catch {}
 }
 

@@ -439,106 +439,70 @@ async function startNewTask() {
 
 async function executeTask(task: Task) {
   const { showError } = useNotification()
-  let streamCleanup: (() => void) | null = null
   try {
     let localPath = task.filePath
     const api = window.electronAPI as any
-    let phase: 'download' | 'operation' = task.source === 'url' ? 'download' : 'operation'
-    let phaseResolve: ((v: any) => void) | null = null
-    let phaseReject: ((e: Error) => void) | null = null
 
-    const onStream = (raw: any) => {
-      if (!raw) return
-      const data = raw.data || raw
-      const tid = data.task_id || (data.payload?.['task_id'])
-      if (tid !== String(task.id)) return
-      if (data.type === 'progress' && data.payload) {
-        taskStore.updateTask(task.id, { progress: data.payload.progress || 0, progressLabel: data.payload.label || `${data.payload.progress || 0}%` })
-      }
-      if (data.type === 'complete' && phaseResolve) {
-        const payload = data.payload || data
-        if (phase === 'operation') {
-          if (activeIv) finishProgress(task, activeIv)
-          const updates: any = { status: 'completed', progress: 100, progressLabel: t('task.completed'), finishedAt: Date.now() }
-          if (payload.output_dir) updates.outputPath = payload.output_dir
-          if (payload.output_apk) updates.outputPath = payload.output_apk
-          if (payload.package_name) updates.result = renderApkInfo(payload)
-          if (payload.apk_path) updates.outputPath = payload.apk_path
-          taskStore.updateTask(task.id, updates)
-          log(task, t(`task.${task.operation}Done`) + (updates.outputPath ? ' → ' + updates.outputPath : ''))
+    const taskStream = await serviceManager.getService('taskStream') as any
+    // bind is idempotent (retry auto-unbinds stale)
+    taskStream.bindTask(String(task.id))
+    taskStream.setCallbacks(String(task.id), {
+      onDownloadProgress: (p: number, _dl: number, _tot: number, _spd: number) => {
+        taskStore.transition(task.id, 'download_progress', { progress: p })
+      },
+      onComplete: (payload: any, phase: string) => {
+        if (phase === 'download') {
+          taskStore.transition(task.id, 'download_complete', payload)
+        } else {
+          taskStore.transition(task.id, 'operation_complete', { payload })
         }
-        phaseResolve(payload)
-      }
-      if (data.type === 'cancelled') {
-        if (phaseReject) phaseReject(new Error('cancelled'))
-        taskStore.updateTask(task.id, { status: 'cancelled', progressLabel: t('task.cancelled'), finishedAt: Date.now() })
-        log(task, t('task.cancelled'))
-      }
-      if (data.type === 'error' && phaseReject) {
-        const msg = (data.payload?.message) || data.message || t('task.streamOpFailed')
-        console.log('[PackagePage] stream error received:', msg, 'phase:', phase)
-        if (phase === 'operation') {
-          if (activeIv) clearIntervalAndForget(activeIv)
-        }
-        taskStore.updateTask(task.id, { status: 'failed', error: msg, finishedAt: Date.now() })
-        log(task, t('task.failed') + ': ' + msg)
-        try {
-          const phaseLabel = phase === 'download' ? t('task.download') : task.operationLabel
-          showError(phaseLabel, msg)
-        } catch (e) { console.warn('[PackagePage] showError failed:', e) }
-        phaseReject(new Error(msg))
-      }
-      const line = data.line || data.message || data.output || ''
-      if (line) {
-        if (!logBuffers.has(task.id)) logBuffers.set(task.id, [])
-        logBuffers.get(task.id)!.push(line)
-        if (logBuffers.get(task.id)!.length >= 20) {
-          flushLogBuffer(task.id)
-        } else if (!logTimers.has(task.id)) {
-          logTimers.set(task.id, setTimeout(() => flushLogBuffer(task.id), 100))
-        }
-      }
-    }
+      },
+      onError: (msg: string, _phase: string) => {
+        taskStore.transition(task.id, 'operation_error', { message: msg })
+      },
+      onCancelled: () => {
+        taskStore.transition(task.id, 'cancel_ack')
+      },
+    })
 
-    if (api?.onStreamEvent) {
-      streamCleanup = api.onStreamEvent(onStream)
-      if (streamCleanup) activeStreamCleanups.add(streamCleanup)
-    }
+    // Note: latch pattern in TaskStreamService guarantees events arriving
+    // before await waitForPhase() are not lost — they're stashed and resolved immediately.
 
-    // Download if URL source
+    // --- Download phase (URL source only) ---
     if (task.source === 'url' && task.url) {
-      taskStore.updateTask(task.id, { status: 'downloading', progress: 0, progressLabel: t('task.downloading') })
+      taskStore.transition(task.id, 'start_download')
+      taskStream.setPhase(String(task.id), 'download')
       log(task, t('task.downloading') + ' ' + task.url)
+
       if (!api || typeof api.downloadFile !== 'function') throw new Error(t('task.downloadAPINotAvailable'))
-      const dlPromise = new Promise<any>((resolve, reject) => { phaseResolve = resolve; phaseReject = reject })
       api.downloadFile(task.url, task.fileName, String(task.id))
-      const dlResult = await dlPromise
+
+      const dlResult: any = await taskStream.waitForPhase(String(task.id), 'download')
       localPath = dlResult.file_path
-      taskStore.updateTask(task.id, { filePath: dlResult.file_path, progress: 100, progressLabel: t('task.completed') })
       log(task, t('task.completed') + ` (${(dlResult.size / 1024 / 1024).toFixed(1)}MB)`)
-      phase = 'operation'
     }
 
-    // Execute operation as streaming
-    taskStore.updateTask(task.id, { status: 'running', progress: 0, progressLabel: t('task.running') })
+    // --- Operation phase ---
+    taskStore.transition(task.id, 'start_operation')
+    taskStream.setPhase(String(task.id), 'operation')
     log(task, t('task.running') + ' ' + task.operationLabel)
 
-    // Create new promise for operation phase
-    const opPromise = new Promise<any>((resolve, reject) => { phaseResolve = resolve; phaseReject = reject })
+    taskStream.startFakeProgress(String(task.id), 500, (p: number) => {
+      taskStore.updateTask(task.id, { progress: p, progressLabel: `${p}%` })
+    })
+
     await runOperation(task, localPath)
-    await opPromise
+    await taskStream.waitForPhase(String(task.id), 'operation')
   } catch (e: any) {
-    const isCancelled = e?.message === 'cancelled'
+    const isCancelled = e?.message === 'cancelled' || e?.message === 'unbound'
     if (!isCancelled) {
       const errMsg = e.message || String(e)
-      taskStore.updateTask(task.id, { status: 'failed', error: errMsg, finishedAt: Date.now() })
+      const currentTask = taskStore.tasks.find(t => t.id === task.id)
+      if (currentTask && currentTask.status !== 'failed') {
+        taskStore.transition(task.id, 'operation_error', { message: errMsg })
+      }
       log(task, t('task.failed') + ': ' + errMsg)
       showError(task.operationLabel, errMsg)
-    }
-  } finally {
-    if (streamCleanup) {
-      streamCleanup()
-      activeStreamCleanups.delete(streamCleanup)
     }
   }
 }
