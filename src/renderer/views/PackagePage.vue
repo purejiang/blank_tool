@@ -450,7 +450,19 @@ async function executeTask(task: Task) {
         if (phase === 'download') {
           taskStore.transition(task.id, 'download_complete', payload)
         } else {
-          taskStore.transition(task.id, 'operation_complete', { payload })
+          // Extract operation-specific fields from the complete payload.
+          // Backend payloads (per apk_handler.py):
+          //   analyze    → {package_name, permissions, native_libs, application_label, ...}
+          //   decompile  → {output_dir}
+          //   recompile  → {output_apk}
+          //   sign       → {apk_path}
+          const transitionPayload: any = {}
+          if (payload?.output_dir) transitionPayload.output_dir = payload.output_dir
+          if (payload?.output_apk) transitionPayload.output_apk = payload.output_apk
+          if (payload?.apk_path) transitionPayload.apk_path = payload.apk_path
+          // analyze: render the rich analysis card HTML via renderApkInfo
+          if (payload?.package_name) transitionPayload.result = renderApkInfo(payload)
+          taskStore.transition(task.id, 'operation_complete', transitionPayload)
         }
       },
       onError: (msg: string, _phase: string) => {

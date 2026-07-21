@@ -226,8 +226,10 @@ export const useTaskStore = defineStore('task', () => {
         updates.phase = 'finished'
         updates.progress = 100
         updates.finishedAt = Date.now()
-        updates.outputPath = payload?.output_dir || payload?.payload?.output_dir || ''
-        updates.result = payload?.result || payload?.payload?.result || payload?.payload?.output_dir || ''
+        // Accept any of the backend's payload shapes (output_dir / output_apk / apk_path)
+        updates.outputPath = payload?.output_dir || payload?.output_apk || payload?.apk_path || ''
+        // For analyze, PackagePage already converted payload → HTML via renderApkInfo
+        updates.result = payload?.result ?? ''
         terminal = true
         break
       case 'operation_error':
