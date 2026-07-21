@@ -210,7 +210,12 @@ class TaskStreamService {
             slot.resolve(payload)
           }
           callbacks.onComplete?.(payload, phase)
-          this.unbindTask(tid)
+          // Auto-unbind ONLY after the terminal (operation) phase completes.
+          // Download-phase completes must keep listeners alive so the subsequent
+          // operation phase events can still be routed.
+          if (phase === 'operation') {
+            this.unbindTask(tid)
+          }
           break
         }
 
