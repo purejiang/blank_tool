@@ -245,10 +245,7 @@ const OP_TAG_MAP: Record<Task['operation'], string> = {
 }
 
 const activeIntervals = new Set<ReturnType<typeof setInterval>>()
-const activeStreamCleanups = new Set<() => void>()
-// Active progress interval for the currently-executing task operation phase.
-// Set by runOperation(), read by onStream's complete/error handlers in executeTask().
-let activeIv: ReturnType<typeof setInterval> | null = null
+
 
 // Reactive clock for real-time duration display.
 // Updated every 1s when there are active (non-terminal) tasks.
@@ -278,7 +275,8 @@ function startNowTimer() {
 
 function stopNowTimer() {
   if (nowIv !== null) {
-    clearIntervalAndForget(nowIv)
+    clearInterval(nowIv)
+    activeIntervals.delete(nowIv)
     nowIv = null
   }
 }
@@ -297,8 +295,6 @@ onUnmounted(() => {
   stopNowTimer()
   activeIntervals.forEach(clearInterval)
   activeIntervals.clear()
-  activeStreamCleanups.forEach(fn => fn())
-  activeStreamCleanups.clear()
 })
 
 // Reactively start/stop the duration clock based on active tasks
@@ -521,7 +517,7 @@ async function cancelTask(task: Task) {
     negativeText: t('common.cancel'),
     onPositiveClick: async () => {
       const api = window.electronAPI as any
-      taskStore.updateTask(task.id, { status: 'cancelling' as any, progressLabel: t('task.cancelling') })
+      taskStore.transition(task.id, 'cancel_request')
       if (api && typeof api.cancelApkTask === 'function') {
         try {
           const result = await api.cancelApkTask(String(task.id))
@@ -550,17 +546,7 @@ async function cancelTask(task: Task) {
 async function retryTask(task: Task) {
   // Reset task state to queued, keep existing logs and append below them
   taskStore.appendLog(task.id, `--- ${t('app.retry')} ---`)
-  // Clean up any lingering progress interval from the failed attempt
-  if (activeIv) { clearIntervalAndForget(activeIv); activeIv = null }
-  taskStore.updateTask(task.id, {
-    status: 'queued',
-    error: '',
-    result: '',
-    progress: 0,
-    progressLabel: '',
-    startedAt: Date.now(),
-    finishedAt: null,
-  })
+  taskStore.transition(task.id, 'reset_for_retry')
   task.collapsed = true
   // Re-execute the same task
   await executeTask(task)
@@ -640,16 +626,13 @@ async function runOperation(task: Task, localPath: string) {
     opts = { task_id: String(task.id) }
   }
 
-  const iv = startProgress(task, ingLabel)
-  activeIv = iv
   log(task, ingLabel + logExtra)
 
   // Call the service — returns {stream_id} immediately
-  // Result comes via onStream → phaseResolve
+  // Result comes via TaskStreamService → phaseResolve
   try {
     await svc[methodName](localPath, opts || { task_id: String(task.id) })
   } catch (err) {
-    clearIntervalAndForget(iv)
     throw err
   }
 }
@@ -952,33 +935,7 @@ function renderApkInfo(data: any) {
   return html
 }
 
-function startProgress(task: Task, label: string) {
-  let p = 0
-  const iv = setInterval(() => {
-    if (p >= 85) { clearInterval(iv); activeIntervals.delete(iv); return }
-    // Stop updating if task was cancelled
-    const current = taskStore.tasks.find(t => t.id === task.id)
-    if (current && (current.status === 'cancelled' || current.status === 'cancelling' as any)) {
-      clearInterval(iv); activeIntervals.delete(iv); return
-    }
-    if (p < 30) p += 2
-    else if (p < 60) p += 1
-    else p += 0.5
-    taskStore.updateTask(task.id, { progress: Math.round(Math.min(p, 85)), progressLabel: label })
-  }, 500)
-  activeIntervals.add(iv)
-  return iv
-}
 
-function clearIntervalAndForget(iv: ReturnType<typeof setInterval>) {
-  clearInterval(iv)
-  activeIntervals.delete(iv)
-}
-
-function finishProgress(task: Task, iv: ReturnType<typeof setInterval>) {
-  clearIntervalAndForget(iv)
-  taskStore.updateTask(task.id, { progress: 100, progressLabel: t('task.completed') })
-}
 </script>
 
 <style scoped>
