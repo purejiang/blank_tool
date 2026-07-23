@@ -219,12 +219,9 @@ class CommandExecutor(BaseCommandExecutor):
                     if stderr:
                         self._log_warning(f"[STDERR] {stderr.strip()}")
             else:
+                # Success: stdout/stderr are business data (full copy in task_exec.log
+                # via _write_task_log below). Backend log records status only.
                 self._log_debug(f"[COMMAND] Return code: {returncode}")
-                if context.log_output:
-                    if stdout:
-                        self._log_debug(f"[STDOUT] {stdout.strip()}")
-                    if stderr:
-                        self._log_debug(f"[STDERR] {stderr.strip()}")
 
             # Write tool output to per-task log file
             if context.task_id and context.log_output:

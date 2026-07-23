@@ -97,7 +97,7 @@ def test_read_log_returns_content():
     task_dir = get_task_dir("ct_read_test")
     logs_dir = os.path.join(task_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
-    log_path = os.path.join(logs_dir, "task.log")
+    log_path = os.path.join(logs_dir, "task_exec.log")
 
     with open(log_path, "wb") as f:
         f.write(b"hello world\nline 2\n")
@@ -122,7 +122,7 @@ def test_read_log_truncates_large_file():
     task_dir = get_task_dir("ct_trunc_test")
     logs_dir = os.path.join(task_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
-    log_path = os.path.join(logs_dir, "task.log")
+    log_path = os.path.join(logs_dir, "task_exec.log")
 
     # Write >1 MB of data.
     chunk = "A" * 1024  # 1 KB
@@ -135,6 +135,30 @@ def test_read_log_truncates_large_file():
 
     assert result["truncated"] is True
     assert len(result["content"]) <= 1024 * 1024 + 1024  # allow a little slack for decoding
+
+
+def test_read_log_returns_log_path():
+    from app.utils.env import get_task_dir
+
+    task_dir = get_task_dir("ct_logpath_test")
+    logs_dir = os.path.join(task_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    log_path = os.path.join(logs_dir, "task_exec.log")
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("test content")
+
+    result = handle_read_log({"task_id": "ct_logpath_test"}, None)
+    assert result["log_path"]
+    assert result["log_path"].endswith(os.path.join("logs", "task_exec.log"))
+
+    result2 = handle_read_log({"task_id": "ct_nonexistent_logpath"}, None)
+    assert result2["log_path"]
+    assert result2["log_path"].endswith(os.path.join("logs", "task_exec.log"))
+    assert result2["content"] == ""
+
+    result3 = handle_read_log({"task_id": ""}, None)
+    assert result3["log_path"] == ""
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -219,7 +243,7 @@ def test_append_log_writes_to_file():
     from app.utils.env import get_task_dir
     task_dir = get_task_dir("ct_append_test")
     logs_dir = os.path.join(task_dir, "logs")
-    log_path = os.path.join(logs_dir, "task.log")
+    log_path = os.path.join(logs_dir, "task_exec.log")
 
     # Clean up any previous run
     if os.path.exists(log_path):

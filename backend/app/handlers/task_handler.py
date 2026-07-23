@@ -71,16 +71,16 @@ def handle_delete_output(params, stream_handler):
 def handle_read_log(params, stream_handler):
     task_id = params.get("task_id", "")
     if not task_id:
-        return {"content": "", "truncated": False, "size": 0}
+        return {"content": "", "truncated": False, "size": 0, "log_path": ""}
 
     try:
         log_path = os.path.join(get_task_dir(task_id), "logs", "task_exec.log")
     except ValueError as e:
         logger.warning(f"Invalid task_id for read_log: {e}")
-        return {"content": "", "truncated": False, "size": 0, "error": str(e)}
+        return {"content": "", "truncated": False, "size": 0, "error": str(e), "log_path": ""}
 
     if not os.path.exists(log_path):
-        return {"content": "", "truncated": False, "size": 0}
+        return {"content": "", "truncated": False, "size": 0, "log_path": log_path}
 
     try:
         tail_bytes = params.get("tail_bytes")
@@ -104,10 +104,10 @@ def handle_read_log(params, stream_handler):
                 content = f.read().decode("utf-8", errors="replace")
             truncated = False
 
-        return {"content": content, "truncated": truncated, "size": size}
+        return {"content": content, "truncated": truncated, "size": size, "log_path": log_path}
     except Exception as e:
         logger.warning(f"Failed to read task log '{log_path}': {e}")
-        return {"content": "", "truncated": False, "size": 0, "error": str(e)}
+        return {"content": "", "truncated": False, "size": 0, "error": str(e), "log_path": log_path}
 
 
 def handle_append_log(params, stream_handler):
