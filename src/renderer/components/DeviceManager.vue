@@ -71,6 +71,7 @@ import { NIcon } from 'naive-ui'
 import { Smartphone, RefreshCw } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
+import { log } from '@utils/logger'
 import { storeToRefs } from 'pinia'
 
 const { t } = useI18n()
@@ -97,7 +98,7 @@ const handleConnect = async () => {
       emit('refreshDevices')
     }
   } catch (e: any) {
-    console.error('ADB connect failed:', e)
+    log.error('ADB connect failed:', e)
   } finally { isConnecting.value = false }
 }
 
@@ -110,7 +111,7 @@ const handleDisconnect = async () => {
     if (addr) remoteAddress.value = ''
     emit('refreshDevices')
   } catch (e: any) {
-    console.error('ADB disconnect failed:', e)
+    log.error('ADB disconnect failed:', e)
   } finally { isDisconnecting.value = false }
 }
 

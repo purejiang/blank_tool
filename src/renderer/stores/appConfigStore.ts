@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, readonly } from 'vue'
 import serviceManager from '../services/ServiceManager'
+import { log } from '@utils/logger'
 
 export const useAppConfigStore = defineStore('appConfig', () => {
   const config = ref<Record<string, unknown>>({})
@@ -25,7 +26,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
         config.value = {}
       }
     } catch (err: unknown) {
-      console.error('Failed to initialize app config:', err)
+      log.error('Failed to initialize app config:', err)
       error.value = err instanceof Error ? err.message : String(err)
     } finally {
       loading.value = false
@@ -46,7 +47,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       config.value[key] = value
       return true
     } catch (err: unknown) {
-      console.error('Failed to save app config:', err)
+      log.error('Failed to save app config:', err)
       error.value = err instanceof Error ? err.message : String(err)
       return false
     } finally {
@@ -67,7 +68,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       Object.assign(config.value, updates)
       return true
     } catch (err: unknown) {
-      console.error('Failed to update app config:', err)
+      log.error('Failed to update app config:', err)
       error.value = err instanceof Error ? err.message : String(err)
       return false
     } finally {

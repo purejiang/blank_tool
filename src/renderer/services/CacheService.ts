@@ -3,6 +3,7 @@
 /**
  * 缓存服务
  */
+import { log } from '@utils/logger'
 import unifiedApi from '../api/unifiedApi';
 
 type CacheInfo = Record<string, unknown>;
@@ -27,7 +28,7 @@ class CacheService {
             }
             throw new Error('getCacheInfo API not implemented');
         } catch (error) {
-            console.error('获取缓存信息失败:', error);
+            log.error('获取缓存信息失败:', error);
             // Return empty structure on error to prevent UI issues
             return {
                 tasks: { size: 0, files: 0 },
@@ -48,7 +49,7 @@ class CacheService {
             }
             throw new Error('clearCache API not implemented');
         } catch (error) {
-            console.error('清除缓存失败:', error);
+            log.error('清除缓存失败:', error);
             return { success: false, error: error.message || '清除缓存失败' };
         }
     }
@@ -64,7 +65,7 @@ class CacheService {
             }
             throw new Error('clearStorage API not implemented');
         } catch (error) {
-            console.error('清除存储失败:', error);
+            log.error('清除存储失败:', error);
             return { success: false, error: error.message || '清除存储失败' };
         }
     }

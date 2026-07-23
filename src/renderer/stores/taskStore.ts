@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { log } from '@utils/logger'
 
 export interface Task {
   id: number
@@ -95,11 +96,11 @@ async function tryDeleteTaskDirs(ids: string[]): Promise<void> {
       try {
         await window.electronAPI.callBackendAPI('task.delete_task_dir', { task_id: id })
       } catch (err) {
-        console.error('[taskStore] auto-delete task dir failed for', id, err)
+        log.error('[taskStore] auto-delete task dir failed for', id, err)
       }
     }
   } catch (err) {
-    console.error('[taskStore] auto-delete config check failed', err)
+    log.error('[taskStore] auto-delete config check failed', err)
   }
 }
 
@@ -136,7 +137,7 @@ async function notifyTaskTerminal(task: Task): Promise<void> {
     }
     await notify(title, body)
   } catch (err) {
-    console.error('[taskStore] notify failed', err)
+    log.error('[taskStore] notify failed', err)
   }
 }
 

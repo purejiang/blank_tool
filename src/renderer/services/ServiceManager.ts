@@ -1,3 +1,4 @@
+import { log } from '@utils/logger'
 
 class ServiceManager {
   private services: Map<string, any>
@@ -51,7 +52,6 @@ class ServiceManager {
 
   async initialize() {
     this.isInitialized = true
-    console.log('Service manager initialized.')
   }
 
   /**
@@ -72,22 +72,18 @@ class ServiceManager {
    * Destroy all services
    */
   destroy() {
-    console.log('Destroying service manager...');
-
     for (const [name, service] of this.services) {
       try {
         if (typeof service.destroy === 'function') {
           service.destroy();
         }
-        console.log(`Service "${name}" destroyed`);
       } catch (error) {
-        console.error(`Error destroying service "${name}":`, error);
+        log.error(`Error destroying service "${name}":`, error);
       }
     }
 
     this.services.clear();
     this.isInitialized = false;
-    console.log('Service manager destroyed');
   }
 
   /**

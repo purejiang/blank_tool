@@ -288,6 +288,7 @@ import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
 import { storeToRefs } from 'pinia'
+import { log } from '@utils/logger'
 import DeviceManager from '@components/DeviceManager.vue'
 
 const { t } = useI18n()
@@ -350,6 +351,7 @@ watch(() => logcatOutput.value.length, () => {
 })
 
 onMounted(async () => {
+  log.debug('设备管理页面已挂载')
   try {
     deviceSvcRef.value = await serviceManager.getService('device')
   } catch {}

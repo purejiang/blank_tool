@@ -10,6 +10,8 @@
  * caller hasn't called `await waitForPhase()` yet).
  */
 
+import { log } from '@utils/logger'
+
 // ------------------------------------------------------------------
 // Interfaces
 // ------------------------------------------------------------------
@@ -73,7 +75,7 @@ class TaskStreamService {
     if (this.unsubscribe) return // already subscribed
     const api = (window as any).electronAPI
     if (!api || typeof api.onStreamEvent !== 'function') {
-      console.warn('[TaskStreamService] onStreamEvent not available — stream events will not be received')
+      log.warn('[TaskStreamService] onStreamEvent not available — stream events will not be received')
       this.unsubscribe = () => {} // no-op to mark as initialized
       return
     }
@@ -270,7 +272,7 @@ class TaskStreamService {
       }
     } catch (err) {
       // Callback errors should never break event routing
-      console.error('[TaskStreamService] handleStream error:', err)
+      log.error('[TaskStreamService] handleStream error:', err)
     }
   }
 

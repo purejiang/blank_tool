@@ -1,6 +1,8 @@
 /**
  * 通知服务 - 管理应用内的通知显示
  */
+import { log } from '@utils/logger'
+
 type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'loading' | string;
 
 export interface NotificationAction {
@@ -41,11 +43,10 @@ class NotificationService {
      */
     async initialize() {
         try {
-            console.log('正在初始化通知服务...');
             this.isInitialized = true;
-            console.log('通知服务初始化完成');
+            log.debug('通知服务初始化完成')
         } catch (error) {
-            console.error('通知服务初始化失败:', error);
+            log.error('通知服务初始化失败:', error);
             throw error;
         }
     }
@@ -248,7 +249,7 @@ class NotificationService {
                 try {
                     callback(...args);
                 } catch (error) {
-                    console.error(`通知服务事件监听器执行失败 (${event}):`, error);
+                    log.error(`通知服务事件监听器执行失败 (${event}):`, error);
                 }
             });
         }
@@ -300,7 +301,6 @@ class NotificationService {
         this.clear();
         this.listeners.clear();
         this.isInitialized = false;
-        console.log('通知服务已销毁');
     }
 }
 

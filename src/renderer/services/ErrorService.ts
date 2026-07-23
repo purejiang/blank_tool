@@ -1,6 +1,7 @@
 /**
  * 错误服务 - 统一错误处理、日志记录和恢复机制
  */
+import { log } from '@utils/logger'
 type ErrorSeverity = 'low' | 'medium' | 'high' | string;
 
 interface ErrorContext {
@@ -74,7 +75,6 @@ class ErrorService {
      * 初始化错误服务
      */
     initialize() {
-        console.log('正在初始化错误服务...');
         
         // 设置全局错误处理
         this.setupGlobalErrorHandlers();
@@ -82,7 +82,6 @@ class ErrorService {
         // 注册默认恢复策略
         this.registerDefaultRecoveryStrategies();
         
-        console.log('错误服务初始化成功');
     }
 
     async reportError(error: unknown, context: ErrorContext = {}) {
@@ -121,7 +120,6 @@ class ErrorService {
     registerDefaultRecoveryStrategies() {
         // 网络错误恢复策略
         this.registerRecoveryStrategy(this.errorCategories.NETWORK, async (_error, context) => {
-            console.log('执行网络错误恢复策略...');
             
             // 检查网络连接
             if (!navigator.onLine) {
@@ -157,7 +155,6 @@ class ErrorService {
 
         // 服务错误恢复策略
         this.registerRecoveryStrategy(this.errorCategories.SERVICE, async (_error, context) => {
-            console.log('执行服务错误恢复策略...');
             
             if (context.serviceName && context.serviceManager) {
                 try {
@@ -184,7 +181,6 @@ class ErrorService {
 
         // 配置错误恢复策略
         this.registerRecoveryStrategy(this.errorCategories.CONFIG, async (_error, context) => {
-            console.log('执行配置错误恢复策略...');
             
             if (context.configService) {
                 try {
@@ -263,11 +259,10 @@ class ErrorService {
         const strategy = this.recoveryStrategies.get(errorInfo.category);
         if (strategy) {
             try {
-                console.log(`尝试恢复 ${errorInfo.category} 类型错误...`);
                 return await strategy(errorInfo.error, errorInfo.context);
             } catch (recoveryError) {
                 const recoveryErrorMessage = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
-                console.error('错误恢复失败:', recoveryError);
+                log.error('错误恢复失败:', recoveryError);
                 return {
                     success: false,
                     message: `恢复策略执行失败: ${recoveryErrorMessage}`
@@ -291,7 +286,7 @@ class ErrorService {
             try {
                 await handler(errorInfo);
             } catch (handlerError) {
-                console.error('错误处理器执行失败:', handlerError);
+                log.error('错误处理器执行失败:', handlerError);
             }
         }
     }
@@ -341,12 +336,28 @@ class ErrorService {
 
         // 控制台输出
         const logLevel = this.getLogLevel(errorInfo.severity);
-        console[logLevel](`[${errorInfo.category.toUpperCase()}] ${errorInfo.message}`, {
+        if (logLevel === 'error') {
+          log.error(`[${errorInfo.category.toUpperCase()}] ${errorInfo.message}`, {
             id: errorInfo.id,
             timestamp: errorInfo.timestamp,
             context: errorInfo.context,
             stack: errorInfo.stack
-        });
+          });
+        } else if (logLevel === 'warn') {
+          log.warn(`[${errorInfo.category.toUpperCase()}] ${errorInfo.message}`, {
+            id: errorInfo.id,
+            timestamp: errorInfo.timestamp,
+            context: errorInfo.context,
+            stack: errorInfo.stack
+          });
+        } else {
+          log.info(`[${errorInfo.category.toUpperCase()}] ${errorInfo.message}`, {
+            id: errorInfo.id,
+            timestamp: errorInfo.timestamp,
+            context: errorInfo.context,
+            stack: errorInfo.stack
+          });
+        }
 
         // 发送到后端日志服务（如果可用）
         this.sendToBackendLogger(errorInfo);
@@ -371,7 +382,7 @@ class ErrorService {
                 // });
             }
         } catch (logError) {
-            console.warn('发送错误日志到后端失败:', logError);
+            log.warn('发送错误日志到后端失败:', logError);
         }
     }
 
@@ -435,7 +446,7 @@ class ErrorService {
             try {
                 listener(event, data);
             } catch (error) {
-                console.error('错误监听器执行失败:', error);
+                log.error('错误监听器执行失败:', error);
             }
         });
     }
@@ -478,7 +489,6 @@ class ErrorService {
      */
     clearErrorLog() {
         this.errorLog = [];
-        console.log('错误日志已清除');
     }
 
     /**
@@ -519,7 +529,6 @@ class ErrorService {
         this.recoveryStrategies.clear();
         this.listeners.clear();
         this.errorLog = [];
-        console.log('错误服务已销毁');
     }
 }
 

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import serviceManager from '../services/ServiceManager'
+import { log } from '@utils/logger'
 
 export const useSystemStore = defineStore('system', () => {
   const systemInfo = reactive({
@@ -83,7 +84,7 @@ export const useSystemStore = defineStore('system', () => {
         if (sysInfo.diskPercent !== undefined) systemInfo.diskPercent = `${sysInfo.diskPercent.toFixed(1)}%`
       }
     } catch (err: unknown) {
-      console.error('Failed to fetch system info:', err)
+      log.error('Failed to fetch system info:', err)
       error.value = getErrorMessage(err)
     } finally {
       loading.value = false
@@ -111,7 +112,7 @@ export const useSystemStore = defineStore('system', () => {
         buildInfo.javaVersion = backendInfo.java_version || ''
       }
     } catch (err: unknown) {
-      console.error('Failed to fetch build info:', err)
+      log.error('Failed to fetch build info:', err)
     }
   }
 

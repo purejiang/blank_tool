@@ -1,4 +1,5 @@
 import unifiedApi from '../api/unifiedApi'
+import { log } from '@utils/logger'
 
 interface PluginApiLike {
   callBackend?: (method: string, payload: Record<string, unknown>) => Promise<unknown>
@@ -36,7 +37,6 @@ class PluginService {
         params: params
       })
     }
-    console.log(`Running plugin ${pluginName} with params:`, params)
     return { success: true, message: 'Mock execution result' }
   }
 

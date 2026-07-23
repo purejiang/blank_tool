@@ -1,6 +1,7 @@
 import { useDeviceStore } from '@stores/deviceStore'
 import unifiedApi from '../api/unifiedApi'
 import type { ElectronApi } from '../../shared/ipc/electronApi'
+import { log } from '@utils/logger'
 
 type DeviceLike = {
   id: string
@@ -61,19 +62,17 @@ class DeviceService {
       }
       if (api && typeof api.onLogcatStarted === 'function') {
         api.onLogcatStarted(() => {
-          console.log('[logcat] started event')
           deviceStore.isLogcatRunning = true
         })
       }
       if (api && typeof api.onLogcatFinished === 'function') {
         api.onLogcatFinished(() => {
-          console.log('[logcat] finished event')
           deviceStore.isLogcatRunning = false
         })
       }
       if (api && typeof api.onLogcatError === 'function') {
         api.onLogcatError((error: unknown) => {
-          console.error('[logcat] error event:', JSON.stringify(error))
+          log.error('[logcat] error event:', JSON.stringify(error))
           deviceStore.isLogcatRunning = false
         })
       }
@@ -215,26 +214,23 @@ class DeviceService {
   async startLogcat() {
     const store = getDeviceStore()
     const dev = store.selectedDevice
-    if (!dev || !dev.id) { console.log('[logcat] no device selected'); return false }
+    if (!dev || !dev.id) { return false }
     const api = unifiedApi.getAPI()
-    console.log('[logcat] starting, api:', !!api, 'device:', dev.id)
+
     store.logcatOutput = []
     if (api && typeof api.onLogcatOutput === 'function') {
       this.attachLogcatOutputListener(store, api)
-      console.log('[logcat] output listener attached')
     }
     try {
       if (api && typeof api.startLogcat === 'function') {
-        console.log('[logcat] calling api.startLogcat...')
         const result = await api.startLogcat(dev.id)
-        console.log('[logcat] api.startLogcat returned:', JSON.stringify(result))
         store.isLogcatRunning = true
       } else {
-        console.log('[logcat] startLogcat API not implemented')
+        log.warn('[logcat] startLogcat API not implemented')
         throw new Error('startLogcat API not implemented')
       }
     } catch (e) {
-      console.error('[logcat] startLogcat error:', e)
+      log.error('[logcat] startLogcat error:', e)
       store.isLogcatRunning = false
       return false
     }
@@ -247,11 +243,9 @@ class DeviceService {
     if (api && typeof api.stopLogcat === 'function') {
       if (store.logcatProcessId) {
         await api.stopLogcat(store.logcatProcessId)
-      } else {
-        console.log('[logcat] no processId to stop, just marking as stopped')
       }
     } else {
-      console.error('stopLogcat API not implemented')
+      log.error('stopLogcat API not implemented')
     }
     store.isLogcatRunning = false
     store.logcatProcessId = ''
@@ -298,7 +292,7 @@ class DeviceService {
         })
         .filter(a => a.packageName)
     } catch (e) {
-      console.error('Failed to refresh app list:', e)
+      log.error('Failed to refresh app list:', e)
       store.apps = []
     }
   }
@@ -334,7 +328,7 @@ class DeviceService {
         }
         return Boolean(result)
       } catch (e) {
-        console.error('Export logcat failed:', e)
+        log.error('Export logcat failed:', e)
         return false
       }
     }

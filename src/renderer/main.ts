@@ -3,6 +3,7 @@ import { createPinia } from 'pinia';
 import type { PiniaPluginContext } from 'pinia';
 import naive from 'naive-ui';
 import i18n from './i18n';
+import { log } from '@utils/logger';
 import App from './App.vue';
 import router from './router';
 
@@ -65,12 +66,11 @@ app.use(i18n);
 async function launchApp() {
   try {
     // 挂载Vue应用（App.vue会处理服务初始化和错误处理器设置）
-    console.log('Vue应用启动');
+    log.debug('Vue 应用准备挂载')
     app.mount('#app');
-    
-    console.log('Vue应用启动完成');
+    log.debug('Vue 应用挂载完成')
   } catch (error) {
-    console.error('应用启动失败:', error);
+    log.error('应用启动失败:', error);
     
     // 显示错误信息
     document.body.innerHTML = `
