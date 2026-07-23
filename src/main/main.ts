@@ -254,24 +254,38 @@ async function startPythonService(): Promise<ChildProcessWithoutNullStreams | nu
     log.error('Python 进程错误:', err);
   });
 
+  // Ring buffer for Python stderr — forensic record, only dumped on crash.
+  // Python's own logger (StreamHandler→stderr + DailyRotatingFileHandler→backend-*.log)
+  // already records every line; relaying it again here was the source of duplication.
+  const stderrRing: string[] = [];
+  const STDERR_RING_MAX = 200;
+  // Python logger line: "YYYY-MM-DD HH:MM:SS - NAME - LEVEL - message"
+  // Only ERROR/CRITICAL level or tracebacks deserve an immediate electron.log entry;
+  // tool-level warnings (aapt2 "failed to find file" etc.) are WARNING and stay buffered.
+  const PYTHON_ERROR_LEVEL = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - .* - (ERROR|CRITICAL) -/;
+  const PYTHON_TRACEBACK = /Traceback \(most recent call last\):/;
+
   pythonProcess.stderr.on('data', (data) => {
-    const errorMsg = data.toString();
-    // 只有当包含真正的错误关键词时才作为错误处理，否则视为普通日志
-    const isError = /error|exception|traceback|fail/i.test(errorMsg);
-    
-    if (isError) {
-        log.error(`Python Stderr: ${errorMsg}`);
-        // 尝试将错误广播给所有窗口
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('python-error', errorMsg);
-        }
-    } else {
-        log.info(`Python Out: ${errorMsg}`);
+    const chunk = data.toString();
+    for (const line of chunk.split('\n').filter(l => l.length > 0)) {
+      stderrRing.push(line);
+      if (stderrRing.length > STDERR_RING_MAX) stderrRing.shift();
+    }
+    if (PYTHON_TRACEBACK.test(chunk) || PYTHON_ERROR_LEVEL.test(chunk)) {
+      log.error(`Python: ${chunk.trimEnd()}`);
     }
   });
 
-  pythonProcess.on('close', (code) => {
-    log.info(`Python process exited with code ${code}`);
+  pythonProcess.on('close', (code, signal) => {
+    if (code !== 0 && code !== null) {
+      const tail = stderrRing.join('\n');
+      log.error(
+        `Python process crashed (exit code ${code}). Last ${stderrRing.length} lines of stderr:\n${tail}`
+      );
+    } else {
+      log.info(`Python process exited (code ${code}, signal ${signal})`);
+    }
+    stderrRing.length = 0;
     pythonProcess = null;
   });
   return pythonProcess;
