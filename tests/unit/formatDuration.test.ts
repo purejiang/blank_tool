@@ -17,7 +17,7 @@ describe('formatDuration', () => {
       taskDir: '',
       startedAt: 1000, finishedAt: null, createdAt: 1000,
     }
-    expect(formatDuration(task, 2500)).toBe('1s')
+    expect(formatDuration(task, 2500)).toBe('1.5s')
   })
 
   it('completed task: uses finishedAt without nowOverride', () => {
@@ -42,7 +42,7 @@ describe('formatDuration', () => {
       startedAt: 5000, finishedAt: 8000, createdAt: 1000,
     }
     // Only last attempt: 3000ms = 3s, NOT 7000ms (old bug)
-    expect(formatDuration(task)).toBe('3s')
+    expect(formatDuration(task)).toBe('3.0s')
   })
 
   it('old-data-migration: fallback to createdAt when startedAt is missing', () => {
@@ -54,7 +54,7 @@ describe('formatDuration', () => {
       taskDir: '',
       startedAt: undefined as any, finishedAt: 3000, createdAt: 1000,
     }
-    expect(formatDuration(task)).toBe('2s')
+    expect(formatDuration(task)).toBe('2.0s')
   })
 
   it('negative-guard: returns empty string when finishedAt < startedAt', () => {
@@ -78,6 +78,6 @@ describe('formatDuration', () => {
       taskDir: '',
       startedAt: 1000, finishedAt: 1000, createdAt: 1000,
     }
-    expect(formatDuration(task)).toBe('0s')
+    expect(formatDuration(task)).toBe('0.0s')
   })
 })

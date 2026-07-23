@@ -162,14 +162,14 @@
           <div v-if="task.filePath" class="task-output">
             <n-icon size="14" color="var(--app-text-dim)"><FolderOpen /></n-icon>
             <span class="task-output-path">{{ t('task.source') }}: {{ task.filePath }}</span>
-            <n-button size="tiny" quaternary @click.stop="openInExplorer(task.filePath)">
+            <n-button size="tiny" quaternary @click.stop="openInExplorerChecked(task.filePath, task.fileName || t('task.source'), t('task.sourceFileMissing'))">
               <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
             </n-button>
           </div>
           <div v-if="task.outputPath" class="task-output">
             <n-icon size="14" color="var(--app-green)"><FolderOpen /></n-icon>
             <span class="task-output-path">{{ t('task.output') }}: {{ task.outputPath }}</span>
-            <n-button size="tiny" quaternary type="info" @click.stop="openInExplorer(task.outputPath)">
+            <n-button size="tiny" quaternary type="info" @click.stop="openInExplorerChecked(task.outputPath, t('task.output'), t('task.outputMissing'))">
               <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
             </n-button>
           </div>
@@ -177,10 +177,18 @@
           <!-- Terminal task: has file log content → show it with refresh -->
           <div v-if="isTerminal(task.status) && taskLogCache.has(task.id) && taskLogCache.get(task.id)?.length" class="task-logs">
             <div class="task-logs-header" style="display:flex;justify-content:flex-end;margin-bottom:4px;">
-              <n-button size="tiny" quaternary @click.stop="refreshTaskLog(task)">↻</n-button>
-              <n-button size="tiny" quaternary @click.stop="loadFullTaskLog(task)">📄</n-button>
+              <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary @click.stop="loadFullTaskLog(task)" :title="t('task.expandLog')">
+                <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
+              </n-button>
+              <n-button v-else size="tiny" quaternary @click.stop="collapseTaskLog(task)" :title="t('task.collapseLog')">
+                <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
+              </n-button>
+              <n-button size="tiny" quaternary @click.stop="openLogFile(task)" :title="t('task.openLogFile')">
+                <template #icon><n-icon size="14"><FileText /></n-icon></template>
+              </n-button>
             </div>
             <n-virtual-list
+              :key="'log-' + task.id + '-' + (logExpandedMap.get(task.id) ? 'full' : 'tail')"
               :items="taskLogCache.get(task.id) || []"
               :item-size="18"
               item-resizable
@@ -194,8 +202,15 @@
           <!-- Fallback: show in-memory logs (running tasks, OR terminal tasks without file log) -->
           <div v-else-if="task.logs.length > 0" class="task-logs">
             <div v-if="isTerminal(task.status)" class="task-logs-header" style="display:flex;justify-content:flex-end;margin-bottom:4px;">
-              <n-button size="tiny" quaternary @click.stop="refreshTaskLog(task)">↻</n-button>
-              <n-button size="tiny" quaternary @click.stop="loadFullTaskLog(task)">📄</n-button>
+              <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary @click.stop="loadFullTaskLog(task)" :title="t('task.expandLog')">
+                <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
+              </n-button>
+              <n-button v-else size="tiny" quaternary @click.stop="collapseTaskLog(task)" :title="t('task.collapseLog')">
+                <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
+              </n-button>
+              <n-button size="tiny" quaternary @click.stop="openLogFile(task)" :title="t('task.openLogFile')">
+                <template #icon><n-icon size="14"><FileText /></n-icon></template>
+              </n-button>
             </div>
             <n-virtual-list
               v-if="task.logs.length > 100"
@@ -220,18 +235,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NVirtualList, useDialog } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw
+  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
 import { useSignatureStore } from '@stores/signatureStore'
 import type { Task } from '@stores/taskStore'
 import { formatDuration as formatDurationUtil } from '@utils/formatDuration'
+import { log as logUtil } from '@utils/logger'
 import serviceManager from '@services/ServiceManager'
 
 const { t } = useI18n()
@@ -239,6 +255,8 @@ const dialog = useDialog()
 const taskStore = useTaskStore()
 const sigStore = useSignatureStore()
 if (sigStore.configs.length === 0) sigStore.loadConfigs()
+
+const { showError, showWarning } = useNotification()
 
 const OP_TAG_MAP: Record<Task['operation'], string> = {
   analyze: 'info', install: 'success', decompile: 'warning', recompile: 'warning', resign: 'error'
@@ -252,6 +270,8 @@ const activeIntervals = new Set<ReturnType<typeof setInterval>>()
 const now = ref(Date.now())
 let nowIv: ReturnType<typeof setInterval> | null = null
 const taskLogCache = ref<Map<number, { key: number; text: string }[]>>(new Map())
+const taskLogPathCache = ref<Map<number, string>>(new Map())
+const logExpandedMap = ref<Map<number, boolean>>(new Map())
 
 // Log buffering: batch high-volume stream events to avoid UI jank
 const logBuffers = new Map<number, string[]>()
@@ -290,6 +310,10 @@ function syncNowTimer() {
     stopNowTimer()
   }
 }
+
+onMounted(() => {
+  logUtil.debug('任务管理页面已挂载')
+})
 
 onUnmounted(() => {
   stopNowTimer()
@@ -344,6 +368,24 @@ async function openInExplorer(filePath: string) {
   } catch (e) { /* ignore */ }
 }
 
+// getFileStats returns {success:false} for ANY stat error (ENOENT, EACCES —
+// wording is slightly imprecise for permission errors but acceptable)
+async function openInExplorerChecked(filePath: string, missingTitle: string, missingMsg: string) {
+  try {
+    const svc = await serviceManager.getService('system') as any
+    if (svc && typeof svc.getFileStats === 'function') {
+      const result = await svc.getFileStats(filePath)
+      if (result?.success !== true) {
+        showWarning(missingTitle, missingMsg)
+        return
+      }
+    }
+    await openInExplorer(filePath)
+  } catch (e) {
+    await openInExplorer(filePath)
+  }
+}
+
 function isTerminal(status: string): boolean {
   return ['completed', 'failed', 'cancelled'].includes(status)
 }
@@ -359,6 +401,9 @@ async function loadTaskLog(task: Task) {
   try {
     const api = window.electronAPI as any
     const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id), tail_bytes: 100 * 1024 })
+    if (result.log_path) {
+      taskLogPathCache.value.set(task.id, result.log_path)
+    }
     const content = (result.content || '').trim()
     if (content) {
       taskLogCache.value.set(task.id, splitLogLines(content))
@@ -381,13 +426,31 @@ async function loadFullTaskLog(task: Task) {
   try {
     const api = window.electronAPI as any
     const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id) })
+    if (result.log_path) {
+      taskLogPathCache.value.set(task.id, result.log_path)
+    }
     const content = (result.content || '').trim()
     if (content) {
       taskLogCache.value.set(task.id, splitLogLines(content))
     }
+    logExpandedMap.value.set(task.id, true)
   } catch (e) {
     // keep existing cache on error
   }
+}
+
+async function collapseTaskLog(task: Task) {
+  await loadTaskLog(task)
+  logExpandedMap.value.set(task.id, false)
+}
+
+async function openLogFile(task: Task) {
+  if (!taskLogPathCache.value.has(task.id)) {
+    await loadTaskLog(task)
+  }
+  const logPath = taskLogPathCache.value.get(task.id)
+  if (!logPath) return
+  await openInExplorerChecked(logPath, t('task.openLogFile'), t('task.logFileMissing'))
 }
 
 async function pickLocalFile() {
@@ -403,7 +466,7 @@ async function pickLocalFile() {
       newLocalName.value = fp.split(/[/\\]/).pop() || 'file'
     }
   } catch (e) {
-    console.error('pickLocalFile error:', e)
+    logUtil.error('pickLocalFile error:', e)
   }
 }
 
@@ -434,7 +497,6 @@ async function startNewTask() {
 }
 
 async function executeTask(task: Task) {
-  const { showError } = useNotification()
   try {
     let localPath = task.filePath
     const api = window.electronAPI as any
@@ -543,7 +605,7 @@ async function cancelTask(task: Task) {
             showInfo(name, t('task.alreadyFinished'))
           }
         } catch (e) {
-          console.error('Cancel error:', e)
+          logUtil.error('Cancel error:', e)
           // Restore on error too
           const current = taskStore.tasks.find(t => t.id === task.id)
           if (current?.status === ('cancelling' as any)) {
@@ -589,7 +651,7 @@ async function confirmClearAll() {
 async function confirmRemoveTask(task: Task) {
   const del = await window.electronAPI?.appConfig?.get('autoDeleteOutputOnTaskRemove')
   const isTerminal = ['completed', 'failed', 'cancelled'].includes(task.status)
-  if (del === true && isTerminal && task.outputPath) {
+  if (del === true && isTerminal) {
     dialog.warning({
       title: t('task.clearCompleted'),
       content: t('task.removeConfirmDelete'),
