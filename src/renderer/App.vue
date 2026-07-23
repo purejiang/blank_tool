@@ -119,6 +119,7 @@ import ToolService from '@services/ToolService'
 import NotificationService from '@services/NotificationService'
 import Notification from '@components/common/Notification.vue'
 import unifiedApi from './api/unifiedApi'
+import { log } from '@utils/logger'
 import { persistLocale } from './i18n'
 import ErrorService from '@services/ErrorService'
 import { ConfigService } from '@services/ConfigService'
@@ -231,6 +232,9 @@ const setTheme = async (mode: string) => {
   const themeService = await serviceManager.getService('theme')
   if (themeService) {
     currentTheme.value = await themeService.setTheme(mode)
+    try {
+      localStorage.setItem('bt:theme', themeService.getActualTheme())
+    } catch {}
   }
 }
 const getCurrentTheme = () => currentTheme.value
@@ -295,7 +299,7 @@ function registerServices() {
 
 function createErrorHandler() {
   return (error: Error, _instance: any, info: string) => {
-    console.error('Global error:', error, info)
+    log.error('Global error:', error, info)
     serviceManager.getService('error').then((errorService) => {
       if (errorService && typeof errorService.reportError === 'function') {
         errorService.reportError(error, { context: 'Vue global error handler', info })
@@ -317,6 +321,7 @@ function stopTimer() {
 }
 
 async function initializeApplication() {
+  log.debug('应用初始化开始')
   startTimer()
   try {
     initError.value = ''
@@ -337,7 +342,7 @@ async function initializeApplication() {
         completedWeight += taskInfo.weight
         loadingProgress.value = completedWeight
       } catch (error: any) {
-        console.error(`${taskInfo.name} failed:`, error)
+        log.error(`${taskInfo.name} failed:`, error)
         if (taskInfo.critical) {
           throw new Error(`Critical task "${taskInfo.name}" failed: ${error.message}`)
         } else {
@@ -351,8 +356,9 @@ async function initializeApplication() {
     await new Promise(resolve => setTimeout(resolve, 300))
     isLoading.value = false
     stopTimer()
+    log.debug('应用初始化完成')
   } catch (error: any) {
-    console.error('Init failed:', error)
+    log.error('Init failed:', error)
     stopTimer()
     initError.value = error.message || t('app.initFailed')
     showRetryButton.value = true
@@ -410,9 +416,15 @@ async function prepareUI() {
     } else if (typeof themeService.applyTheme === 'function') {
       currentTheme.value = await themeService.applyTheme()
     }
+    try {
+      localStorage.setItem('bt:theme', themeService.getActualTheme())
+    } catch {}
     if (typeof themeService.onChange === 'function') {
       themeService.onChange((theme: GlobalTheme | null) => {
         currentTheme.value = theme
+        try {
+          localStorage.setItem('bt:theme', themeService.getActualTheme())
+        } catch {}
       })
     }
   }
@@ -443,7 +455,6 @@ function retryInitialization() {
 }
 
 onMounted(() => {
-  console.log('App mounted, starting initialization')
   initializeApplication()
 })
 
