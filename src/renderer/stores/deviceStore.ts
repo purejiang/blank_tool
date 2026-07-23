@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed, watch } from 'vue'
 import i18n from '../i18n'
+import { log } from '@utils/logger'
 
 interface Device {
   id: string;
@@ -115,11 +116,9 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
         monitoringInterval.value = null
       }
 
-      console.log('设备监控已停止')
-
       return { success: true, message: '设备监控已停止' }
     } catch (error) {
-      console.error('停止设备监控失败:', error)
+      log.error('停止设备监控失败:', error)
       throw error
     }
   }

@@ -46,6 +46,7 @@ export interface ElectronApi {
   onLogcatFinished: (callback: () => void) => () => void
   onLogcatError: (callback: (error: string) => void) => () => void
   removeLogcatListener: () => void
+  rendererLog: (level: 'error' | 'warn', message: string) => Promise<unknown>
   setToolCustomPath?: (toolName: string, path: string) => Promise<unknown>
   resetToolCustomPath?: (toolName: string) => Promise<unknown>
   getToolCustomPaths?: () => Promise<Record<string, string>>

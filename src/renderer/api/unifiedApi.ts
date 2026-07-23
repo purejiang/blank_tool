@@ -1,5 +1,6 @@
 import type { ApiMethodMap } from '../../shared/ipc/protocol'
 import type { ElectronApi } from '../../shared/ipc/electronApi'
+import { log } from '@utils/logger'
 
 type MethodParams<M extends keyof ApiMethodMap> = ApiMethodMap[M]['params']
 type MethodResult<M extends keyof ApiMethodMap> = ApiMethodMap[M]['result']
@@ -35,14 +36,13 @@ class UnifiedApi {
       if (typeof window !== 'undefined' && window.electronAPI) {
         this.api = window.electronAPI
         this.isAvailable = true
-        console.log('unifiedApiService: Electron API initialized')
       } else {
-        console.warn('unifiedApiService: Electron API not detected, running in browser environment')
+        log.warn('unifiedApiService: Electron API not detected, running in browser environment')
         this.isAvailable = false
         this.api = this.createMockAPI()
       }
     } catch (error) {
-      console.error('unifiedApiService: Initialization failed', error)
+      log.error('unifiedApiService: Initialization failed', error)
       this.isAvailable = false
       this.api = this.createMockAPI()
     }
@@ -76,6 +76,7 @@ class UnifiedApi {
       onLogcatFinished: () => () => {},
       onLogcatError: () => () => {},
       removeLogcatListener: () => {},
+      rendererLog: async () => undefined,
     }
   }
 
@@ -88,11 +89,11 @@ class UnifiedApi {
       if (typeof method === 'function') {
         return await method(...args) as T
       } else {
-        console.warn(`unifiedApiService: Method ${methodName} not available`)
+        log.warn(`unifiedApiService: Method ${methodName} not available`)
         return { success: false, error: `Method ${methodName} not available` }
       }
     } catch (error) {
-      console.error(`unifiedApiService: Call to ${methodName} failed`, error)
+      log.error(`unifiedApiService: Call to ${methodName} failed`, error)
       const errorMessage = error instanceof Error ? error.message : String(error)
       return { success: false, error: errorMessage }
     }

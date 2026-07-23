@@ -224,6 +224,7 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
 import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
+import { log } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { storeToRefs } from 'pinia'
@@ -356,7 +357,7 @@ const loadSettings = async () => {
       displayPaths.runtime = model.displayPaths.runtime || ''
       displayPaths.server = model.displayPaths.server || ''
     }
-  } catch (e) { console.error('Failed to load settings:', e) }
+  } catch (e) { log.error('Failed to load settings:', e) }
 }
 
 const saveGeneral = async () => {
@@ -398,7 +399,7 @@ const refreshCache = async () => {
     const svc = await serviceManager.getService('cache')
     const info = await svc.getCacheInfo(true)
     if (info) cacheInfo.value = info
-  } catch (e) { console.error('Failed to refresh cache:', e) }
+  } catch (e) { log.error('Failed to refresh cache:', e) }
   finally { isLoadingCacheInfo.value = false }
 }
 
@@ -473,6 +474,7 @@ const handleResetToolPath = async (toolName: string) => {
 }
 
 onMounted(() => {
+  log.debug('设置页面已挂载')
   loadSettings()
   refreshCache()
   sigStore.loadConfigs()

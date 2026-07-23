@@ -38,6 +38,7 @@
 import { reactive, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import serviceManager from '@services/ServiceManager'
+import { log } from '@utils/logger'
 
 const { t } = useI18n()
 
@@ -102,7 +103,7 @@ const selectKeystoreFile = async () => {
       if (p) form.path = p
     }
   } catch (error) {
-    console.error(error)
+    log.error(error)
   }
 }
 </script>

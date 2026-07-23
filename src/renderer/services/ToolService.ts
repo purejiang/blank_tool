@@ -2,6 +2,7 @@
  * 工具服务 - 管理工具状态和操作
  */
 import unifiedApi from '../api/unifiedApi';
+import { log } from '@utils/logger'
 
 type ToolStatus = 'available' | 'unknown' | string;
 
@@ -47,10 +48,9 @@ class ToolService {
      */
     async initialize() {
         try {
-            console.log('初始化工具服务...');
-            console.log('工具服务初始化成功');
+            log.debug('工具服务初始化完成')
         } catch (error) {
-            console.error('工具服务初始化失败:', error);
+            log.error('工具服务初始化失败:', error);
             throw error;
         }
     }
@@ -158,18 +158,16 @@ class ToolService {
      */
     startPolling() {
         if (this.isPolling) {
-            console.log('工具状态轮询已在运行');
             return;
         }
 
-        console.log(`开始工具状态轮询，间隔: ${this.pollingIntervalMs / 1000}秒`);
         this.isPolling = true;
 
         this.pollingInterval = setInterval(async () => {
             try {
                 await this.checkTools();
             } catch (error) {
-                console.error('轮询工具状态时发生错误:', error);
+                log.error('轮询工具状态时发生错误:', error);
             }
         }, this.pollingIntervalMs);
     }
@@ -182,7 +180,6 @@ class ToolService {
             return;
         }
 
-        console.log('停止工具状态轮询');
         this.isPolling = false;
 
         if (this.pollingInterval) {
@@ -209,11 +206,10 @@ class ToolService {
      */
     async refreshToolsStatus() {
         try {
-            console.log('手动刷新工具状态...');
             await this.checkTools();
             return true;
         } catch (error) {
-            console.error('刷新工具状态失败:', error);
+            log.error('刷新工具状态失败:', error);
             return false;
         }
     }
@@ -258,7 +254,7 @@ class ToolService {
             try {
                 listener(event, data);
             } catch (error) {
-                console.error('监听器执行错误:', error);
+                log.error('监听器执行错误:', error);
             }
         });
     }
@@ -278,7 +274,6 @@ class ToolService {
         this.stopPolling();
         this.tools.clear();
         this.listeners.clear();
-        console.log('工具服务已销毁');
     }
 
     /**

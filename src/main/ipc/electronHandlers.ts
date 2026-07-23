@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell, BrowserWindow, app, clipboard, Notification, IpcMainInvokeEvent } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
+import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 
 export function setupElectronHandlers(): void {
@@ -85,6 +86,17 @@ export function setupElectronHandlers(): void {
       return { success: true }
     } catch (error: any) {
       return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('renderer-log', async (event: IpcMainInvokeEvent, level: 'error' | 'warn', message: string) => {
+    try {
+      const prefixed = `[renderer] ${message}`
+      if (level === 'error') log.error(prefixed)
+      else if (level === 'warn') log.warn(prefixed)
+      return true
+    } catch {
+      return false
     }
   })
 

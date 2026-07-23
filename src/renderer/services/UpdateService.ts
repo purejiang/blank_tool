@@ -1,3 +1,4 @@
+import { log } from '@utils/logger'
 import { useUpdateStore } from '@stores/updateStore'
 import type { UpdateStatus } from '@stores/updateStore'
 import unifiedApi from '../api/unifiedApi'
@@ -39,7 +40,6 @@ class UpdateService {
     // DEV: expose test helper to window for manual testing
     if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__testUpdate) {
       ;(window as any).__testUpdate = () => this.testUpdateFlow()
-      console.log('[UpdateService] Dev test helper ready: run __testUpdate() in console')
     }
 
     // Fetch current version from electron
@@ -355,7 +355,7 @@ class UpdateService {
         await api.quitAndInstall()
       }
     } catch (err: any) {
-      console.error('quitAndInstall failed:', err)
+      log.error('quitAndInstall failed:', err)
     }
   }
 
@@ -373,7 +373,6 @@ class UpdateService {
    * progress bar, and "downloaded" state without a real update server.
    */
   private async testUpdateFlow(): Promise<void> {
-    console.log('[UpdateService] Starting test update flow...')
     const store = this.getStore()
     store.setCurrentVersion('2.0.4')
 
@@ -383,12 +382,9 @@ class UpdateService {
       const result = await this.checkForUpdates()
       realUpdate = result.updateAvailable
       if (realUpdate) {
-        console.log('[UpdateService] ✅ Real update found, normal flow active')
         return // normal flow already shows notification
       }
-    } catch {
-      console.log('[UpdateService] Check failed, using simulated flow')
-    }
+    } catch {}
 
     // No real update — show a notification with simulated download
     store.setUpdateInfo({ version: '2.0.5' })
@@ -422,7 +418,6 @@ class UpdateService {
       },
     ]
     ns.update(capturedId, { actions } as any)
-    console.log('[UpdateService] ✅ Simulated notification shown')
   }
 
   destroy(): void {

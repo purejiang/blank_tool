@@ -65,6 +65,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import serviceManager from '@services/ServiceManager'
+import { log } from '@utils/logger'
 
 // 响应式数据
 const notifications = ref([])
@@ -152,9 +153,9 @@ onMounted(async () => {
       setupListeners(notificationService)
     }
   } catch (error) {
-    console.error('Failed to get notification service:', error)
+    log.error('Failed to get notification service:', error)
   }
-  console.log('Notification component mounted')
+
 })
 
 const setupListeners = (service) => {

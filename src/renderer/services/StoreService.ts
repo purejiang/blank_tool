@@ -4,6 +4,7 @@
  * 不再直接调用 electronAPI，而是通过 store 作为中介层
  */
 
+import { log } from '@utils/logger'
 import { useAppConfigStore, useDeviceStore, initializeStores } from '../stores'
 
 type AnyRecord = Record<string, any>
@@ -39,8 +40,9 @@ class ConfigStoreService {
             this.deviceStore = stores.deviceStore
             this.appConfigStore = stores.appConfigStore
             this.userConfigStore = (stores as AnyRecord).userConfigStore || null
+            log.debug('Store 服务初始化完成')
         } catch (error) {
-            console.error('初始化 app config store、user config store 或 device store 失败:', error)
+            log.error('初始化 app config store、user config store 或 device store 失败:', error)
         }
     }
 
@@ -80,7 +82,7 @@ class ConfigStoreService {
             const store = await this.ensureDeviceStore()
             return store
         } catch (error) {
-            console.error('获取 device config 失败:', error)
+            log.error('获取 device config 失败:', error)
             throw error
         }
     }
@@ -93,7 +95,7 @@ class ConfigStoreService {
             const store = await this.ensureAppConfigStore()
             return store
         } catch (error) {
-            console.error('获取 app config 失败:', error)
+            log.error('获取 app config 失败:', error)
             throw error
         }
     }
@@ -111,7 +113,7 @@ class ConfigStoreService {
             const config = await this.getConfig()
             return this.flattenConfig(config)
         } catch (error) {
-            console.error('获取扁平化配置失败:', error)
+            log.error('获取扁平化配置失败:', error)
             return {}
         }
     }
@@ -136,7 +138,7 @@ class ConfigStoreService {
             }
             return { success: true }
         } catch (error) {
-            console.error('保存配置失败:', error)
+            log.error('保存配置失败:', error)
             throw error
         }
     }
@@ -157,7 +159,7 @@ class ConfigStoreService {
             const settings = this.flattenConfig(store.config)
             return { success: true, settings }
         } catch (error) {
-            console.error('重置配置失败:', error)
+            log.error('重置配置失败:', error)
             throw error
         }
     }
@@ -173,7 +175,7 @@ class ConfigStoreService {
             }
             return this.getNestedValue(store.config || {}, key) ?? defaultValue
         } catch (error) {
-            console.error(`获取配置项 ${key} 失败:`, error)
+            log.error(`获取配置项 ${key} 失败:`, error)
             return defaultValue
         }
     }
@@ -193,7 +195,7 @@ class ConfigStoreService {
             }
             return { success: true }
         } catch (error) {
-            console.error(`设置配置项 ${key} 失败:`, error)
+            log.error(`设置配置项 ${key} 失败:`, error)
             throw error
         }
     }
@@ -248,7 +250,7 @@ class ConfigStoreService {
             const value = this.getNestedValue(store.defaultConfig || {}, key)
             return { success: true, value }
         } catch (error) {
-            console.error(`获取配置项 ${key} 的默认值失败:`, error)
+            log.error(`获取配置项 ${key} 的默认值失败:`, error)
             throw error
         }
     }
@@ -274,7 +276,7 @@ class ConfigStoreService {
             const settings = await this.getSettings()
             return { success: true, settings }
         } catch (error) {
-            console.error(`重置配置项 ${key} 失败:`, error)
+            log.error(`重置配置项 ${key} 失败:`, error)
             throw error
         }
     }

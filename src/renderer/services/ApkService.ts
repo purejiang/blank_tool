@@ -2,6 +2,7 @@
  * APK服务 - 处理APK相关操作
  */
 import unifiedApi from '../api/unifiedApi';
+import { log } from '@utils/logger'
 
 type ApkListener = (event: string, data: unknown) => void;
 
@@ -29,10 +30,9 @@ class ApkService {
      */
     async initialize() {
         try {
-            // 初始化APK服务
-            console.log('APK服务初始化完成');
+            log.debug('APK 服务初始化完成')
         } catch (error) {
-            console.error('APK服务初始化失败:', error);
+            log.error('APK服务初始化失败:', error);
             throw error;
         }
     }
@@ -98,11 +98,9 @@ class ApkService {
                 this.notifyListeners('apk-analyzed', { apkPath, analysis });
             }
 
-            console.log(`分析APK完成: ${apkPath}`);
-
             return result;
         } catch (error) {
-            console.error(`分析APK失败: ${apkPath}`, error);
+            log.error(`分析APK失败: ${apkPath}`, error);
             throw error;
         }
     }
@@ -380,7 +378,7 @@ class ApkService {
             }
             throw new Error('decompileApk API not implemented');
         } catch (error) {
-            console.error('反编译APK失败:', error);
+            log.error('反编译APK失败:', error);
             throw error;
         }
     }
@@ -405,7 +403,7 @@ class ApkService {
             }
             throw new Error('recompileApk API not implemented');
         } catch (error) {
-            console.error('回编译APK失败:', error);
+            log.error('回编译APK失败:', error);
             throw error;
         }
     }
@@ -430,7 +428,7 @@ class ApkService {
             }
             throw new Error('signApk API not implemented');
         } catch (error) {
-            console.error('签名APK失败:', error);
+            log.error('签名APK失败:', error);
             throw error;
         }
     }
@@ -446,7 +444,7 @@ class ApkService {
             }
             throw new Error('getApkProgress API not implemented');
         } catch (error) {
-            console.error('获取反编译进度失败:', error);
+            log.error('获取反编译进度失败:', error);
             throw error;
         }
     }
@@ -462,7 +460,7 @@ class ApkService {
             }
             throw new Error('cancelApkTask API not implemented');
         } catch (error) {
-            console.error('取消反编译任务失败:', error);
+            log.error('取消反编译任务失败:', error);
             throw error;
         }
     }
@@ -489,7 +487,7 @@ class ApkService {
             try {
                 callback(event, data);
             } catch (error) {
-                console.error('APK服务监听器错误:', error);
+                log.error('APK服务监听器错误:', error);
             }
         });
     }

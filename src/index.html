@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="./main/assets/images/icon.png" />
@@ -8,7 +8,19 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <title>Blank Tool</title>
-    <style>body { background: #0F172A; margin: 0; }</style>
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('bt:theme');
+          var theme = saved
+            || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+    <style>body { margin: 0; background: var(--app-body-bg); }</style>
   </head>
   <body>
     <div id="app"></div>

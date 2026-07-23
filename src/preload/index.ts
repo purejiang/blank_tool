@@ -60,13 +60,8 @@ const callBackendAPI = async (action: string, params: JsonObject = {}) => {
     method: action,
     params,
   };
-  try {
-    const resp = await callBackendByRequest(request);
-    console.log('callBackendAPI', requestId, action, params, resp);
-    return unwrapBackendResponse(resp);
-  } catch (error) {
-    throw error;
-  }
+  const resp = await callBackendByRequest(request);
+  return unwrapBackendResponse(resp);
 };
 
 // 统一的IPC调用函数 - 用于非后端API的调用
@@ -175,6 +170,7 @@ const electronApi = {
   readFile: (filePath) => ipcInvoke('read-file', filePath),
   // 文件/目录打开
   openPath: (filePath) => ipcInvoke('open-path', filePath),
+  rendererLog: (level: 'error' | 'warn', message: string) => ipcInvoke(IPC_CHANNEL_NAMES.rendererLog, level, message),
   // 便捷封装 - 文件/目录选择
   selectFile: (options: DialogOptions = {}) => {
     const props = Array.isArray(options.properties) ? [...options.properties] : []

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { log } from '@utils/logger'
 
 export interface Task {
   id: number
@@ -10,6 +11,7 @@ export interface Task {
   operation: 'analyze' | 'install' | 'decompile' | 'recompile' | 'resign'
   operationLabel: string
   status: 'downloading' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancelling'
+  phase: 'idle' | 'download' | 'operation' | 'finished'
   progress: number
   progressLabel: string
   result: string
@@ -23,6 +25,17 @@ export interface Task {
   taskDir: string
 }
 
+export type TaskEvent =
+  | 'start_download'
+  | 'download_progress'
+  | 'download_complete'
+  | 'start_operation'
+  | 'operation_complete'
+  | 'operation_error'
+  | 'cancel_request'
+  | 'cancel_ack'
+  | 'reset_for_retry'
+
 let nextId = 1
 
 const STORAGE_KEY = 'task-history'
@@ -32,7 +45,17 @@ function loadTasks(): Task[] {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const tasks: Task[] = JSON.parse(raw)
-      for (const t of tasks) t.startedAt ??= t.createdAt
+      for (const t of tasks) {
+        t.startedAt ??= t.createdAt
+        // Backward compat: infer phase from status for pre-phase data
+        if (!t.phase) {
+          if (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled') {
+            t.phase = 'finished'
+          } else {
+            t.phase = 'idle'
+          }
+        }
+      }
       return tasks
     }
   } catch {}
@@ -73,11 +96,11 @@ async function tryDeleteTaskDirs(ids: string[]): Promise<void> {
       try {
         await window.electronAPI.callBackendAPI('task.delete_task_dir', { task_id: id })
       } catch (err) {
-        console.error('[taskStore] auto-delete task dir failed for', id, err)
+        log.error('[taskStore] auto-delete task dir failed for', id, err)
       }
     }
   } catch (err) {
-    console.error('[taskStore] auto-delete config check failed', err)
+    log.error('[taskStore] auto-delete config check failed', err)
   }
 }
 
@@ -114,7 +137,7 @@ async function notifyTaskTerminal(task: Task): Promise<void> {
     }
     await notify(title, body)
   } catch (err) {
-    console.error('[taskStore] notify failed', err)
+    log.error('[taskStore] notify failed', err)
   }
 }
 
@@ -137,6 +160,7 @@ export const useTaskStore = defineStore('task', () => {
       id: nextId++,
       ...partial,
       status: partial.source === 'url' ? 'downloading' : 'queued',
+      phase: partial.source === 'url' ? 'download' : 'idle',
       progress: 0,
       progressLabel: '',
       result: '',
@@ -168,6 +192,83 @@ export const useTaskStore = defineStore('task', () => {
         persist()
         void notifyTaskTerminal(tasks.value[idx])
       }
+    }
+  }
+
+  function transition(id: number, event: TaskEvent, payload?: any) {
+    const idx = tasks.value.findIndex(t => t.id === id)
+    if (idx === -1) return
+
+    const task = tasks.value[idx]
+    const updates: any = {}
+    let terminal = false
+
+    switch (event) {
+      case 'start_download':
+        updates.phase = 'download'
+        updates.status = 'downloading'
+        updates.progress = 0
+        break
+      case 'download_progress':
+        updates.progress = payload?.progress ?? 0
+        updates.progressLabel = `${updates.progress}%`
+        break
+      case 'download_complete':
+        if (payload?.file_path) updates.filePath = payload.file_path
+        updates.progress = 100
+        break
+      case 'start_operation':
+        updates.phase = 'operation'
+        updates.status = 'running'
+        updates.progress = 0
+        break
+      case 'operation_complete':
+        updates.status = 'completed'
+        updates.phase = 'finished'
+        updates.progress = 100
+        updates.finishedAt = Date.now()
+        // Accept any of the backend's payload shapes (output_dir / output_apk / apk_path)
+        updates.outputPath = payload?.output_dir || payload?.output_apk || payload?.apk_path || ''
+        // For analyze, PackagePage already converted payload → HTML via renderApkInfo
+        updates.result = payload?.result ?? ''
+        terminal = true
+        break
+      case 'operation_error':
+        updates.status = 'failed'
+        updates.phase = 'finished'
+        updates.error = payload?.message || ''
+        updates.finishedAt = Date.now()
+        terminal = true
+        break
+      case 'cancel_request':
+        updates.status = 'cancelling'
+        break
+      case 'cancel_ack':
+        updates.status = 'cancelled'
+        updates.phase = 'finished'
+        updates.finishedAt = Date.now()
+        terminal = true
+        break
+      case 'reset_for_retry':
+        updates.status = 'queued'
+        updates.phase = 'idle'
+        updates.error = ''
+        updates.result = ''
+        updates.progress = 0
+        updates.progressLabel = ''
+        updates.startedAt = Date.now()
+        updates.finishedAt = null
+        break
+      default:
+        // Unknown event — no-op
+        return
+    }
+
+    Object.assign(task, updates)
+
+    if (terminal) {
+      persist()
+      void notifyTaskTerminal(task)
     }
   }
 
@@ -214,5 +315,5 @@ export const useTaskStore = defineStore('task', () => {
     persist()
   }
 
-  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll }
+  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, transition, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll }
 })

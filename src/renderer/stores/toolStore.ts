@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import serviceManager from '../services/ServiceManager'
 import api from '../api/unifiedApi'
+import { log } from '@utils/logger'
 
 export const useToolStore = defineStore('tool', () => {
   const tools = ref([])
@@ -80,7 +81,7 @@ export const useToolStore = defineStore('tool', () => {
       tools.value = result
       lastFetched.value = Date.now()
     } catch (err) {
-      console.error('Failed to fetch tools:', err)
+      log.error('Failed to fetch tools:', err)
       error.value = err.message || '获取工具信息失败'
     } finally {
       loading.value = false

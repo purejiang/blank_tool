@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import unifiedApi from '../api/unifiedApi'
+import { log } from '@utils/logger'
 
 type SignatureConfig = {
   id: string
@@ -25,7 +26,7 @@ export const useSignatureStore = defineStore('signature', () => {
         }
       }
     } catch (error) {
-      console.error('Failed to load signature configs:', error)
+      log.error('Failed to load signature configs:', error)
     } finally {
       loading.value = false
     }
@@ -40,7 +41,7 @@ export const useSignatureStore = defineStore('signature', () => {
         await api.appConfig.set('signatureConfigs', JSON.parse(JSON.stringify(configs.value)))
       }
     } catch (error) {
-      console.error('Failed to save signature configs:', error)
+      log.error('Failed to save signature configs:', error)
       throw error
     }
   }
