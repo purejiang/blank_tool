@@ -478,7 +478,7 @@ def _parse_manifest_meta_data(apk_path, task_id: str = ""):
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
             return []
-        context = CommandExecutionContext(task_id=task_id)
+        context = CommandExecutionContext(task_id=task_id, log_output=False)
         result = aapt.execute(["dump", "xmltree", "--file", "AndroidManifest.xml", apk_path], context)
         output = result.get("stdout", "")
         lines = output.split("\n")
@@ -592,7 +592,7 @@ def _resolve_resource_refs(apk_path, meta_list, task_id: str = ""):
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
             return
-        context = CommandExecutionContext(task_id=task_id)
+        context = CommandExecutionContext(task_id=task_id, log_output=False)
         result = aapt.execute(["dump", "resources", apk_path], context)
         output = result.get("stdout", "")
         lines = output.split("\n")
