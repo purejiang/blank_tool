@@ -257,6 +257,7 @@ export default {
     installFailed: '安装失败',
     installSvcUnavailable: '安装服务不可用',
     installDone: '安装成功',
+    installedToDevice: '安装到设备：{label}',
     decompiling: '反编译中...',
     decompileing: '反编译中...',
     decompileFailed: '反编译失败',
@@ -314,6 +315,13 @@ export default {
     dangerousPerms: '危险权限',
     otherPermsShow: '显示全部 {count} 项权限',
     otherPermsHide: '隐藏',
+    // Signature info
+    signatureInfo: '签名信息',
+    apkMd5: 'APK MD5',
+    sigMd5: '签名 MD5',
+    sigSha1: '签名 SHA1',
+    sigSha256: '签名 SHA256',
+    unsignedApk: '未签名或证书缺失',
   },
   // Signature Edit Modal
   signature: {

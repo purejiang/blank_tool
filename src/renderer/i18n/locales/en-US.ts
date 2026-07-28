@@ -257,6 +257,7 @@ export default {
     installFailed: 'Install failed',
     installSvcUnavailable: 'Install service unavailable',
     installDone: 'Install success',
+    installedToDevice: 'Installed to device: {label}',
     decompiling: 'Decompiling...',
     decompileing: 'Decompiling...',
     decompileFailed: 'Decompile failed',
@@ -314,6 +315,13 @@ export default {
     dangerousPerms: 'Dangerous Permissions',
     otherPermsShow: 'Show {count} permissions',
     otherPermsHide: 'Hide',
+    // Signature info
+    signatureInfo: 'Signature',
+    apkMd5: 'APK MD5',
+    sigMd5: 'Sig MD5',
+    sigSha1: 'Sig SHA1',
+    sigSha256: 'Sig SHA256',
+    unsignedApk: 'Unsigned or cert missing',
   },
   // Signature Edit Modal
   signature: {

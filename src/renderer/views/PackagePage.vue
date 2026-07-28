@@ -173,6 +173,10 @@
               <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
             </n-button>
           </div>
+          <div v-if="task.operation === 'install' && task.deviceLabel" class="task-output">
+            <n-icon size="14" color="var(--app-green)"><Smartphone /></n-icon>
+            <span class="task-output-path">{{ t('task.installedToDevice', { label: task.deviceLabel }) }}</span>
+          </div>
           <div v-if="task.result" class="task-result" v-html="task.result" />
           <!-- Terminal task: has file log content → show it with refresh -->
           <div v-if="isTerminal(task.status) && taskLogCache.has(task.id) && taskLogCache.get(task.id)?.length" class="task-logs">
@@ -240,11 +244,12 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, NVirtualList, useDialog } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText
+  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText, Smartphone
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
 import { useSignatureStore } from '@stores/signatureStore'
+import { useDeviceStore } from '@stores/deviceStore'
 import type { Task } from '@stores/taskStore'
 import { formatDuration as formatDurationUtil } from '@utils/formatDuration'
 import { log as logUtil } from '@utils/logger'
@@ -254,6 +259,7 @@ const { t } = useI18n()
 const dialog = useDialog()
 const taskStore = useTaskStore()
 const sigStore = useSignatureStore()
+const deviceStore = useDeviceStore()
 if (sigStore.configs.length === 0) sigStore.loadConfigs()
 
 const { showError, showWarning } = useNotification()
@@ -524,6 +530,14 @@ async function executeTask(task: Task) {
           if (payload?.apk_path) transitionPayload.apk_path = payload.apk_path
           // analyze: render the rich analysis card HTML via renderApkInfo
           if (payload?.package_name) transitionPayload.result = renderApkInfo(payload)
+          // install: attach device label (model + serial) for notification & display
+          if (task.operation === 'install' && payload?.device_id) {
+            const dev = deviceStore.selectedDevice
+            const model = deviceStore.deviceInfo.model || dev?.name || dev?.id || payload.device_id
+            const serial = deviceStore.deviceInfo.serial || payload.device_id
+            transitionPayload.deviceLabel = `${model} (${serial})`
+            taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] ${t('task.installedToDevice', { label: transitionPayload.deviceLabel })}`)
+          }
           taskStore.transition(task.id, 'operation_complete', transitionPayload)
         }
       },
@@ -826,6 +840,34 @@ function renderApkInfo(data: any) {
     html += '</div>'
   }
   html += '</div>'
+
+  // ===== SIGNATURE INFO CARD =====
+  const fileMd5 = data.file_md5
+  const sigMd5 = data.sig_md5
+  const sigSha1 = data.sig_sha1
+  const sigSha256 = data.sig_sha256
+  const hasAnyHash = (fileMd5 && fileMd5 !== '-') || (sigMd5 && sigMd5 !== '-') || (sigSha1 && sigSha1 !== '-') || (sigSha256 && sigSha256 !== '-')
+  if (hasAnyHash) {
+    html += `<details style="background:var(--app-card-bg);border:1px solid var(--app-card-border);border-radius:8px;padding:8px 14px;margin-top:6px">`
+    html += `<summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('signatureInfo')}</summary>`
+    html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:2px;font-size:12px;font-family:monospace">'
+    if (fileMd5 && fileMd5 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('apkMd5')}：</span><span style="color:var(--app-text-secondary)">${esc(fileMd5)}</span></div>`
+    }
+    if (sigMd5 && sigMd5 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('sigMd5')}：</span><span style="color:var(--app-text-secondary)">${esc(sigMd5)}</span></div>`
+    }
+    if (sigSha1 && sigSha1 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('sigSha1')}：</span><span style="color:var(--app-text-secondary)">${esc(sigSha1)}</span></div>`
+    }
+    if (sigSha256 && sigSha256 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('sigSha256')}：</span><span style="color:var(--app-text-secondary)">${esc(sigSha256)}</span></div>`
+    }
+    if (sigMd5 === '-' || sigSha1 === '-' || sigSha256 === '-') {
+      html += `<span style="color:var(--app-yellow,#ca8a04);font-size:11px;margin-top:4px">${label('unsignedApk')}</span>`
+    }
+    html += '</div></details>'
+  }
 
   // ===== DEEP ANALYSIS CARD =====
   const hasSoCompFull = soComp && !soComp.single_arch && !soComp.no_native && soComp.arches && Object.keys(soComp.arches).length > 0
