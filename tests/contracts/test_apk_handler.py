@@ -2,6 +2,8 @@
 Contract tests for APK handler API methods.
 """
 import json
+from unittest.mock import patch, MagicMock
+from app.handlers.apk_handler import _extract_signature_hashes
 
 
 class TestApkAnalyze:
@@ -244,3 +246,49 @@ class TestSignUsesTaskDir:
         assert "tasks" in result["apk_path"]
         assert "sign-task-99" in result["apk_path"]
         assert result["apk_path"].endswith("original-signed.apk")
+
+
+# ---------------------------------------------------------------------------
+# _extract_signature_hashes contract tests
+# ---------------------------------------------------------------------------
+
+def test_extract_signature_hashes_returns_dashes_when_apksigner_missing():
+    with patch("app.handlers.apk_handler.manager.get_tool", return_value=None):
+        result = _extract_signature_hashes("/nonexistent.apk")
+        assert result["sig_md5"] == "-"
+        assert result["sig_sha1"] == "-"
+        assert result["sig_sha256"] == "-"
+        assert "sig_warning" in result
+
+
+def test_extract_signature_hashes_parses_certs():
+    fake_output = (
+        "Signer #1 certificate DN: CN=Test\n"
+        "Signer #1 certificate SHA-256 digest: ab:12:cd:34\n"
+        "Signer #1 certificate SHA-1 digest: ef:56:78:90\n"
+        "Signer #1 certificate MD5 digest: 12:34:56:78:90\n"
+    )
+    with patch("app.handlers.apk_handler.manager.get_tool") as mock_get:
+        mock_tool = MagicMock()
+        mock_tool.is_valid = True
+        mock_tool.execute.return_value = {
+            "stdout": fake_output, "stderr": "", "returncode": 0,
+        }
+        mock_get.return_value = mock_tool
+        result = _extract_signature_hashes("/fake.apk")
+        assert result["sig_md5"] == "1234567890"
+        assert result["sig_sha1"] == "ef567890"
+        assert result["sig_sha256"] == "ab12cd34"
+
+
+def test_extract_signature_hashes_handles_unsigned():
+    with patch("app.handlers.apk_handler.manager.get_tool") as mock_get:
+        mock_tool = MagicMock()
+        mock_tool.is_valid = True
+        mock_tool.execute.return_value = {
+            "stdout": "Verifies\n", "stderr": "", "returncode": 1,
+        }
+        mock_get.return_value = mock_tool
+        result = _extract_signature_hashes("/fake.apk")
+        assert result["sig_md5"] == "-"
+        assert "sig_warning" in result

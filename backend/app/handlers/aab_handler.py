@@ -106,6 +106,13 @@ def convert_aab_to_apks(params, stream_handler):
             "--bundle", aab_path,
             "--output", output_path,
         ]
+        # Bundletool internally extracts aapt2 from its own jar via
+        # jdk.zipfs (jar:// FileSystem provider), which is missing from
+        # our stripped runtime JRE. Point it at the bundled aapt2 binary
+        # to avoid ProviderNotFoundException: Provider "jar" not found.
+        aapt = manager.get_tool("aapt")
+        if aapt and aapt.is_valid and aapt.tool_path:
+            args += ["--aapt2", aapt.tool_path]
         if keystore.get("path"):
             args += [
                 "--ks", keystore.get("path", ""),
