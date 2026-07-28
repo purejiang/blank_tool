@@ -2,8 +2,23 @@
 Contract tests for APK handler API methods.
 """
 import json
+import time
 from unittest.mock import patch, MagicMock
 from app.handlers.apk_handler import _extract_signature_hashes
+
+
+def make_fake_proc(stdout_lines=None, returncode=0):
+    """Return a fake Popen-like object for streaming execute mocks."""
+    lines = list(stdout_lines or [])
+    fake_stdout = MagicMock()
+    line_iter = iter(lines + ['', '', ''])
+    fake_stdout.readline = lambda: next(line_iter)
+    fake_proc = MagicMock()
+    fake_proc.stdout = fake_stdout
+    fake_proc.wait = lambda: None
+    fake_proc.returncode = returncode
+    fake_proc.kill = lambda: None
+    return fake_proc
 
 
 class TestApkAnalyze:
@@ -12,9 +27,18 @@ class TestApkAnalyze:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        assert data["id"] == 11
-        result = data["result"]
-        assert result["type"] == "error"
+        # Streaming handler returns stream_id immediately
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
 
     def test_nonexistent_apk_path_returns_error(self, api_handler):
         request = {
@@ -25,10 +49,18 @@ class TestApkAnalyze:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        assert data["id"] == 12
-        assert data["finished"] is True
-        result = data["result"]
-        assert result["type"] == "error"
+        # Streaming handler returns stream_id immediately
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
 
 
 class TestApkGetInfo:
@@ -37,8 +69,18 @@ class TestApkGetInfo:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        result = data["result"]
-        assert result["type"] == "error"
+        # apk.getInfo delegates to apk_analyze (streaming)
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
 
 
 class TestApkDecompile:
@@ -47,8 +89,18 @@ class TestApkDecompile:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        result = data["result"]
-        assert result["type"] == "error"
+        # Streaming handler returns stream_id immediately
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
 
 
 class TestApkRecompile:
@@ -57,8 +109,18 @@ class TestApkRecompile:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        result = data["result"]
-        assert result["type"] == "error"
+        # Streaming handler returns stream_id immediately
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
 
 
 class TestApkSign:
@@ -67,8 +129,18 @@ class TestApkSign:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        result = data["result"]
-        assert result["type"] == "error"
+        # Streaming handler returns stream_id immediately
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
 
 
 class TestApkGetProgress:
@@ -139,22 +211,29 @@ class TestDecompileUsesTaskDir:
         fake_apk = "/tmp/test.apk"
         apktool_mock = MagicMock()
         apktool_mock.is_valid = True
-        apktool_mock.execute.return_value = {"returncode": 0, "stdout": ""}
+        apktool_mock.execute.return_value = make_fake_proc(stdout_lines=[], returncode=0)
         mgr_mock = MagicMock()
         mgr_mock.get_tool.return_value = apktool_mock
+
+        captured_events = []
+
+        def fake_stream_handler(data):
+            captured_events.append(data)
 
         with patch("app.handlers.apk_handler.manager", mgr_mock), \
              patch("app.handlers.apk_handler.os.path.exists", return_value=True), \
              patch("app.handlers.apk_handler.os.makedirs"):
             from app.handlers.apk_handler import apk_decompile
-            result = apk_decompile(
+            apk_decompile(
                 {"file_path": fake_apk, "options": {"task_id": "my-task-123"}},
-                stream_handler=None,
+                stream_handler=fake_stream_handler,
             )
 
-        assert "tasks" in result["output_dir"]
-        assert "my-task-123" in result["output_dir"]
-        assert result["output_dir"].endswith("test")
+        assert captured_events[-1]["type"] == "complete"
+        output_dir = captured_events[-1]["payload"]["output_dir"]
+        assert "tasks" in output_dir
+        assert "my-task-123" in output_dir
+        assert output_dir.endswith("test")
 
     def test_decompile_fallback_no_task_id(self):
         """Without task_id, output_dir falls back to Output/decompiled/."""
@@ -163,22 +242,29 @@ class TestDecompileUsesTaskDir:
         fake_apk = "/tmp/test.apk"
         apktool_mock = MagicMock()
         apktool_mock.is_valid = True
-        apktool_mock.execute.return_value = {"returncode": 0, "stdout": ""}
+        apktool_mock.execute.return_value = make_fake_proc(stdout_lines=[], returncode=0)
         mgr_mock = MagicMock()
         mgr_mock.get_tool.return_value = apktool_mock
+
+        captured_events = []
+
+        def fake_stream_handler(data):
+            captured_events.append(data)
 
         with patch("app.handlers.apk_handler.manager", mgr_mock), \
              patch("app.handlers.apk_handler.os.path.exists", return_value=True), \
              patch("app.handlers.apk_handler.os.makedirs"):
             from app.handlers.apk_handler import apk_decompile
-            result = apk_decompile(
+            apk_decompile(
                 {"file_path": fake_apk, "options": {}},
-                stream_handler=None,
+                stream_handler=fake_stream_handler,
             )
 
-        assert "tasks" not in result["output_dir"]
-        assert "decompiled" in result["output_dir"]
-        assert result["output_dir"].endswith("test")
+        assert captured_events[-1]["type"] == "complete"
+        output_dir = captured_events[-1]["payload"]["output_dir"]
+        assert "tasks" not in output_dir
+        assert "decompiled" in output_dir
+        assert output_dir.endswith("test")
 
 
 class TestRecompileUsesTaskDir:
@@ -191,25 +277,32 @@ class TestRecompileUsesTaskDir:
         fake_project = "/tmp/my_project"
         apktool_mock = MagicMock()
         apktool_mock.is_valid = True
-        apktool_mock.execute.return_value = {"returncode": 0, "stdout": ""}
+        apktool_mock.execute.return_value = make_fake_proc(stdout_lines=[], returncode=0)
         mgr_mock = MagicMock()
         mgr_mock.get_tool.return_value = apktool_mock
+
+        captured_events = []
+
+        def fake_stream_handler(data):
+            captured_events.append(data)
 
         with patch("app.handlers.apk_handler.manager", mgr_mock), \
              patch("app.handlers.apk_handler.os.path.exists", return_value=True), \
              patch("app.handlers.apk_handler.os.makedirs"):
             from app.handlers.apk_handler import apk_recompile
-            result = apk_recompile(
+            apk_recompile(
                 {
                     "project_path": fake_project,
                     "options": {"task_id": "task-rcl-42"},
                 },
-                stream_handler=None,
+                stream_handler=fake_stream_handler,
             )
 
-        assert "tasks" in result["output_apk"]
-        assert "task-rcl-42" in result["output_apk"]
-        assert "recompiled" in result["output_apk"]
+        assert captured_events[-1]["type"] == "complete"
+        output_apk = captured_events[-1]["payload"]["output_apk"]
+        assert "tasks" in output_apk
+        assert "task-rcl-42" in output_apk
+        assert "recompiled" in output_apk
 
 
 class TestSignUsesTaskDir:
@@ -222,15 +315,20 @@ class TestSignUsesTaskDir:
         fake_apk = "/tmp/original.apk"
         apksigner_mock = MagicMock()
         apksigner_mock.is_valid = True
-        apksigner_mock.execute.return_value = {"returncode": 0, "stdout": ""}
+        apksigner_mock.execute.return_value = make_fake_proc(stdout_lines=[], returncode=0)
         mgr_mock = MagicMock()
         mgr_mock.get_tool.return_value = apksigner_mock
+
+        captured_events = []
+
+        def fake_stream_handler(data):
+            captured_events.append(data)
 
         with patch("app.handlers.apk_handler.manager", mgr_mock), \
              patch("app.handlers.apk_handler.os.path.exists", return_value=True), \
              patch("app.handlers.apk_handler.os.makedirs"):
             from app.handlers.apk_handler import apk_sign
-            result = apk_sign(
+            apk_sign(
                 {
                     "apk_path": fake_apk,
                     "keystore": {
@@ -240,12 +338,14 @@ class TestSignUsesTaskDir:
                         "task_id": "sign-task-99",
                     },
                 },
-                stream_handler=None,
+                stream_handler=fake_stream_handler,
             )
 
-        assert "tasks" in result["apk_path"]
-        assert "sign-task-99" in result["apk_path"]
-        assert result["apk_path"].endswith("original-signed.apk")
+        assert captured_events[-1]["type"] == "complete"
+        apk_path = captured_events[-1]["payload"]["apk_path"]
+        assert "tasks" in apk_path
+        assert "sign-task-99" in apk_path
+        assert apk_path.endswith("original-signed.apk")
 
 
 # ---------------------------------------------------------------------------
