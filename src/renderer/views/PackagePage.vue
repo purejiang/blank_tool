@@ -288,7 +288,7 @@ function flushLogBuffer(taskId: number) {
 
 function startNowTimer() {
   if (nowIv !== null) return
-  const iv = setInterval(() => { now.value = Date.now() }, 1000)
+  const iv = setInterval(() => { now.value = Date.now() }, 100)
   activeIntervals.add(iv)
   nowIv = iv
 }

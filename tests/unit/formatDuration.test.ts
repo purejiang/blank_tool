@@ -29,7 +29,7 @@ describe('formatDuration', () => {
       taskDir: '',
       startedAt: 1000, finishedAt: 62000, createdAt: 1000,
     }
-    expect(formatDuration(task)).toBe('1m 1s')
+    expect(formatDuration(task)).toBe('1m 1.0s')
   })
 
   it('after-retry: uses startedAt (last attempt) not createdAt', () => {
@@ -79,5 +79,18 @@ describe('formatDuration', () => {
       startedAt: 1000, finishedAt: 1000, createdAt: 1000,
     }
     expect(formatDuration(task)).toBe('0.0s')
+  })
+
+  it('hours branch: keeps 0.1s precision', () => {
+    const task = {
+      id: 1, source: 'local' as const, filePath: '', fileName: 'test.apk',
+      operation: 'analyze' as const, operationLabel: '分析',
+      status: 'completed' as const, progress: 100, progressLabel: '完成',
+      result: '', outputPath: '', logs: [], error: '', collapsed: false,
+      taskDir: '',
+      startedAt: 1000, finishedAt: 3601500, createdAt: 1000,
+    }
+    // delta = 3600500ms = 3600.5s → 1h 0m 0.5s
+    expect(formatDuration(task)).toBe('1h 0m 0.5s')
   })
 })

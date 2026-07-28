@@ -15,6 +15,7 @@ from app.common.decorators import streaming
 from app.utils.logger import Logger
 from app.utils.env import get_output_dir, get_task_subdir
 from app.utils.task_log_writer import append_task_log
+from app.utils.file_utils import get_file_hash
 from app.utils.apk_inspector import (
     enumerate_so_files,
     compare_so_across_arches,
@@ -24,6 +25,56 @@ from app.utils.apk_inspector import (
 
 logger = Logger.get_logger("ApkHandler")
 manager = ToolManager.instance()
+
+
+def _extract_signature_hashes(apk_path: str) -> dict:
+    """Extract certificate MD5, SHA-1, SHA-256 from APK using apksigner."""
+    try:
+        apksigner = manager.get_tool("apksigner")
+        if not apksigner or not apksigner.is_valid:
+            return {
+                "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+                "sig_warning": "apksigner unavailable",
+            }
+
+        ctx = CommandExecutionContext(capture_output=True, log_output=False)
+        result = apksigner.execute(["verify", "--print-certs", "--verbose", apk_path], ctx)
+
+        if result.get("returncode", 1) != 0:
+            return {
+                "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+                "sig_warning": "unsigned or no certificate",
+            }
+
+        output = result.get("stdout", "") + result.get("stderr", "")
+
+        md5_match = re.search(
+            r"Signer #1 certificate MD5 digest:\s*([0-9a-fA-F:]+)", output
+        )
+        sha1_match = re.search(
+            r"Signer #1 certificate SHA-1 digest:\s*([0-9a-fA-F:]+)", output
+        )
+        sha256_match = re.search(
+            r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", output
+        )
+
+        if not md5_match and not sha1_match and not sha256_match:
+            return {
+                "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+                "sig_warning": "unsigned or no certificate",
+            }
+
+        return {
+            "sig_md5": md5_match.group(1).lower().replace(":", "") if md5_match else "-",
+            "sig_sha1": sha1_match.group(1).lower().replace(":", "") if sha1_match else "-",
+            "sig_sha256": sha256_match.group(1).lower().replace(":", "") if sha256_match else "-",
+        }
+    except Exception as e:
+        logger.warning(f"Signature extraction failed: {e}")
+        return {
+            "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+            "sig_warning": f"Signature extraction failed: {e}",
+        }
 
 
 @streaming
@@ -147,6 +198,29 @@ def apk_analyze(params, stream_handler):
             logger.warning(f"Meta-data extraction failed: {e}")
             info["warnings"].append(f"Meta-data extraction failed: {e}")
             stream_handler({"type": "log", "line": f"[Meta-data Extraction] Failed: {e}"})
+
+        # C5: File hash and signature certificate extraction
+        stream_handler({"type": "log", "line": "[Signature] Extracting certs..."})
+        try:
+            info["file_md5"] = get_file_hash(apk_path, "md5") or "-"
+        except Exception as e:
+            logger.warning(f"File MD5 failed: {e}")
+            info["file_md5"] = "-"
+            info["warnings"].append(f"File MD5 failed: {e}")
+
+        try:
+            sig_info = _extract_signature_hashes(apk_path)
+            info["sig_md5"] = sig_info.get("sig_md5", "-")
+            info["sig_sha1"] = sig_info.get("sig_sha1", "-")
+            info["sig_sha256"] = sig_info.get("sig_sha256", "-")
+            if "sig_warning" in sig_info:
+                info["warnings"].append(sig_info["sig_warning"])
+        except Exception as e:
+            logger.warning(f"Signature extraction failed: {e}")
+            info["sig_md5"] = "-"
+            info["sig_sha1"] = "-"
+            info["sig_sha256"] = "-"
+            info["warnings"].append(f"Signature extraction failed: {e}")
 
         stream_handler({"type": "complete", "payload": info})
     except ToolException as e:

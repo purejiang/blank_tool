@@ -17,7 +17,7 @@ export function formatDuration(task: Task, nowOverride?: number): string {
   const totalSecs = ms / 1000
   const mins = Math.floor(totalSecs / 60)
   const hrs = Math.floor(mins / 60)
-  if (hrs > 0) return `${hrs}h ${mins % 60}m ${Math.floor(totalSecs % 60)}s`
-  if (mins > 0) return `${mins}m ${Math.floor(totalSecs % 60)}s`
+  if (hrs > 0) return `${hrs}h ${mins % 60}m ${(totalSecs % 60).toFixed(1)}s`
+  if (mins > 0) return `${mins}m ${(totalSecs % 60).toFixed(1)}s`
   return `${totalSecs.toFixed(1)}s`
 }
