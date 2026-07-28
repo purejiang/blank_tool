@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
+from app.common.decorators import streaming
 from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 
@@ -151,6 +152,7 @@ def convert_aab_to_apks(params, stream_handler):
             task_manager.unregister(task_id)
 
 
+@streaming
 def install_aab(params, stream_handler):
     """Convert AAB to APKS then install on a device."""
     aab_path = params.get("aab_path")
@@ -180,6 +182,8 @@ def install_aab(params, stream_handler):
         task_manager.register(task_id, process_holder, cleanup_paths=[output_path])
 
     try:
+        if stream_handler:
+            stream_handler({"type": "log", "line": "[AAB] Converting to APKS..."})
         convert_result = convert_aab_to_apks(
             {
                 "aab_path": aab_path,
@@ -197,6 +201,9 @@ def install_aab(params, stream_handler):
         if not apks_path:
             raise ToolException("No APKS path after conversion")
 
+        if stream_handler:
+            stream_handler({"type": "log", "line": f"[AAB] APKS generated: {apks_path}"})
+
         bundletool = manager.get_tool("bundletool")
         if not bundletool or not bundletool.is_valid:
             raise ToolNotFoundError("bundletool")
@@ -212,6 +219,9 @@ def install_aab(params, stream_handler):
         if not java or not os.path.exists(java):
             raise ToolException("Java runtime not found or invalid")
 
+        if stream_handler:
+            stream_handler({"type": "log", "line": f"[AAB] Installing to device {device_id}..."})
+
         args = [
             java, "-jar", bundletool.tool_path,
             "install-apks", "--apks", apks_path,
@@ -223,6 +233,8 @@ def install_aab(params, stream_handler):
             return {"cancelled": True, "task_id": task_id}
         if result.get("returncode", 1) != 0:
             raise ToolException(result.get("stderr", "Installation failed"))
+        if stream_handler:
+            stream_handler({"type": "complete", "payload": {"device_id": device_id, "apks_path": apks_path, "success": True}})
         return {"device_id": device_id, "apks_path": apks_path}
     except ToolException:
         raise

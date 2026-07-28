@@ -2,6 +2,7 @@
 Contract tests for AAB handler API methods.
 """
 import json
+import time
 
 
 class TestAabSign:
@@ -45,8 +46,18 @@ class TestInstallAab:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        result = data["result"]
-        assert result["type"] == "error"
+        # Streaming handler returns stream_id immediately
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
 
     def test_missing_device_id_returns_error(self, api_handler):
         request = {
@@ -57,9 +68,19 @@ class TestInstallAab:
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
-        result = data["result"]
-        assert result["type"] == "error"
-        assert "device" in result["payload"]["message"].lower()
+        # Streaming handler returns stream_id immediately
+        assert "stream_id" in data.get("result", {})
+        assert data["finished"] is False
+
+        # Wait for async stream thread to finish and capture error event
+        for _ in range(50):
+            if len(api_handler._captured) >= 2:
+                break
+            time.sleep(0.01)
+        assert len(api_handler._captured) >= 2
+        error_event = api_handler._captured[0]
+        assert error_event["result"]["type"] == "error"
+        assert "device" in error_event["result"]["payload"]["message"].lower()
 
 
 class TestResponseShape:
