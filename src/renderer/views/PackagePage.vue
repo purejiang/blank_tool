@@ -959,67 +959,55 @@ function renderApkInfo(data: any) {
     // v2.1.1: Meta Data
     const metaData = data.meta_data
     if (metaData && Array.isArray(metaData) && metaData.length > 0) {
-      // Group by parent
-      const grouped: Record<string, any[]> = {}
-      for (const m of metaData) {
-        const p = m.parent || 'unknown'
-        if (!grouped[p]) grouped[p] = []
-        grouped[p].push(m)
-      }
       const metaCount = metaData.length
       html += `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('metaData')} (${metaCount} entries)</summary>`
-      html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;font-size:12px">'
+      html += '<table class="meta-table" style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">'
+      html += '<thead><tr>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Parent</th>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Name</th>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Value</th>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Resource</th>'
+      html += '</tr></thead><tbody>'
 
-      for (const [parent, entries] of Object.entries(grouped)) {
-        const e = entries as any[]
-        html += '<div>'
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-        html += `<span style="display:inline-block;background:var(--app-green);color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;line-height:1.4">&lt;${esc(parent)}&gt;</span>`
-        html += `<span style="color:var(--app-text-dim);font-size:11px">${e.length} entries</span>`
-        html += '</div>'
-        html += '<div style="padding-left:6px;border-left:2px solid var(--app-card-border)">'
+      for (const item of metaData) {
+        const parent = item.parent || 'unknown'
+        const name = item.name || ''
+        const value = item.value || ''
+        const resValue = item.resource_value || ''
+        const resContent = item.resource_content
+        const resResolved = item.resource_resolved
 
-        for (const item of e) {
-          const name = item.name || ''
-          const value = item.value || ''
-          const resContent = item.resource_content
-          const resResolved = item.resource_resolved
-
-          html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:3px">'
-          html += `<span style="color:var(--app-text-primary);font-family:monospace;font-size:11px;min-width:120px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${esc(name)}">${esc(name)}</span>`
-
-          if (value && !value.startsWith('@')) {
-            html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(value)}</span>`
-          }
-
-          // Scalar resource value (string/integer resolved from aapt2 dump resources)
-          if (item.resource_value) {
-            if (!value) html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(item.resource_value)}</span>`
-          }
-
-          // Resource reference with resolved content
-          if (resContent && resContent.length > 0) {
-            if (!value) html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += '<span style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0">'
-            if (resResolved) {
-              html += `<span style="color:var(--app-text-dim);font-size:10px">${esc(resResolved)}</span>`
-            }
-            for (const ci of resContent) {
-              html += `<span style="color:var(--app-text-secondary);font-size:11px;padding-left:8px">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</span>`
-            }
-            html += '</span>'
-          } else if (!value) {
-            html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += `<span style="color:var(--app-text-dim);font-style:italic;font-size:11px">-</span>`
-          }
-
-          html += '</div>'
+        html += '<tr>'
+        // Parent column - green chip
+        html += `<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border)"><span style="display:inline-block;background:var(--app-green);color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;line-height:1.4">&lt;${esc(parent)}&gt;</span></td>`
+        // Name column - monospace, no truncation, allow wrap
+        html += `<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border);font-family:monospace;font-size:11px;word-break:break-all">${esc(name)}</td>`
+        // Value column - prefer value (non-@), then resource_value, else gray -
+        html += '<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border);font-family:monospace;font-size:11px;word-break:break-all">'
+        if (value && !value.startsWith('@')) {
+          html += esc(value)
+        } else if (resValue) {
+          html += esc(resValue)
+        } else {
+          html += '<span style="color:var(--app-text-dim);font-style:italic">-</span>'
         }
-        html += '</div></div>'
+        html += '</td>'
+        // Resource column - resolved path + content array
+        html += '<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border)">'
+        if (resResolved || (resContent && resContent.length > 0)) {
+          if (resResolved) {
+            html += `<div style="color:var(--app-text-dim);font-size:10px">${esc(resResolved)}</div>`
+          }
+          if (resContent && resContent.length > 0) {
+            for (const ci of resContent) {
+              html += `<div style="color:var(--app-text-secondary);font-size:11px">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</div>`
+            }
+          }
+        }
+        html += '</td>'
+        html += '</tr>'
       }
-      html += '</div></details>'
+      html += '</tbody></table></details>'
     }
 
     html += '</div>'
@@ -1170,4 +1158,8 @@ function renderApkInfo(data: any) {
   line-height: 1.6;
 }
 .task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.meta-table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
 </style>
