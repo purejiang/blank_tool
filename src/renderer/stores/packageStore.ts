@@ -132,5 +132,5 @@ export const usePackageStore = defineStore('package', () => {
     reset
   }
 }, {
-  persist: false // 启用持久化
+  persist: false // 不持久化：包列表每次启动重新检测
 })

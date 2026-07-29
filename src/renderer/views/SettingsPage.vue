@@ -52,6 +52,20 @@
         </n-form>
       </n-card>
 
+      <!-- Logging -->
+      <n-card :bordered="false" class="settings-card">
+        <div class="section-header">
+          <n-icon size="18" color="#10B981"><FileText /></n-icon>
+          <span class="section-title">{{ t('settings.logging') }}</span>
+        </div>
+        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
+          <n-form-item :label="t('settings.loggingLevel')">
+            <n-select v-model:value="logLevel" @update:value="saveLogLevel"
+              :options="logLevelOptions" style="width: 220px" />
+          </n-form-item>
+        </n-form>
+      </n-card>
+
       <!-- Paths -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
@@ -224,7 +238,7 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
 import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
-import { log } from '@utils/logger'
+import { log, setLogLevel } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { storeToRefs } from 'pinia'
@@ -293,6 +307,13 @@ const triggerSaved = () => {
 }
 
 const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, timeout: 300 })
+const logLevel = ref('info')
+const logLevelOptions = [
+  { label: 'Debug', value: 'debug' },
+  { label: 'Info', value: 'info' },
+  { label: 'Warn', value: 'warn' },
+  { label: 'Error', value: 'error' },
+]
 const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
 const displayPaths = reactive({ runtime: '', server: '' })
 const cacheInfo = ref({
@@ -357,6 +378,16 @@ const loadSettings = async () => {
       displayPaths.runtime = model.displayPaths.runtime || ''
       displayPaths.server = model.displayPaths.server || ''
     }
+    // Load log level from appConfig (logs.level)
+    try {
+      const logsConfig = await window.electronAPI.appConfig.get('logs')
+      if (logsConfig && typeof logsConfig === 'object' && 'level' in logsConfig) {
+        const level = (logsConfig as Record<string, unknown>).level
+        if (typeof level === 'string' && ['debug', 'info', 'warn', 'error'].includes(level)) {
+          logLevel.value = level
+        }
+      }
+    } catch {}
   } catch (e) { log.error('Failed to load settings:', e) }
 }
 
@@ -367,7 +398,15 @@ const saveGeneral = async () => {
     const svc = await serviceManager.getService('settings')
     await svc.saveSettings({ ...general })
     triggerSaved()
-  } catch (e: any) { showError(t('settings.saveFailed'), e.message) }
+    } catch (e) { showError(t('settings.saveFailed'), (e as Error).message) }
+}
+
+const saveLogLevel = async (value: string) => {
+  setLogLevel(value as 'debug' | 'info' | 'warn' | 'error')
+  try {
+    await window.electronAPI.appConfig.set('logs.level', value)
+    triggerSaved()
+  } catch (e) { log.error('Failed to save log level:', e) }
 }
 
 const savePaths = async () => {

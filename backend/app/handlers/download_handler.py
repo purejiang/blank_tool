@@ -12,7 +12,7 @@ from urllib.error import URLError, HTTPError
 
 from app.utils.logger import Logger
 from app.utils.env import get_task_subdir, get_tasks_root
-from app.common.decorators import streaming
+from app.common.decorators import streaming, logs_errors
 from app.common.task_manager import TaskManager
 
 logger = Logger.get_logger("DownloadHandler")
@@ -28,6 +28,7 @@ def _task_input_dir(task_id):
 
 
 @streaming
+@logs_errors("DownloadHandler")
 def download_file(params, stream_handler):
     url = params.get("url", "")
     filename = params.get("filename", "")

@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
-from app.common.decorators import streaming
+from app.common.decorators import streaming, logs_errors
 from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 
@@ -26,6 +26,7 @@ def _get_aab_task_id(params: dict) -> str:
     )
 
 
+@logs_errors("AabHandler")
 def aab_sign(
     params: Dict[str, Any], stream_handler: Callable[[str], None] = None
 ) -> Dict[str, Any]:
@@ -67,18 +68,12 @@ def aab_sign(
         if result.get("returncode", 1) != 0:
             raise ToolException(result.get("stderr", "Signing failed"))
         return {"aab_path": aab_path}
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
-        logger.error(f"AAB signing failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
 
 
+@logs_errors("AabHandler")
 def convert_aab_to_apks(params, stream_handler):
     """Convert AAB to APKS using bundletool."""
     aab_path = params.get("aab_path")
@@ -140,19 +135,13 @@ def convert_aab_to_apks(params, stream_handler):
         if result.get("returncode", 1) != 0:
             raise ToolException(result.get("stderr", "Conversion failed"))
         return {"apks_path": output_path}
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
-        logger.error(f"AAB to APKS conversion failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
 
 
 @streaming
+@logs_errors("AabHandler")
 def install_aab(params, stream_handler):
     """Convert AAB to APKS then install on a device."""
     aab_path = params.get("aab_path")
@@ -236,13 +225,6 @@ def install_aab(params, stream_handler):
         if stream_handler:
             stream_handler({"type": "complete", "payload": {"device_id": device_id, "apks_path": apks_path, "success": True}})
         return {"device_id": device_id, "apks_path": apks_path}
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            return {"cancelled": True, "task_id": task_id}
-        logger.error(f"AAB installation failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)

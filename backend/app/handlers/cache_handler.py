@@ -15,6 +15,7 @@ import shutil
 from app.utils.logger import Logger
 from app.utils.env import get_output_dir, get_tasks_root
 from app.common.exceptions import ToolException
+from app.common.decorators import logs_errors
 
 logger = Logger.get_logger("StorageHandler")
 
@@ -47,40 +48,38 @@ def _get_dir_size(path):
     return total_size, total_files
 
 
+@logs_errors("StorageHandler")
 def cache_info(params, stream_handler):
     tasks_root = _tasks_root()
     output_root = _output_root()
     logs_root = _logs_root()
 
-    try:
-        tasks_size, tasks_files = _get_dir_size(tasks_root)
-        output_size, output_files = _get_dir_size(output_root)
-        logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
+    tasks_size, tasks_files = _get_dir_size(tasks_root)
+    output_size, output_files = _get_dir_size(output_root)
+    logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
 
-        return {
-            "tasks": {
-                "path": tasks_root,
-                "size": tasks_size,
-                "files": tasks_files,
-            },
-            "output": {
-                "path": output_root,
-                "size": output_size,
-                "files": output_files,
-            },
-            "logs": {
-                "path": logs_root,
-                "size": logs_size,
-                "files": logs_files,
-            },
-            "total": {
-                "size": tasks_size + output_size + logs_size,
-                "files": tasks_files + output_files + logs_files,
-            },
-        }
-    except Exception as e:
-        logger.error(f"Failed to get storage info: {e}")
-        raise
+    return {
+        "tasks": {
+            "path": tasks_root,
+            "size": tasks_size,
+            "files": tasks_files,
+        },
+        "output": {
+            "path": output_root,
+            "size": output_size,
+            "files": output_files,
+        },
+        "logs": {
+            "path": logs_root,
+            "size": logs_size,
+            "files": logs_files,
+        },
+        "total": {
+            "size": tasks_size + output_size + logs_size,
+            "files": tasks_files + output_files + logs_files,
+        },
+    }
+
 
 
 def _clear_directory(path):
@@ -99,63 +98,51 @@ def _clear_directory(path):
     return True
 
 
+@logs_errors("StorageHandler")
 def output_clear(params, stream_handler):
     root = _output_root()
-    try:
-        _clear_directory(root)
-        return {"path": root, "size": 0, "files": 0}
-    except Exception as e:
-        logger.error(f"Failed to clear output: {e}")
-        raise
+    _clear_directory(root)
+    return {"path": root, "size": 0, "files": 0}
 
 
+@logs_errors("StorageHandler")
 def storage_clear(params, stream_handler):
     target = params.get("target", "all")
 
     cleared_paths = []
 
-    try:
-        if target in ["all", "tasks"]:
-            tasks_root = _tasks_root()
-            if _clear_directory(tasks_root):
-                cleared_paths.append(tasks_root)
+    if target in ["all", "tasks"]:
+        tasks_root = _tasks_root()
+        if _clear_directory(tasks_root):
+            cleared_paths.append(tasks_root)
 
-        if target in ["all", "output"]:
-            output_root = _output_root()
-            if _clear_directory(output_root):
-                cleared_paths.append(output_root)
+    if target in ["all", "output"]:
+        output_root = _output_root()
+        if _clear_directory(output_root):
+            cleared_paths.append(output_root)
 
-        if target in ["all", "logs"]:
-            logs_root = _logs_root()
-            if logs_root and _clear_directory(logs_root):
-                cleared_paths.append(logs_root)
+    if target in ["all", "logs"]:
+        logs_root = _logs_root()
+        if logs_root and _clear_directory(logs_root):
+            cleared_paths.append(logs_root)
 
-        return {"success": True, "cleared_paths": cleared_paths}
-    except Exception as e:
-        logger.error(f"Failed to clear storage: {e}")
-        raise
+    return {"success": True, "cleared_paths": cleared_paths}
 
 
+@logs_errors("StorageHandler")
 def tasks_clear(params, stream_handler):
     root = _tasks_root()
-    try:
-        _clear_directory(root)
-        return {"path": root, "size": 0, "files": 0}
-    except Exception as e:
-        logger.error(f"Failed to clear tasks: {e}")
-        raise
+    _clear_directory(root)
+    return {"path": root, "size": 0, "files": 0}
 
 
+@logs_errors("StorageHandler")
 def logs_clear(params, stream_handler):
     root = _logs_root()
     if not root:
         raise ToolException("Log directory not available")
-    try:
-        _clear_directory(root)
-        return {"path": root, "size": 0, "files": 0}
-    except Exception as e:
-        logger.error(f"Failed to clear logs: {e}")
-        raise
+    _clear_directory(root)
+    return {"path": root, "size": 0, "files": 0}
 
 
 API_MAP = {

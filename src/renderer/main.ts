@@ -15,6 +15,7 @@ import './assets/styles/common/components.css';
 import './assets/styles/themes.css';
 import './assets/styles/common/responsive.css';
 import './assets/variables.css';
+import './assets/styles/naive-overrides.css';
 
 // Create Vue app
 const app = createApp(App);

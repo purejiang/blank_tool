@@ -11,7 +11,7 @@ from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
 from app.common.exceptions import ToolNotFoundError, ToolException
-from app.common.decorators import streaming
+from app.common.decorators import streaming, logs_errors
 from app.utils.logger import Logger
 from app.utils.env import get_output_dir, get_task_subdir
 from app.utils.task_log_writer import append_task_log
@@ -78,6 +78,7 @@ def _extract_signature_hashes(apk_path: str) -> dict:
 
 
 @streaming
+@logs_errors("ApkHandler")
 def apk_analyze(params, stream_handler):
     apk_path = params.get("apk_path")
     if not apk_path or not os.path.exists(apk_path):
@@ -238,6 +239,7 @@ def apk_analyze(params, stream_handler):
 
 
 @streaming
+@logs_errors("ApkHandler")
 def apk_decompile(params, stream_handler):
     file_path = params.get("file_path")
     options = params.get("options", {})
@@ -299,20 +301,13 @@ def apk_decompile(params, stream_handler):
             return
 
         stream_handler({"type": "complete", "payload": {"output_dir": output_dir}})
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
-            return
-        logger.error(f"Decompile failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
 
 
 @streaming
+@logs_errors("ApkHandler")
 def apk_recompile(params, stream_handler):
     project_path = params.get("project_path")
     options = params.get("options", {})
@@ -448,14 +443,6 @@ def apk_recompile(params, stream_handler):
                     return
 
         stream_handler({"type": "complete", "payload": {"output_apk": output_apk}})
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
-            return
-        logger.error(f"Recompile failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -694,6 +681,7 @@ def _resolve_resource_refs(apk_path, meta_list, task_id: str = ""):
 
 
 @streaming
+@logs_errors("ApkHandler")
 def apk_sign(params, stream_handler):
     apk_path = params.get("apk_path")
     keystore = params.get("keystore", {})
@@ -775,14 +763,6 @@ def apk_sign(params, stream_handler):
             return
 
         stream_handler({"type": "complete", "payload": {"apk_path": output_apk}})
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
-            return
-        logger.error(f"Signing failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -793,19 +773,17 @@ def apk_getinfo(params, stream_handler):
     return apk_analyze(params, stream_handler)
 
 
+@logs_errors("ApkHandler")
 def apk_get_progress(params, stream_handler):
     task_id = params.get("task_id")
     output_dir = params.get("output_dir")
     output_apk = params.get("output_apk")
     progress = 0
-    try:
-        if output_dir and os.path.exists(output_dir):
-            progress = 100
-        if output_apk and os.path.exists(output_apk):
-            progress = 100
-        return {"task_id": task_id, "progress": progress}
-    except Exception as e:
-        raise
+    if output_dir and os.path.exists(output_dir):
+        progress = 100
+    if output_apk and os.path.exists(output_apk):
+        progress = 100
+    return {"task_id": task_id, "progress": progress}
 
 
 def apk_cancel_task(params, stream_handler):

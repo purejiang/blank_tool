@@ -21,6 +21,7 @@
       </div>
       <div class="status-version">
         <span class="version-text">v{{ frontendVersion }} | backend {{ backendVersion || 'N/A' }}</span>
+        <span class="health-dot" :class="healthClass" :title="healthTitle"></span>
       </div>
     </template>
   </div>
@@ -33,6 +34,7 @@ import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { Smartphone } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
+import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
 
@@ -72,6 +74,19 @@ const getVersions = async () => {
 }
 
 onMounted(() => getVersions())
+
+// Backend health dot (T23)
+const healthStore = useBackendHealthStore()
+healthStore.startPolling()
+
+const healthClass = computed(() =>
+  healthStore.isHealthy === null ? 'dot-unknown' :
+  healthStore.isHealthy ? 'dot-healthy' : 'dot-unhealthy'
+)
+const healthTitle = computed(() =>
+  healthStore.isHealthy === null ? 'Backend status unknown' :
+  healthStore.isHealthy ? 'Backend healthy' : 'Backend down'
+)
 </script>
 
 <style scoped>
@@ -135,6 +150,18 @@ onMounted(() => getVersions())
   color: var(--app-text-dim);
   font-size: 10px;
 }
+.health-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.health-dot.dot-healthy { background: var(--app-green); }
+.health-dot.dot-unhealthy { background: var(--app-red); }
+.health-dot.dot-unknown { background: var(--app-text-dim); }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }

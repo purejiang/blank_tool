@@ -65,7 +65,10 @@ function loadTasks(): Task[] {
 
 function saveTasks(tasks: Task[]) {
   try {
-    const toSave = tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled').slice(0, 100)
+    const toSave = tasks
+      .filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
+      .slice(0, 100)
+      .map(t => ({ ...t, logs: [] }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   } catch {}
 }
