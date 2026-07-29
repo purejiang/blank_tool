@@ -1,0 +1,57 @@
+/* Global Naive UI menu overrides */
+.n-menu .n-menu-item-content {
+  margin: 2px 8px;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+.n-menu .n-menu-item-content--selected {
+  background: var(--app-hover-strong) !important;
+}
+
+/* Card header backgrounds - transparent everywhere */
+.n-card-header,
+.n-card-header__main,
+.n-card-header__close,
+.n-card__header,
+.n-card .n-card-header,
+.n-card > .n-card-header {
+  background: transparent !important;
+}
+/* Card content area also transparent, matching cardColor */
+.n-card > .n-card__content {
+  background: transparent !important;
+}
+.n-menu .n-menu-item-content:hover {
+  background: var(--app-hover) !important;
+}
+.n-menu .n-menu-item-content:active {
+  background: var(--app-hover-strong) !important;
+}
+/* Center icons when sidebar is collapsed */
+.n-menu--collapsed .n-menu-item-content {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  justify-content: center !important;
+}
+.n-menu--collapsed .n-menu-item-content .n-menu-item-content__icon {
+  margin-right: 0 !important;
+}
+/* Sidebar scroll container fill sider height */
+.n-layout-sider .n-scrollbar-container,
+.n-layout-sider .n-scrollbar-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.n-layout-sider .n-scrollbar {
+  height: 100%;
+}
+
+/* Notification toasts — smaller font */
+.n-notification .n-notification__main {
+  font-size: 12px;
+}
+.n-notification .n-notification__main__title {
+  font-size: 13px;
+  font-weight: 600;
+}

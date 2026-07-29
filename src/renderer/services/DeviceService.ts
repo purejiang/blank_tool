@@ -70,12 +70,6 @@ class DeviceService {
           deviceStore.isLogcatRunning = false
         })
       }
-      if (api && typeof api.onLogcatError === 'function') {
-        api.onLogcatError((error: unknown) => {
-          log.error('[logcat] error event:', JSON.stringify(error))
-          deviceStore.isLogcatRunning = false
-        })
-      }
     } catch {}
   }
 

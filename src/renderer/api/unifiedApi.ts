@@ -9,7 +9,7 @@ export async function callApi<M extends keyof ApiMethodMap>(
   method: M,
   params: MethodParams<M>
 ): Promise<MethodResult<M>> {
-  return window.electronAPI.callBackendAPI(method as any, params) as Promise<MethodResult<M>>
+  return window.electronAPI.callBackendAPI(method, params)
 }
 
 type ApiFn = (...args: unknown[]) => unknown | Promise<unknown>
@@ -70,11 +70,9 @@ class UnifiedApi {
         resolvePaths: async () => ({ runtime: '', server: '' }),
       },
       onDeviceChange: () => () => {},
-      onLogUpdate: () => () => {},
       onLogcatOutput: () => () => {},
       onLogcatStarted: () => () => {},
       onLogcatFinished: () => () => {},
-      onLogcatError: () => () => {},
       removeLogcatListener: () => {},
       rendererLog: async () => undefined,
     }

@@ -3,7 +3,14 @@ import routes from './modules/index'
 
 const router = createRouter({
   history: createWebHashHistory(),
-  routes
+  routes: [
+    ...routes,
+    {
+      path: '/diagnostics',
+      name: 'diagnostics',
+      component: () => import('@views/DiagnosticsPage.vue'),
+    },
+  ]
 })
 
 router.beforeEach((to, _from, next) => {

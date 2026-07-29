@@ -369,7 +369,7 @@ class ErrorService {
      */
     async sendToBackendLogger(_errorInfo: ErrorInfo) {
         try {
-            const electronApi = (window as any).electronAPI;
+            const electronApi = window.electronAPI;
             if (electronApi && electronApi.callBackendAPI) {
                 // await window.electronAPI.callBackendAPI('/api/logs/error', {
                 //     id: errorInfo.id,

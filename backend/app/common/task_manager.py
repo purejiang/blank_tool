@@ -52,6 +52,7 @@ class TaskManager:
                 "cleanup_paths": cleanup_paths or [],
                 "stop_event": None,
                 "cancelled": False,
+                "entered_at": time.time(),
             }
         self._logger.info(
             f"Task {task_id}: registered (holder_id={id(process_holder) if process_holder is not None else 'none'})"
@@ -72,6 +73,7 @@ class TaskManager:
                     "cleanup_paths": [],
                     "stop_event": stop_event,
                     "cancelled": False,
+                    "entered_at": time.time(),
                 }
 
     # ------------------------------------------------------------------
@@ -184,3 +186,20 @@ class TaskManager:
             pass  # best-effort; log cleanup failure shouldn't block task teardown
         with self._tasks_lock:
             self._tasks.pop(task_id, None)
+
+    def list_tasks(self) -> list[dict]:
+        """Return a read-only snapshot of registered tasks.
+
+        Must NOT expose process_holder (contains Popen — not serializable).
+        """
+        with self._tasks_lock:
+            snapshot = []
+            for task_id, info in self._tasks.items():
+                snapshot.append({
+                    "task_id": task_id,
+                    "type": "streaming" if info.get("stop_event") else "blocking",
+                    "started_at": info.get("entered_at"),
+                    "cancelled": info.get("cancelled", False),
+                    "has_process": bool(info.get("process_holder", {}).get("process")),
+                })
+            return snapshot

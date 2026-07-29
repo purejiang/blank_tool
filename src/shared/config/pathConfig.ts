@@ -4,14 +4,14 @@ export const PATH_CONFIG_DEFAULTS = {
   serverEntry: 'main.py',
   runtimeExecutable: 'python\\python.exe',
   devServerUrl: 'http://localhost:3000',
-  rendererEntry: '..\\renderer\\index.html',
+  rendererEntry: 'renderer\\index.html',
   preloadCandidates: [
-    '..\\preload\\index.mjs',
-    '..\\preload\\preload.mjs',
-    '..\\preload\\index.js',
-    '..\\preload\\preload.js',
-    '..\\preload\\index.cjs',
-    '..\\preload\\preload.cjs'
+    'preload\\index.mjs',
+    'preload\\preload.mjs',
+    'preload\\index.js',
+    'preload\\preload.js',
+    'preload\\index.cjs',
+    'preload\\preload.cjs'
   ]
 } as const
 

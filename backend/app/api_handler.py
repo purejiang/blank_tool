@@ -67,43 +67,48 @@ class ApiHandler:
         or the raw dict for streaming init responses).
         """
         req_id = request_data.get("id")
-        method = request_data.get("method")
+        method = request_data.get("method", "unknown")
         params = request_data.get("params", {})
 
-        handler = self.api_map.get(method)
-
-        if not handler:
-            return self._error_response(
-                req_id,
-                f"Method '{method}' not found",
-                ErrorCode.METHOD_NOT_FOUND,
-            )
+        self.logger.info(f'[trace {req_id}] {method} start')
 
         try:
-            is_streaming = getattr(handler, 'is_streaming', False)
+            handler = self.api_map.get(method)
 
-            if is_streaming:
-                raw_result = self.stream_handler(handler, req_id)(params)
-                # Streaming init — return a raw dict (not a BackendResponse)
-                return {"id": req_id, "result": raw_result, "finished": False}
-            else:
-                raw_result = handler(params, None)
-                return self._success_response(req_id, raw_result)
+            if not handler:
+                return self._error_response(
+                    req_id,
+                    f"Method '{method}' not found",
+                    ErrorCode.METHOD_NOT_FOUND,
+                )
 
-        except ToolNotFoundError as e:
-            self.logger.error(f"Tool not found (method={method}): {e}")
-            return self._error_response(req_id, e.message, e.code)
-        except TimeoutException as e:
-            self.logger.error(f"Timeout (method={method}): {e}")
-            return self._error_response(req_id, e.message, e.code)
-        except ToolException as e:
-            self.logger.error(f"Tool error (method={method}): {e}")
-            return self._error_response(req_id, e.message, e.code)
-        except Exception as e:
-            self.logger.error(f"Handler error (method={method}): {e}")
-            return self._error_response(
-                req_id, str(e), ErrorCode.INTERNAL_ERROR
-            )
+            try:
+                is_streaming = getattr(handler, 'is_streaming', False)
+
+                if is_streaming:
+                    raw_result = self.stream_handler(handler, req_id)(params)
+                    # Streaming init — return a raw dict (not a BackendResponse)
+                    return {"id": req_id, "result": raw_result, "finished": False}
+                else:
+                    raw_result = handler(params, None)
+                    return self._success_response(req_id, raw_result)
+
+            except ToolNotFoundError as e:
+                self.logger.error(f"Tool not found (method={method}): {e}")
+                return self._error_response(req_id, e.message, e.code)
+            except TimeoutException as e:
+                self.logger.error(f"Timeout (method={method}): {e}")
+                return self._error_response(req_id, e.message, e.code)
+            except ToolException as e:
+                self.logger.error(f"Tool error (method={method}): {e}")
+                return self._error_response(req_id, e.message, e.code)
+            except Exception as e:
+                self.logger.error(f"Handler error (method={method}): {e}")
+                return self._error_response(
+                    req_id, str(e), ErrorCode.INTERNAL_ERROR
+                )
+        finally:
+            self.logger.info(f'[trace {req_id}] {method} end')
 
     # ------------------------------------------------------------------
     # Response formatting

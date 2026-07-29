@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { PATH_CONFIG_DEFAULTS, type WritableAppConfigKey } from '../../shared/config/pathConfig';
 
-export const APP_CONFIG_VERSION = 2;
+export const APP_CONFIG_VERSION = 5;
 export { PATH_CONFIG_DEFAULTS };
 
 const LEGACY_SETTINGS_DEFAULTS = {
@@ -256,6 +256,18 @@ const MIGRATIONS: Record<number, () => void> = {
         if (!Array.isArray(preloadCandidates)) {
             appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
         }
+    },
+    2: () => {
+        appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
+        appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
+    },
+    3: () => {
+        appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
+        appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
+    },
+    4: () => {
+        appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
+        appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
     }
 };
 

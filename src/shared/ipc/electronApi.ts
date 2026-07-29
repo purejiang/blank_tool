@@ -8,6 +8,7 @@ export interface TypedCallBackendAPI {
   <M extends string>(method: M, params?: JsonObject): Promise<unknown>
 }
 
+/** See also src/shared/stores/appConfigStore.ts for the broader AppConfigStoreLike used inside renderer services. */
 export interface AppConfigApi {
   get: (key?: string) => Promise<unknown>
   set: (key: string, value: unknown) => Promise<unknown>
@@ -40,13 +41,16 @@ export interface ElectronApi {
   userConfig: UserConfigApi
   settings: SettingsApi
   onDeviceChange: (callback: (devices: unknown[]) => void) => () => void
-  onLogUpdate: (callback: (message: string) => void) => () => void
   onLogcatOutput: (callback: (output: string) => void) => () => void
   onLogcatStarted: (callback: () => void) => () => void
   onLogcatFinished: (callback: () => void) => () => void
-  onLogcatError: (callback: (error: string) => void) => () => void
   removeLogcatListener: () => void
-  rendererLog: (level: 'error' | 'warn', message: string) => Promise<unknown>
+  getBackendHealth?: () => Promise<{ healthy: boolean; uptime_s?: number }>
+  logsTail?: (lines?: number) => Promise<{ lines: string[]; truncated?: boolean }>
+  readElectronLogTail?: (lines?: number) => Promise<{ lines: string[]; truncated?: boolean }>
+  onQuitDialog?: (callback: () => void) => () => void
+  respondQuitDialog?: (action: string) => void
+  rendererLog: (level: 'error' | 'warn' | 'info', message: string) => Promise<unknown>
   setToolCustomPath?: (toolName: string, path: string) => Promise<unknown>
   resetToolCustomPath?: (toolName: string) => Promise<unknown>
   getToolCustomPaths?: () => Promise<Record<string, string>>

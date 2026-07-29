@@ -29,7 +29,7 @@ const visible = ref(false)
 let cleanup: () => void
 
 onMounted(() => {
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   if (api?.onQuitDialog) {
     cleanup = api.onQuitDialog(() => { visible.value = true })
   }
@@ -41,7 +41,7 @@ onUnmounted(() => {
 
 function respond(action: string) {
   visible.value = false
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   api?.respondQuitDialog?.(action)
 }
 </script>

@@ -73,7 +73,7 @@ class TaskStreamService {
   /** Subscribe to stream-event IPC (idempotent). */
   async initialize(): Promise<void> {
     if (this.unsubscribe) return // already subscribed
-    const api = (window as any).electronAPI
+    const api = window.electronAPI
     if (!api || typeof api.onStreamEvent !== 'function') {
       log.warn('[TaskStreamService] onStreamEvent not available — stream events will not be received')
       this.unsubscribe = () => {} // no-op to mark as initialized

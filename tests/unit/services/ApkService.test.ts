@@ -47,6 +47,25 @@ describe('ApkService', () => {
       expect(result.data.versionCode).toBe('1')
     })
 
+    it('analyzeApk: passes through file_md5 and sig_* fields from backend', async () => {
+      mockApi.analyzeApk.mockResolvedValue({
+        package_name: 'com.test.app',
+        version_code: '1',
+        version_name: '1.0',
+        file_md5: 'abc123def456',
+        sig_md5: '1234567890abcdef',
+        sig_sha1: 'abcdef1234567890',
+        sig_sha256: 'fedcba0987654321fedcba0987654321fedcba09',
+      })
+
+      const result = await service.analyzeApk('/test.apk')
+      expect(result.success).toBe(true)
+      expect(result.data.file_md5).toBe('abc123def456')
+      expect(result.data.sig_md5).toBe('1234567890abcdef')
+      expect(result.data.sig_sha1).toBe('abcdef1234567890')
+      expect(result.data.sig_sha256).toBe('fedcba0987654321fedcba0987654321fedcba09')
+    })
+
     it('returns failure for invalid result', async () => {
       mockApi.analyzeApk.mockResolvedValue({})
       const result = await service.analyzeApk('/test.apk')

@@ -9,7 +9,7 @@ import os
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
-from app.common.decorators import streaming
+from app.common.decorators import streaming, logs_errors
 from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
@@ -24,6 +24,7 @@ def _get_install_task_id(params: dict) -> str:
 
 
 @streaming
+@logs_errors("InstallHandler")
 def device_install_apk(params, stream_handler):
     apk_path = params.get("apk_path")
     device_id = params.get("device_id")
@@ -93,6 +94,7 @@ def device_install_apk(params, stream_handler):
 
 
 @streaming
+@logs_errors("InstallHandler")
 def device_install_apks(params, stream_handler):
     apks_path = params.get("apks_path")
     device_id = params.get("device_id")

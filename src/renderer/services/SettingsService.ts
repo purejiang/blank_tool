@@ -1,12 +1,6 @@
 import unifiedApi from '../api/unifiedApi'
 import type { AppConfigApi, SettingsApi, SettingsViewModel } from '../../shared/ipc/electronApi'
-
-interface AppConfigStoreLike {
-  config?: Record<string, unknown>
-  replaceAll?: (cfg: Record<string, unknown>) => void
-  update: (updates: Record<string, unknown>) => Promise<unknown>
-  reset: () => Promise<unknown>
-}
+import type { AppConfigStoreLike } from '../../shared/stores/appConfigStore'
 
 interface StoreServiceLike {
   ensureAppConfigStore: () => Promise<AppConfigStoreLike>

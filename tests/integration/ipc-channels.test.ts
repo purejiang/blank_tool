@@ -62,7 +62,6 @@ describe('IPC Channel Consistency', () => {
       expect(mrChannels).toContain('logcatOutput')
       expect(mrChannels).toContain('logcatStarted')
       expect(mrChannels).toContain('logcatFinished')
-      expect(mrChannels).toContain('logcatError')
     })
 
     it('includes stream event channel', () => {
@@ -97,7 +96,7 @@ describe('IPC Channel Consistency', () => {
     it('has expected number of channels', () => {
       const count = Object.keys(IPC_CHANNELS).length
       expect(count).toBeGreaterThanOrEqual(20)
-      expect(count).toBeLessThanOrEqual(40)
+      expect(count).toBeLessThanOrEqual(60) // 51 channels after T16 added 18 new ones
     })
   })
 })

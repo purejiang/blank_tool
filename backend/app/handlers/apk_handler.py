@@ -11,10 +11,11 @@ from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
 from app.common.exceptions import ToolNotFoundError, ToolException
-from app.common.decorators import streaming
+from app.common.decorators import streaming, logs_errors
 from app.utils.logger import Logger
 from app.utils.env import get_output_dir, get_task_subdir
 from app.utils.task_log_writer import append_task_log
+from app.utils.file_utils import get_file_hash
 from app.utils.apk_inspector import (
     enumerate_so_files,
     compare_so_across_arches,
@@ -26,7 +27,58 @@ logger = Logger.get_logger("ApkHandler")
 manager = ToolManager.instance()
 
 
+def _extract_signature_hashes(apk_path: str) -> dict:
+    """Extract certificate MD5, SHA-1, SHA-256 from APK using apksigner."""
+    try:
+        apksigner = manager.get_tool("apksigner")
+        if not apksigner or not apksigner.is_valid:
+            return {
+                "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+                "sig_warning": "apksigner unavailable",
+            }
+
+        ctx = CommandExecutionContext(capture_output=True, log_output=False)
+        result = apksigner.execute(["verify", "--print-certs", "--verbose", apk_path], ctx)
+
+        if result.get("returncode", 1) != 0:
+            return {
+                "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+                "sig_warning": "unsigned or no certificate",
+            }
+
+        output = result.get("stdout", "") + result.get("stderr", "")
+
+        md5_match = re.search(
+            r"Signer #1 certificate MD5 digest:\s*([0-9a-fA-F:]+)", output
+        )
+        sha1_match = re.search(
+            r"Signer #1 certificate SHA-1 digest:\s*([0-9a-fA-F:]+)", output
+        )
+        sha256_match = re.search(
+            r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", output
+        )
+
+        if not md5_match and not sha1_match and not sha256_match:
+            return {
+                "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+                "sig_warning": "unsigned or no certificate",
+            }
+
+        return {
+            "sig_md5": md5_match.group(1).lower().replace(":", "") if md5_match else "-",
+            "sig_sha1": sha1_match.group(1).lower().replace(":", "") if sha1_match else "-",
+            "sig_sha256": sha256_match.group(1).lower().replace(":", "") if sha256_match else "-",
+        }
+    except Exception as e:
+        logger.warning(f"Signature extraction failed: {e}")
+        return {
+            "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
+            "sig_warning": f"Signature extraction failed: {e}",
+        }
+
+
 @streaming
+@logs_errors("ApkHandler")
 def apk_analyze(params, stream_handler):
     apk_path = params.get("apk_path")
     if not apk_path or not os.path.exists(apk_path):
@@ -148,6 +200,29 @@ def apk_analyze(params, stream_handler):
             info["warnings"].append(f"Meta-data extraction failed: {e}")
             stream_handler({"type": "log", "line": f"[Meta-data Extraction] Failed: {e}"})
 
+        # C5: File hash and signature certificate extraction
+        stream_handler({"type": "log", "line": "[Signature] Extracting certs..."})
+        try:
+            info["file_md5"] = get_file_hash(apk_path, "md5") or "-"
+        except Exception as e:
+            logger.warning(f"File MD5 failed: {e}")
+            info["file_md5"] = "-"
+            info["warnings"].append(f"File MD5 failed: {e}")
+
+        try:
+            sig_info = _extract_signature_hashes(apk_path)
+            info["sig_md5"] = sig_info.get("sig_md5", "-")
+            info["sig_sha1"] = sig_info.get("sig_sha1", "-")
+            info["sig_sha256"] = sig_info.get("sig_sha256", "-")
+            if "sig_warning" in sig_info:
+                info["warnings"].append(sig_info["sig_warning"])
+        except Exception as e:
+            logger.warning(f"Signature extraction failed: {e}")
+            info["sig_md5"] = "-"
+            info["sig_sha1"] = "-"
+            info["sig_sha256"] = "-"
+            info["warnings"].append(f"Signature extraction failed: {e}")
+
         stream_handler({"type": "complete", "payload": info})
     except ToolException as e:
         logger.error(f"APK analysis tool error: {e}")
@@ -164,6 +239,7 @@ def apk_analyze(params, stream_handler):
 
 
 @streaming
+@logs_errors("ApkHandler")
 def apk_decompile(params, stream_handler):
     file_path = params.get("file_path")
     options = params.get("options", {})
@@ -225,20 +301,13 @@ def apk_decompile(params, stream_handler):
             return
 
         stream_handler({"type": "complete", "payload": {"output_dir": output_dir}})
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
-            return
-        logger.error(f"Decompile failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
 
 
 @streaming
+@logs_errors("ApkHandler")
 def apk_recompile(params, stream_handler):
     project_path = params.get("project_path")
     options = params.get("options", {})
@@ -374,14 +443,6 @@ def apk_recompile(params, stream_handler):
                     return
 
         stream_handler({"type": "complete", "payload": {"output_apk": output_apk}})
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
-            return
-        logger.error(f"Recompile failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -404,7 +465,7 @@ def _parse_manifest_meta_data(apk_path, task_id: str = ""):
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
             return []
-        context = CommandExecutionContext(task_id=task_id)
+        context = CommandExecutionContext(task_id=task_id, log_output=False)
         result = aapt.execute(["dump", "xmltree", "--file", "AndroidManifest.xml", apk_path], context)
         output = result.get("stdout", "")
         lines = output.split("\n")
@@ -518,7 +579,7 @@ def _resolve_resource_refs(apk_path, meta_list, task_id: str = ""):
         aapt = manager.get_tool("aapt")
         if not aapt or not aapt.is_valid:
             return
-        context = CommandExecutionContext(task_id=task_id)
+        context = CommandExecutionContext(task_id=task_id, log_output=False)
         result = aapt.execute(["dump", "resources", apk_path], context)
         output = result.get("stdout", "")
         lines = output.split("\n")
@@ -620,6 +681,7 @@ def _resolve_resource_refs(apk_path, meta_list, task_id: str = ""):
 
 
 @streaming
+@logs_errors("ApkHandler")
 def apk_sign(params, stream_handler):
     apk_path = params.get("apk_path")
     keystore = params.get("keystore", {})
@@ -701,14 +763,6 @@ def apk_sign(params, stream_handler):
             return
 
         stream_handler({"type": "complete", "payload": {"apk_path": output_apk}})
-    except ToolException:
-        raise
-    except Exception as e:
-        if task_manager.is_cancelled(task_id):
-            stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
-            return
-        logger.error(f"Signing failed: {e}")
-        raise
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -719,19 +773,17 @@ def apk_getinfo(params, stream_handler):
     return apk_analyze(params, stream_handler)
 
 
+@logs_errors("ApkHandler")
 def apk_get_progress(params, stream_handler):
     task_id = params.get("task_id")
     output_dir = params.get("output_dir")
     output_apk = params.get("output_apk")
     progress = 0
-    try:
-        if output_dir and os.path.exists(output_dir):
-            progress = 100
-        if output_apk and os.path.exists(output_apk):
-            progress = 100
-        return {"task_id": task_id, "progress": progress}
-    except Exception as e:
-        raise
+    if output_dir and os.path.exists(output_dir):
+        progress = 100
+    if output_apk and os.path.exists(output_apk):
+        progress = 100
+    return {"task_id": task_id, "progress": progress}
 
 
 def apk_cancel_task(params, stream_handler):

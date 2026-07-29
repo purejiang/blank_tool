@@ -173,6 +173,10 @@
               <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
             </n-button>
           </div>
+          <div v-if="task.operation === 'install' && task.deviceLabel" class="task-output">
+            <n-icon size="14" color="var(--app-green)"><Smartphone /></n-icon>
+            <span class="task-output-path">{{ t('task.installedToDevice', { label: task.deviceLabel }) }}</span>
+          </div>
           <div v-if="task.result" class="task-result" v-html="task.result" />
           <!-- Terminal task: has file log content → show it with refresh -->
           <div v-if="isTerminal(task.status) && taskLogCache.has(task.id) && taskLogCache.get(task.id)?.length" class="task-logs">
@@ -240,11 +244,12 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, NVirtualList, useDialog } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText
+  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText, Smartphone
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
 import { useSignatureStore } from '@stores/signatureStore'
+import { useDeviceStore } from '@stores/deviceStore'
 import type { Task } from '@stores/taskStore'
 import { formatDuration as formatDurationUtil } from '@utils/formatDuration'
 import { log as logUtil } from '@utils/logger'
@@ -254,6 +259,7 @@ const { t } = useI18n()
 const dialog = useDialog()
 const taskStore = useTaskStore()
 const sigStore = useSignatureStore()
+const deviceStore = useDeviceStore()
 if (sigStore.configs.length === 0) sigStore.loadConfigs()
 
 const { showError, showWarning } = useNotification()
@@ -288,7 +294,7 @@ function flushLogBuffer(taskId: number) {
 
 function startNowTimer() {
   if (nowIv !== null) return
-  const iv = setInterval(() => { now.value = Date.now() }, 1000)
+  const iv = setInterval(() => { now.value = Date.now() }, 100)
   activeIntervals.add(iv)
   nowIv = iv
 }
@@ -524,6 +530,14 @@ async function executeTask(task: Task) {
           if (payload?.apk_path) transitionPayload.apk_path = payload.apk_path
           // analyze: render the rich analysis card HTML via renderApkInfo
           if (payload?.package_name) transitionPayload.result = renderApkInfo(payload)
+          // install: attach device label (model + serial) for notification & display
+          if (task.operation === 'install' && payload?.device_id) {
+            const dev = deviceStore.selectedDevice
+            const model = deviceStore.deviceInfo.model || dev?.name || dev?.id || payload.device_id
+            const serial = deviceStore.deviceInfo.serial || payload.device_id
+            transitionPayload.deviceLabel = `${model} (${serial})`
+            taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] ${t('task.installedToDevice', { label: transitionPayload.deviceLabel })}`)
+          }
           taskStore.transition(task.id, 'operation_complete', transitionPayload)
         }
       },
@@ -827,6 +841,34 @@ function renderApkInfo(data: any) {
   }
   html += '</div>'
 
+  // ===== SIGNATURE INFO CARD =====
+  const fileMd5 = data.file_md5
+  const sigMd5 = data.sig_md5
+  const sigSha1 = data.sig_sha1
+  const sigSha256 = data.sig_sha256
+  const hasAnyHash = (fileMd5 && fileMd5 !== '-') || (sigMd5 && sigMd5 !== '-') || (sigSha1 && sigSha1 !== '-') || (sigSha256 && sigSha256 !== '-')
+  if (hasAnyHash) {
+    html += `<details style="background:var(--app-card-bg);border:1px solid var(--app-card-border);border-radius:8px;padding:8px 14px;margin-top:6px">`
+    html += `<summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('signatureInfo')}</summary>`
+    html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:2px;font-size:12px;font-family:monospace">'
+    if (fileMd5 && fileMd5 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('apkMd5')}：</span><span style="color:var(--app-text-secondary)">${esc(fileMd5)}</span></div>`
+    }
+    if (sigMd5 && sigMd5 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('sigMd5')}：</span><span style="color:var(--app-text-secondary)">${esc(sigMd5)}</span></div>`
+    }
+    if (sigSha1 && sigSha1 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('sigSha1')}：</span><span style="color:var(--app-text-secondary)">${esc(sigSha1)}</span></div>`
+    }
+    if (sigSha256 && sigSha256 !== '-') {
+      html += `<div><span style="color:var(--app-text-dim)">${label('sigSha256')}：</span><span style="color:var(--app-text-secondary)">${esc(sigSha256)}</span></div>`
+    }
+    if (sigMd5 === '-' || sigSha1 === '-' || sigSha256 === '-') {
+      html += `<span style="color:var(--app-yellow,#ca8a04);font-size:11px;margin-top:4px">${label('unsignedApk')}</span>`
+    }
+    html += '</div></details>'
+  }
+
   // ===== DEEP ANALYSIS CARD =====
   const hasSoCompFull = soComp && !soComp.single_arch && !soComp.no_native && soComp.arches && Object.keys(soComp.arches).length > 0
   const hasSoCompFallback = (soComp && soComp.single_arch) || (soComp && soComp.no_native)
@@ -917,67 +959,55 @@ function renderApkInfo(data: any) {
     // v2.1.1: Meta Data
     const metaData = data.meta_data
     if (metaData && Array.isArray(metaData) && metaData.length > 0) {
-      // Group by parent
-      const grouped: Record<string, any[]> = {}
-      for (const m of metaData) {
-        const p = m.parent || 'unknown'
-        if (!grouped[p]) grouped[p] = []
-        grouped[p].push(m)
-      }
       const metaCount = metaData.length
       html += `<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--app-text-dim);font-size:12px;font-weight:600;user-select:none">${label('metaData')} (${metaCount} entries)</summary>`
-      html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;font-size:12px">'
+      html += '<table class="meta-table" style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">'
+      html += '<thead><tr>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Parent</th>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Name</th>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Value</th>'
+      html += '<th style="background:var(--app-card-border);color:var(--app-text-dim);font-weight:600;font-size:11px;padding:4px 8px;text-align:left">Resource</th>'
+      html += '</tr></thead><tbody>'
 
-      for (const [parent, entries] of Object.entries(grouped)) {
-        const e = entries as any[]
-        html += '<div>'
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-        html += `<span style="display:inline-block;background:var(--app-green);color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;line-height:1.4">&lt;${esc(parent)}&gt;</span>`
-        html += `<span style="color:var(--app-text-dim);font-size:11px">${e.length} entries</span>`
-        html += '</div>'
-        html += '<div style="padding-left:6px;border-left:2px solid var(--app-card-border)">'
+      for (const item of metaData) {
+        const parent = item.parent || 'unknown'
+        const name = item.name || ''
+        const value = item.value || ''
+        const resValue = item.resource_value || ''
+        const resContent = item.resource_content
+        const resResolved = item.resource_resolved
 
-        for (const item of e) {
-          const name = item.name || ''
-          const value = item.value || ''
-          const resContent = item.resource_content
-          const resResolved = item.resource_resolved
-
-          html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:3px">'
-          html += `<span style="color:var(--app-text-primary);font-family:monospace;font-size:11px;min-width:120px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${esc(name)}">${esc(name)}</span>`
-
-          if (value && !value.startsWith('@')) {
-            html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(value)}</span>`
-          }
-
-          // Scalar resource value (string/integer resolved from aapt2 dump resources)
-          if (item.resource_value) {
-            if (!value) html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += `<span style="color:var(--app-text-secondary);font-family:monospace;font-size:11px;word-break:break-all;flex:1;min-width:0">${esc(item.resource_value)}</span>`
-          }
-
-          // Resource reference with resolved content
-          if (resContent && resContent.length > 0) {
-            if (!value) html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += '<span style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0">'
-            if (resResolved) {
-              html += `<span style="color:var(--app-text-dim);font-size:10px">${esc(resResolved)}</span>`
-            }
-            for (const ci of resContent) {
-              html += `<span style="color:var(--app-text-secondary);font-size:11px;padding-left:8px">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</span>`
-            }
-            html += '</span>'
-          } else if (!value) {
-            html += `<span style="color:var(--app-text-dim);flex-shrink:0">=</span>`
-            html += `<span style="color:var(--app-text-dim);font-style:italic;font-size:11px">-</span>`
-          }
-
-          html += '</div>'
+        html += '<tr>'
+        // Parent column - green chip
+        html += `<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border)"><span style="display:inline-block;background:var(--app-green);color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;line-height:1.4">&lt;${esc(parent)}&gt;</span></td>`
+        // Name column - monospace, no truncation, allow wrap
+        html += `<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border);font-family:monospace;font-size:11px;word-break:break-all">${esc(name)}</td>`
+        // Value column - prefer value (non-@), then resource_value, else gray -
+        html += '<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border);font-family:monospace;font-size:11px;word-break:break-all">'
+        if (value && !value.startsWith('@')) {
+          html += esc(value)
+        } else if (resValue) {
+          html += esc(resValue)
+        } else {
+          html += '<span style="color:var(--app-text-dim);font-style:italic">-</span>'
         }
-        html += '</div></div>'
+        html += '</td>'
+        // Resource column - resolved path + content array
+        html += '<td style="padding:4px 8px;vertical-align:top;border-top:1px solid var(--app-card-border)">'
+        if (resResolved || (resContent && resContent.length > 0)) {
+          if (resResolved) {
+            html += `<div style="color:var(--app-text-dim);font-size:10px">${esc(resResolved)}</div>`
+          }
+          if (resContent && resContent.length > 0) {
+            for (const ci of resContent) {
+              html += `<div style="color:var(--app-text-secondary);font-size:11px">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</div>`
+            }
+          }
+        }
+        html += '</td>'
+        html += '</tr>'
       }
-      html += '</div></details>'
+      html += '</tbody></table></details>'
     }
 
     html += '</div>'
@@ -1128,4 +1158,8 @@ function renderApkInfo(data: any) {
   line-height: 1.6;
 }
 .task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.meta-table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
 </style>

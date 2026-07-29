@@ -1,333 +1,30 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain } from 'electron';
-import path from 'path';
-import { existsSync, promises as fs } from 'fs';
-import { fileURLToPath } from 'url';
-import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
-import log from 'electron-log';
-import { appStore } from './stores/index';
+import { app, BrowserWindow } from 'electron';
 import { setupAllHandlers } from './ipc/index';
-import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../shared/config/pathConfig';
-import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
 import { initAutoUpdater, autoCheckForUpdates, isUpdateInstallInProgress } from './updater/updater';
-import { getAppLocalDataPath, ensureDir } from './utils/appPaths';
-
-// 配置日志 — 放在 LOCALAPPDATA，不随账号漫游；单文件上限 20MB
-log.transports.file.resolvePathFn = () => path.join(getAppLocalDataPath(), 'logs', 'electron.log');
-log.transports.file.maxSize = 20 * 1024 * 1024;
-log.transports.file.level = 'info';
-log.transports.console.level = 'info';
-// 可选：将 console 输出重定向到 electron-log
-// Object.assign(console, log.functions);
-
-let mainWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
-let pythonProcess: ChildProcessWithoutNullStreams | null = null;
-let startPythonPromise: Promise<ChildProcessWithoutNullStreams | null> | null = null;
-let isAppQuitting = false;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const __iconPath = !app.isPackaged
-  ? path.join(__dirname, '..', '..', 'src', 'main', 'public', 'assets', 'images', 'icon.png')
-  : path.join(__dirname, 'assets', 'images', 'icon.png');
-
-function getBaseDir(): string {
-  return !app.isPackaged
-    ? path.join(__dirname, '..', '..')
-    : process.resourcesPath;
-}
-
-function toNonEmptyString(value: unknown, fallback: string): string {
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim();
-  }
-  return fallback;
-}
-
-function resolvePathFromBase(baseDir: string, targetPath: string): string {
-  if (path.isAbsolute(targetPath)) return targetPath;
-  const cleanPath = targetPath.replace(/^\.[\\/]/, '');
-  return path.join(baseDir, cleanPath);
-}
-
-function resolvePathFromMainDir(targetPath: string): string {
-  if (path.isAbsolute(targetPath)) return targetPath;
-  return path.join(__dirname, targetPath);
-}
-
-function resolvePreloadPath(): string {
-  const configured = appStore.get(APP_CONFIG_KEYS.preloadCandidates);
-  const rawCandidates = Array.isArray(configured) && configured.length > 0
-    ? configured.map((item) => toNonEmptyString(item, ''))
-    : PATH_CONFIG_DEFAULTS.preloadCandidates;
-  const candidates = rawCandidates
-    .filter(Boolean)
-    .map((candidate) => resolvePathFromMainDir(candidate));
-  const found = candidates.find((candidate) => existsSync(candidate));
-  if (found) return found;
-  return candidates[0];
-}
-
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-      sandbox: false,
-      preload: resolvePreloadPath()
-    },
-    icon: __iconPath
-  });
-
-  Menu.setApplicationMenu(null);
-
-  if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
-  } else if (!app.isPackaged) {
-    const devServerUrl = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.devServerUrl), PATH_CONFIG_DEFAULTS.devServerUrl);
-    mainWindow.loadURL(devServerUrl);
-    mainWindow.webContents.openDevTools();
-  } else {
-    const rendererEntry = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.rendererEntry), PATH_CONFIG_DEFAULTS.rendererEntry);
-    const indexPath = resolvePathFromMainDir(rendererEntry);
-    mainWindow.loadFile(indexPath).catch(err => {
-        log.error('Failed to load index.html:', err);
-        log.error('Attempted path:', indexPath);
-    });
-  }
-
-  createTray();
-
-  // Custom quit dialog via renderer IPC (supports frontend i18n)
-  let quitDialogResolver: ((action: string) => void) | null = null
-
-  ipcMain.handle(IPC_CHANNEL_NAMES.respondQuitDialog, (_event, action: string) => {
-    if (quitDialogResolver) {
-      quitDialogResolver(action)
-      quitDialogResolver = null
-    }
-  })
-
-  mainWindow.on('close', async (e) => {
-    if (isUpdateInstallInProgress()) return
-    if (quitDialogResolver) return
-    e.preventDefault()
-    mainWindow?.webContents.send(IPC_CHANNEL_NAMES.showQuitDialog)
-    const action = await new Promise<string>(resolve => { quitDialogResolver = resolve })
-    if (action === 'quit') {
-      mainWindow?.destroy()
-      app.quit()
-    } else if (action === 'minimize') {
-      mainWindow?.hide()
-    }
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-}
-
-function createTray(): void {
-  const iconImage = nativeImage.createFromPath(__iconPath);
-  const isZh = app.getLocale().startsWith('zh')
-
-  tray = new Tray(iconImage.isEmpty() ? nativeImage.createEmpty() : iconImage);
-  tray.setToolTip('Blank Tool');
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: isZh ? '显示主窗口' : 'Show Window',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-      }
-    },
-    {
-      label: isZh ? '隐藏窗口' : 'Hide Window',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.hide();
-        }
-      }
-    },
-    { type: 'separator' },
-    {
-      label: isZh ? '退出' : 'Quit',
-      click: () => {
-        app.quit();
-      }
-    }
-  ]);
-
-  tray.setContextMenu(contextMenu);
-
-  tray.on('double-click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    }
-  });
-}
-
-async function startPythonService(): Promise<ChildProcessWithoutNullStreams | null> {
-  if (isAppQuitting) {
-    return null;
-  }
-  const baseDir = getBaseDir();
-  const serverDir = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.server), PATH_CONFIG_DEFAULTS.server);
-  const serverEntry = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.serverEntry), PATH_CONFIG_DEFAULTS.serverEntry);
-  const runtimeDir = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.runtime), PATH_CONFIG_DEFAULTS.runtime);
-  const runtimeExecutable = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.runtimeExecutable), PATH_CONFIG_DEFAULTS.runtimeExecutable);
-
-  let absServerDir = resolvePathFromBase(baseDir, serverDir);
-  let scriptPath = path.join(absServerDir, serverEntry);
-  try {
-    await fs.access(scriptPath);
-  } catch {
-    const fallbackServerDir = resolvePathFromBase(baseDir, PATH_CONFIG_DEFAULTS.server);
-    const fallbackScriptPath = path.join(fallbackServerDir, PATH_CONFIG_DEFAULTS.serverEntry);
-    log.warn(`Configured server path invalid, fallback to: ${fallbackScriptPath}`);
-    absServerDir = fallbackServerDir;
-    scriptPath = fallbackScriptPath;
-  }
-  log.info(`Python Script Path: ${scriptPath}`);
-
-  let pythonExecutable = 'python';
-  let absRuntimeDir = resolvePathFromBase(baseDir, runtimeDir);
-  const candidate = path.join(absRuntimeDir, runtimeExecutable);
-  try {
-    await fs.access(candidate);
-    pythonExecutable = candidate;
-    log.info(`Using Python Runtime: ${pythonExecutable}`);
-  } catch {
-    const defaultRuntimeDir = resolvePathFromBase(baseDir, PATH_CONFIG_DEFAULTS.runtime);
-    const defaultCandidate = path.join(defaultRuntimeDir, PATH_CONFIG_DEFAULTS.runtimeExecutable);
-    try {
-      await fs.access(defaultCandidate);
-      absRuntimeDir = defaultRuntimeDir;
-      pythonExecutable = defaultCandidate;
-      log.warn(`Configured runtime path invalid, fallback to: ${pythonExecutable}`);
-    } catch {
-      log.warn(`Python runtime not found at ${candidate}, falling back to system python`);
-    }
-  }
-
-  try {
-    const localDataPath = getAppLocalDataPath();
-    const cacheDir = path.join(localDataPath, 'cache');
-    const outputDir = path.join(localDataPath, 'output');
-    const tasksDir = path.join(localDataPath, 'tasks');
-    const logsDir = path.join(localDataPath, 'logs');
-    ensureDir(cacheDir);
-    ensureDir(outputDir);
-    ensureDir(tasksDir);
-    ensureDir(logsDir);
-
-    const env = {
-        ...process.env,
-        BT_RUNTIME_DIR: absRuntimeDir || '',
-        BT_CACHE_DIR: cacheDir,
-        BT_TASKS_DIR: tasksDir,
-        BT_OUTPUT_DIR: outputDir,
-        BT_LOG_DIR: logsDir
-    };
-    log.info(`Spawning Python process with: ${pythonExecutable} ${scriptPath}`);
-    pythonProcess = spawn(pythonExecutable, [scriptPath], { env });
-  } catch (e) {
-    log.error('启动 Python 进程失败:', e);
-    pythonProcess = null;
-    return null;
-  }
-
-  pythonProcess.on('error', (err) => {
-    log.error('Python 进程错误:', err);
-  });
-
-  // Ring buffer for Python stderr — forensic record, only dumped on crash.
-  // Python's own logger (StreamHandler→stderr + DailyRotatingFileHandler→backend-*.log)
-  // already records every line; relaying it again here was the source of duplication.
-  const stderrRing: string[] = [];
-  const STDERR_RING_MAX = 200;
-  // Python logger line: "YYYY-MM-DD HH:MM:SS - NAME - LEVEL - message"
-  // Only ERROR/CRITICAL level or tracebacks deserve an immediate electron.log entry;
-  // tool-level warnings (aapt2 "failed to find file" etc.) are WARNING and stay buffered.
-  const PYTHON_ERROR_LEVEL = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - .* - (ERROR|CRITICAL) -/;
-  const PYTHON_TRACEBACK = /Traceback \(most recent call last\):/;
-
-  pythonProcess.stderr.on('data', (data) => {
-    const chunk = data.toString();
-    for (const line of chunk.split('\n').filter(l => l.length > 0)) {
-      stderrRing.push(line);
-      if (stderrRing.length > STDERR_RING_MAX) stderrRing.shift();
-    }
-    if (PYTHON_TRACEBACK.test(chunk) || PYTHON_ERROR_LEVEL.test(chunk)) {
-      log.error(`Python: ${chunk.trimEnd()}`);
-    }
-  });
-
-  pythonProcess.on('close', (code, signal) => {
-    if (code !== 0 && code !== null) {
-      const tail = stderrRing.join('\n');
-      log.error(
-        `Python process crashed (exit code ${code}). Last ${stderrRing.length} lines of stderr:\n${tail}`
-      );
-    } else {
-      log.info(`Python process exited (code ${code}, signal ${signal})`);
-    }
-    stderrRing.length = 0;
-    pythonProcess = null;
-  });
-  return pythonProcess;
-}
-
-function isProcessWritable(proc: ChildProcessWithoutNullStreams | null): boolean {
-  return Boolean(
-    proc &&
-    !proc.killed &&
-    proc.exitCode === null &&
-    proc.stdin &&
-    !proc.stdin.destroyed &&
-    !proc.stdin.writableEnded &&
-    proc.stdin.writable
-  );
-}
-
-async function ensurePythonService(): Promise<ChildProcessWithoutNullStreams | null> {
-  if (isAppQuitting) {
-    return null;
-  }
-  if (isProcessWritable(pythonProcess)) {
-    return pythonProcess;
-  }
-  if (!startPythonPromise) {
-    startPythonPromise = startPythonService().finally(() => {
-      startPythonPromise = null;
-    });
-  }
-  return await startPythonPromise;
-}
-
+import { configureLogging, LogLevel } from './logging';
+import { createMainWindow } from './window/mainWindow';
+import {
+  getPythonProcess,
+  setIsAppQuitting,
+  getTray, setTray,
+  getMainWindow
+} from './state';
+import { startPythonService, ensurePythonService } from './python/service';
+import { appStore } from './stores/index';
 
 app.whenReady().then(async () => {
+  const logsConfig = appStore.get('logs') as { level?: string } | undefined;
+  const logLevel: LogLevel = (logsConfig?.level as LogLevel) || 'info';
+  configureLogging(logLevel);
+
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.cyanrain.blank-tool');
   }
 
   await ensurePythonService();
-  setupAllHandlers(() => pythonProcess, ensurePythonService);
+  setupAllHandlers(() => getPythonProcess(), ensurePythonService);
 
-  createWindow();
+  createMainWindow();
 
   // Auto-update check (3s delay to avoid impacting startup)
   setTimeout(() => {
@@ -345,14 +42,16 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  isAppQuitting = true;
-  if (tray) {
-    tray.destroy();
-    tray = null;
+  setIsAppQuitting(true);
+  const currentTray = getTray();
+  if (currentTray) {
+    currentTray.destroy();
+    setTray(null);
   }
 
-  if (pythonProcess) {
-    pythonProcess.kill();
+  const currentProc = getPythonProcess();
+  if (currentProc) {
+    currentProc.kill();
   }
 
   if (!isUpdateInstallInProgress()) {
@@ -364,9 +63,12 @@ app.on('before-quit', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  } else if (mainWindow) {
-    mainWindow.show();
-    mainWindow.focus();
+    createMainWindow();
+  } else {
+    const mw = getMainWindow();
+    if (mw) {
+      mw.show();
+      mw.focus();
+    }
   }
 });

@@ -12,6 +12,7 @@ editable and therefore untrusted.
 import os
 import shutil
 
+from app.common.task_manager import TaskManager
 from app.utils.env import get_output_dir, get_task_dir, get_tasks_root
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
@@ -144,9 +145,27 @@ def handle_delete_task_dir(params, stream_handler):
         return {"deleted": False, "path": path, "error": str(e)}
 
 
+def handle_list_tasks(params, stream_handler):
+    """Return a snapshot of all registered (running) tasks."""
+    return {"tasks": TaskManager().list_tasks()}
+
+
+def handle_cancel_request(params, stream_handler):
+    """Cancel a task by request_id. Returns {cancelled: bool}."""
+    request_id = str(params.get("request_id") or params.get("task_id") or "")
+    if not request_id:
+        return {"cancelled": False, "message": "Missing request_id"}
+    cancelled = TaskManager().cancel(request_id)
+    if cancelled:
+        return {"cancelled": True, "task_id": request_id}
+    return {"cancelled": False, "task_id": request_id, "message": "Task not found or already completed"}
+
+
 API_MAP = {
     "task.delete_output": handle_delete_output,
     "task.read_log": handle_read_log,
     "task.append_log": handle_append_log,
     "task.delete_task_dir": handle_delete_task_dir,
+    "task.list": handle_list_tasks,
+    "request.cancel": handle_cancel_request,
 }

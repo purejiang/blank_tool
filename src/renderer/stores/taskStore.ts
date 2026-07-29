@@ -23,6 +23,7 @@ export interface Task {
   startedAt: number
   finishedAt: number | null
   taskDir: string
+  deviceLabel?: string
 }
 
 export type TaskEvent =
@@ -64,7 +65,10 @@ function loadTasks(): Task[] {
 
 function saveTasks(tasks: Task[]) {
   try {
-    const toSave = tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled').slice(0, 100)
+    const toSave = tasks
+      .filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
+      .slice(0, 100)
+      .map(t => ({ ...t, logs: [] }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   } catch {}
 }
@@ -128,7 +132,9 @@ async function notifyTaskTerminal(task: Task): Promise<void> {
     if (enabled !== true) return
     const title = `${task.operationLabel || 'Task'} ${task.fileName || ''}`.trim()
     let body: string
-    if (task.status === 'completed') {
+    if (task.status === 'completed' && task.operation === 'install' && task.deviceLabel) {
+      body = '已安装到 ' + task.deviceLabel
+    } else if (task.status === 'completed') {
       body = '已完成'
     } else if (task.status === 'failed') {
       body = `失败${task.error ? ': ' + task.error : ''}`
@@ -231,6 +237,7 @@ export const useTaskStore = defineStore('task', () => {
         updates.outputPath = payload?.output_dir || payload?.output_apk || payload?.apk_path || ''
         // For analyze, PackagePage already converted payload → HTML via renderApkInfo
         updates.result = payload?.result ?? ''
+        if (payload?.deviceLabel) updates.deviceLabel = payload.deviceLabel
         terminal = true
         break
       case 'operation_error':

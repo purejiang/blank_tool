@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
+import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
@@ -19,6 +20,11 @@ function isBackendResponse(message: BackendStdioMessage): message is BackendResp
     return typeof (message as BackendResponse).id !== 'undefined';
 }
 
+export const createErrorResponse = (message: string, code: number = -32603) => ({
+    type: 'error' as const,
+    payload: { code, message }
+});
+
 export function setupCommandHandlers(
     getPythonProcess: () => ChildProcessWithoutNullStreams | null,
     ensurePythonProcess?: () => Promise<ChildProcessWithoutNullStreams | null>,
@@ -26,11 +32,6 @@ export function setupCommandHandlers(
 ): void {
     const requestCallbacks = new Map<string | number, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
-
-    const createErrorResponse = (message: string) => ({
-        type: 'error',
-        error: { message }
-    });
 
     const isBackendWritable = (pythonProcess: ChildProcessWithoutNullStreams | null): boolean => {
         return Boolean(
@@ -87,7 +88,6 @@ export function setupCommandHandlers(
                                 // Streaming event — forward to renderer regardless of result type
                                 const result = (response.result || {}) as JsonObject;
                                 const resultType = typeof result.type === 'string' ? result.type : '';
-                                console.log('[main] streaming chunK:', JSON.stringify(response).substring(0, 200));
                                 if (resultType && sender && !sender.isDestroyed()) {
                                     const channelMap: Record<string, string> = {
                                         'log': IPC_CHANNEL_NAMES.logcatOutput,
@@ -96,7 +96,7 @@ export function setupCommandHandlers(
                                     };
 
                                     const channel = channelMap[resultType];
-                                    console.log('[main] forwarding to channel:', channel, 'resultType:', resultType);
+
                                     if (channel) {
                                         const resultPayload = typeof result.payload === 'object' && result.payload !== null
                                             ? result.payload as JsonObject
@@ -112,8 +112,6 @@ export function setupCommandHandlers(
                                             data: result
                                         });
                                     }
-                                } else {
-                                    console.log('[main] skipped forwarding, resultType:', resultType, 'sender:', !!sender, 'destroyed:', sender?.isDestroyed());
                                 }
 
                                 if (!callbackInfo.resolved) {
@@ -167,12 +165,22 @@ export function setupCommandHandlers(
 
     ipcMain.handle(IPC_CHANNELS.callBackendApi.name, async (event: IpcMainInvokeEvent, request: BackendApiRequest) => {
         const pythonProcess = await getWritableProcess();
+        log.info(`[trace ${request.id}] dispatching ${request.method}`);
         if (!pythonProcess) {
-            return createErrorResponse('后端服务未运行');
+            return createErrorResponse('后端服务未运行', -32001);
         }
 
         return new Promise((resolve, reject) => {
-            requestCallbacks.set(request.id, { resolve, reject, sender: event.sender, process: pythonProcess });
+            const wrappedResolve = (value: unknown) => {
+                log.info(`[trace ${request.id}] resolved`);
+                resolve(value);
+            };
+            const wrappedReject = (reason?: unknown) => {
+                const message = reason instanceof Error ? reason.message : String(reason);
+                log.info(`[trace ${request.id}] rejected: ${message}`);
+                reject(reason);
+            };
+            requestCallbacks.set(request.id, { resolve: wrappedResolve, reject: wrappedReject, sender: event.sender, process: pythonProcess });
 
             try {
                 const payload = JSON.stringify(request) + '\n';
@@ -183,13 +191,14 @@ export function setupCommandHandlers(
             } catch (err) {
                 requestCallbacks.delete(request.id);
                 const message = err instanceof Error ? err.message : String(err);
-                resolve(createErrorResponse(`发送请求失败: ${message}`));
+                resolve(createErrorResponse(`发送请求失败: ${message}`, -32002));
             }
 
             setTimeout(() => {
                 if (requestCallbacks.has(request.id)) {
                     requestCallbacks.delete(request.id);
-                    resolve(createErrorResponse('请求超时'));
+                    log.info(`[trace ${request.id}] timed out`);
+                    resolve(createErrorResponse('请求超时', -32003));
                 }
             }, requestTimeout);
         });
