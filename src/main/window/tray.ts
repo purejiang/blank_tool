@@ -5,9 +5,7 @@ import { getMainWindow, setTray } from '../state';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const __iconPath = !app.isPackaged
-  ? path.join(__dirname, '..', 'public', 'assets', 'images', 'icon.png')
-  : path.join(__dirname, '..', 'assets', 'images', 'icon.png');
+const __iconPath = path.join(__dirname, 'assets', 'images', 'icon.png');
 
 export function createTray(): Tray {
   const iconImage = nativeImage.createFromPath(__iconPath);

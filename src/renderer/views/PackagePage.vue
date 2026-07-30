@@ -445,8 +445,8 @@ async function loadFullTaskLog(task: Task) {
   }
 }
 
-async function collapseTaskLog(task: Task) {
-  await loadTaskLog(task)
+function collapseTaskLog(task: Task) {
+  taskLogCache.value.delete(task.id)
   logExpandedMap.value.set(task.id, false)
 }
 

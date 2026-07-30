@@ -223,6 +223,18 @@ def apk_analyze(params, stream_handler):
             info["sig_sha256"] = "-"
             info["warnings"].append(f"Signature extraction failed: {e}")
 
+        if task_id:
+            append_task_log(task_id, f"[ANALYZE] package={info.get('package_name', '-')} version={info.get('version_name', '-')} (code={info.get('version_code', '-')})")
+            append_task_log(task_id, f"[ANALYZE] app_label={info.get('application_label', '-')}")
+            append_task_log(task_id, f"[ANALYZE] sdk: min={info.get('min_sdk_version', '-')} target={info.get('target_sdk_version', '-')}")
+            append_task_log(task_id, f"[ANALYZE] file_md5={info.get('file_md5', '-')} size={info.get('file_size', 0)}")
+            append_task_log(task_id, f"[ANALYZE] sig_sha256={info.get('sig_sha256', '-')}")
+            append_task_log(task_id, f"[ANALYZE] permissions={len(info.get('permissions', []))}")
+            if info.get('native_libs'):
+                append_task_log(task_id, f"[ANALYZE] native_abis={info['native_libs']}")
+            if info.get('warnings'):
+                for w in info['warnings']:
+                    append_task_log(task_id, f"[ANALYZE] warning: {w}")
         stream_handler({"type": "complete", "payload": info})
     except ToolException as e:
         logger.error(f"APK analysis tool error: {e}")
@@ -300,6 +312,8 @@ def apk_decompile(params, stream_handler):
             })
             return
 
+        if task_id:
+            append_task_log(task_id, f"[DECOMPILE] output_dir: {output_dir}")
         stream_handler({"type": "complete", "payload": {"output_dir": output_dir}})
     finally:
         if task_id:
@@ -442,6 +456,8 @@ def apk_recompile(params, stream_handler):
                     })
                     return
 
+        if task_id:
+            append_task_log(task_id, f"[RECOMPILE] output_apk: {output_apk}")
         stream_handler({"type": "complete", "payload": {"output_apk": output_apk}})
     finally:
         if task_id:
@@ -762,6 +778,8 @@ def apk_sign(params, stream_handler):
             })
             return
 
+        if task_id:
+            append_task_log(task_id, f"[SIGN] output: {output_apk}")
         stream_handler({"type": "complete", "payload": {"apk_path": output_apk}})
     finally:
         if task_id:

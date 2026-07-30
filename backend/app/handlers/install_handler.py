@@ -81,6 +81,8 @@ def device_install_apk(params, stream_handler):
             stream_handler({"type": "error", "payload": {"message": "Installation failed"}})
             return
 
+        if task_id:
+            append_task_log(task_id, f"[INSTALL] device={device_id} success")
         stream_handler({"type": "complete", "payload": {"device_id": device_id, "success": True}})
     except Exception as e:
         if task_id and task_manager.is_cancelled(task_id):
@@ -166,6 +168,8 @@ def device_install_apks(params, stream_handler):
             stream_handler({"type": "error", "payload": {"message": "APKS installation failed"}})
             return
 
+        if task_id:
+            append_task_log(task_id, f"[INSTALL_APKS] device={device_id} success")
         stream_handler({"type": "complete", "payload": {"device_id": device_id, "success": True}})
     except Exception as e:
         if task_id and task_manager.is_cancelled(task_id):

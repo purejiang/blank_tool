@@ -13,6 +13,7 @@ from app.common.task_manager import TaskManager
 from app.common.decorators import streaming, logs_errors
 from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
+from app.utils.task_log_writer import append_task_log
 
 logger = Logger.get_logger("AabHandler")
 manager = ToolManager.instance()
@@ -59,6 +60,7 @@ def aab_sign(
 
         context = CommandExecutionContext(
             process_holder=process_holder,
+            task_id=task_id,
         )
         result = jarsigner.execute(
             [jarsigner.tool_path] + args, context
@@ -67,6 +69,8 @@ def aab_sign(
             return {"cancelled": True, "task_id": task_id}
         if result.get("returncode", 1) != 0:
             raise ToolException(result.get("stderr", "Signing failed"))
+        if task_id:
+            append_task_log(task_id, f"[AAB_SIGN] signed: {aab_path}")
         return {"aab_path": aab_path}
     finally:
         if task_id:
@@ -123,6 +127,7 @@ def convert_aab_to_apks(params, stream_handler):
 
         context = CommandExecutionContext(
             process_holder=process_holder,
+            task_id=task_id,
         )
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
@@ -134,6 +139,8 @@ def convert_aab_to_apks(params, stream_handler):
             return {"cancelled": True, "task_id": task_id}
         if result.get("returncode", 1) != 0:
             raise ToolException(result.get("stderr", "Conversion failed"))
+        if task_id:
+            append_task_log(task_id, f"[AAB_CONVERT] apks_path: {output_path}")
         return {"apks_path": output_path}
     finally:
         if task_id:
@@ -203,6 +210,7 @@ def install_aab(params, stream_handler):
 
         context = CommandExecutionContext(
             process_holder=process_holder,
+            task_id=task_id,
         )
         java = bundletool.get_java_path()
         if not java or not os.path.exists(java):
@@ -222,6 +230,8 @@ def install_aab(params, stream_handler):
             return {"cancelled": True, "task_id": task_id}
         if result.get("returncode", 1) != 0:
             raise ToolException(result.get("stderr", "Installation failed"))
+        if task_id:
+            append_task_log(task_id, f"[AAB_INSTALL] device={device_id} apks={apks_path}")
         if stream_handler:
             stream_handler({"type": "complete", "payload": {"device_id": device_id, "apks_path": apks_path, "success": True}})
         return {"device_id": device_id, "apks_path": apks_path}
