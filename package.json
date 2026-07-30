@@ -16,7 +16,8 @@
     "build:win": "node scripts/build.mjs --win",
     "build:mac": "node scripts/build.mjs --mac",
     "build:linux": "node scripts/build.mjs --linux",
-    "dist": "npm run build"
+    "dist": "npm run build",
+    "release": "node scripts/release.mjs"
   },
   "keywords": [
     "electron",
