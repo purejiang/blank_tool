@@ -10,9 +10,7 @@ import { setupQuitDialog } from './quitDialog';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const __iconPath = !app.isPackaged
-  ? path.join(__dirname, '..', 'public', 'assets', 'images', 'icon.png')
-  : path.join(__dirname, '..', 'assets', 'images', 'icon.png');
+const __iconPath = path.join(__dirname, 'assets', 'images', 'icon.png');
 
 function toNonEmptyString(value: unknown, fallback: string): string {
   if (typeof value === 'string' && value.trim()) {
