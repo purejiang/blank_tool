@@ -213,10 +213,15 @@ class FileTemplateStore(TemplateStore):
     def load(self, name: str) -> WorkflowDefinition:
         """Load the workflow definition stored under *name*.
 
+        Accepts both the wrapped ``{"definition": {...}, ...}`` format written
+        by :meth:`save` and the bare :class:`WorkflowDefinition` dict seeded by
+        :meth:`copy_defaults` (a raw file has no ``definition`` key, so the
+        whole file IS the definition).
+
         Raises:
             TemplateNotFoundError: if no template with *name* exists.
-            ValueError: if the stored file is not valid JSON or lacks a
-                valid ``definition`` key.
+            ValueError: if the stored file is not valid JSON, not a dict, or
+                fails :meth:`WorkflowDefinition.from_dict` validation.
         """
         path = self._path_for(name)
         if not os.path.isfile(path):
@@ -228,12 +233,16 @@ class FileTemplateStore(TemplateStore):
         except json.JSONDecodeError as exc:
             raise ValueError(f"invalid JSON in template file {path}: {exc}") from exc
 
-        try:
-            definition_data = data["definition"]
-        except KeyError:
+        if not isinstance(data, dict):
             raise ValueError(
-                f"template file {path} is missing the 'definition' key"
-            ) from None
+                f"template file {path} is not a valid template: expected a JSON object"
+            )
+
+        definition_data = data.get("definition")
+        if definition_data is None:
+            # Raw workflow file (copied by copy_defaults) — the whole file is
+            # the definition.
+            definition_data = data
         return WorkflowDefinition.from_dict(definition_data)
 
     def list(self) -> List[TemplateInfo]:
@@ -242,6 +251,15 @@ class FileTemplateStore(TemplateStore):
         Corrupt or schema-invalid files are skipped (a single broken
         template must not crash the listing); ``node_count`` is derived
         from the parsed definition's ``nodes`` length.
+
+        Two on-disk formats are accepted:
+
+        - Wrapped (produced by :meth:`save`): ``{"definition": {...},
+          "created_at": ..., "updated_at": ..., "description": ...,
+          "tags": [...]}``.
+        - Raw (seeded by :meth:`copy_defaults` from ``backend/workflows/``):
+          a bare :class:`WorkflowDefinition` dict.  Metadata is derived from
+          the raw workflow fields and the file's modification time.
         """
         infos: List[TemplateInfo] = []
         if not os.path.isdir(self._templates_dir):
@@ -257,19 +275,37 @@ class FileTemplateStore(TemplateStore):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                definition = WorkflowDefinition.from_dict(
-                    data.get("definition", {})
-                )
+
+                definition_data = data.get("definition")
+                if definition_data is None:
+                    # Raw workflow file (copied by copy_defaults) — treat the
+                    # whole file as the definition and derive metadata from the
+                    # raw workflow fields + file modification time.
+                    definition_data = data
+                    description = data.get("description", "")
+                    tags: List[str] = []
+                    stat = os.stat(path)
+                    iso_time = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    created_at = iso_time
+                    updated_at = iso_time
+                else:
+                    # Wrapped template store format (from save()).
+                    description = data.get("description", "")
+                    tags = list(data.get("tags", []))
+                    created_at = data.get("created_at") or ""
+                    updated_at = data.get("updated_at") or ""
+
+                definition = WorkflowDefinition.from_dict(definition_data)
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 continue
 
             infos.append(
                 TemplateInfo(
                     name=filename[: -len(".json")],
-                    description=data.get("description") or "",
-                    created_at=data.get("created_at") or "",
-                    updated_at=data.get("updated_at") or "",
-                    tags=list(data.get("tags", [])),
+                    description=description,
+                    created_at=created_at,
+                    updated_at=updated_at,
+                    tags=tags,
                     node_count=len(definition.nodes),
                 )
             )
