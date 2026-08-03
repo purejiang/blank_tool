@@ -107,20 +107,21 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
 
 <style scoped>
 /*
- * Functional monochrome MVP styling. Colors come from the app theme tokens
- * (themes.css); the category only contributes an accent via --tn-accent.
- * Row metrics here must match toolMeta.ts: header 28px, port row 18px,
- * body vertical padding 6px.
+ * Functional monochrome MVP styling. Colors come from the workflow editor
+ * tokens (--node-bg/--node-border/--node-text, defined in themes.css as
+ * aliases of the app theme tokens); the category only contributes an accent
+ * via --tn-accent. Row metrics here must match toolMeta.ts: header 28px,
+ * port row 18px, body vertical padding 6px.
  */
 .tool-node {
   --tn-accent: var(--app-text-dim);
   position: relative;
   min-width: 150px;
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
+  background: var(--node-bg);
+  border: 1px solid var(--node-border);
   border-left: 3px solid var(--tn-accent);
   border-radius: 6px;
-  color: var(--app-text-primary);
+  color: var(--node-text);
   font-size: 11px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -136,7 +137,7 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
  * until the next Run or a structural canvas change (see editor page).
  */
 .tool-node.tool-node--idle {
-  border-color: var(--app-card-border);
+  border-color: var(--node-border);
   border-left-color: var(--tn-accent);
 }
 
@@ -276,7 +277,7 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
   gap: 12px;
   justify-content: space-between;
   padding: 6px 10px;
-  border-top: 1px solid var(--app-card-border);
+  border-top: 1px solid var(--node-border);
 }
 
 .tn-port-col {
@@ -311,7 +312,7 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
 .tn-handle {
   width: 8px;
   height: 8px;
-  background: var(--app-card-bg);
+  background: var(--node-bg);
   border: 1.5px solid var(--tn-accent);
   border-radius: 50%;
   transition: transform 0.12s ease, opacity 0.12s ease, background-color 0.12s ease;

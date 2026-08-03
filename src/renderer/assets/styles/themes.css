@@ -68,6 +68,98 @@
   --app-storage-bg: rgba(15, 23, 42, 0.5);
 }
 
+/* ===== Workflow Editor (vue-flow) Theme Mapping =====
+ * Editor-surface tokens (todo 40). Every alias resolves to an --app-* token,
+ * so [data-theme] switches (light/dark/auto) cascade through the whole
+ * vue-flow editor automatically — no per-theme duplication, no flash.
+ */
+:root {
+  --node-bg: var(--app-card-bg);
+  --node-border: var(--app-card-border);
+  --node-text: var(--app-text-primary);
+  --port-color: var(--app-text-dim);
+  --edge-color: var(--app-text-dim);
+  --edge-color-selected: var(--app-blue);
+  --palette-bg: var(--app-card-bg);
+  --palette-text: var(--app-text-primary);
+  --config-panel-bg: var(--app-card-bg);
+  --minimap-mask: rgba(100, 116, 139, 0.3);
+}
+
+/*
+ * Overrides for vue-flow's bundled default styles (the library CSS is
+ * imported lazily by WorkflowEditorPage.vue). Every rule leads with
+ * `.vue-flow` so its specificity beats the library rules regardless of
+ * stylesheet load order. SVG fill/stroke set as presentation attributes
+ * (Background dots, MiniMap rect/mask) are overridden by plain CSS rules.
+ */
+.vue-flow {
+  color: var(--node-text);
+}
+
+.vue-flow .vue-flow__edge-path,
+.vue-flow .vue-flow__connection-path {
+  stroke: var(--edge-color);
+}
+
+.vue-flow .vue-flow__edge.selected .vue-flow__edge-path,
+.vue-flow .vue-flow__edge:focus .vue-flow__edge-path,
+.vue-flow .vue-flow__edge:focus-visible .vue-flow__edge-path {
+  stroke: var(--edge-color-selected);
+}
+
+.vue-flow .vue-flow__edge.updating .vue-flow__edge-path {
+  stroke: var(--edge-color-selected);
+}
+
+.vue-flow .vue-flow__edge-textbg {
+  fill: var(--palette-bg);
+}
+
+.vue-flow .vue-flow__handle {
+  background: var(--node-bg);
+  border-color: var(--port-color);
+}
+
+/* Marquee + multi-node selection rects */
+.vue-flow .vue-flow__selection,
+.vue-flow .vue-flow__nodesselection-rect {
+  background: var(--app-blue-bg);
+  border: 1px dotted var(--app-blue);
+}
+
+/* Canvas dot grid (Background renders one <circle> per dot) */
+.vue-flow .vue-flow__background circle {
+  fill: var(--app-placeholder-color);
+}
+
+/* Controls (zoom/fit/lock buttons) */
+.vue-flow .vue-flow__controls-button {
+  background: var(--palette-bg);
+  border-bottom-color: var(--node-border);
+}
+
+.vue-flow .vue-flow__controls-button:hover {
+  background: var(--app-hover-strong);
+}
+
+.vue-flow .vue-flow__controls-button svg {
+  fill: var(--palette-text);
+}
+
+/* MiniMap (node/mask fills arrive as attributes; CSS wins over them) */
+.vue-flow .vue-flow__minimap {
+  background-color: var(--palette-bg);
+}
+
+.vue-flow .vue-flow__minimap-node {
+  fill: var(--port-color);
+}
+
+.vue-flow .vue-flow__minimap-mask {
+  fill: var(--minimap-mask);
+}
+
 /* ===== Global Element Styles ===== */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -438,6 +438,30 @@ export default {
     pluginExecuted: '插件 {name} 执行完成',
     pluginFailed: '插件 {name} 执行失败',
   },
+  // Workflow editor
+  workflow: {
+    editor: {
+      title: '工作流编辑器',
+      run: '运行',
+      save: '保存为模板',
+      load: '加载模板',
+      delete: '删除模板',
+      palette: {
+        title: '工具',
+      },
+      config: {
+        title: '节点配置',
+        noSelection: '选择一个节点进行配置',
+      },
+      connection: {
+        incompatible: '类型不兼容: {source} → {target}',
+      },
+      execution: {
+        success: '工作流执行成功',
+        failed: '工作流失败: {error}',
+      },
+    },
+  },
   // Status Bar
   statusBar: {
     noDevice: '无设备',

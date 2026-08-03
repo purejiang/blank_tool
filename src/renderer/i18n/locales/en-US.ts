@@ -437,6 +437,30 @@ export default {
     pluginExecuted: 'Plugin {name} executed',
     pluginFailed: 'Plugin {name} failed',
   },
+  // Workflow editor
+  workflow: {
+    editor: {
+      title: 'Workflow Editor',
+      run: 'Run',
+      save: 'Save as Template',
+      load: 'Load Template',
+      delete: 'Delete Template',
+      palette: {
+        title: 'Tools',
+      },
+      config: {
+        title: 'Node Configuration',
+        noSelection: 'Select a node to configure',
+      },
+      connection: {
+        incompatible: 'Incompatible types: {source} → {target}',
+      },
+      execution: {
+        success: 'Workflow completed successfully',
+        failed: 'Workflow failed: {error}',
+      },
+    },
+  },
   // Status Bar
   statusBar: {
     noDevice: 'No device',

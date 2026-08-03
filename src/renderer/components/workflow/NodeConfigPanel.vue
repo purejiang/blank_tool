@@ -1,6 +1,6 @@
 <template>
   <div class="node-config-panel">
-    <div v-if="!node" class="npc-empty">Select a node to configure</div>
+    <div v-if="!node" class="npc-empty">{{ t('workflow.editor.config.noSelection') }}</div>
     <template v-else>
       <!-- Tool identity -->
       <div class="npc-identity">
@@ -98,11 +98,14 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton } from 'naive-ui'
 import type { Node } from '@vue-flow/core'
 import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'
 import type { ToolNodeData, ToolPorts } from './toolMeta'
+
+const { t } = useI18n()
 
 /**
  * Loose port shape accepted by this panel. Todo 34's `ToolPort` (toolMeta.ts,
@@ -261,6 +264,7 @@ async function browsePath(port: LoosePort) {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  background: var(--config-panel-bg);
 }
 
 .npc-empty {
@@ -271,7 +275,7 @@ async function browsePath(port: LoosePort) {
 
 .npc-identity {
   padding: 12px;
-  border-bottom: 1px solid var(--app-card-border);
+  border-bottom: 1px solid var(--node-border);
 }
 
 .npc-tool-name {
@@ -391,6 +395,6 @@ async function browsePath(port: LoosePort) {
   display: flex;
   justify-content: flex-end;
   padding: 10px 12px;
-  border-top: 1px solid var(--app-card-border);
+  border-top: 1px solid var(--node-border);
 }
 </style>

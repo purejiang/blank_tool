@@ -1,6 +1,6 @@
 <template>
   <aside class="workflow-node-palette">
-    <div class="wnp-header">Tool Palette</div>
+    <div class="wnp-header">{{ t('workflow.editor.palette.title') }}</div>
     <div class="wnp-body">
       <div v-if="loading" class="wnp-status-text">Loading tools…</div>
       <div v-else-if="error" class="wnp-status-text wnp-status-error" :title="error">
@@ -36,9 +36,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import unifiedApi from '@/api/unifiedApi'
 import { log } from '@utils/logger'
 import { TOOL_DRAG_MIME, type WorkflowToolInfo } from './toolMeta'
+
+const { t } = useI18n()
 
 const tools = ref<WorkflowToolInfo[]>([])
 const loading = ref(false)
@@ -101,14 +104,15 @@ onMounted(loadTools)
   flex-shrink: 0;
   width: 220px;
   overflow: hidden;
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
+  background: var(--palette-bg);
+  border: 1px solid var(--node-border);
   border-radius: 6px;
+  color: var(--palette-text);
 }
 
 .wnp-header {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--app-card-border);
+  border-bottom: 1px solid var(--node-border);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
