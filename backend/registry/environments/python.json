@@ -1,0 +1,11 @@
+{
+  "name": "python",
+  "display_name": "Python Runtime",
+  "type": "python",
+  "binary": "python.exe",
+  "version_cmd": ["--version"],
+  "version_regex": "Python (\\d+\\.\\d+[\\.\\d+]*)",
+  "search_paths": ["python"],
+  "importable": true,
+  "env_var_override": "BT_PYTHON_BIN"
+}

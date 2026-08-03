@@ -1,0 +1,11 @@
+{
+  "name": "node",
+  "display_name": "Node.js Runtime",
+  "type": "node",
+  "binary": "node.exe",
+  "version_cmd": ["--version"],
+  "version_regex": "v(\\d+\\.\\d+[\\.\\d+]*)",
+  "search_paths": [],
+  "importable": true,
+  "env_var_override": "BT_NODE_BIN"
+}
