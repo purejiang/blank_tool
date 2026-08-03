@@ -39,15 +39,17 @@ class ToolDescriptor:
 
     ``path`` is an absolute path, a relative path (anchored at the runtime
     directory), or a per-platform dict ``{"win": ..., "mac": ...,
-    "linux": ...}``.  ``validate`` carries ``{"cmd", "expect_contains",
-    "expect_in", "expect_returncode"}``; ``version`` carries ``{"cmd",
-    "regex", "from_stream"}``.  ``sensitive_arg_patterns`` is a
-    log-redaction extension point (CommandExecutor applies its own).
+    "linux": ...}``.  ``type`` follows the same rules — a plain type string,
+    or a per-platform dict (e.g. apksigner is a ``java_jar`` on Windows but
+    a plain ``binary`` on mac/linux).  ``validate`` carries ``{"cmd",
+    "expect_contains", "expect_in", "expect_returncode"}``; ``version``
+    carries ``{"cmd", "regex", "from_stream"}``.  ``sensitive_arg_patterns``
+    is a log-redaction extension point (CommandExecutor applies its own).
     """
 
     name: str
     display_name: str
-    type: str  # binary | java_jar | python_script | node_script | shell_script
+    type: Union[str, Dict[str, str]]  # binary | java_jar | python_script | node_script | shell_script
     path: Union[str, Dict[str, str]]
     env_deps: List[str]
     validate: Dict[str, Any]
@@ -62,10 +64,24 @@ class ToolDescriptor:
 
     def __post_init__(self) -> None:
         """Validate the descriptor's core fields."""
-        if self.type not in self._VALID_TYPES:
+        if isinstance(self.type, str):
+            if self.type not in self._VALID_TYPES:
+                raise ValueError(
+                    f"invalid tool type {self.type!r}; must be one of "
+                    f"{sorted(self._VALID_TYPES)}"
+                )
+        elif isinstance(self.type, dict):
+            if not self.type:
+                raise ValueError("type dict must not be empty")
+            invalid = [v for v in self.type.values() if v not in self._VALID_TYPES]
+            if invalid:
+                raise ValueError(
+                    f"invalid tool type(s) {invalid!r}; must be one of "
+                    f"{sorted(self._VALID_TYPES)}"
+                )
+        else:
             raise ValueError(
-                f"invalid tool type {self.type!r}; must be one of "
-                f"{sorted(self._VALID_TYPES)}"
+                f"type must be a string or per-platform dict, got {type(self.type).__name__}"
             )
         if not self.name:
             raise ValueError("name must be a non-empty string")
@@ -158,6 +174,17 @@ def _select_platform_path(path: Union[str, Dict[str, str]]) -> str:
         if path.get(key):
             return path[key]
     raise ValueError(f"per-platform path dict has no usable entry: {path}")
+
+
+def _select_platform_type(tool_type: Union[str, Dict[str, str]]) -> str:
+    """Pick the tool type for the current platform from a per-platform dict.
+
+    Plain type strings pass through unchanged; dicts reuse the same
+    platform-selection rules as ``_select_platform_path``.
+    """
+    if isinstance(tool_type, str):
+        return tool_type
+    return _select_platform_path(tool_type)
 
 
 class DescriptorTool:
@@ -324,19 +351,42 @@ class DescriptorTool:
         return self._command_executor.execute(full_command, ctx)
 
     def _build_command(self, command: List[str]) -> List[str]:
-        """Prefix *command* with the invocation for this tool's type."""
-        tool_type = self._descriptor.type
+        """Prefix *command* with the invocation for this tool's type.
+
+        Callers that already pass the full invocation (the resolved tool
+        path, or ``[java, "-jar", tool_path]`` — legacy handler habit) are
+        not double-prefixed: the prefix is skipped when *command* already
+        starts with it, mirroring ``BinaryTool.execute`` dedupe.
+        """
+        tool_type = _select_platform_type(self._descriptor.type)
         if tool_type == "binary":
-            return [self.tool_path] if not command else [self.tool_path] + list(command)
+            if command and command[0] == self.tool_path:
+                return list(command)
+            return [self.tool_path] + list(command)
         if tool_type == "shell_script":
             # Shell handling (e.g. .sh on Windows) is governed by the context.
             return [self.tool_path] + list(command)
         dep_name = self._INTERPRETER_DEP_BY_TYPE.get(tool_type)
         interpreter = self._interpreter_for(dep_name)
         if tool_type == "java_jar":
-            return [interpreter, "-jar", self.tool_path] + list(command)
+            invocation = [interpreter, "-jar", self.tool_path]
+            if command and command[: len(invocation)] == invocation:
+                return list(command)
+            return invocation + list(command)
         # python_script / node_script
         return [interpreter, self.tool_path] + list(command)
+
+    def get_java_path(self) -> str:
+        """Return the resolved Java interpreter path (JavaTool compatibility).
+
+        Legacy handlers build bundletool/jarsigner command lines manually
+        via ``tool.get_java_path()``; a descriptor-based java_jar tool
+        exposes the same surface so those callers keep working unchanged.
+        """
+        resolved = self._env_resolutions.get("java")
+        if resolved:
+            return resolved
+        return get_java_bin()
 
     def _interpreter_for(self, dep_name: Optional[str]) -> str:
         """Return the interpreter binary for a script-type tool.

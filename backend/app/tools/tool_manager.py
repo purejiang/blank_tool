@@ -9,12 +9,35 @@ import platform
 import pkgutil
 import importlib
 import threading
+from pathlib import Path
 from typing import Dict, Optional, Any
 
 from app.tools.base_tool import BaseTool
+from app.tools.descriptor_tool import DescriptorTool, load_descriptor
+from app.env.registry import EnvironmentRegistry
 from app.utils.logger import Logger
 from app.utils.env import get_runtime_dir
 from app.common.exceptions import ToolNotFoundError
+
+
+# ------------------------------------------------------------------
+# Environment registry singleton (module-level lazy, like app.utils.env)
+# ------------------------------------------------------------------
+
+_env_registry: Optional[EnvironmentRegistry] = None
+_env_registry_lock = threading.Lock()
+
+
+def _get_env_registry() -> EnvironmentRegistry:
+    """Return the process-wide EnvironmentRegistry, discovering on first use."""
+    global _env_registry
+    if _env_registry is None:
+        with _env_registry_lock:
+            if _env_registry is None:
+                registry = EnvironmentRegistry()
+                registry.discover()
+                _env_registry = registry
+    return _env_registry
 
 
 class ToolRegistry:
@@ -31,6 +54,7 @@ class ToolRegistry:
         self._tools: Dict[str, BaseTool] = {}
         self._custom_paths: Dict[str, str] = {}
         self._discovered: Dict[str, type] = {}
+        self._descriptor_tools: Dict[str, DescriptorTool] = {}
         self._discover_lock = threading.Lock()
         self._initialized = False
 
@@ -39,11 +63,13 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def discover(self, tool_package: str = 'app.tools'):
-        """Auto-discover BaseTool subclasses in the given package.
+        """Auto-discover code-based and descriptor-based tools.
 
         Scans all modules in *tool_package* for classes that inherit from
         BaseTool (excluding BaseTool itself, CommandTool, and classes
-        defined in base_tool.py).
+        defined in base_tool.py), then registers descriptor-declared tools
+        from ``registry/tools/*.json`` (descriptors win over code classes,
+        except for names in ``_CODE_PRIORITY_NAMES``).
         """
         with self._discover_lock:
             if self._initialized:
@@ -69,6 +95,46 @@ class ToolRegistry:
                             f"Discovered tool: {attr.__name__} -> {default_path}"
                         )
                         self._discovered[key] = attr
+            self._discover_descriptors()
+
+    # Tool names whose code-based class wins over the descriptor (the code
+    # class carries streaming methods the descriptor cannot express).
+    _CODE_PRIORITY_NAMES = frozenset({"adb"})
+
+    def _discover_descriptors(self) -> None:
+        """Register pre-installed tools declared by registry/tools/*.json.
+
+        Descriptors win over code-based classes (registered after the
+        pkgutil scan, they shadow same-named entries), except for names in
+        ``_CODE_PRIORITY_NAMES`` where the code class stays primary.
+        """
+        descriptor_dir = (
+            Path(__file__).resolve().parent.parent.parent / "registry" / "tools"
+        )
+        if not descriptor_dir.is_dir():
+            return
+        for file_path in sorted(descriptor_dir.glob("*.json")):
+            try:
+                descriptor = load_descriptor(str(file_path))
+            except ValueError as exc:
+                self.logger.warning(
+                    f"skipping malformed tool descriptor {file_path.name}: {exc}"
+                )
+                continue
+            if descriptor.name in self._CODE_PRIORITY_NAMES:
+                self.logger.info(
+                    f"Descriptor {descriptor.name!r} shadowed by code class"
+                )
+                continue
+            try:
+                tool = DescriptorTool(descriptor, _get_env_registry())
+            except Exception as exc:  # construction must not block discovery
+                self.logger.warning(
+                    f"failed to construct descriptor tool {descriptor.name!r}: {exc}"
+                )
+                continue
+            self._descriptor_tools[descriptor.name] = tool
+            self.logger.info(f"Discovered tool (descriptor): {descriptor.name}")
 
     # ------------------------------------------------------------------
     # Lazy access
@@ -77,10 +143,18 @@ class ToolRegistry:
     def get(self, name: str) -> BaseTool:
         """Lazy-instantiate and return a tool by name.
 
-        Raises ToolNotFoundError if the tool class was not discovered.
+        Descriptor-declared tools win over code-based classes (they are
+        instantiated at discovery time and returned directly); anything else
+        falls through to the lazy code-class path. Raises
+        ToolNotFoundError if the tool class was not discovered.
         """
         if name in self._tools:
             return self._tools[name]
+
+        descriptor_tool = self._descriptor_tools.get(name)
+        if descriptor_tool is not None:
+            self._tools[name] = descriptor_tool
+            return descriptor_tool
 
         tool_cls = self._discovered.get(name)
         if not tool_cls:
@@ -120,8 +194,12 @@ class ToolRegistry:
         return instance
 
     def list_all(self) -> list[str]:
-        """Return names of all discovered tool classes."""
-        return list(self._discovered.keys())
+        """Return names of all discovered tools (code classes + descriptors)."""
+        return list(
+            dict.fromkeys(
+                list(self._discovered.keys()) + list(self._descriptor_tools.keys())
+            )
+        )
 
     def get_available_tools(self) -> Dict[str, BaseTool]:
         """Return all tools that are currently valid/available."""
