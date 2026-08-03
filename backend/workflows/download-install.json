@@ -1,0 +1,33 @@
+{
+  "name": "download-install",
+  "version": "1.0",
+  "description": "Download an APK from a URL and install it on a device",
+  "inputs": [
+    {"name": "url", "type": {"base": "text"}, "required": true, "description": "URL to download the APK from"},
+    {"name": "device_id", "type": {"base": "text"}, "required": true, "description": "ADB device ID to install to"}
+  ],
+  "outputs": [
+    {"name": "path", "type": {"base": "file"}, "required": true, "description": "Path to the downloaded APK"}
+  ],
+  "nodes": [
+    {
+      "id": "download",
+      "tool": "net.download",
+      "params": {
+        "url": "$inputs.url",
+        "dest": "downloaded.apk"
+      },
+      "next": "install"
+    },
+    {
+      "id": "install",
+      "tool": "adb",
+      "params": {
+        "args": ["install", "-r", "$nodes.download.outputs.path"]
+      },
+      "next": null,
+      "on_failure": "fail"
+    }
+  ],
+  "edges": []
+}

@@ -1,0 +1,86 @@
+{
+  "name": "aab-install",
+  "version": "1.0",
+  "description": "Convert an AAB to APKS via bundletool, then install the APKS on a connected device.",
+  "inputs": [
+    {
+      "name": "aab_path",
+      "type": {
+        "base": "file",
+        "subtype": "aab"
+      },
+      "required": true,
+      "description": "Path to the Android App Bundle (.aab) to convert and install."
+    },
+    {
+      "name": "device_id",
+      "type": {
+        "base": "text",
+        "subtype": null
+      },
+      "required": true,
+      "description": "ADB device id of the target device."
+    },
+    {
+      "name": "keystore",
+      "type": {
+        "base": "json",
+        "subtype": null
+      },
+      "required": false,
+      "description": "Optional signing keystore config: path, alias, storepass, keypass."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "apks_path",
+      "type": {
+        "base": "file",
+        "subtype": "apks"
+      },
+      "required": true,
+      "description": "Path to the generated APKS file."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "convert",
+      "type": "step",
+      "tool": "bundletool",
+      "params": {
+        "args": [
+          "build-apks",
+          "--bundle",
+          "$inputs.aab_path",
+          "--output",
+          "$workdir/output.apks"
+        ]
+      },
+      "next": "install",
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    },
+    {
+      "id": "install",
+      "type": "step",
+      "tool": "bundletool",
+      "params": {
+        "args": [
+          "install-apks",
+          "--apks",
+          "$workdir/output.apks",
+          "--device-id",
+          "$inputs.device_id"
+        ]
+      },
+      "next": null,
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    }
+  ],
+  "edges": []
+}

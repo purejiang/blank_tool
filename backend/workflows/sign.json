@@ -1,0 +1,79 @@
+{
+  "name": "sign",
+  "version": "1.0",
+  "description": "Align an APK with zipalign, then sign it with apksigner.",
+  "inputs": [
+    {
+      "name": "apk_path",
+      "type": {
+        "base": "file",
+        "subtype": "apk"
+      },
+      "required": true,
+      "description": "Path to the APK file to align and sign."
+    },
+    {
+      "name": "keystore",
+      "type": {
+        "base": "json",
+        "subtype": null
+      },
+      "required": true,
+      "description": "Signing keystore config with fields: path, alias, storepass, keypass."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "signed_apk",
+      "type": {
+        "base": "file",
+        "subtype": "apk"
+      },
+      "required": true,
+      "description": "Path to the aligned and signed APK."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "align",
+      "type": "step",
+      "tool": "zipalign",
+      "params": {
+        "args": [
+          "-f",
+          "4",
+          "$inputs.apk_path",
+          "$workdir/aligned.apk"
+        ]
+      },
+      "next": "sign",
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    },
+    {
+      "id": "sign",
+      "type": "step",
+      "tool": "apksigner",
+      "params": {
+        "args": [
+          "sign",
+          "--ks",
+          "$inputs.keystore.path",
+          "--ks-key-alias",
+          "$inputs.keystore.alias",
+          "--ks-pass",
+          "pass:$inputs.keystore.storepass",
+          "$workdir/aligned.apk"
+        ]
+      },
+      "next": null,
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    }
+  ],
+  "edges": []
+}

@@ -1,0 +1,58 @@
+{
+  "name": "decompile",
+  "version": "1.0",
+  "description": "Decompile an APK into a decodable source/resource tree using apktool.",
+  "inputs": [
+    {
+      "name": "apk_path",
+      "type": {
+        "base": "file",
+        "subtype": "apk"
+      },
+      "required": true,
+      "description": "Path to the APK file to decompile."
+    },
+    {
+      "name": "output_dir",
+      "type": {
+        "base": "directory",
+        "subtype": null
+      },
+      "required": false,
+      "description": "Directory to write the decompiled tree to (default: $workdir/decompiled)."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_dir",
+      "type": {
+        "base": "directory",
+        "subtype": null
+      },
+      "required": true,
+      "description": "Path to the decompiled output directory."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "decompile",
+      "type": "step",
+      "tool": "apktool",
+      "params": {
+        "args": [
+          "decode",
+          "--force",
+          "$inputs.apk_path",
+          "-o",
+          "$inputs.output_dir"
+        ]
+      },
+      "next": null,
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    }
+  ],
+  "edges": []
+}
