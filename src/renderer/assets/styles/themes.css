@@ -20,6 +20,8 @@
   --app-blue: #2563EB;
   --app-blue-bg: rgba(37, 99, 235, 0.1);
   --app-yellow: #B45309;
+  --app-orange: #EA580C;
+  --app-purple: #9333EA;
   --app-red: #DC2626;
   --app-hover: rgba(0, 0, 0, 0.04);
   --app-hover-strong: rgba(0, 0, 0, 0.08);
@@ -52,6 +54,8 @@
   --app-blue: #3B82F6;
   --app-blue-bg: rgba(59, 130, 246, 0.1);
   --app-yellow: #F59E0B;
+  --app-orange: #FB923C;
+  --app-purple: #C084FC;
   --app-red: #EF4444;
   --app-hover: rgba(34, 197, 94, 0.06);
   --app-hover-strong: rgba(34, 197, 94, 0.12);

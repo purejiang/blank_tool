@@ -1,52 +1,111 @@
 <template>
   <div class="workflow-editor-page">
-    <!-- Left panel: tool palette (populated in todo 34) -->
-    <aside class="we-panel we-palette">
-      <div class="we-panel-header">Tool Palette</div>
-      <div class="we-placeholder">Tools will be listed here.</div>
-    </aside>
+    <!-- Left panel: tool palette (todo 34) -->
+    <WorkflowNodePalette />
 
     <!-- Center: vue-flow canvas -->
-    <main class="we-canvas">
-      <VueFlow :min-zoom="0.2" :max-zoom="4">
+    <main class="we-canvas" @dragover="onDragOver" @drop="onDrop">
+      <VueFlow :node-types="nodeTypes" :min-zoom="0.2" :max-zoom="4">
         <Background />
         <Controls />
         <MiniMap />
       </VueFlow>
       <div v-if="nodes.length === 0" class="we-empty-hint">
-        Empty workflow — add nodes to get started
+        Empty workflow — drag a tool from the palette to get started
       </div>
     </main>
 
-    <!-- Right panel: node config (todo 36, hidden initially) -->
-    <aside v-if="showConfigPanel" class="we-panel we-config">
+    <!-- Right panel: node config (todo 36), shown while a node is selected -->
+    <aside v-if="selectedNode" class="we-panel we-config">
       <div class="we-panel-header">Node Config</div>
-      <div class="we-placeholder">Select a node to edit its parameters.</div>
+      <NodeConfigPanel :node="selectedNode" />
     </aside>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, markRaw } from 'vue'
 import { VueFlow, useVueFlow, type Node, type Edge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
+
+import ToolNode from '@components/workflow/ToolNode.vue'
+import WorkflowNodePalette from '@components/workflow/WorkflowNodePalette.vue'
+import NodeConfigPanel from '@components/workflow/NodeConfigPanel.vue'
+import {
+  TOOL_DRAG_MIME,
+  type ToolNodeData,
+  type WorkflowToolInfo,
+} from '@components/workflow/toolMeta'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 
+// Custom node registration: node `type: "tool"` renders ToolNode.
+// markRaw keeps the component out of Vue's reactivity system (vue-flow
+// warns about reactive node-types objects).
+const nodeTypes = {
+  tool: markRaw(ToolNode),
+}
+
 // Shared store: created here, injected by the <VueFlow> child component.
-// Initial state is empty; todo 34 adds palette drag-and-drop, todo 36 node config.
-const { nodes, edges } = useVueFlow({
+// screenToFlowCoordinate/addNodes come from the store's viewport actions
+// and are used by the palette drop handler below.
+const { nodes, edges, addNodes, screenToFlowCoordinate } = useVueFlow({
   nodes: [] as Node[],
   edges: [] as Edge[],
 })
 
-// Right panel is hidden until node selection exists (todo 36).
-const showConfigPanel = ref(false)
+// Monotonic counter keeps dropped node ids unique within the session.
+let nodeCounter = 0
+
+function makeNodeId(toolName: string): string {
+  nodeCounter += 1
+  return `tool-${toolName.replace(/[^a-z0-9]+/gi, '-')}-${nodeCounter}`
+}
+
+function onDragOver(event: DragEvent) {
+  // Required so the canvas accepts the drop; restrict to palette tool drags.
+  if (!event.dataTransfer?.types.includes(TOOL_DRAG_MIME)) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'move'
+}
+
+function onDrop(event: DragEvent) {
+  event.preventDefault()
+  const raw = event.dataTransfer?.getData(TOOL_DRAG_MIME)
+  if (!raw) return
+
+  let tool: WorkflowToolInfo
+  try {
+    tool = JSON.parse(raw)
+  } catch {
+    return
+  }
+  if (!tool || typeof tool.name !== 'string' || tool.name.length === 0) return
+
+  const position = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+  const data: ToolNodeData = {
+    tool: tool.name,
+    status: 'idle',
+    ports: tool.ports,
+  }
+  addNodes({
+    id: makeNodeId(tool.name),
+    type: 'tool',
+    position,
+    data,
+  })
+}
+
+// Right panel shows the config form for the selected node (todo 36).
+// vue-flow's built-in selection sets node.selected on click (elementsSelectable
+// defaults true); pane-click / Escape clear it — deriving from `nodes` means the
+// panel hides automatically on deselect with no extra event wiring.
+const selectedNode = computed(() => nodes.value.find((n) => n.selected) ?? null)
 </script>
 
 <style scoped>
@@ -80,6 +139,10 @@ const showConfigPanel = ref(false)
   padding: 12px;
   font-size: 12px;
   color: var(--app-text-muted);
+}
+
+.we-config {
+  width: 300px;
 }
 
 .we-canvas {
