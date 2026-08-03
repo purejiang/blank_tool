@@ -9,8 +9,11 @@ app — no stdin JSON-RPC pipe, no streaming IPC.  The CLI initializes logging
 and config (the same setup ``main.bootstrap`` performs), then invokes the
 workflow engine, validator, tool registry and environment registry directly.
 
-The ``run`` subcommand is currently a stub (full implementation is a later
-todo); it parses ``--input key=value`` pairs and reports what it *would* run.
+The ``run`` subcommand resolves its target as a workflow JSON file or a
+saved template name, parses ``--input key=value`` pairs (with basic type
+coercion), executes the workflow through the engine while streaming node
+events to the console, and prints the final result as JSON (``--json``) or
+a human-readable summary.
 
 Usage (from the ``backend/`` directory):
 
@@ -27,7 +30,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 # Make the backend/ directory importable regardless of the working directory.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -188,33 +191,216 @@ def cmd_list_templates() -> int:
     return 0
 
 
+# ------------------------------------------------------------------
+# Workflow run (console streaming)
+# ------------------------------------------------------------------
+
+_EVENT_COLORS = {
+    "node_started": "\033[36m",  # cyan
+    "node_completed": "\033[32m",  # green
+    "workflow_completed": "\033[32m",  # green
+    "node_failed": "\033[31m",  # red
+    "workflow_failed": "\033[31m",  # red
+}
+_RESET = "\033[0m"
+
+
+def _coerce_input_value(value: str) -> Any:
+    """Coerce a raw ``--input`` value to a typed Python value.
+
+    ``true``/``false`` (case-insensitive) become bools, integer and float
+    literals become numbers, everything else stays a string.
+    """
+    lowered = value.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
+
+
+def _make_console_stream_handler(use_color: bool, stream):
+    """Build a callback that renders workflow event dicts as console lines.
+
+    The returned callable receives event dicts (``{"type": ..., ...}``) and
+    prints one human-readable line per event, e.g. ``[node_completed] convert
+    (123 ms)``.  When *use_color* is True the event tag is ANSI-colored.
+    *stream* is the output target: stdout normally, stderr for ``--json`` so
+    stdout stays a pure JSON document.
+    """
+
+    def _render(event: Dict[str, Any]) -> str:
+        event_type = event.get("type") or "event"
+        if event_type == "node_started":
+            message = f"{event.get('node_id', '?')} ({event.get('tool', '')})"
+        elif event_type == "node_completed":
+            message = (
+                f"{event.get('node_id', '?')} ({event.get('duration_ms', '?')} ms)"
+            )
+        elif event_type == "node_failed":
+            message = f"{event.get('node_id', '?')}: {event.get('error', '')}"
+        elif event_type == "node_output":
+            message = (
+                f"{event.get('node_id', '?')}: "
+                f"{json.dumps(event.get('data', {}), default=str, ensure_ascii=False)}"
+            )
+        elif event_type == "workflow_completed":
+            message = f"success={event.get('success', '?')}"
+        elif event_type == "workflow_failed":
+            message = str(event.get("error", ""))
+        else:
+            message = json.dumps(event, default=str, ensure_ascii=False)
+        line = f"[{event_type}] {message}" if message else f"[{event_type}]"
+        if use_color and event_type in _EVENT_COLORS:
+            line = f"{_EVENT_COLORS[event_type]}{line}{_RESET}"
+        return line
+
+    def _handle_event(event: Dict[str, Any]) -> None:
+        print(_render(event), file=stream)
+
+    return _handle_event
+
+
+def _resolve_definition(target: str) -> Optional["WorkflowDefinition"]:
+    """Load the workflow definition for *target*.
+
+    A ``.json`` suffix or an existing file path loads via
+    :meth:`WorkflowDefinition.from_json_file`; anything else is treated as a
+    template name resolved through :class:`FileTemplateStore`.  Returns the
+    definition, or None after printing an error to stderr.
+    """
+    if target.endswith(".json") or os.path.isfile(target):
+        try:
+            from app.workflow.definition import WorkflowDefinition
+
+            return WorkflowDefinition.from_json_file(target)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return None
+
+    try:
+        from app.template.store import FileTemplateStore, TemplateNotFoundError
+
+        return FileTemplateStore().load(target)
+    except (TemplateNotFoundError, ValueError) as exc:
+        print(f"error: template {target!r}: {exc}", file=sys.stderr)
+        return None
+
+
 def cmd_run(
     target: str,
     raw_inputs: Optional[List[str]],
     task_id: Optional[str],
     json_output: bool,
 ) -> int:
-    """Stub for the ``run`` subcommand (full implementation is a later todo).
+    """Run a workflow from a JSON file or template name.
 
-    Parses ``--input key=value`` pairs and reports what the workflow run
-    *would* do.
+    Resolves *target*, parses and coerces ``--input key=value`` pairs,
+    executes the workflow through :class:`WorkflowEngine`, streams node
+    events to the console, and prints the final result as JSON (``--json``)
+    or a human-readable summary.  Returns 0 on success, 1 on failure.
     """
+    from app.workflow.engine import ExecutionContext, WorkflowEngine
+
+    definition = _resolve_definition(target)
+    if definition is None:
+        return 1
+
     inputs = _parse_key_values(raw_inputs or [])
-    info = {"target": target, "inputs": inputs, "task_id": task_id}
-    if json_output:
-        print(json.dumps({"would_run": info}, indent=2, ensure_ascii=False))
+    use_color = (not json_output) and sys.stdout.isatty()
+    stream = sys.stderr if json_output else sys.stdout
+    stream_handler = _make_console_stream_handler(use_color, stream)
+
+    context = ExecutionContext(
+        work_dir=os.getcwd(),
+        task_id=task_id,
+        stream_handler=stream_handler,
+    )
+
+    try:
+        result = WorkflowEngine().execute(definition, inputs, context)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    # The engine only streams tool progress events through
+    # ``context.stream_handler`` (it never emits node lifecycle events), so
+    # replay them here from the recorded node results, in execution order.
+    tool_by_id = {node.id: node.tool for node in definition.nodes}
+    for node_id, node_result in result.node_results.items():
+        stream_handler(
+            {
+                "type": "node_started",
+                "node_id": node_id,
+                "tool": tool_by_id.get(node_id, ""),
+            }
+        )
+        if node_result.get("error"):
+            stream_handler(
+                {
+                    "type": "node_failed",
+                    "node_id": node_id,
+                    "error": node_result["error"],
+                }
+            )
+        else:
+            stream_handler(
+                {
+                    "type": "node_completed",
+                    "node_id": node_id,
+                    "duration_ms": node_result.get("duration_ms"),
+                }
+            )
+
+    if result.success:
+        stream_handler({"type": "workflow_completed", "success": True})
     else:
-        print(f"would run: {target} with inputs {inputs}")
-    return 0
+        stream_handler(
+            {"type": "workflow_failed", "error": result.error or "workflow failed"}
+        )
+
+    if json_output:
+        print(
+            json.dumps(
+                {
+                    "success": result.success,
+                    "outputs": result.outputs,
+                    "node_results": result.node_results,
+                    "error": result.error,
+                },
+                indent=2,
+                default=str,
+                ensure_ascii=False,
+            )
+        )
+    else:
+        print(f"success: {result.success}")
+        if result.outputs:
+            print(
+                "outputs: "
+                + json.dumps(result.outputs, indent=2, default=str, ensure_ascii=False)
+            )
+        if result.error:
+            print(f"error: {result.error}")
+
+    return 0 if result.success else 1
 
 
-def _parse_key_values(pairs: List[str]) -> Dict[str, str]:
+def _parse_key_values(pairs: List[str]) -> Dict[str, Any]:
     """Build a dict from ``key=value`` strings (split on the first ``=``).
 
-    Values are kept as strings for now (type coercion is a later todo).
-    Malformed entries are skipped with a warning.
+    Values are type-coerced via :func:`_coerce_input_value` (bool / number /
+    string).  Malformed entries are skipped with a warning.
     """
-    result: Dict[str, str] = {}
+    result: Dict[str, Any] = {}
     for pair in pairs:
         key, separator, value = pair.partition("=")
         if not separator:
@@ -223,7 +409,7 @@ def _parse_key_values(pairs: List[str]) -> Dict[str, str]:
                 file=sys.stderr,
             )
             continue
-        result[key.strip()] = value.strip()
+        result[key.strip()] = _coerce_input_value(value.strip())
     return result
 
 
