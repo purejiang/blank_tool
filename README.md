@@ -30,7 +30,7 @@ Blank Tool 是一个基于 Electron + Vue 3 + Python 构建的现代化 Android 
 - **前端**: Vue 3, Vite, Pinia, Vue Router, Naive UI
 - **桌面框架**: Electron
 - **后端**: Python 3 (JSON-RPC over stdin/stdout)
-- **构建**: electron-builder + git-tag 版本自动同步
+- **构建**: electron-builder（版本号由 package.json 驱动，发版脚本统一维护）
 
 ## 快速开始
 
@@ -57,14 +57,16 @@ npm run build:mac    # macOS (.dmg)
 npm run build:linux  # Linux (AppImage)
 ```
 
-版本号自动从 `git describe --tags` 读取，打包时注入 `package.json`，完成后还原。
+版本号直接读取 package.json.version；发版时由 `npm run release` 自动 bump。
 
-### 打 Tag 发布
+### 发布
 
 ```bash
-git tag -a v2.0.0 -m "Release v2.0.0"
-git push origin v2.0.0
+npm run release                # 一键发布：质量门禁 + bump + tag + 构建 + GitHub Release
+npm run release -- --dry-run   # 仅预览版本号与 release notes，不做修改
 ```
+
+详细用法与失败恢复方法见 `.agents/rules/RELEASE_GUIDE.md`。
 
 ## 项目结构
 
