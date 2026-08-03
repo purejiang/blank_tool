@@ -13,10 +13,16 @@ export type ToolStatus = 'idle' | 'running' | 'success' | 'error'
 
 export type ToolCategory = 'file' | 'net' | 'exec' | 'flow' | 'tool'
 
+/** A port's type annotation, as serialized by backend Port.to_dict(). */
+export interface PortTypeRef {
+  base: string
+  subtype: string | null
+}
+
 /** A single I/O port, as serialized by backend Port.to_dict(). */
 export interface ToolPort {
   name: string
-  type: { base: string; subtype: string | null }
+  type: PortTypeRef
   required: boolean
   description: string
 }
@@ -84,12 +90,26 @@ export const CATEGORY_ICONS: Record<ToolCategory, string> = {
   tool: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.5l5.63 3.25v6.5L8 14.5l-5.63-3.25v-6.5z"/></svg>',
 }
 
+/** Human-readable label for a type annotation: "file", or "file/apk" with a subtype. */
+export function portTypeLabel(type: PortTypeRef): string {
+  return type.subtype ? `${type.base}/${type.subtype}` : type.base
+}
+
+/**
+ * Inline SVG status marks shown in the ToolNode header during execution
+ * (todo 38): a checkmark for success, an X for error.  Static strings,
+ * rendered via v-html — never user-supplied.
+ */
+export const STATUS_MARKS: Record<'success' | 'error', string> = {
+  success:
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>',
+  error:
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+}
+
 /** Human-readable tooltip for a port label. */
 export function portTitle(port: ToolPort): string {
-  const typeLabel = port.type.subtype
-    ? `${port.type.base}/${port.type.subtype}`
-    : port.type.base
-  const title = `${port.name}: ${typeLabel}`
+  const title = `${port.name}: ${portTypeLabel(port.type)}`
   return port.description ? `${title} — ${port.description}` : title
 }
 

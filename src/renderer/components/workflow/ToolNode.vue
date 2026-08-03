@@ -1,5 +1,9 @@
 <template>
-  <div class="tool-node" :class="[`tn-cat-${category}`]" :data-selected="selected || undefined">
+  <div
+    class="tool-node"
+    :class="[`tn-cat-${category}`, `tool-node--${status}`]"
+    :data-selected="selected || undefined"
+  >
     <Handle
       v-for="(port, index) in inputs"
       :key="`in-${port.name}`"
@@ -7,6 +11,7 @@
       type="target"
       :position="Position.Left"
       class="tn-handle tn-handle-in"
+      :class="handleDragClass(port, 'in')"
       :style="{ top: `${portRowCenterY(index)}px` }"
       :title="portTitle(port)"
     />
@@ -17,6 +22,7 @@
       type="source"
       :position="Position.Right"
       class="tn-handle tn-handle-out"
+      :class="handleDragClass(port, 'out')"
       :style="{ top: `${portRowCenterY(index)}px` }"
       :title="portTitle(port)"
     />
@@ -25,6 +31,7 @@
       <span class="tn-icon" v-html="iconSvg" />
       <span class="tn-name" :title="toolName">{{ toolName }}</span>
       <span class="tn-status" :class="`tn-status-${status}`" :title="`status: ${status}`" />
+      <span v-if="statusMark" class="tn-mark" v-html="statusMark" />
     </div>
 
     <div v-if="inputs.length > 0 || outputs.length > 0" class="tn-body" :style="{ height: `${bodyHeightPx}px` }">
@@ -43,16 +50,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { Handle, Position, type NodeProps } from '@vue-flow/core'
+import {
+  CONNECTION_DRAG_KEY,
+  isPortCompatible,
+  type ConnectionDragInfo,
+} from './PortConnection'
 import {
   CATEGORY_ICONS,
   PORT_ROW_HEIGHT_PX,
   PORTS_PADDING_Y_PX,
+  STATUS_MARKS,
   categoryOfToolName,
   portRowCenterY,
   portTitle,
   type ToolNodeData,
+  type ToolPort,
 } from './toolMeta'
 
 // vue-flow passes every NodeProps field (id, type, data, selected, ...) to
@@ -62,12 +76,33 @@ const props = defineProps<NodeProps<ToolNodeData>>()
 const toolName = computed(() => props.data.tool)
 const category = computed(() => categoryOfToolName(props.data.tool))
 const status = computed(() => props.data.status ?? 'idle')
+// Header check/X mark (todo 38): only success and error states carry one.
+const statusMark = computed(() =>
+  status.value === 'success' || status.value === 'error' ? STATUS_MARKS[status.value] : '',
+)
 const inputs = computed(() => props.data.ports?.inputs ?? [])
 const outputs = computed(() => props.data.ports?.outputs ?? [])
 const iconSvg = computed(() => CATEGORY_ICONS[category.value])
 const bodyHeightPx = computed(
   () => PORTS_PADDING_Y_PX * 2 + Math.max(inputs.value.length, outputs.value.length) * PORT_ROW_HEIGHT_PX,
 )
+
+// Live connection-drag state from WorkflowEditorPage (todo 35): while a
+// connection is being dragged, opposite-side handles with a matching base
+// type highlight and mismatched ones dim. Default ref keeps ToolNode usable
+// outside a providing ancestor.
+const connectionDrag = inject(CONNECTION_DRAG_KEY, ref<ConnectionDragInfo | null>(null))
+
+/** 'tn-handle-compatible' / 'tn-handle-incompatible' while dragging, else undefined. */
+function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined {
+  const drag = connectionDrag.value
+  if (!drag) return undefined
+  const isDropSide =
+    (side === 'in' && drag.fromHandleType === 'source') ||
+    (side === 'out' && drag.fromHandleType === 'target')
+  if (!isDropSide) return undefined
+  return isPortCompatible(drag.base, port.type.base) ? 'tn-handle-compatible' : 'tn-handle-incompatible'
+}
 </script>
 
 <style scoped>
@@ -79,6 +114,7 @@ const bodyHeightPx = computed(
  */
 .tool-node {
   --tn-accent: var(--app-text-dim);
+  position: relative;
   min-width: 150px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
@@ -92,6 +128,50 @@ const bodyHeightPx = computed(
 .tool-node[data-selected] {
   border-color: var(--app-blue);
   box-shadow: 0 0 0 1px var(--app-blue);
+}
+
+/*
+ * Execution status (todo 38). Compound selectors (0,2,0) so a status border
+ * wins over the [data-selected] rule above. Statuses persist after a run
+ * until the next Run or a structural canvas change (see editor page).
+ */
+.tool-node.tool-node--idle {
+  border-color: var(--app-card-border);
+  border-left-color: var(--tn-accent);
+}
+
+.tool-node.tool-node--running {
+  border-color: var(--app-blue);
+}
+
+/* Pulsing outer ring — animates opacity only (compositor-friendly). */
+.tool-node.tool-node--running::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  pointer-events: none;
+  border: 2px solid var(--app-blue);
+  border-radius: 8px;
+  animation: tn-border-pulse 1.2s ease-in-out infinite;
+}
+
+.tool-node.tool-node--success {
+  border-color: var(--app-green);
+}
+
+.tool-node.tool-node--error {
+  border-color: var(--app-red);
+}
+
+@keyframes tn-border-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+
+  50% {
+    opacity: 0.15;
+  }
 }
 
 .tn-cat-file {
@@ -159,6 +239,25 @@ const bodyHeightPx = computed(
   background: var(--app-red);
 }
 
+/* Check/X header mark (todo 38) */
+.tn-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.tn-mark :deep(svg) {
+  width: 12px;
+  height: 12px;
+}
+
+.tool-node--success .tn-mark {
+  color: var(--app-green);
+}
+
+.tool-node--error .tn-mark {
+  color: var(--app-red);
+}
+
 @keyframes tn-pulse {
   0%,
   100% {
@@ -215,9 +314,25 @@ const bodyHeightPx = computed(
   background: var(--app-card-bg);
   border: 1.5px solid var(--tn-accent);
   border-radius: 50%;
+  transition: transform 0.12s ease, opacity 0.12s ease, background-color 0.12s ease;
 }
 
 .tn-handle:hover {
   background: var(--tn-accent);
+}
+
+/*
+ * Connection-drag feedback (todo 35): while a connection is being dragged,
+ * opposite-side handles whose base type matches highlight, mismatched ones
+ * dim. Colors reuse theme tokens; only transform/opacity are transitioned.
+ */
+.tn-handle-compatible {
+  background: var(--app-green);
+  border-color: var(--app-green);
+  transform: scale(1.4);
+}
+
+.tn-handle-incompatible {
+  opacity: 0.25;
 }
 </style>
