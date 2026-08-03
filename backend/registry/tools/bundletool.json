@@ -1,0 +1,38 @@
+{
+  "name": "bundletool",
+  "display_name": "Bundletool",
+  "type": "java_jar",
+  "path": "bundletool/bundletool.jar",
+  "env_deps": ["java"],
+  "validate": {
+    "cmd": ["help"],
+    "expect_contains": "bundletool help",
+    "expect_in": "stdout",
+    "expect_returncode": 0
+  },
+  "version": {
+    "cmd": ["version"],
+    "regex": "(\\d+\\.\\d+\\.\\d+)",
+    "from_stream": "stdout"
+  },
+  "inputs": [
+    {
+      "name": "args",
+      "type": {
+        "base": "text"
+      },
+      "required": false,
+      "description": "Arguments to pass to bundletool"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": {
+        "base": "json"
+      },
+      "required": true,
+      "description": "Command result with returncode, stdout, stderr"
+    }
+  ]
+}

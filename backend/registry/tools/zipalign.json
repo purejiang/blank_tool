@@ -1,0 +1,33 @@
+{
+  "name": "zipalign",
+  "display_name": "Zipalign",
+  "type": "binary",
+  "path": {
+    "win": "android/zipalign.exe",
+    "mac": "android/zipalign",
+    "linux": "android/zipalign"
+  },
+  "env_deps": [],
+  "validate": {},
+  "version": {},
+  "inputs": [
+    {
+      "name": "args",
+      "type": {
+        "base": "text"
+      },
+      "required": false,
+      "description": "Arguments to pass to zipalign"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": {
+        "base": "json"
+      },
+      "required": true,
+      "description": "Command result with returncode, stdout, stderr"
+    }
+  ]
+}

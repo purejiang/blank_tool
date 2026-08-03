@@ -1,0 +1,33 @@
+{
+  "name": "jarsigner",
+  "display_name": "Jarsigner",
+  "type": "binary",
+  "path": {
+    "win": "jre/bin/jarsigner.exe",
+    "mac": "jre/bin/jarsigner",
+    "linux": "jre/bin/jarsigner"
+  },
+  "env_deps": [],
+  "validate": {},
+  "version": {},
+  "inputs": [
+    {
+      "name": "args",
+      "type": {
+        "base": "text"
+      },
+      "required": false,
+      "description": "Arguments to pass to jarsigner"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": {
+        "base": "json"
+      },
+      "required": true,
+      "description": "Command result with returncode, stdout, stderr"
+    }
+  ]
+}
