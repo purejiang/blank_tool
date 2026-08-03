@@ -13,14 +13,14 @@ times before giving up).
 Tool dispatch:
     Tools resolve by name from the builtin registry (``_BUILTIN_TOOLS`` —
     ``file.read``, ``file.write``, ...) and the injected ``ToolManager``
-    (descriptor/code tools).  The MVP only drives builtin tools: their
-    ``execute(inputs, context)`` contract matches the resolved params dict.
-
-Known limitation:
-    ``DescriptorTool.execute`` takes ``command: List[str]`` while node params
-    are a dict; the params-to-command-list conversion is tool-specific and NOT
-    implemented here — a node referencing a descriptor/code tool raises
-    :class:`NotImplementedError` (addressed by Wave 4 migration templates).
+    (descriptor/code tools).  Builtin tools run under the dict +
+    :class:`ToolContext` contract.  Descriptor/code tools (``apktool``,
+    ``bundletool``, ...) run under the command-list contract: the workflow
+    template declares their arguments as ``params: {"args": [...]}``, and
+    after expression resolution ``args`` is extracted and passed as the
+    command list to ``tool.execute(command, context)``; the returned
+    ``{success, returncode, stdout, stderr}`` dict is normalized into the
+    node output shape with a non-zero exit surfaced as a node error.
 
 Unsupported in linear mode:
     Nodes with a ``condition`` field are NOT executed (raise
@@ -33,6 +33,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
+from app.common.base_executor import CommandExecutionContext
 from app.common.exceptions import ToolException
 from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.tools.builtin.exec_tools import CodeExec, ShellExec
@@ -166,7 +167,8 @@ class WorkflowEngine:
         Raises:
             NotImplementedError: if any node carries a ``condition`` field
                 (no branching in linear mode), or if a node references a
-                descriptor/code tool.
+                tool that is neither a builtin primitive nor a command-list
+                tool (no usable execute contract).
         """
         workflow_context = WorkflowContext(
             inputs=dict(inputs),
@@ -327,7 +329,7 @@ class WorkflowEngine:
 
         return self._execute_tool(tool, resolved_params, context)
 
-    def _lookup_tool(self, tool_name: str) -> Optional[BuiltinTool]:
+    def _lookup_tool(self, tool_name: str) -> Optional[Any]:
         """Resolve a tool name to a tool object.
 
         Builtin primitives are checked first (``file.read``, ...); descriptor
@@ -357,29 +359,55 @@ class WorkflowEngine:
 
     def _execute_tool(
         self,
-        tool: BuiltinTool,
+        tool: Any,
         resolved_params: Dict[str, Any],
         context: ExecutionContext,
     ) -> tuple:
         """Run one tool, converting execution failures into error strings.
 
-        Builtin tools consume a params dict + :class:`ToolContext`.  A
-        ``ToolException`` raised by the tool, or a result dict containing an
-        ``"error"`` key, is reported as a failure.  Anything not a
-        :class:`BuiltinTool` raises :class:`NotImplementedError` — see the
-        module docstring for the params-to-command-list limitation.
+        Two execution contracts are dispatched by tool kind:
+
+        - Builtin tools (``file.read``, ...) consume a params dict +
+          :class:`ToolContext`; a ``ToolException`` or a result dict
+          containing an ``"error"`` key is reported as a failure.
+        - Descriptor/code tools (``apktool``, ``bundletool``, ...) consume a
+          command list + :class:`CommandExecutionContext`.  The workflow
+          template passes the arguments as ``params["args"]`` (a list, after
+          expression resolution); the command list is extracted from it and
+          handed to ``tool.execute(command, context)``.  The result dict
+          (``success``/``returncode``/``stdout``/``stderr``) is converted to
+          the standard node output shape, with a non-zero exit or explicit
+          ``success: False`` reported as a failure so ``on_failure``
+          semantics apply.
+        - Anything else (neither builtin nor a command-list tool) raises
+          :class:`NotImplementedError`.
 
         Returns:
             tuple: ``(outputs, error)`` — ``error`` is None on success.
         """
-        if not isinstance(tool, BuiltinTool):
-            raise NotImplementedError(
-                f"tool {getattr(tool, 'name', type(tool).__name__)!r} is not a "
-                f"builtin tool: descriptor/code tools in workflows require "
-                f"params-to-command-list conversion, which is not supported "
-                f"yet (see app.workflow.engine module docstring)"
-            )
+        if isinstance(tool, BuiltinTool):
+            return self._execute_builtin_tool(tool, resolved_params, context)
+        if callable(getattr(tool, "execute", None)):
+            return self._execute_command_tool(tool, resolved_params, context)
+        raise NotImplementedError(
+            f"tool {getattr(tool, 'name', type(tool).__name__)!r} is not a "
+            f"builtin tool and has no command-list execute contract"
+        )
 
+    def _execute_builtin_tool(
+        self,
+        tool: BuiltinTool,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Run a builtin tool: params dict + :class:`ToolContext`.
+
+        A ``ToolException`` raised by the tool, or a result dict containing
+        an ``"error"`` key, is reported as a failure.
+
+        Returns:
+            tuple: ``(outputs, error)`` — ``error`` is None on success.
+        """
         tool_context = ToolContext(
             work_dir=context.work_dir,
             task_id=context.task_id,
@@ -393,6 +421,63 @@ class WorkflowEngine:
         if isinstance(outputs, dict) and outputs.get("error"):
             return {}, str(outputs["error"])
         return outputs, None
+
+    def _execute_command_tool(
+        self,
+        tool: Any,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Run a descriptor/code tool: ``params["args"]`` as a command list.
+
+        Workflow templates declare descriptor/code tool arguments as
+        ``params: {"args": [...]}``; after expression resolution ``args`` is
+        the command list for ``tool.execute(command, context)``.  The result
+        dict (``success``/``returncode``/``stdout``/``stderr``) is converted
+        to the standard node output format; a non-zero exit or explicit
+        ``success: False`` becomes an error so ``on_failure`` semantics
+        (fail/skip/retry) apply.
+
+        Returns:
+            tuple: ``(outputs, error)`` — ``error`` is None on success.
+        """
+        command = resolved_params.get("args")
+        if not isinstance(command, list):
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            return {}, (
+                f"tool {tool_name!r} requires params['args'] (a command "
+                f"list) in workflows, got {type(command).__name__}"
+            )
+
+        command_context = CommandExecutionContext(
+            cwd=context.work_dir,
+            task_id=context.task_id,
+            env=dict(context.env) or None,
+            process_holder={},
+        )
+        try:
+            result = tool.execute(list(command), command_context)
+        except ToolException as exc:
+            return {}, exc.message
+        except Exception as exc:  # subprocess failures surface as error strings
+            return {}, f"tool execution failed: {exc}"
+
+        if not isinstance(result, dict):
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            return {}, (
+                f"tool {tool_name!r} returned a non-dict result: {result!r}"
+            )
+
+        success = result.get("success", True)
+        returncode = result.get("returncode", 0)
+        if success is False or returncode != 0:
+            detail = (result.get("stderr") or result.get("stdout") or "").strip()
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            message = f"tool {tool_name!r} failed (exit {returncode})"
+            if detail:
+                message += f": {detail}"
+            return result, message
+        return result, None
 
     def _parse_retry(self, on_failure: str) -> int:
         """Parse the ``N`` in an ``on_failure="retry:N"`` value.
