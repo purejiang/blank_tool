@@ -246,7 +246,46 @@ def _is_executable_usable(path: str) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# EnvironmentRegistry delegation (lazy singleton)
+#
+# env.py stays the public compatibility API for the whole codebase. Runtime
+# resolution now prefers the EnvironmentRegistry; the legacy hardcoded logic
+# below remains as a safety net in case the registry is unavailable, has no
+# descriptors, or cannot resolve anything. The registry is created lazily on
+# first use (never at import time) to avoid import-time side effects.
+# ---------------------------------------------------------------------------
+_registry = None
+
+
+def _get_registry():
+    """Lazily create and return the singleton EnvironmentRegistry."""
+    global _registry
+    if _registry is None:
+        from app.env.registry import EnvironmentRegistry
+
+        registry = EnvironmentRegistry()
+        registry.discover()
+        _registry = registry
+    return _registry
+
+
+def _resolve_binary_from_registry(env_name: str) -> str:
+    """Return the registry-resolved binary path for *env_name*, or '' on failure."""
+    try:
+        resolved = _get_registry().resolve(env_name)
+        return resolved.binary_path or ""
+    except Exception:
+        return ""
+
+
 def get_java_bin() -> str:
+    # DEPRECATED: delegates to EnvironmentRegistry, fallback kept for safety
+    registry_bin = _resolve_binary_from_registry('java')
+    if registry_bin:
+        return registry_bin
+
+    # --- legacy fallback (unchanged resolution order) ---
     # 1. First priority: Environment variable override
     override = os.environ.get(ENV_BT_JAVA_BIN)
     if override:
@@ -286,6 +325,12 @@ def get_java_bin() -> str:
     return which or 'java'
 
 def get_python_bin() -> str:
+    # DEPRECATED: delegates to EnvironmentRegistry, fallback kept for safety
+    registry_bin = _resolve_binary_from_registry('python')
+    if registry_bin:
+        return registry_bin
+
+    # --- legacy fallback (unchanged) ---
     override = os.environ.get(ENV_BT_PYTHON_BIN)
     if override:
         resolved = resolve_path(override)
@@ -295,6 +340,12 @@ def get_python_bin() -> str:
     return sys.executable or 'python'
 
 def get_node_bin() -> str:
+    # DEPRECATED: delegates to EnvironmentRegistry, fallback kept for safety
+    registry_bin = _resolve_binary_from_registry('node')
+    if registry_bin:
+        return registry_bin
+
+    # --- legacy fallback (unchanged) ---
     override = os.environ.get(ENV_BT_NODE_BIN)
     if override:
         resolved = resolve_path(override)
