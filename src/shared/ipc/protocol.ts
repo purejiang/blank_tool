@@ -335,52 +335,12 @@ export interface LogTailResult {
 //   Aliases → same params/result as canonical.
 export interface ApiMethodMap {
   // --- Existing entries (preserved verbatim) ---
-  'adb.devices': { params: Record<string, never>; result: AdbDevice[] }
-  'adb.shell': { params: { command: string; serial?: string }; result: string }
-  'adb.install': { params: { apkPath: string; serial?: string }; result: InstallResult }
-  'adb.uninstall': { params: { packageName: string; serial?: string }; result: void }
-  'apk.parse': { params: { apkPath: string }; result: ApkInfo }
-  'apk.extract': { params: { apkPath: string; outputDir: string }; result: void }
-  'aab.install': { params: { aabPath: string; serial?: string }; result: InstallResult }
   'tool.list': { params: Record<string, never>; result: ToolInfo[] }
-  'cache.clear': { params: { target?: string }; result: CacheClearResult }
-  // Legacy entry fixed: backend takes no params (wrapper calls with no args).
-  'app.info': { params: Record<string, never>; result: AppInfo }
-
-  // --- adb_handler.py ---
-  'adb.connect': { params: { address: string }; result: AdbConnectionResult }
-  'adb.disconnect': { params: { address?: string }; result: AdbConnectionResult }
-  'adb.logcat': { params: { device_id: string }; result: void }
-  'adb.stop_logcat': { params: { process_id: string }; result: AdbStopLogcatResult }
-  'adb.export_logcat': { params: { device_id: string; file_path: string }; result: AdbExportLogcatResult }
-  'device.info': { params: { device_id: string }; result: DeviceInfo }
-  'device.list_apps': { params: { device_id: string; type?: string }; result: string[] }
-  'device.get_device_info': { params: { device_id: string }; result: DeviceInfo }
-  'device.shell': { params: { device_id: string; command: string }; result: DeviceShellResult }
-  'device.reboot': { params: { device_id: string; mode?: string }; result: DeviceRebootResult }
-  'device.get_installed_packages': { params: { device_id: string; type?: string }; result: string[] }
-  'device.export_apk': { params: { device_id: string; package_name: string; output_dir?: string }; result: ExportApkResult }
-
-  // --- apk_handler.py ---
-  'apk.analyze': { params: { apk_path: string; task_id?: string }; result: void }
-  'apk.analyze_apk': { params: { apk_path: string; task_id?: string }; result: void }
-  'apk.getInfo': { params: { apk_path: string; task_id?: string }; result: void }
-  'apk.decompile': { params: { file_path: string; options?: DecompileOptions }; result: void }
-  'apk.recompile': { params: { project_path: string; options?: RecompileOptions }; result: void }
-  'apk.sign': { params: { apk_path: string; keystore?: KeystoreConfig; options?: SignOptions }; result: void }
-  'apk.get_progress': { params: { task_id?: string; output_dir?: string; output_apk?: string }; result: ApkProgressResult }
-  'apk.getProgress': { params: { task_id?: string; output_dir?: string; output_apk?: string }; result: ApkProgressResult }
-  'apk.cancel_task': { params: { task_id?: string }; result: CancelTaskResult }
-  'apk.cancelTask': { params: { task_id?: string }; result: CancelTaskResult }
-
-  // --- aab_handler.py ---
-  'aab.sign': { params: { aab_path: string; keystore?: KeystoreConfig; task_id?: string }; result: AabSignResult }
-  'device.convert_aab_to_apks': { params: { aab_path: string; output_path?: string; keystore?: KeystoreConfig; device_id?: string; task_id?: string }; result: ConvertAabToApksResult }
-  'device.install_aab': { params: { aab_path: string; device_id: string; output_path?: string; keystore?: KeystoreConfig; task_id?: string }; result: void }
 
   // --- app_handler.py ---
   'system.info': { params: Record<string, never>; result: SystemInfoResult }
   'build.info': { params: Record<string, never>; result: BuildInfoResult }
+  'app.info': { params: Record<string, never>; result: AppInfo }
 
   // --- cache_handler.py ---
   'cache.get_info': { params: Record<string, never>; result: CacheInfoResult }
@@ -389,13 +349,6 @@ export interface ApiMethodMap {
   'tasks.clear': { params: Record<string, never>; result: ClearResult }
   'logs.clear': { params: Record<string, never>; result: ClearResult }
   'storage.clear': { params: { target?: string }; result: ClearResult }
-
-  // --- download_handler.py ---
-  'download.file': { params: { url: string; filename?: string; task_id?: string }; result: void }
-
-  // --- install_handler.py ---
-  'device.install_apk': { params: { apk_path: string; device_id: string; task_id?: string }; result: void }
-  'device.install_apks': { params: { apks_path: string; device_id: string; task_id?: string }; result: void }
 
   // --- tool_handler.py ---
   'tool.version': { params: Record<string, never>; result: { version: string } }
@@ -420,4 +373,17 @@ export interface ApiMethodMap {
   'plugin.list': { params: Record<string, never>; result: Record<string, unknown>[] }
   'plugin.run': { params: { name: string; params?: Record<string, unknown> }; result: Record<string, unknown> }
   'plugin.reload': { params: Record<string, never>; result: Record<string, unknown>[] }
+
+  // --- template_handler.py ---
+  'template.save': { params: { name: string; definition: Record<string, unknown> }; result: Record<string, unknown> }
+  'template.load': { params: { name: string }; result: Record<string, unknown> }
+  'template.list': { params: Record<string, never>; result: Record<string, unknown>[] }
+  'template.delete': { params: { name: string }; result: Record<string, unknown> }
+  'template.execute': { params: { name: string; inputs?: Record<string, unknown> }; result: Record<string, unknown> }
+
+  // --- workflow_handler.py ---
+  'workflow.execute': { params: { definition: Record<string, unknown>; inputs?: Record<string, unknown> }; result: Record<string, unknown> }
+  'workflow.validate': { params: { definition: Record<string, unknown> }; result: Record<string, unknown> }
+  'workflow.list_tools': { params: Record<string, never>; result: Record<string, unknown>[] }
+  'workflow.list_envs': { params: Record<string, never>; result: Record<string, unknown>[] }
 }

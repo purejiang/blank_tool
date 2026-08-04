@@ -97,9 +97,8 @@ class ToolRegistry:
                         self._discovered[key] = attr
             self._discover_descriptors()
 
-    # Tool names whose code-based class wins over the descriptor (the code
-    # class carries streaming methods the descriptor cannot express).
-    _CODE_PRIORITY_NAMES = frozenset({"adb"})
+    # Tool names whose code-based class wins over the descriptor.
+    _CODE_PRIORITY_NAMES = frozenset(set())
 
     def _discover_descriptors(self) -> None:
         """Register pre-installed tools declared by registry/tools/*.json.
@@ -269,32 +268,6 @@ class ToolRegistry:
         )
 
     def _default_tool_path(self, key: str) -> str:
-        base = self._tools_base_dir()
-        is_windows = platform.system() == "Windows"
-        if key == "adb":
-            return os.path.join(base, "adb", "adb.exe" if is_windows else "adb")
-        if key == "aapt":
-            return os.path.join(
-                base, "aapt", "aapt2.exe" if is_windows else "aapt"
-            )
-        if key == "apktool":
-            return os.path.join(base, "apktool", "apktool.jar")
-        if key == "bundletool":
-            return os.path.join(base, "bundletool", "bundletool.jar")
-        if key == "zipalign":
-            return os.path.join(
-                base, "android", "zipalign.exe" if is_windows else "zipalign"
-            )
-        if key == "apksigner":
-            return os.path.join(
-                base, "android", "apksigner.jar" if is_windows else "apksigner"
-            )
-        if key == "jarsigner":
-            return os.path.join(
-                base,
-                "jre", "bin",
-                "jarsigner.exe" if is_windows else "jarsigner",
-            )
         return ""
 
 
