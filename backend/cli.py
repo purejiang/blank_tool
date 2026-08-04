@@ -275,6 +275,7 @@ def cmd_run(
     or a human-readable summary.  Returns 0 on success, 1 on failure.
     """
     from app.workflow.engine import ExecutionContext, WorkflowEngine
+    from app.workflow.streaming import WorkflowStreamHandler
 
     definition = _resolve_definition(target)
     if definition is None:
@@ -283,12 +284,16 @@ def cmd_run(
     inputs = _parse_key_values(raw_inputs or [])
     use_color = (not json_output) and sys.stdout.isatty()
     stream = sys.stderr if json_output else sys.stdout
-    stream_handler = _make_console_stream_handler(use_color, stream)
+    raw_stream_handler = _make_console_stream_handler(use_color, stream)
+    workflow_stream = WorkflowStreamHandler(
+        workflow_id=task_id or "cli", callback=raw_stream_handler
+    )
 
     context = ExecutionContext(
         work_dir=os.getcwd(),
         task_id=task_id,
-        stream_handler=stream_handler,
+        stream_handler=raw_stream_handler,
+        workflow_stream=workflow_stream,
     )
 
     try:
@@ -296,42 +301,6 @@ def cmd_run(
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-
-    # The engine only streams tool progress events through
-    # ``context.stream_handler`` (it never emits node lifecycle events), so
-    # replay them here from the recorded node results, in execution order.
-    tool_by_id = {node.id: node.tool for node in definition.nodes}
-    for node_id, node_result in result.node_results.items():
-        stream_handler(
-            {
-                "type": "node_started",
-                "node_id": node_id,
-                "tool": tool_by_id.get(node_id, ""),
-            }
-        )
-        if node_result.get("error"):
-            stream_handler(
-                {
-                    "type": "node_failed",
-                    "node_id": node_id,
-                    "error": node_result["error"],
-                }
-            )
-        else:
-            stream_handler(
-                {
-                    "type": "node_completed",
-                    "node_id": node_id,
-                    "duration_ms": node_result.get("duration_ms"),
-                }
-            )
-
-    if result.success:
-        stream_handler({"type": "workflow_completed", "success": True})
-    else:
-        stream_handler(
-            {"type": "workflow_failed", "error": result.error or "workflow failed"}
-        )
 
     if json_output:
         print(

@@ -172,16 +172,10 @@ def handle_execute(params, stream_handler):
         work_dir=params.get("work_dir", "."),
         task_id=task_id,
         stream_handler=stream_handler,
+        workflow_stream=workflow_stream,
     )
 
     result = engine.execute(definition, inputs, context)
-    if workflow_stream is not None:
-        if result.success:
-            workflow_stream.emit_workflow_completed(True)
-        else:
-            workflow_stream.emit_workflow_failed(
-                result.error or "workflow failed"
-            )
 
     return {
         "success": result.success,

@@ -59,6 +59,7 @@ from app.tools.builtin.net_tools import NetDownload, NetRequest
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.expression import ExpressionEngine, ExpressionError, WorkflowContext
+from app.workflow.streaming import WorkflowStreamHandler
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,7 @@ class ExecutionContext:
     task_id: Optional[str] = None
     env: Dict[str, str] = field(default_factory=dict)
     stream_handler: Optional[Callable[[dict], None]] = None
+    workflow_stream: Optional[WorkflowStreamHandler] = None
 
 
 @dataclass
@@ -192,6 +194,12 @@ class WorkflowEngine:
                     f"{current.id!r} declares a 'condition' field"
                 )
 
+            # Real-time node lifecycle event: node_started before execution.
+            if context.workflow_stream is not None:
+                context.workflow_stream.emit_node_started(
+                    current.id, current.tool
+                )
+
             start = time.perf_counter()
             outputs: Dict[str, Any] = {}
             error: Optional[str] = None
@@ -218,6 +226,13 @@ class WorkflowEngine:
                     "error": error,
                     "duration_ms": duration_ms,
                 }
+                if context.workflow_stream is not None:
+                    context.workflow_stream.emit_node_failed(
+                        current.id, error
+                    )
+                    context.workflow_stream.emit_workflow_failed(
+                        f"node {current.id!r} failed: {error}"
+                    )
                 return WorkflowResult(
                     success=False,
                     outputs={},
@@ -231,6 +246,10 @@ class WorkflowEngine:
                     current.id,
                     error,
                 )
+                if context.workflow_stream is not None:
+                    context.workflow_stream.emit_node_failed(
+                        current.id, error
+                    )
                 outputs = {}
 
             node_results[current.id] = {
@@ -244,7 +263,18 @@ class WorkflowEngine:
             }
             final_outputs = outputs
 
+            # Emit node_completed when the node finished without a terminal
+            # failure (skip failures count as "completed" for flow purposes).
+            if error is None and context.workflow_stream is not None:
+                context.workflow_stream.emit_node_completed(
+                    current.id, duration_ms
+                )
+
             current = node_by_id.get(current.next)
+
+        # Emit workflow_completed after the final node finishes successfully.
+        if context.workflow_stream is not None:
+            context.workflow_stream.emit_workflow_completed(True)
 
         return WorkflowResult(
             success=True,
