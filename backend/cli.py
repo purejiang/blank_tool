@@ -207,6 +207,206 @@ def cmd_validate(path: str, tool_dirs: Optional[List[str]] = None) -> int:
     return 1
 
 
+def _build_operation_command_cli(op: Any, resolved_params: Dict[str, Any]) -> list:
+    """Build the command list from an operation's args_map.
+
+    Replicates :meth:`WorkflowEngine._build_operation_command` so the CLI
+    can invoke operation tools without depending on the engine's side effects.
+
+    Each entry in ``op.args_map`` is either:
+    - A literal string (passed through unchanged).
+    - A ``{"param": <name>}`` dict: the bound value of ``<name>`` is
+      looked up in *resolved_params* and stringified.
+    - A ``{"flag": <name>, "value": <arg>}`` dict: ``<arg>`` is emitted
+      only when ``resolved_params[<name>]`` is truthy.
+
+    Returns:
+        A flat list of strings ready for ``tool.execute(command, ctx)``.
+    """
+    command: list = []
+    for entry in op.args_map:
+        if isinstance(entry, str):
+            command.append(entry)
+        elif isinstance(entry, dict):
+            if "param" in entry:
+                value = resolved_params.get(entry["param"], "")
+                command.append(str(value))
+            elif "flag" in entry:
+                flag_value = resolved_params.get(entry["flag"], False)
+                if flag_value:
+                    command.append(str(entry["value"]))
+        # Unknown dict shapes are silently skipped (forward-compatible).
+    return command
+
+
+def cmd_tool(
+    name: str,
+    operation: Optional[str],
+    raw_inputs: Optional[List[str]],
+    json_output: bool,
+    tool_dirs: Optional[List[str]] = None,
+) -> int:
+    """Invoke a single tool/operation headlessly and print the result.
+
+    Resolves *name* as a builtin tool or a descriptor tool (loaded via
+    ``--tool-dir``), parses ``--input key=value`` pairs, executes the
+    tool or operation, and prints the result as JSON (``--json``) or a
+    human-readable summary.  Returns 0 on success, non-zero on failure.
+    """
+    from app.tools.builtin.base import BuiltinTool, ToolContext
+    from app.common.base_executor import CommandExecutionContext
+    from app.workflow.engine import _BUILTIN_TOOLS
+
+    inputs = _parse_key_values(raw_inputs or [])
+
+    # ── 1. Resolve the tool ──────────────────────────────────────────
+    tool: Any = _BUILTIN_TOOLS.get(name)
+    if tool is None:
+        registry = (
+            _augment_registry_with_tool_dirs(tool_dirs)
+            if tool_dirs
+            else None
+        )
+        if registry is not None:
+            tool = registry.get_tool(name)
+        if tool is None:
+            from app.tools.tool_manager import ToolManager
+            tool = ToolManager.instance().get_tool(name)
+
+    if tool is None:
+        print(f"error: unknown tool {name!r}", file=sys.stderr)
+        return 1
+
+    # ── 2. Execute ───────────────────────────────────────────────────
+    if isinstance(tool, BuiltinTool):
+        tool_context = ToolContext(work_dir=os.getcwd())
+        try:
+            result = tool.execute(inputs, tool_context)
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        if isinstance(result, dict) and result.get("error"):
+            print(f"error: {result['error']}", file=sys.stderr)
+            return 1
+    elif callable(getattr(tool, "execute", None)):
+        descriptor = getattr(tool, "_descriptor", None)
+
+        if operation:
+            # ── Operation execution path ─────────────────────────────
+            if descriptor is None:
+                print(
+                    f"error: tool {name!r} does not support operations",
+                    file=sys.stderr,
+                )
+                return 1
+
+            op = _find_operation(descriptor, operation)
+            if op is None:
+                available = [o.name for o in (descriptor.operations or [])]
+                hint = ""
+                if available:
+                    hint = f" (available: {', '.join(available)})"
+                print(
+                    f"error: unknown operation {operation!r} "
+                    f"for tool {name!r}{hint}",
+                    file=sys.stderr,
+                )
+                return 1
+
+            # Validate inputs against operation ports
+            if op.inputs:
+                from app.protocol import PortSet
+                op_port_set = PortSet(list(op.inputs), list(op.outputs))
+                validation_errors = op_port_set.validate_inputs(inputs)
+                if validation_errors:
+                    for err in validation_errors:
+                        print(f"error: {err}", file=sys.stderr)
+                    return 1
+
+            command = _build_operation_command_cli(op, inputs)
+            command_context = CommandExecutionContext(cwd=os.getcwd())
+            try:
+                result = tool.execute(list(command), command_context)
+            except Exception as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 1
+
+            if not isinstance(result, dict):
+                print(
+                    f"error: tool {name!r} returned non-dict result: "
+                    f"{result!r}",
+                    file=sys.stderr,
+                )
+                return 1
+
+            success = result.get("success", True)
+            returncode = result.get("returncode", 0)
+            if success is False or returncode != 0:
+                detail = (
+                    result.get("stderr") or result.get("stdout") or ""
+                ).strip()
+                message = f"tool {name!r} failed (exit {returncode})"
+                if detail:
+                    message += f": {detail}"
+                print(f"error: {message}", file=sys.stderr)
+                return 1
+        else:
+            # ── No operation specified ───────────────────────────────
+            if descriptor and descriptor.operations:
+                available = [o.name for o in descriptor.operations]
+                print(
+                    f"error: tool {name!r} requires an operation; "
+                    f"available: {', '.join(available)}. "
+                    f"Usage: cli.py tool {name} <operation> --input ...",
+                    file=sys.stderr,
+                )
+                return 1
+            # Descriptor without operations / code-based tool:
+            # instruct the user to use `run` with a workflow.
+            print(
+                f"error: tool {name!r} has no operations; "
+                f"use `cli.py run <workflow>` to execute it",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        print(
+            f"error: tool {name!r} is neither a builtin nor an "
+            f"executable descriptor tool",
+            file=sys.stderr,
+        )
+        return 1
+
+    # ── 3. Print result ──────────────────────────────────────────────
+    if json_output:
+        print(
+            json.dumps(result, indent=2, default=str, ensure_ascii=False)
+        )
+    else:
+        _print_result_summary(name, result)
+    return 0
+
+
+def _find_operation(descriptor: Any, operation_name: str) -> Any:
+    """Look up *operation_name* in *descriptor.operations*."""
+    if descriptor is None:
+        return None
+    for candidate in getattr(descriptor, "operations", []) or []:
+        if candidate.name == operation_name:
+            return candidate
+    return None
+
+
+def _print_result_summary(tool_name: str, result: dict) -> None:
+    """Print a human-readable summary of *result* for *tool_name*."""
+    print(f"tool: {tool_name}")
+    for key, value in sorted(result.items()):
+        val_str = json.dumps(value, default=str, ensure_ascii=False)
+        if len(val_str) > 120:
+            val_str = val_str[:117] + "..."
+        print(f"  {key}: {val_str}")
+
+
 def cmd_list_templates() -> int:
     """List saved workflow templates.
 
@@ -465,6 +665,26 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory of *.json tool descriptors to load (repeatable)",
     )
 
+    # tool
+    tool_parser = subparsers.add_parser("tool", help="Invoke a tool or operation headlessly")
+    tool_parser.add_argument("name", help="Tool name (e.g. flow.log, apktool)")
+    tool_parser.add_argument(
+        "operation", nargs="?", default=None,
+        help="Operation name (required for descriptor tools with operations)",
+    )
+    tool_parser.add_argument(
+        "--input", action="append", default=None,
+        help="Input as key=value (repeatable)",
+    )
+    tool_parser.add_argument(
+        "--json", action="store_true", default=False,
+        help="Machine-readable JSON output",
+    )
+    tool_parser.add_argument(
+        "--tool-dir", action="append", default=None,
+        help="Directory of *.json tool descriptors to load (repeatable)",
+    )
+
     # list-templates
     subparsers.add_parser("list-templates", help="List saved workflow templates")
 
@@ -483,6 +703,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         "list-envs": cmd_list_envs,
         "validate": lambda: cmd_validate(args.path, args.tool_dir),
         "list-templates": cmd_list_templates,
+        "tool": lambda: cmd_tool(
+            args.name, args.operation, args.input, args.json, args.tool_dir
+        ),
     }
 
     try:

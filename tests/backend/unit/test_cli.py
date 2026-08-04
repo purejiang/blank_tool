@@ -277,3 +277,106 @@ def test_validate_with_tool_dir_bogus_dir_warns_not_crash():
         or "nonexistent_dir_xyz" in result.stderr
         or "not a directory" in result.stderr
     )
+
+
+# ---------------------------------------------------------------------------
+# tool subcommand (T18: headless tool invocation)
+# ---------------------------------------------------------------------------
+
+def test_tool_builtin_executes_and_exits_zero(tmp_path):
+    """``cli.py tool flow.log --input message=hello`` executes the builtin."""
+    result = run_cli("tool", "flow.log", "--input", "message=hello-tool-cli")
+    assert result.returncode == 0, (
+        f"expected exit 0, got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    # flow.log returns {"logged": true} — assert success and tool name
+    assert "flow.log" in result.stdout
+    assert "logged" in result.stdout
+
+
+def test_tool_builtin_json_output(tmp_path):
+    """``cli.py tool flow.log --input message=hi --json`` prints raw JSON."""
+    result = run_cli("tool", "flow.log", "--input", "message=json-test", "--json")
+    assert result.returncode == 0, (
+        f"expected exit 0, got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    payload = json.loads(result.stdout)
+    # flow.log returns {"logged": true} — it logs, doesn't echo the message
+    assert payload.get("logged") is True
+
+
+def test_tool_unknown_tool_exits_nonzero_with_message():
+    """Unknown tool name → exit non-zero with a clear message."""
+    result = run_cli("tool", "nosuchtool")
+    assert result.returncode != 0
+    assert "nosuchtool" in (result.stderr + result.stdout)
+
+
+def test_tool_operation_with_tool_dir_resolves_and_reaches_execution(tmp_path):
+    """Operation resolution + binding succeeds; reaches the execute stage.
+
+    apktool decode needs apk_path + output_dir.  The binary is likely absent,
+    so the execution will fail with a tool/binary error — that is the
+    ACCEPTED TERMINUS.  What matters is that the resolution+binding path
+    succeeds (no "unknown tool" / "unknown operation" / "missing input").
+    """
+    result = run_cli(
+        "tool", "apktool", "decode",
+        "--tool-dir", str(ANDROID_TOOLS_DIR),
+        "--input", "apk_path=test.apk",
+        "--input", "output_dir=" + str(tmp_path / "out"),
+        "--json",
+    )
+    # The tool binary is absent → non-zero exit is expected.
+    # But the error MUST be about the binary/execution, NOT about resolution.
+    assert result.returncode != 0
+    stdout_and_stderr = result.stdout + result.stderr
+    assert "unknown tool" not in stdout_and_stderr.lower()
+    assert "unknown operation" not in stdout_and_stderr.lower()
+    assert "missing" not in stdout_and_stderr.lower()
+    # The error should name the tool (apktool) or mention execution failure.
+    assert "apktool" in stdout_and_stderr.lower()
+
+
+def test_tool_missing_required_input_exits_nonzero_with_message():
+    """Missing a required operation input → exit non-zero, names the port."""
+    result = run_cli(
+        "tool", "apktool", "decode",
+        "--tool-dir", str(ANDROID_TOOLS_DIR),
+        # no --input flags at all → both apk_path and output_dir missing
+    )
+    assert result.returncode != 0
+    stdout_and_stderr = result.stdout + result.stderr
+    assert "apk_path" in stdout_and_stderr or "output_dir" in stdout_and_stderr
+    assert "missing" in stdout_and_stderr.lower() or "required" in stdout_and_stderr.lower()
+
+
+def test_tool_list_tools_unchanged():
+    """``list-tools`` subcommand is unchanged and still works."""
+    result = run_cli("list-tools")
+    assert result.returncode == 0
+    assert "file.read" in result.stdout
+    assert "name" in result.stdout
+
+
+def test_tool_help_mentions_tool_subcommand():
+    """``--help`` now lists the ``tool`` subcommand."""
+    result = run_cli("--help")
+    assert result.returncode == 0
+    assert "tool" in result.stdout
+
+
+def test_tool_no_operation_on_descriptor_with_ops_lists_them(tmp_path):
+    """Descriptor tool with operations but no operation given → clear message."""
+    result = run_cli(
+        "tool", "apktool",
+        "--tool-dir", str(ANDROID_TOOLS_DIR),
+    )
+    # Exit non-zero because no operation was specified.
+    assert result.returncode != 0
+    stdout_and_stderr = result.stdout + result.stderr
+    assert "operation" in stdout_and_stderr.lower()
+    # Should name available operations or give guidance.
+    assert "decode" in stdout_and_stderr or "build" in stdout_and_stderr or "specify" in stdout_and_stderr.lower()
