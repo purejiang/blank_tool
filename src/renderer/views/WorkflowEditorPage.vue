@@ -9,6 +9,10 @@
         <span class="we-title" :title="meta.name">{{ meta.name }}</span>
         <!-- Template save/load/delete (todo 39) -->
         <TemplateManager :get-definition="serializeCanvas" @load="onTemplateLoad" />
+        <!-- Workflow-level inputs/outputs authoring (T6) -->
+        <n-button size="small" @click="showIoPanel = true">
+          {{ t('workflow.editor.io.title') }}
+        </n-button>
         <n-button
           size="small"
           type="primary"
@@ -131,11 +135,17 @@
         </div>
       </template>
     </n-modal>
+
+    <!-- Workflow-level inputs/outputs authoring modal (T6): edits
+         meta.inputs / meta.outputs so serializeCanvas carries them to
+         template.save. Pure authoring rules live in ioAuthoring.ts. -->
+    <IoAuthoringPanel v-model:show="showIoPanel" v-model:meta="meta" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   VueFlow,
   useVueFlow,
@@ -162,6 +172,7 @@ import {
 import ToolNode from '@components/workflow/ToolNode.vue'
 import WorkflowNodePalette from '@components/workflow/WorkflowNodePalette.vue'
 import NodeConfigPanel from '@components/workflow/NodeConfigPanel.vue'
+import IoAuthoringPanel from '@components/workflow/IoAuthoringPanel.vue'
 import TemplateManager, { type TemplateLoadPayload } from '@components/workflow/TemplateManager.vue'
 import {
   TOOL_DRAG_MIME,
@@ -222,6 +233,7 @@ const {
 })
 
 const message = useMessage()
+const { t } = useI18n()
 
 // Live connection-drag state (todo 35): provided here, injected by ToolNode
 // to highlight compatible handles and dim incompatible ones mid-drag.
@@ -282,6 +294,9 @@ const meta = ref<WorkflowMeta>({
   inputs: [],
   outputs: [],
 })
+
+// Open/close state of the workflow-level inputs/outputs authoring modal (T6).
+const showIoPanel = ref(false)
 
 // Monotonic counter keeps dropped node ids unique within the session.
 let nodeCounter = 0
