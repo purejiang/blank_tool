@@ -25,6 +25,22 @@ export interface ToolPort {
   type: PortTypeRef
   required: boolean
   description: string
+  /** Allowed values for select-like ports (T2; backend always emits this). */
+  options?: string[]
+  /** Whether a select-like port accepts multiple values (T2). */
+  multi?: boolean
+}
+
+/**
+ * One named operation of a descriptor tool (T7), as exposed additively by
+ * `workflow.list_tools` for descriptor tools that declare operations
+ * (backend/app/handlers/workflow_handler.py). Ports are PortJSON-compatible.
+ */
+export interface ToolOperation {
+  name: string
+  description?: string
+  inputs?: ToolPort[]
+  outputs?: ToolPort[]
 }
 
 /** PortSet.to_dict() shape: {"inputs": [...], "outputs": [...]}. */
@@ -51,6 +67,8 @@ export interface WorkflowToolInfo {
   ports?: ToolPorts
   builtin?: boolean
   description?: string
+  /** Descriptor tools only (T7): present and non-empty for operation-capable tools. */
+  operations?: ToolOperation[]
 }
 
 /** MIME type used when dragging a tool from the palette onto the canvas. */

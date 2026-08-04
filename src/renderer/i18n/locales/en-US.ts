@@ -231,6 +231,22 @@ export default {
       config: {
         title: 'Node Configuration',
         noSelection: 'Select a node to configure',
+        // Operation-mode strings (T7)
+        operation: 'Operation',
+        operationPlaceholder: 'Select an operation',
+        parameters: 'Parameters',
+        noParameters: 'This operation has no input parameters',
+        errors: {
+          noOperation: 'Select an operation before saving',
+          missingRequired: 'Missing required input(s): {names}',
+          noOptions: 'Select port "{name}" has no options defined',
+        },
+        placeholders: {
+          file: '/path/to/file',
+          directory: '/path/to/folder',
+          json: '{ "key": "value" }',
+          text: 'Text value (expressions are typed as plain text)',
+        },
       },
       connection: {
         incompatible: 'Incompatible types: {source} → {target}',

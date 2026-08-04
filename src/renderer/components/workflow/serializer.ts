@@ -101,6 +101,15 @@ export interface WorkflowNodeData {
   params: Record<string, any>
   /** Display label; defaults to the tool name. */
   label: string
+  /**
+   * Operation-mode state (T7): for descriptor tools exposing operations,
+   * NodeConfigPanel edits the chosen operation and its typed input bindings
+   * here instead of free-form `params`. On serialize these map to the engine
+   * wire shape `{operation, <input_name>: value}` (operation first); on
+   * deserialize a raw `params.operation` string hydrates both fields.
+   */
+  operation?: string
+  inputs?: Record<string, any>
   // Advanced fields — carried through for roundtrip fidelity. Absent while
   // they equal their defaults ("step" / null / "fail" / null / 0).
   type?: string
@@ -261,6 +270,26 @@ function collectStructuralErrors(json: any, checkEdges: boolean): string[] {
 // ---------------------------------------------------------------------------
 
 /**
+ * Map a node's canvas data to the engine wire params (T7).
+ *
+ * Operation mode (data.operation set): emits `{operation, ...data.inputs}`
+ * with `operation` FIRST — matching the T5 example shapes and the T4 engine
+ * contract (params["operation"] + named bindings). Legacy free-form nodes
+ * keep emitting `data.params` verbatim.
+ */
+function nodeParamsToWire(data: WorkflowNodeData): Record<string, any> {
+  if (typeof data.operation === 'string' && data.operation.length > 0) {
+    const params: Record<string, any> = { operation: data.operation }
+    const inputs = data.inputs
+    if (inputs && typeof inputs === 'object' && !Array.isArray(inputs)) {
+      for (const [key, value] of Object.entries(inputs)) params[key] = value
+    }
+    return cloneJson(params)
+  }
+  return cloneJson(data.params ?? {})
+}
+
+/**
  * Validate a workflow definition JSON before loading it into the canvas.
  *
  * Basic structural checks: name present, `nodes` is an array, node ids are
@@ -279,9 +308,11 @@ export function validateOnDeserialize(json: WorkflowDefinitionJSON): string[] {
  * Serialize the vue-flow canvas state into a WorkflowDefinition JSON document.
  *
  * Mapping:
- *  - node id/tool/params come straight from `node.data` (advanced node fields
- *    — type/on_success/on_failure/condition/retry — are carried through when
- *    present, otherwise backend defaults are emitted);
+ *  - node id/tool come from `node.data`; params go through nodeParamsToWire
+ *    (operation-mode nodes map data.{operation, inputs} to the engine shape
+ *    `{operation, <binding>}`; legacy nodes pass data.params through);
+ *    advanced node fields — type/on_success/on_failure/condition/retry — are
+ *    carried through when present, otherwise backend defaults are emitted;
  *  - `next` is derived from the edges: the FIRST outgoing edge of a node
  *    becomes its next pointer (linear mode — extra outgoing edges are
  *    ignored); a node with no outgoing edge gets next = null (chain end);
@@ -310,7 +341,7 @@ export function serializeWorkflow(
       id: node.id,
       type: typeof data.type === 'string' && data.type.length > 0 ? data.type : NODE_DEFAULTS.type,
       tool: typeof data.tool === 'string' ? data.tool : '',
-      params: cloneJson(data.params ?? {}),
+      params: nodeParamsToWire(data),
       next: nextBySource.get(node.id) ?? null,
       on_success: data.on_success ?? null,
       on_failure:
@@ -340,7 +371,8 @@ export function serializeWorkflow(
  *  - each WorkflowNodeJSON becomes a Node at an auto-layout position
  *    (vertical stack: x = 400, y = index * 150) with
  *    data = { tool, params, label } plus any advanced fields preserved for
- *    roundtrip fidelity;
+ *    roundtrip fidelity; params carrying an `operation` string additionally
+ *    hydrate data.operation/data.inputs for the operation-mode config UI;
  *  - each non-null `next` becomes an Edge { id: `${id}->${next}`, source, target };
  *  - meta carries name/version/description/inputs/outputs (backend defaults
  *    applied for absent optional fields).
@@ -372,10 +404,25 @@ export function deserializeWorkflow(json: WorkflowDefinitionJSON): {
   }
 
   const flowNodes: WorkflowFlowNode[] = json.nodes.map((nodeJson, index) => {
+    const params = cloneJson(nodeJson.params ?? {})
     const data: WorkflowNodeData = {
       tool: nodeJson.tool,
-      params: cloneJson(nodeJson.params ?? {}),
+      params,
       label: nodeJson.tool,
+    }
+    // Operation-node hydration (T7): raw wire params `{operation, <bindings>}`
+    // — the T4/T5 engine contract — become the editor's operation-mode state
+    // `data.operation` + `data.inputs`. `data.params` stays as the raw copy
+    // for roundtrip fidelity; serialize prefers the operation branch. Legacy
+    // free-form params without an `operation` key are untouched.
+    if (typeof params.operation === 'string' && params.operation.length > 0) {
+      data.operation = params.operation
+      const inputs: Record<string, any> = {}
+      for (const [key, value] of Object.entries(params)) {
+        if (key === 'operation') continue
+        inputs[key] = value
+      }
+      data.inputs = inputs
     }
     // Preserve advanced fields for the serialize roundtrip, but only store
     // them when they differ from their defaults.

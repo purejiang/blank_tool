@@ -107,24 +107,49 @@ def handle_validate(params, stream_handler):
     }
 
 
+def _operations_payload(tool) -> list:
+    """Serialize a descriptor tool's operations for the workflow editor (T7).
+
+    Returns ``[]`` for non-descriptor tools (builtins) and descriptors
+    without operations, so the ``workflow.list_tools`` wire shape only gains
+    the additive ``operations`` key when it is meaningful.  Each entry is
+    ``{"name", "description", "inputs", "outputs"}`` with PortJSON-compatible
+    ports (backend ``Port.to_dict`` always emits options/multi).
+    """
+    descriptor = getattr(tool, "_descriptor", None)
+    operations = getattr(descriptor, "operations", None) or []
+    return [
+        {
+            "name": operation.name,
+            "description": operation.description,
+            "inputs": [port.to_dict() for port in operation.inputs],
+            "outputs": [port.to_dict() for port in operation.outputs],
+        }
+        for operation in operations
+    ]
+
+
 def handle_list_tools(params, stream_handler):
     """List every registered tool.
 
     Descriptor/code tools come from :class:`ToolManager` (with their runtime
     state); the 18 builtin workflow primitives come from the engine's
     ``_BUILTIN_TOOLS`` registry (always valid, with their port contracts).
+    Descriptor tools that declare operations additionally expose them (T7).
     """
     tools = []
     tm = ToolManager.instance()
     for name, tool in tm.get_all_tools().items():
-        tools.append(
-            {
-                "name": name,
-                "is_valid": getattr(tool, "is_valid", False),
-                "version": getattr(tool, "version", ""),
-                "tool_path": getattr(tool, "tool_path", ""),
-            }
-        )
+        entry = {
+            "name": name,
+            "is_valid": getattr(tool, "is_valid", False),
+            "version": getattr(tool, "version", ""),
+            "tool_path": getattr(tool, "tool_path", ""),
+        }
+        operations = _operations_payload(tool)
+        if operations:
+            entry["operations"] = operations
+        tools.append(entry)
     for name, tool in _BUILTIN_TOOLS.items():
         tools.append(
             {

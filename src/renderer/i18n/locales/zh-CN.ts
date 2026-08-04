@@ -231,6 +231,22 @@ export default {
       config: {
         title: '节点配置',
         noSelection: '选择一个节点进行配置',
+        // Operation-mode strings (T7)
+        operation: '操作',
+        operationPlaceholder: '请选择操作',
+        parameters: '参数',
+        noParameters: '该操作没有输入参数',
+        errors: {
+          noOperation: '保存前请先选择操作',
+          missingRequired: '缺少必填输入：{names}',
+          noOptions: '选择端口 "{name}" 未定义任何选项',
+        },
+        placeholders: {
+          file: '/path/to/file',
+          directory: '/path/to/folder',
+          json: '{ "key": "value" }',
+          text: '文本值（表达式以纯文本输入）',
+        },
       },
       connection: {
         incompatible: '类型不兼容: {source} → {target}',
