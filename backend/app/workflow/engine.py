@@ -35,6 +35,7 @@ from typing import Any, Callable, Dict, Optional
 
 from app.common.base_executor import CommandExecutionContext
 from app.common.exceptions import ToolException
+from app.protocol import PortSet
 from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.tools.builtin.exec_tools import CodeExec, ShellExec
 from app.tools.builtin.file_tools import (
@@ -365,11 +366,17 @@ class WorkflowEngine:
     ) -> tuple:
         """Run one tool, converting execution failures into error strings.
 
-        Two execution contracts are dispatched by tool kind:
+        Three execution contracts are dispatched by tool kind and params:
 
         - Builtin tools (``file.read``, ...) consume a params dict +
           :class:`ToolContext`; a ``ToolException`` or a result dict
           containing an ``"error"`` key is reported as a failure.
+        - Descriptor tools with an ``operation`` param (``params["operation"]``
+          is a non-empty string and the tool carries named operations):
+          resolve the operation, validate against its typed input ports, build
+          the command list from ``args_map`` (substituting bound inputs),
+          execute via the same ``tool.execute(command, context)`` contract,
+          and map results to the operation's declared outputs.
         - Descriptor/code tools (``apktool``, ``bundletool``, ...) consume a
           command list + :class:`CommandExecutionContext`.  The workflow
           template passes the arguments as ``params["args"]`` (a list, after
@@ -387,12 +394,140 @@ class WorkflowEngine:
         """
         if isinstance(tool, BuiltinTool):
             return self._execute_builtin_tool(tool, resolved_params, context)
+
         if callable(getattr(tool, "execute", None)):
+            operation_name = resolved_params.get("operation")
+            descriptor = self._get_descriptor(tool)
+            if operation_name and descriptor and descriptor.operations:
+                return self._execute_operation_tool(
+                    tool, descriptor, operation_name, resolved_params, context
+                )
             return self._execute_command_tool(tool, resolved_params, context)
+
         raise NotImplementedError(
             f"tool {getattr(tool, 'name', type(tool).__name__)!r} is not a "
             f"builtin tool and has no command-list execute contract"
         )
+
+    @staticmethod
+    def _get_descriptor(tool: Any) -> Optional[Any]:
+        """Return the tool's descriptor (if accessible) for operation lookup.
+
+        Supports both real ``DescriptorTool`` instances (``_descriptor``
+        attribute) and stub objects that expose a ``_descriptor`` property.
+        """
+        return getattr(tool, "_descriptor", None)
+
+    def _execute_operation_tool(
+        self,
+        tool: Any,
+        descriptor: Any,
+        operation_name: str,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Execute a descriptor tool via a named operation.
+
+        1. Look up the operation by name (unknown → error string).
+        2. Validate bound inputs against the operation's typed input ports
+           (missing required → error string naming the port).
+        3. Build the command list from ``operation.args_map``:
+           - literal strings pass through unchanged;
+           - ``{"param": <input_name>}`` substitutes the bound value
+             (str-coerced);
+           - ``{"flag": <bool_input>, "value": <arg>}`` emits ``arg`` only
+             when the boolean input is truthy.
+        4. Execute via the existing ``tool.execute(command, context)``
+           contract.
+        5. Return the result dict as node outputs (the same convention used
+           by the raw-args path).
+
+        Returns:
+            tuple: ``(outputs, error)``.
+        """
+        # ── 1. Look up the operation ──────────────────────────────────
+        op = None
+        for candidate in descriptor.operations:
+            if candidate.name == operation_name:
+                op = candidate
+                break
+
+        if op is None:
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            return {}, (
+                f"unknown operation {operation_name!r} for tool {tool_name!r}"
+            )
+
+        # ── 2. Validate inputs ────────────────────────────────────────
+        if op.inputs:
+            op_port_set = PortSet(list(op.inputs), list(op.outputs))
+            validation_errors = op_port_set.validate_inputs(resolved_params)
+            if validation_errors:
+                return {}, "; ".join(validation_errors)
+
+        # ── 3. Build command list from args_map ───────────────────────
+        command = self._build_operation_command(op, resolved_params)
+
+        # ── 4. Execute via the existing command-tool contract ─────────
+        command_context = CommandExecutionContext(
+            cwd=context.work_dir,
+            task_id=context.task_id,
+            env=dict(context.env) or None,
+            process_holder={},
+        )
+        try:
+            result = tool.execute(list(command), command_context)
+        except ToolException as exc:
+            return {}, exc.message
+        except Exception as exc:
+            return {}, f"tool execution failed: {exc}"
+
+        if not isinstance(result, dict):
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            return {}, (
+                f"tool {tool_name!r} returned a non-dict result: {result!r}"
+            )
+
+        success = result.get("success", True)
+        returncode = result.get("returncode", 0)
+        if success is False or returncode != 0:
+            detail = (result.get("stderr") or result.get("stdout") or "").strip()
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            message = f"tool {tool_name!r} failed (exit {returncode})"
+            if detail:
+                message += f": {detail}"
+            return result, message
+
+        return result, None
+
+    @staticmethod
+    def _build_operation_command(op: Any, resolved_params: Dict[str, Any]) -> list:
+        """Build the command list from an operation's args_map.
+
+        Each entry in ``op.args_map`` is either:
+        - A literal string (passed through unchanged).
+        - A ``{"param": <name>}`` dict: the bound value of ``<name>`` is
+          looked up in *resolved_params* and stringified.
+        - A ``{"flag": <name>, "value": <arg>}`` dict: ``<arg>`` is emitted
+          only when ``resolved_params[<name>]`` is truthy.
+
+        Returns:
+            A flat list of strings ready for ``tool.execute(command, ctx)``.
+        """
+        command: list = []
+        for entry in op.args_map:
+            if isinstance(entry, str):
+                command.append(entry)
+            elif isinstance(entry, dict):
+                if "param" in entry:
+                    value = resolved_params.get(entry["param"], "")
+                    command.append(str(value))
+                elif "flag" in entry:
+                    flag_value = resolved_params.get(entry["flag"], False)
+                    if flag_value:
+                        command.append(str(entry["value"]))
+            # Unknown dict shapes are silently skipped (forward-compatible).
+        return command
 
     def _execute_builtin_tool(
         self,
