@@ -1,22 +1,26 @@
-# Blank Tool (Android 开发工具箱)
+# Blank Tool
 
-Blank Tool 是一个基于 Electron + Vue 3 + Python 构建的现代化 Android 开发辅助工具。集成了常用的 Android 开发工具（ADB、Apktool、Bundletool 等），提供直观的图形化界面，简化开发者的日常工作流程。
+Blank Tool 是本地工作流编排桌面应用（Electron + Vue 3 + Python）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的模板，在任务中心或无头 CLI（`backend/cli.py`）中执行。模型通用、领域无关。
+
+应用本体**不包含任何领域内容**：不内置工作流、工具描述符或二进制。仓库提供 `examples/` 可导入示例包（Android 工作流 + 工具描述符），经工作流/工具导入功能引入；二进制由用户自行准备（本地 `runtime/` 目录、自定义路径或系统 PATH）。该调整**已决策**，在分期计划中实施（见 [docs/05-分期开发计划.md](./docs/05-分期开发计划.md)）。
 
 ## 功能特性
 
-### 任务管理
+通用核心是**工作流引擎与任务中心**：任何本地工具、脚本或运行时，封装为带类型化出入参的工具后，就能用线性工作流编排成可保存、可复用的模板，在任务中心或无头 CLI 中执行。下面的设备管理、APK 工具是内置便捷页面，依赖用户导入的工具描述符与自备二进制；导入前应用仍可完整使用通用工作流能力。
+
+### 工作流与任务管理
 - **远程下载**: 输入 URL 自动下载 APK，支持流式进度显示
 - **一键操作**: 下载后自动执行分析、安装、反编译、重编译、重签名
 - **任务队列**: 支持多任务并行，每个任务独立展开查看日志和输出
 - **历史记录**: 任务记录本地持久化，重启不丢失
 
-### 设备管理
+### 设备管理（需导入工具）
 - **设备连接**: 自动检测 USB 设备，支持 ADB TCP/IP 远程连接
 - **设备控制**: 重启系统 / 恢复模式 / Bootloader，Shell 命令执行
 - **应用管理**: 安装 APK/AAB/APKS，卸载、导出应用
 - **Logcat**: 实时日志输出，支持按设备过滤
 
-### APK 工具
+### APK 工具（需导入工具）
 - **应用分析**: 解析包名、版本、权限、SDK 信息
 - **反编译/重编译**: 集成 Apktool，支持资源/源码选择性反编译
 - **签名工具**: 支持自定义签名配置管理，V2 签名方案
@@ -36,8 +40,10 @@ Blank Tool 是一个基于 Electron + Vue 3 + Python 构建的现代化 Android 
 
 ### 环境要求
 - Node.js 18+
-- Python 3.10+ (开发后端时)
+- Python 3.10+（主进程先尝试 `runtime/python`，缺省回退系统 Python，实际以系统 Python 为准）
 - Git (版本号管理)
+
+> Android 相关能力需先导入 `examples/` 中的工作流与工具描述符，并自备二进制（本地 `runtime/`、自定义工具路径或系统 PATH）；导入前通用工作流能力不受影响。
 
 ### 开发
 
@@ -93,7 +99,8 @@ blank_tool/
 │   │   └── assets/styles/      # 样式 (themes, components)
 │   └── shared/                 # 共享代码 (IPC channels, config)
 ├── scripts/                    # 构建脚本 (build.mjs)
-├── runtime/                    # 内置运行时 (Python, ADB, JDK, Apktool...)
+├── examples/                   # 可导入示例（tracked，不随包分发）：Android 工作流 + 工具描述符
+├── runtime/                    # 本地可选（gitignored，不随仓库/不随包分发）：ADB, JDK, Apktool 等自备二进制
 └── dist/                       # 构建输出
 ```
 
