@@ -39,13 +39,10 @@
       "type": "step",
       "tool": "apktool",
       "params": {
-        "args": [
-          "decode",
-          "--force",
-          "$inputs.apk_path",
-          "-o",
-          "$inputs.output_dir"
-        ]
+        "operation": "decode",
+        "apk_path": "$inputs.apk_path",
+        "output_dir": "$inputs.output_dir",
+        "force": true
       },
       "next": null,
       "on_success": null,

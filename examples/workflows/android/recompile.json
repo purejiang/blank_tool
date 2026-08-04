@@ -39,12 +39,9 @@
       "type": "step",
       "tool": "apktool",
       "params": {
-        "args": [
-          "b",
-          "$inputs.source_dir",
-          "-o",
-          "$inputs.output_apk"
-        ]
+        "operation": "build",
+        "source_dir": "$inputs.source_dir",
+        "output_apk": "$inputs.output_apk"
       },
       "next": null,
       "on_success": null,

@@ -95,6 +95,13 @@ def validate_workflow(
     tools: dict = {}
     for node in definition.nodes:
         tool = registry.get_tool(node.tool)
+        if tool is None:
+            # Fall back to the engine's builtin primitives — the tool
+            # registry only knows descriptor/code tools, but workflows
+            # routinely reference builtins (file.read, dir.list, ...).
+            from app.workflow.engine import _BUILTIN_TOOLS  # noqa: PLC0415
+
+            tool = _BUILTIN_TOOLS.get(node.tool)
         tools[node.id] = tool
         if tool is None:
             errors.append(

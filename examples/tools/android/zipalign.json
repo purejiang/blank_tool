@@ -29,5 +29,45 @@
       "required": true,
       "description": "Command result with returncode, stdout, stderr"
     }
+  ],
+  "operations": [
+    {
+      "name": "align",
+      "description": "Align an APK for optimal memory usage (zipalign).",
+      "inputs": [
+        {
+          "name": "input_apk",
+          "type": { "base": "file", "subtype": "apk" },
+          "required": true,
+          "description": "Path to the APK to align."
+        },
+        {
+          "name": "output_apk",
+          "type": { "base": "file", "subtype": "apk" },
+          "required": true,
+          "description": "Path to write the aligned APK to."
+        },
+        {
+          "name": "force",
+          "type": { "base": "boolean" },
+          "required": false,
+          "description": "Force overwrite of existing output file (-f flag)."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        { "flag": "force", "value": "-f" },
+        "4",
+        { "param": "input_apk" },
+        { "param": "output_apk" }
+      ]
+    }
   ]
 }

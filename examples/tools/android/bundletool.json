@@ -34,5 +34,73 @@
       "required": true,
       "description": "Command result with returncode, stdout, stderr"
     }
+  ],
+  "operations": [
+    {
+      "name": "build-apks",
+      "description": "Convert an AAB (Android App Bundle) to an APKS file.",
+      "inputs": [
+        {
+          "name": "aab_path",
+          "type": { "base": "file", "subtype": "aab" },
+          "required": true,
+          "description": "Path to the AAB file to convert."
+        },
+        {
+          "name": "output_path",
+          "type": { "base": "file", "subtype": "apks" },
+          "required": true,
+          "description": "Path to write the generated APKS file to."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        "build-apks",
+        "--bundle",
+        { "param": "aab_path" },
+        "--output",
+        { "param": "output_path" }
+      ]
+    },
+    {
+      "name": "install-apks",
+      "description": "Install an APKS file on a connected device.",
+      "inputs": [
+        {
+          "name": "apks_path",
+          "type": { "base": "file", "subtype": "apks" },
+          "required": true,
+          "description": "Path to the APKS file to install."
+        },
+        {
+          "name": "device_id",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "ADB device ID of the target device."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        "install-apks",
+        "--apks",
+        { "param": "apks_path" },
+        "--device-id",
+        { "param": "device_id" }
+      ]
+    }
   ]
 }

@@ -34,5 +34,78 @@
       "required": true,
       "description": "Command result with returncode, stdout, stderr"
     }
+  ],
+  "operations": [
+    {
+      "name": "decode",
+      "description": "Decode an APK into a source/resource tree (apktool d).",
+      "inputs": [
+        {
+          "name": "apk_path",
+          "type": { "base": "file", "subtype": "apk" },
+          "required": true,
+          "description": "Path to the APK file to decode."
+        },
+        {
+          "name": "output_dir",
+          "type": { "base": "directory" },
+          "required": true,
+          "description": "Directory to write the decoded tree to."
+        },
+        {
+          "name": "force",
+          "type": { "base": "boolean" },
+          "required": false,
+          "description": "Force overwrite of existing output directory."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        "d",
+        { "flag": "force", "value": "--force" },
+        { "param": "apk_path" },
+        "-o",
+        { "param": "output_dir" }
+      ]
+    },
+    {
+      "name": "build",
+      "description": "Build an APK from a decoded source tree (apktool b).",
+      "inputs": [
+        {
+          "name": "source_dir",
+          "type": { "base": "directory" },
+          "required": true,
+          "description": "Path to the decoded source directory."
+        },
+        {
+          "name": "output_apk",
+          "type": { "base": "file", "subtype": "apk" },
+          "required": true,
+          "description": "Path to write the built APK to."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        "b",
+        { "param": "source_dir" },
+        "-o",
+        { "param": "output_apk" }
+      ]
+    }
   ]
 }

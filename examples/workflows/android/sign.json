@@ -39,12 +39,10 @@
       "type": "step",
       "tool": "zipalign",
       "params": {
-        "args": [
-          "-f",
-          "4",
-          "$inputs.apk_path",
-          "$workdir/aligned.apk"
-        ]
+        "operation": "align",
+        "input_apk": "$inputs.apk_path",
+        "output_apk": "$workdir/aligned.apk",
+        "force": true
       },
       "next": "sign",
       "on_success": null,
@@ -57,16 +55,11 @@
       "type": "step",
       "tool": "apksigner",
       "params": {
-        "args": [
-          "sign",
-          "--ks",
-          "$inputs.keystore.path",
-          "--ks-key-alias",
-          "$inputs.keystore.alias",
-          "--ks-pass",
-          "pass:$inputs.keystore.storepass",
-          "$workdir/aligned.apk"
-        ]
+        "operation": "sign",
+        "apk_path": "$workdir/aligned.apk",
+        "ks_path": "$inputs.keystore.path",
+        "ks_key_alias": "$inputs.keystore.alias",
+        "ks_pass": "pass:$inputs.keystore.storepass"
       },
       "next": null,
       "on_success": null,

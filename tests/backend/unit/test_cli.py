@@ -109,12 +109,7 @@ def test_list_templates_exits_zero_with_no_saved_templates():
 # ---------------------------------------------------------------------------
 
 def test_validate_valid_builtin_workflow_reports_correctly(tmp_path):
-    # T21: bundled Android workflows moved to examples/.  The validate command
-    # checks tools via ToolManager, which may have no tools registered when
-    # run without BT_RUNTIME_DIR.  Even builtin tools (flow.log, file.write)
-    # are not in ToolManager — they live in the engine's _BUILTIN_TOOLS.
-    # The important invariant: validate runs without crashing and produces
-    # output.
+    """A workflow using only builtin tools must validate as 'valid' exit 0."""
     wf_path = tmp_path / "builtin.json"
     wf_path.write_text(
         json.dumps(
@@ -133,11 +128,8 @@ def test_validate_valid_builtin_workflow_reports_correctly(tmp_path):
         encoding="utf-8",
     )
     result = run_cli("validate", str(wf_path))
-    # validate never crashes; it returns 1 when tools are unresolved (which
-    # is the case when ToolManager has no tools registered in the test env).
-    assert result.returncode in (0, 1)
-    # Output must contain something — either "valid" or error messages.
-    assert result.stdout or result.stderr
+    assert result.returncode == 0
+    assert "valid" in result.stdout
 
 
 def test_validate_invalid_workflow_exits_one_with_errors(tmp_path):
@@ -237,3 +229,51 @@ def test_workflow_template_node_and_input_counts(name, expected):
     node_count, input_count = expected
     assert len(definition.nodes) == node_count
     assert len(definition.inputs) == input_count
+
+
+# ---------------------------------------------------------------------------
+# --tool-dir (T5: descriptor injection for validate/run)
+# ---------------------------------------------------------------------------
+
+ANDROID_TOOLS_DIR = PROJECT_ROOT / "examples" / "tools" / "android"
+
+
+@pytest.mark.parametrize(
+    "wf_name",
+    ["decompile", "recompile", "sign", "aab-install"],
+)
+def test_validate_with_tool_dir_reports_valid(wf_name):
+    """validate --tool-dir pointing at examples/tools/android resolves
+    descriptor tools and reports 'valid' for migrated workflows."""
+    wf_path = str(WORKFLOWS_DIR / f"{wf_name}.json")
+    result = run_cli("validate", "--tool-dir", str(ANDROID_TOOLS_DIR), wf_path)
+    assert result.returncode == 0, (
+        f"expected exit 0 for {wf_name}, got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "valid" in result.stdout
+
+
+def test_validate_without_tool_dir_on_android_workflow_exits_one():
+    """Without --tool-dir, descriptor tools are not discoverable -> exit 1
+    with 'tool not found' (behavior preserved from before T5)."""
+    wf_path = str(WORKFLOWS_DIR / "decompile.json")
+    result = run_cli("validate", wf_path)
+    assert result.returncode == 1
+    assert "tool not found" in result.stdout
+
+
+def test_validate_with_tool_dir_bogus_dir_warns_not_crash():
+    """A non-existent --tool-dir prints a warning but does not crash."""
+    wf_path = str(WORKFLOWS_DIR / "decompile.json")
+    result = run_cli(
+        "validate", "--tool-dir", str(PROJECT_ROOT / "nonexistent_dir_xyz"), wf_path
+    )
+    # With no valid descriptors loaded, decompile's apktool is unresolved
+    # but the CLI must not crash.
+    assert result.returncode in (0, 1)
+    assert (
+        "warning" in result.stderr.lower()
+        or "nonexistent_dir_xyz" in result.stderr
+        or "not a directory" in result.stderr
+    )

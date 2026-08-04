@@ -38,5 +38,61 @@
       "required": true,
       "description": "Command result with returncode, stdout, stderr"
     }
+  ],
+  "operations": [
+    {
+      "name": "install",
+      "description": "Install an APK on a device (adb install).",
+      "inputs": [
+        {
+          "name": "apk_path",
+          "type": { "base": "file", "subtype": "apk" },
+          "required": true,
+          "description": "Path to the APK file to install."
+        },
+        {
+          "name": "reinstall",
+          "type": { "base": "boolean" },
+          "required": false,
+          "description": "Reinstall the app, keeping its data (-r flag)."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        "install",
+        { "flag": "reinstall", "value": "-r" },
+        { "param": "apk_path" }
+      ]
+    },
+    {
+      "name": "passthrough",
+      "description": "Run arbitrary adb arguments (generic fallback).",
+      "inputs": [
+        {
+          "name": "args",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Raw adb arguments as a space-separated string."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        { "param": "args" }
+      ]
+    }
   ]
 }

@@ -23,7 +23,9 @@
       "id": "install",
       "tool": "adb",
       "params": {
-        "args": ["install", "-r", "$nodes.download.outputs.path"]
+        "operation": "install",
+        "apk_path": "$nodes.download.outputs.path",
+        "reinstall": true
       },
       "next": null,
       "on_failure": "fail"

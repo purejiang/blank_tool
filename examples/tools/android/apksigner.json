@@ -42,5 +42,55 @@
       "required": true,
       "description": "Command result with returncode, stdout, stderr"
     }
+  ],
+  "operations": [
+    {
+      "name": "sign",
+      "description": "Sign an APK with a keystore (apksigner sign).",
+      "inputs": [
+        {
+          "name": "apk_path",
+          "type": { "base": "file", "subtype": "apk" },
+          "required": true,
+          "description": "Path to the APK to sign."
+        },
+        {
+          "name": "ks_path",
+          "type": { "base": "file" },
+          "required": true,
+          "description": "Path to the keystore file."
+        },
+        {
+          "name": "ks_key_alias",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Key alias within the keystore."
+        },
+        {
+          "name": "ks_pass",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Keystore password (with pass: prefix)."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout, stderr."
+        }
+      ],
+      "args_map": [
+        "sign",
+        "--ks",
+        { "param": "ks_path" },
+        "--ks-key-alias",
+        { "param": "ks_key_alias" },
+        "--ks-pass",
+        { "param": "ks_pass" },
+        { "param": "apk_path" }
+      ]
+    }
   ]
 }

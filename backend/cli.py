@@ -110,7 +110,69 @@ def cmd_list_envs() -> int:
     return 0
 
 
-def cmd_validate(path: str) -> int:
+def _augment_registry_with_tool_dirs(
+    tool_dirs: List[str],
+) -> "ToolManager":
+    """Load descriptor tools from *tool_dirs* into an augmented registry.
+
+    Each *tool_dirs* entry is a directory of ``*.json`` tool descriptors.
+    Malformed files are skipped with a warning.  The returned registry
+    exposes the same ``get_tool(name)`` interface as :class:`ToolManager`,
+    with descriptor tools overriding same-named entries from the base
+    singleton.  When no descriptors are loaded the base singleton is
+    returned unchanged.
+    """
+    from app.tools.tool_manager import ToolManager
+    from app.tools.descriptor_tool import DescriptorTool, load_descriptor
+    from app.env.registry import EnvironmentRegistry
+
+    base = ToolManager.instance()
+    env_registry = EnvironmentRegistry()
+    descriptor_tools: Dict[str, Any] = {}
+
+    for tool_dir in tool_dirs:
+        if not os.path.isdir(tool_dir):
+            print(
+                f"warning: --tool-dir is not a directory: {tool_dir}",
+                file=sys.stderr,
+            )
+            continue
+        for fname in sorted(os.listdir(tool_dir)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(tool_dir, fname)
+            try:
+                desc = load_descriptor(fpath)
+            except ValueError as exc:
+                print(
+                    f"warning: skipping malformed descriptor {fpath}: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            try:
+                tool = DescriptorTool(desc, env_registry)
+            except Exception as exc:
+                print(
+                    f"warning: skipping descriptor {fpath}: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            descriptor_tools[desc.name] = tool
+
+    if not descriptor_tools:
+        return base
+
+    # Thin composite — validate_workflow / WorkflowEngine only call get_tool().
+    class _AugmentedRegistry:
+        def get_tool(self, name: str):
+            if name in descriptor_tools:
+                return descriptor_tools[name]
+            return base.get_tool(name)
+
+    return _AugmentedRegistry()
+
+
+def cmd_validate(path: str, tool_dirs: Optional[List[str]] = None) -> int:
     """Validate a workflow definition file against the tool registry."""
     from app.tools.tool_manager import ToolManager
     from app.workflow.definition import WorkflowDefinition
@@ -122,12 +184,24 @@ def cmd_validate(path: str) -> int:
         print(f"invalid workflow: {exc}", file=sys.stderr)
         return 1
 
-    errors = validate_workflow(definition, ToolManager.instance())
-    if not errors:
+    registry = (
+        _augment_registry_with_tool_dirs(tool_dirs)
+        if tool_dirs
+        else ToolManager.instance()
+    )
+    errors = validate_workflow(definition, registry)
+    real_errors = [e for e in errors if e.severity == "error"]
+    warn_entries = [e for e in errors if e.severity != "error"]
+
+    for w in warn_entries:
+        node = w.node_id if w.node_id is not None else "-"
+        print(f"[{w.severity}] node={node} field={w.field}: {w.message}")
+
+    if not real_errors:
         print("valid")
         return 0
 
-    for error in errors:
+    for error in real_errors:
         node = error.node_id if error.node_id is not None else "-"
         print(f"[{error.severity}] node={node} field={error.field}: {error.message}")
     return 1
@@ -266,6 +340,7 @@ def cmd_run(
     raw_inputs: Optional[List[str]],
     task_id: Optional[str],
     json_output: bool,
+    tool_dirs: Optional[List[str]] = None,
 ) -> int:
     """Run a workflow from a JSON file or template name.
 
@@ -296,8 +371,13 @@ def cmd_run(
         workflow_stream=workflow_stream,
     )
 
+    registry = (
+        _augment_registry_with_tool_dirs(tool_dirs)
+        if tool_dirs
+        else None
+    )
     try:
-        result = WorkflowEngine().execute(definition, inputs, context)
+        result = WorkflowEngine(registry=registry).execute(definition, inputs, context)
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -366,6 +446,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--input", action="append", help="Input as key=value (repeatable)")
     run_parser.add_argument("--task-id", help="Task ID for logging")
     run_parser.add_argument("--json", action="store_true", help="Machine-readable JSON output")
+    run_parser.add_argument(
+        "--tool-dir", action="append", default=None,
+        help="Directory of *.json tool descriptors to load (repeatable)",
+    )
 
     # list-tools
     subparsers.add_parser("list-tools", help="List available tools")
@@ -376,6 +460,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # validate
     validate_parser = subparsers.add_parser("validate", help="Validate a workflow definition")
     validate_parser.add_argument("path", help="Path to workflow JSON file")
+    validate_parser.add_argument(
+        "--tool-dir", action="append", default=None,
+        help="Directory of *.json tool descriptors to load (repeatable)",
+    )
 
     # list-templates
     subparsers.add_parser("list-templates", help="List saved workflow templates")
@@ -390,10 +478,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     handlers = {
-        "run": lambda: cmd_run(args.target, args.input, args.task_id, args.json),
+        "run": lambda: cmd_run(args.target, args.input, args.task_id, args.json, args.tool_dir),
         "list-tools": cmd_list_tools,
         "list-envs": cmd_list_envs,
-        "validate": lambda: cmd_validate(args.path),
+        "validate": lambda: cmd_validate(args.path, args.tool_dir),
         "list-templates": cmd_list_templates,
     }
 

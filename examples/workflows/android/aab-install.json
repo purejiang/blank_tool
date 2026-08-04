@@ -48,13 +48,9 @@
       "type": "step",
       "tool": "bundletool",
       "params": {
-        "args": [
-          "build-apks",
-          "--bundle",
-          "$inputs.aab_path",
-          "--output",
-          "$workdir/output.apks"
-        ]
+        "operation": "build-apks",
+        "aab_path": "$inputs.aab_path",
+        "output_path": "$workdir/output.apks"
       },
       "next": "install",
       "on_success": null,
@@ -67,13 +63,9 @@
       "type": "step",
       "tool": "bundletool",
       "params": {
-        "args": [
-          "install-apks",
-          "--apks",
-          "$workdir/output.apks",
-          "--device-id",
-          "$inputs.device_id"
-        ]
+        "operation": "install-apks",
+        "apks_path": "$workdir/output.apks",
+        "device_id": "$inputs.device_id"
       },
       "next": null,
       "on_success": null,
