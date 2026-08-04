@@ -20,6 +20,9 @@ from concurrent.futures import ThreadPoolExecutor
 # Add backend directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
+# Backend root directory (dev fallback for logs when BT_LOG_DIR is unset)
+ROOT = os.path.abspath(os.path.dirname(__file__))
+
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
 from app.utils.env import get_env, get_output_dir, load_dotenv, load_server_config, resolve_path

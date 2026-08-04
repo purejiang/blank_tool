@@ -29,48 +29,14 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Make the backend/ directory importable regardless of the working directory.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-# ------------------------------------------------------------------
-# Bootstrap (inlined from main.bootstrap)
-# ------------------------------------------------------------------
-#
-# ``from main import bootstrap`` was tried first and FAILS: ``main`` imports
-# ``app.api_handler``, whose ``from app.protocol import BackendResponse``
-# breaks because the todo-1..3 ``app/protocol/`` package shadows the legacy
-# ``app/protocol.py`` module (todo-8 learning, not fixed — out of scope).
-# The bootstrap logic is therefore inlined here.  It does NOT read stdin
-# (that only happens in ``main.main``'s JSON-RPC loop), so it is safe to run
-# headless.  The legacy-download orphan warning from ``main.bootstrap`` is
-# Electron-app UX and deliberately omitted.
-
-
-def bootstrap() -> None:
-    """Initialize dotenv, server config and logging for the CLI."""
-    from app.utils.env import (
-        get_env,
-        load_dotenv,
-        load_server_config,
-        resolve_path,
-    )
-    from app.utils.logger import Logger
-
-    dotenv_keys = load_dotenv()
-    load_server_config(override_keys=dotenv_keys)
-
-    log_dir = get_env("BT_LOG_DIR")
-    if not log_dir:
-        # Dev fallback: backend/logs/
-        log_dir = str(Path(os.path.dirname(os.path.abspath(__file__))) / "logs")
-    else:
-        log_dir = resolve_path(log_dir)
-
-    log_level = get_env("BT_LOG_LEVEL", "DEBUG")
-    Logger.initialize(log_dir=log_dir, log_level=log_level)
+# Shared bootstrap (dotenv + server config + logging); import it from main
+# rather than duplicating it here.
+from main import bootstrap
 
 
 # ------------------------------------------------------------------
