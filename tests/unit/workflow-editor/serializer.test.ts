@@ -232,3 +232,68 @@ describe('validateOnDeserialize', () => {
     expect(errors.some((e) => e.includes("'name'"))).toBe(true)
   })
 })
+
+describe('select/multi port fields (options + multi) — T2', () => {
+  it('round-trips a single-select input port (options) through serialize/deserialize', () => {
+    const meta: WorkflowMeta = {
+      name: 'wf-select',
+      inputs: [
+        {
+          name: 'env',
+          type: { base: 'text', subtype: null },
+          required: true,
+          description: 'target environment',
+          options: ['dev', 'staging', 'prod'],
+        },
+      ],
+      outputs: [],
+    }
+
+    const json = serializeWorkflow([], [], meta)
+    expect(json.inputs?.[0]?.options).toEqual(['dev', 'staging', 'prod'])
+
+    const restored = deserializeWorkflow(json)
+    expect(restored.meta.inputs?.[0]?.options).toEqual(['dev', 'staging', 'prod'])
+    expect(restored.meta.inputs?.[0]?.required).toBe(true)
+  })
+
+  it('round-trips a multi-select input port (multi + options) through serialize/deserialize', () => {
+    const meta: WorkflowMeta = {
+      name: 'wf-multi',
+      inputs: [
+        {
+          name: 'targets',
+          type: { base: 'text', subtype: null },
+          required: false,
+          options: ['a', 'b'],
+          multi: true,
+        },
+      ],
+      outputs: [],
+    }
+
+    const json = serializeWorkflow([], [], meta)
+    expect(json.inputs?.[0]?.multi).toBe(true)
+    expect(json.inputs?.[0]?.options).toEqual(['a', 'b'])
+
+    const restored = deserializeWorkflow(json)
+    expect(restored.meta.inputs?.[0]?.multi).toBe(true)
+    expect(restored.meta.inputs?.[0]?.options).toEqual(['a', 'b'])
+  })
+
+  it('keeps pre-T2 ports (no options/multi keys) backward compatible on deserialize', () => {
+    const json: WorkflowDefinitionJSON = {
+      name: 'wf-legacy',
+      version: '1.0',
+      inputs: [{ name: 'path', type: { base: 'file', subtype: null }, required: true }],
+      outputs: [],
+      nodes: [],
+      edges: [],
+    }
+
+    const restored = deserializeWorkflow(json)
+    expect(restored.meta.inputs).toEqual([
+      { name: 'path', type: { base: 'file', subtype: null }, required: true },
+    ])
+  })
+})

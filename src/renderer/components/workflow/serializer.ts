@@ -8,7 +8,7 @@
  *   WorkflowDefinition.to_dict() produces
  *   {
  *     name, version, description,
- *     inputs:  [Port.to_dict()],   // {name, type:{base, subtype}, required, description}
+ *     inputs:  [Port.to_dict()],   // {name, type:{base, subtype}, required, description, options, multi}
  *     outputs: [Port.to_dict()],
  *     nodes:   [WorkflowNode.to_dict()],  // {id, type, tool, params, next, on_success, on_failure, condition, retry}
  *     edges:   []                  // linear mode: ALWAYS empty
@@ -44,6 +44,10 @@ export interface PortJSON {
   type: PortTypeJSON
   required?: boolean
   description?: string
+  /** Allowed values for select-like ports (T2; advisory until a SELECT base type exists). */
+  options?: string[]
+  /** Whether a select-like port accepts multiple values (T2). */
+  multi?: boolean
 }
 
 /** One workflow step (mirrors WorkflowNode.to_dict; optional keys use backend defaults when absent). */
