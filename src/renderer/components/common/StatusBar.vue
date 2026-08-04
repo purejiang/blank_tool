@@ -1,24 +1,11 @@
 <template>
   <div class="status-bar" :class="{ collapsed }">
-    <!-- Minimal mode: icon + dot only when sidebar collapsed -->
+    <!-- Minimal mode: version only when sidebar collapsed -->
     <template v-if="collapsed">
-      <n-icon size="18" :color="deviceStatus === 'online' ? '#22C55E' : '#64748B'"><Smartphone /></n-icon>
-      <span class="status-dot" :class="deviceStatus"></span>
+      <span class="health-dot" :class="healthClass" :title="healthTitle"></span>
     </template>
     <!-- Full mode -->
     <template v-else>
-      <div class="status-device" @click="goToDevice">
-        <div class="device-badge" v-if="connectedDevice">
-          <n-icon size="14"><Smartphone /></n-icon>
-          <span>{{ connectedDevice.name || connectedDevice.id }}</span>
-          <span class="status-dot" :class="deviceStatusClass"></span>
-        </div>
-        <div class="device-badge off" v-else>
-          <n-icon size="14" color="#64748B"><Smartphone /></n-icon>
-          <span class="dim">{{ t('statusBar.noDevice') }}</span>
-          <span class="status-dot offline"></span>
-        </div>
-      </div>
       <div class="status-version">
         <span class="version-text">v{{ frontendVersion }} | backend {{ backendVersion || 'N/A' }}</span>
         <span class="health-dot" :class="healthClass" :title="healthTitle"></span>
@@ -29,39 +16,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
-import { Smartphone } from 'lucide-vue-next'
-import { useDeviceStore } from '@stores/deviceStore'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
-import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
-
-const { t } = useI18n()
-const router = useRouter()
 
 defineProps<{ collapsed?: boolean }>()
 
-const goToDevice = () => {
-  router.push('/device')
-}
-
-const deviceStore = useDeviceStore()
-const { selectedDevice } = storeToRefs(deviceStore)
-const connectedDevice = computed(() => selectedDevice.value || null)
 const frontendVersion = ref('1.0.0')
 const backendVersion = ref('')
-
-const deviceStatus = computed(() => {
-  if (!connectedDevice.value) return 'offline'
-  const s = connectedDevice.value.state || connectedDevice.value.status
-  if (s === 'device') return 'online'
-  if (s === 'unauthorized') return 'connecting'
-  return 'offline'
-})
-
-const deviceStatusClass = computed(() => deviceStatus.value)
 
 const getVersions = async () => {
   try {
@@ -75,7 +37,7 @@ const getVersions = async () => {
 
 onMounted(() => getVersions())
 
-// Backend health dot (T23)
+// Backend health dot
 const healthStore = useBackendHealthStore()
 healthStore.startPolling()
 
@@ -108,43 +70,11 @@ const healthTitle = computed(() =>
   justify-content: center;
   gap: 6px;
   padding: 10px 4px;
-  cursor: pointer;
-}
-.status-bar.collapsed:hover {
-  background: var(--app-hover-strong);
-}
-.status-device {
-  cursor: pointer;
-  padding: 2px 0;
-}
-.status-device:hover {
-  opacity: 0.8;
 }
 .status-version {
   display: flex;
   align-items: center;
 }
-.device-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--app-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.device-badge.off { color: var(--app-text-dim); }
-.dim { color: var(--app-text-dim); }
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--app-red);
-  flex-shrink: 0;
-}
-.status-dot.online { background: var(--app-green); }
-.status-dot.connecting { background: var(--app-yellow); animation: pulse 1.5s infinite; }
-.status-dot.offline { background: var(--app-red); }
 .version-text {
   font-family: 'Fira Code', monospace;
   color: var(--app-text-dim);
@@ -162,8 +92,4 @@ const healthTitle = computed(() =>
 .health-dot.dot-healthy { background: var(--app-green); }
 .health-dot.dot-unhealthy { background: var(--app-red); }
 .health-dot.dot-unknown { background: var(--app-text-dim); }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
 </style>

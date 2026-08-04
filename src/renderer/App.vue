@@ -44,7 +44,7 @@ import { ref, h, computed, provide, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { darkTheme, NIcon, zhCN, enUS, type GlobalTheme, type MenuOption } from 'naive-ui'
-import { Package, Settings, Wrench, ChevronsLeft, ChevronsRight, Info, Activity, Workflow } from 'lucide-vue-next'
+import { Settings, ChevronsLeft, ChevronsRight, Info, Activity, Workflow } from 'lucide-vue-next'
 import StatusBar from '@components/common/StatusBar.vue'
 import QuitDialog from '@components/QuitDialog.vue'
 import Notification from '@components/common/Notification.vue'
@@ -61,7 +61,7 @@ const currentTheme = ref<GlobalTheme | null>(darkTheme)
 const { isLoading, progress, step, time, error, retryCount, maxRetries, retry } = useAppBootstrap(currentTheme)
 const themeOverrides = computed(() => selectOverrides(currentTheme.value))
 const sidebarCollapsed = ref(false)
-const activeMenuKey = ref(route.path || '/package')
+const activeMenuKey = ref(route.path || '/workflow-editor')
 const locale = computed(() => i18nLocale.value === 'zh-CN' ? zhCN : enUS)
 const setLocale = (lang: string) => {
   i18nLocale.value = lang
@@ -79,8 +79,6 @@ provide('setLocale', setLocale); provide('setTheme', setTheme); provide('getCurr
 const renderMenuLabel = (option: MenuOption) => option.label as string
 const renderIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
 const menuOptions = computed<MenuOption[]>(() => [
-  { label: t('nav.package'), key: '/package', icon: renderIcon(Package) },
-  { label: t('nav.tools'), key: '/plugins', icon: renderIcon(Wrench) },
   { label: 'Workflow Editor', key: '/workflow-editor', icon: renderIcon(Workflow) },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(Settings) },
   { label: t('diagnostics.title'), key: '/diagnostics', icon: renderIcon(Activity) },

@@ -133,35 +133,6 @@
         </div>
       </n-card>
 
-      <!-- Signature Configs -->
-      <n-card :bordered="false" class="settings-card">
-        <div class="section-header" style="margin-bottom:12px">
-          <n-icon size="18" color="#F59E0B"><Key /></n-icon>
-          <span class="section-title">{{ t('signature.title') }}</span>
-          <n-button size="tiny" type="primary" secondary style="margin-left:auto" @click="openAddSignature">
-            <template #icon><n-icon size="14"><Plus /></n-icon></template>
-          </n-button>
-        </div>
-        <div v-if="sigConfigs.length === 0" class="info-empty">{{ t('signature.empty') }}</div>
-        <div v-else class="sig-list">
-          <div v-for="cfg in sigConfigs" :key="cfg.id" class="sig-item">
-            <div class="sig-info">
-              <span class="sig-name">{{ cfg.name }}</span>
-              <span class="sig-detail">{{ cfg.alias }}</span>
-              <span class="sig-path" :title="String(cfg.path ?? '')">{{ cfg.path }}</span>
-            </div>
-            <n-space :size="4">
-              <n-button size="tiny" quaternary @click="openEditSignature(cfg)">
-                <template #icon><n-icon size="14"><Edit /></n-icon></template>
-              </n-button>
-              <n-button size="tiny" quaternary type="error" @click="deleteSignature(cfg.id)">
-                <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
-              </n-button>
-            </n-space>
-          </div>
-        </div>
-      </n-card>
-
       <!-- Storage -->
       <n-card :bordered="false" class="settings-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -228,7 +199,6 @@
 
     </div>
 
-    <SignatureEditModal :visible="sigModalVisible" :data="sigEditing" @update:visible="(v: boolean) => sigModalVisible = v" @save="handleSignatureSave" />
   </div>
 </template>
 
@@ -236,14 +206,12 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive } from 'lucide-vue-next'
+import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, AlertCircle, Archive, FileText, FolderArchive } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { storeToRefs } from 'pinia'
-import { useSignatureStore } from '@stores/signatureStore'
-import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 
 const { t } = useI18n()
 const { showSuccess, showError } = useNotification()
@@ -252,11 +220,6 @@ const setLocale = inject<(lang: string) => void>('setLocale', () => {})
 const setTheme = inject<(mode: string) => Promise<void>>('setTheme', async () => {})
 const systemStore = useSystemStore()
 const toolStore = useToolStore()
-const tools = toolStore.tools
-const sigStore = useSignatureStore()
-const { configs: sigConfigs } = storeToRefs(sigStore)
-const sigModalVisible = ref(false)
-const sigEditing = ref<any>(null)
 
 const validatingTool = ref<string | null>(null)
 const resettingTool = ref<string | null>(null)
@@ -264,39 +227,15 @@ const customPathOverrides = reactive<Record<string, string>>({})
 const toolPaths = reactive<Record<string, string>>({})
 
 const toolList = computed(() => {
-  const names = ['adb', 'aapt', 'apktool', 'bundletool', 'zipalign', 'apksigner', 'jarsigner']
-  const toolsArr = tools
-  return names.map(name => {
-    const tool = Array.isArray(toolsArr) ? toolsArr.find((t: any) => t.name === name || t.key === name) : toolsArr[name]
-    return {
-      name,
-      status: tool?.status || 'unavailable',
-      version: tool?.version || '',
-      defaultPath: tool?.path || '',
-    }
-  })
+  const toolsArr = toolStore.tools
+  return []
 })
 
-const openAddSignature = () => { sigEditing.value = null; sigModalVisible.value = true }
-const openEditSignature = (cfg: any) => { sigEditing.value = cfg; sigModalVisible.value = true }
+const openAddSignature = () => {}
 
-const handleSignatureSave = async (data: any) => {
-  try {
-    if (data.id) {
-      await sigStore.updateConfig(data)
-    } else {
-      await sigStore.addConfig({ ...data, id: Date.now().toString() })
-    }
-    showSuccess(t('signature.saved'))
-  } catch (e: any) { showError(t('signature.saveFailed'), e.message) }
-}
+const handleSignatureSave = async (data: any) => {}
 
-const deleteSignature = async (id: string) => {
-  try {
-    await sigStore.removeConfig(id)
-    showSuccess(t('signature.deleted'))
-  } catch (e: any) { showError(t('signature.deleteFailed'), e.message) }
-}
+const deleteSignature = async (id: string) => {}
 
 const showSaved = ref(false)
 let savedTimer: ReturnType<typeof setTimeout> | null = null
@@ -516,7 +455,6 @@ onMounted(() => {
   log.debug('设置页面已挂载')
   loadSettings()
   refreshCache()
-  sigStore.loadConfigs()
   toolStore.fetchCustomPaths().then(() => {
     Object.assign(customPathOverrides, toolStore.customPaths)
     Object.assign(toolPaths, toolStore.customPaths)

@@ -2,12 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
 import { ipcInvoke } from './core/ipcInvoke';
 import { callBackendAPI, callBackendByRequest } from './core/callBackend';
-import { apkApi } from './api/apk';
-import { deviceApi } from './api/device';
 import { toolApi } from './api/tool';
 import { cacheApi } from './api/cache';
 import { systemApi } from './api/system';
-import { downloadApi } from './api/download';
 import { taskApi } from './api/task';
 import { logsApi } from './api/logs';
 import { appApi } from './api/app';
@@ -31,12 +28,9 @@ const electronApi = {
   callBackendAPI,
   callBackendByRequest,
   // ==================== 后端API (extracted into src/preload/api/) ====================
-  ...apkApi,
-  ...deviceApi,
   ...toolApi,
   ...cacheApi,
   ...systemApi,
-  ...downloadApi,
   ...taskApi,
   ...logsApi,
   ...appApi,
