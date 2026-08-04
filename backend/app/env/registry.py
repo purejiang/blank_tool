@@ -131,13 +131,21 @@ class EnvironmentRegistry:
         self._cache: Dict[str, ResolvedEnvironment] = {}
         self._lock = threading.Lock()
 
-    def discover(self, descriptor_dir: Optional[str] = None) -> None:
+    def discover(
+        self,
+        descriptor_dir: Optional[str] = None,
+        overlay_descriptor_dir: Optional[str] = None,
+    ) -> None:
         """
-        Load every ``*.json`` descriptor under *descriptor_dir*.
+        Load every ``*.json`` descriptor from *descriptor_dir* (bundled)
+        and *overlay_descriptor_dir* (writable per-user overlay).
 
         Args:
             descriptor_dir: directory containing JSON descriptors. Defaults to
                 ``backend/registry/environments/`` (derived from this file).
+            overlay_descriptor_dir: writable overlay directory whose same-named
+                descriptors win over bundled ones.  Omitted/absent directories
+                are silently ignored.
 
         A missing directory is a no-op (warned, not raised), so the registry
         stays usable before the descriptor directory exists. Malformed files
@@ -145,33 +153,39 @@ class EnvironmentRegistry:
         and loading replaces all descriptors and drops the cache.
         """
         dir_path = Path(descriptor_dir) if descriptor_dir else _DEFAULT_DESCRIPTOR_DIR
-        if not dir_path.is_dir():
-            logger.warning(
-                "descriptor directory %s does not exist; no environments discovered",
-                dir_path,
-            )
-            return
 
         discovered: Dict[str, EnvironmentDescriptor] = {}
-        for file_path in sorted(dir_path.glob("*.json")):
-            try:
-                descriptor = EnvironmentDescriptor.load_from_file(str(file_path))
-            except ValueError as exc:
-                logger.warning("skipping malformed descriptor %s: %s", file_path.name, exc)
-                continue
-            if descriptor.name in discovered:
+
+        def _load_from(dir_path_to_load: Path) -> None:
+            if not dir_path_to_load.is_dir():
                 logger.warning(
-                    "duplicate environment %r in %s; first definition wins",
-                    descriptor.name,
-                    file_path.name,
+                    "descriptor directory %s does not exist; no environments discovered",
+                    dir_path_to_load,
                 )
-                continue
-            discovered[descriptor.name] = descriptor
+                return
+            for file_path in sorted(dir_path_to_load.glob("*.json")):
+                try:
+                    descriptor = EnvironmentDescriptor.load_from_file(str(file_path))
+                except ValueError as exc:
+                    logger.warning(
+                        "skipping malformed descriptor %s: %s", file_path.name, exc
+                    )
+                    continue
+                if descriptor.name in discovered:
+                    # Late-load wins (overlay replaces bundled)
+                    discovered[descriptor.name] = descriptor
+                    logger.debug("overlay descriptor %s replaces bundled", descriptor.name)
+                else:
+                    discovered[descriptor.name] = descriptor
+
+        _load_from(dir_path)
+        if overlay_descriptor_dir:
+            _load_from(Path(overlay_descriptor_dir))
 
         with self._lock:
             self._descriptors = discovered
             self._cache.clear()
-        logger.info("discovered %d environment(s) from %s", len(discovered), dir_path)
+        logger.info("discovered %d environment(s)", len(discovered))
 
     def resolve(self, name: str) -> ResolvedEnvironment:
         """

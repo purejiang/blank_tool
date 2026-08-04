@@ -4,6 +4,7 @@
 ToolRegistry — lazy-loading tool registry with auto-discovery and dependency injection.
 """
 
+import json
 import os
 import platform
 import pkgutil
@@ -16,7 +17,7 @@ from app.tools.base_tool import BaseTool
 from app.tools.descriptor_tool import DescriptorTool, load_descriptor
 from app.env.registry import EnvironmentRegistry
 from app.utils.logger import Logger
-from app.utils.env import get_runtime_dir
+from app.utils.env import get_output_dir, get_runtime_dir
 from app.common.exceptions import ToolNotFoundError
 
 
@@ -47,7 +48,11 @@ class ToolRegistry:
     them on first access via get().
     """
 
-    def __init__(self, search_system: bool = False):
+    def __init__(
+        self,
+        search_system: bool = False,
+        registry_overlay_dir: Optional[str] = None,
+    ):
         env_flag = os.environ.get("BT_SEARCH_SYSTEM_TOOLS") == "1"
         self.search_system = search_system or env_flag
         self.logger = Logger.get_logger("ToolRegistry")
@@ -57,6 +62,12 @@ class ToolRegistry:
         self._descriptor_tools: Dict[str, DescriptorTool] = {}
         self._discover_lock = threading.Lock()
         self._initialized = False
+        # Writable registry overlay directory (user-imported descriptors + overrides)
+        self._registry_overlay_dir: str = self._resolve_registry_overlay_dir(
+            registry_overlay_dir
+        )
+        # Load persisted custom-path overrides (survive restarts)
+        self._load_overrides()
 
     # ------------------------------------------------------------------
     # Discovery
@@ -100,40 +111,96 @@ class ToolRegistry:
     # Tool names whose code-based class wins over the descriptor.
     _CODE_PRIORITY_NAMES = frozenset(set())
 
-    def _discover_descriptors(self) -> None:
-        """Register pre-installed tools declared by registry/tools/*.json.
+    def _resolve_registry_overlay_dir(self, explicit: Optional[str]) -> str:
+        """Return the writable registry overlay root directory.
 
-        Descriptors win over code-based classes (registered after the
-        pkgutil scan, they shadow same-named entries), except for names in
+        When *explicit* is given it is used as-is (test injection).
+        Otherwise resolves ``<output_dir>/registry`` via :func:`get_output_dir`.
+        """
+        if explicit:
+            return explicit
+        return os.path.join(get_output_dir(), "registry")
+
+    def _load_overrides(self) -> None:
+        """Load custom-path overrides from ``<overlay>/overrides.json``.
+
+        Missing file or malformed JSON is tolerated (no-op); the registry
+        stays usable with empty overrides.
+        """
+        overrides_path = os.path.join(self._registry_overlay_dir, "overrides.json")
+        try:
+            with open(overrides_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return
+        if not isinstance(data, dict):
+            return
+        paths = data.get("custom_paths")
+        if isinstance(paths, dict):
+            self._custom_paths = {str(k): str(v) for k, v in paths.items()}
+
+    def _save_overrides(self) -> None:
+        """Persist custom-path overrides to ``<overlay>/overrides.json``.
+
+        The overlay root is created lazily (exist_ok=True) so absent-output-dir
+        does not prevent discovery; only the first write materializes the dir.
+        """
+        os.makedirs(self._registry_overlay_dir, exist_ok=True)
+        overrides_path = os.path.join(self._registry_overlay_dir, "overrides.json")
+        data = {"custom_paths": dict(self._custom_paths)}
+        with open(overrides_path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+
+    def _discover_descriptors(self) -> None:
+        """Register tool descriptors from bundled and overlay directories.
+
+        Scans the bundled ``backend/registry/tools/`` first, then the
+        per-user overlay ``<output>/registry/tools/``.  Overlay
+        descriptors win over same-named bundled ones (processed second).
+        Descriptors also win over code-based classes, except for names in
         ``_CODE_PRIORITY_NAMES`` where the code class stays primary.
         """
-        descriptor_dir = (
+        bundled_dir = (
             Path(__file__).resolve().parent.parent.parent / "registry" / "tools"
         )
-        if not descriptor_dir.is_dir():
-            return
-        for file_path in sorted(descriptor_dir.glob("*.json")):
-            try:
-                descriptor = load_descriptor(str(file_path))
-            except ValueError as exc:
-                self.logger.warning(
-                    f"skipping malformed tool descriptor {file_path.name}: {exc}"
-                )
-                continue
-            if descriptor.name in self._CODE_PRIORITY_NAMES:
-                self.logger.info(
-                    f"Descriptor {descriptor.name!r} shadowed by code class"
-                )
-                continue
-            try:
-                tool = DescriptorTool(descriptor, _get_env_registry())
-            except Exception as exc:  # construction must not block discovery
-                self.logger.warning(
-                    f"failed to construct descriptor tool {descriptor.name!r}: {exc}"
-                )
-                continue
-            self._descriptor_tools[descriptor.name] = tool
-            self.logger.info(f"Discovered tool (descriptor): {descriptor.name}")
+        overlay_dir = (
+            Path(self._registry_overlay_dir) / "tools"
+            if self._registry_overlay_dir
+            else None
+        )
+
+        def _scan_descriptor_dir(
+            dir_path: Path,
+        ) -> None:
+            """Load every ``*.json`` descriptor from *dir_path* into the registry."""
+            if not dir_path.is_dir():
+                return
+            for file_path in sorted(dir_path.glob("*.json")):
+                try:
+                    descriptor = load_descriptor(str(file_path))
+                except ValueError as exc:
+                    self.logger.warning(
+                        f"skipping malformed tool descriptor {file_path.name}: {exc}"
+                    )
+                    continue
+                if descriptor.name in self._CODE_PRIORITY_NAMES:
+                    self.logger.info(
+                        f"Descriptor {descriptor.name!r} shadowed by code class"
+                    )
+                    continue
+                try:
+                    tool = DescriptorTool(descriptor, _get_env_registry())
+                except Exception as exc:  # construction must not block discovery
+                    self.logger.warning(
+                        f"failed to construct descriptor tool {descriptor.name!r}: {exc}"
+                    )
+                    continue
+                self._descriptor_tools[descriptor.name] = tool
+                self.logger.info(f"Discovered tool (descriptor): {descriptor.name}")
+
+        _scan_descriptor_dir(bundled_dir)
+        if overlay_dir is not None:
+            _scan_descriptor_dir(overlay_dir)
 
     # ------------------------------------------------------------------
     # Lazy access
@@ -221,8 +288,9 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def set_custom_path(self, name: str, path: str) -> Dict[str, Any]:
-        """Set a custom path for a tool and re-validate it."""
+        """Set a custom path for a tool, re-validate, and persist."""
         self._custom_paths[name] = path
+        self._save_overrides()
         # Clear cached instance so next get() re-instantiates
         self._tools.pop(name, None)
         # Re-instantiate and validate
@@ -235,8 +303,9 @@ class ToolRegistry:
         }
 
     def reset_custom_path(self, name: str) -> Dict[str, Any]:
-        """Reset a tool to its default path."""
+        """Reset a tool to its default path and persist."""
         self._custom_paths.pop(name, None)
+        self._save_overrides()
         self._tools.pop(name, None)
         tool = self.get(name)
         return {
