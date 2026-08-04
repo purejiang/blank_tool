@@ -56,6 +56,7 @@ from app.tools.builtin.fs_tools import (
     TextGrep,
 )
 from app.tools.builtin.net_tools import NetDownload, NetRequest
+from app.tools.builtin.workflow_tools import WorkflowRun
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.expression import ExpressionEngine, ExpressionError, WorkflowContext
@@ -88,6 +89,7 @@ _BUILTIN_TOOLS: Dict[str, BuiltinTool] = {
     "code.exec": CodeExec(),
     "flow.assert": FlowAssert(),
     "flow.log": FlowLog(),
+    "workflow.run": WorkflowRun(),
 }
 
 
@@ -102,6 +104,19 @@ class ExecutionContext:
         env: environment variables exposed to tools and ``$env.*`` expressions.
         stream_handler: optional callback receiving ``{"type": ..., ...}``
             dicts; forwarded to builtin tools for streaming output.
+        workflow_stream: optional ``WorkflowStreamHandler`` for emitting
+            node lifecycle events via T11 streaming.
+        template_store: optional ``TemplateStore`` for resolving sub-workflow
+            template names (used by ``workflow.run``).  Defaults to
+            ``FileTemplateStore`` when not injected.
+        engine: reference to the ``WorkflowEngine`` instance executing this
+            workflow; set automatically at the top of ``execute()`` so nested
+            ``workflow.run`` calls can pass it to child executions.
+        nesting_depth: current depth in sub-workflow chains (0 for top-level).
+        in_progress_templates: immutable set of template names currently on
+            the execution call stack for cycle detection.
+        current_node_id: id of the node currently being executed; set by
+            the engine loop before each node runs.
     """
 
     work_dir: str
@@ -109,6 +124,11 @@ class ExecutionContext:
     env: Dict[str, str] = field(default_factory=dict)
     stream_handler: Optional[Callable[[dict], None]] = None
     workflow_stream: Optional[WorkflowStreamHandler] = None
+    template_store: Optional[Any] = None
+    engine: Optional[Any] = None
+    nesting_depth: int = 0
+    in_progress_templates: frozenset = field(default_factory=frozenset)
+    current_node_id: Optional[str] = None
 
 
 @dataclass
@@ -173,6 +193,15 @@ class WorkflowEngine:
                 tool that is neither a builtin primitive nor a command-list
                 tool (no usable execute contract).
         """
+        # Ensure template_store and engine are available for nested
+        # workflow.run calls.  Set once so callers don't need to wire them.
+        if context.template_store is None:
+            from app.template.store import FileTemplateStore
+
+            context.template_store = FileTemplateStore()
+        if context.engine is None:
+            context.engine = self
+
         workflow_context = WorkflowContext(
             inputs=dict(inputs),
             nodes={},
@@ -195,6 +224,7 @@ class WorkflowEngine:
                 )
 
             # Real-time node lifecycle event: node_started before execution.
+            context.current_node_id = current.id
             if context.workflow_stream is not None:
                 context.workflow_stream.emit_node_started(
                     current.id, current.tool
@@ -578,6 +608,16 @@ class WorkflowEngine:
             task_id=context.task_id,
             env=dict(context.env),
             stream_handler=context.stream_handler,
+            template_store=context.template_store,
+            engine=context.engine or self,
+            nesting_depth=context.nesting_depth,
+            in_progress_templates=context.in_progress_templates,
+            current_node_id=context.current_node_id,
+            parent_workflow_id=(
+                getattr(context.workflow_stream, "workflow_id", None)
+                if context.workflow_stream is not None
+                else None
+            ),
         )
         try:
             outputs = tool.execute(resolved_params, tool_context)
