@@ -10,13 +10,11 @@ abstract interface, :class:`FileTemplateStore` persists templates as
 Writable-path requirement (Oracle finding #2):
     In packaged builds the ``backend/`` tree is copied to
     ``process.resourcesPath`` (electron-builder ``extraResources``, see
-    ``package.json``) and is READ-ONLY.  Pre-installed defaults ship there
-    (``backend/workflows/``) as read-only JSON; user templates MUST live
-    outside it.  The storage directory resolves via ``BT_TEMPLATES_DIR``,
-    falling back to ``<output_dir>/templates`` (``get_output_dir()`` returns
-    a writable path), and is created on construction.
-    :meth:`FileTemplateStore.copy_defaults` seeds this writable dir from the
-    read-only defaults on first run.
+    ``package.json``) and is READ-ONLY.  The storage directory resolves via
+    ``BT_TEMPLATES_DIR``, falling back to ``<output_dir>/templates``
+    (``get_output_dir()`` returns a writable path), and is created on
+    construction.  No templates are pre-installed — users import them
+    separately (e.g. from ``examples/``).
 
 JSON file layout (one file per template, ``<name>.json``)::
 
@@ -31,7 +29,6 @@ JSON file layout (one file per template, ``<name>.json``)::
 
 import json
 import os
-import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -214,9 +211,9 @@ class FileTemplateStore(TemplateStore):
         """Load the workflow definition stored under *name*.
 
         Accepts both the wrapped ``{"definition": {...}, ...}`` format written
-        by :meth:`save` and the bare :class:`WorkflowDefinition` dict seeded by
-        :meth:`copy_defaults` (a raw file has no ``definition`` key, so the
-        whole file IS the definition).
+        by :meth:`save` and the bare :class:`WorkflowDefinition` dict (a raw
+        file has no ``definition`` key, so the whole file IS the definition —
+        this is the format used by ``examples/`` import files).
 
         Raises:
             TemplateNotFoundError: if no template with *name* exists.
@@ -240,8 +237,8 @@ class FileTemplateStore(TemplateStore):
 
         definition_data = data.get("definition")
         if definition_data is None:
-            # Raw workflow file (copied by copy_defaults) — the whole file is
-            # the definition.
+            # Raw workflow file (import format from examples/) — the whole file
+            # is the definition.
             definition_data = data
         return WorkflowDefinition.from_dict(definition_data)
 
@@ -257,7 +254,7 @@ class FileTemplateStore(TemplateStore):
         - Wrapped (produced by :meth:`save`): ``{"definition": {...},
           "created_at": ..., "updated_at": ..., "description": ...,
           "tags": [...]}``.
-        - Raw (seeded by :meth:`copy_defaults` from ``backend/workflows/``):
+        - Raw (import format, e.g. from ``examples/``):
           a bare :class:`WorkflowDefinition` dict.  Metadata is derived from
           the raw workflow fields and the file's modification time.
         """
@@ -278,9 +275,9 @@ class FileTemplateStore(TemplateStore):
 
                 definition_data = data.get("definition")
                 if definition_data is None:
-                    # Raw workflow file (copied by copy_defaults) — treat the
-                    # whole file as the definition and derive metadata from the
-                    # raw workflow fields + file modification time.
+                    # Raw workflow file (import format) — treat the whole file
+                    # as the definition and derive metadata from the raw
+                    # workflow fields + file modification time.
                     definition_data = data
                     description = data.get("description", "")
                     tags: List[str] = []
@@ -326,30 +323,4 @@ class FileTemplateStore(TemplateStore):
         """Return True when a template with *name* is stored."""
         return os.path.isfile(self._path_for(name))
 
-    def copy_defaults(self, source_dir: str) -> int:
-        """Seed the writable dir from read-only pre-installed templates.
 
-        Copies every ``*.json`` in *source_dir* (e.g. ``backend/workflows/``,
-        read-only in production) that does not already exist in
-        ``self._templates_dir``.  Existing names are never overwritten, so a
-        user-edited template survives re-runs.
-
-        Returns:
-            Number of templates copied.
-        """
-        copied = 0
-        if not os.path.isdir(source_dir):
-            return copied
-
-        for filename in sorted(os.listdir(source_dir)):
-            if not filename.endswith(".json"):
-                continue
-            src = os.path.join(source_dir, filename)
-            if not os.path.isfile(src):
-                continue
-            dest = os.path.join(self._templates_dir, filename)
-            if os.path.exists(dest):
-                continue
-            shutil.copyfile(src, dest)
-            copied += 1
-        return copied

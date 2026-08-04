@@ -169,54 +169,6 @@ def test_unsafe_name_cannot_escape_templates_dir(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# copy_defaults
-# ---------------------------------------------------------------------------
-
-def test_copy_defaults_copies_missing_templates(tmp_path):
-    store = FileTemplateStore(templates_dir=str(tmp_path / "writable"))
-    source = tmp_path / "source"
-    source.mkdir()
-    (source / "one.json").write_text('{"name": "one"}', encoding="utf-8")
-    (source / "two.json").write_text('{"name": "two"}', encoding="utf-8")
-
-    copied = store.copy_defaults(str(source))
-
-    assert copied == 2
-    assert (tmp_path / "writable" / "one.json").is_file()
-    assert (tmp_path / "writable" / "two.json").is_file()
-
-
-def test_copy_defaults_never_overwrites_existing(tmp_path):
-    store = FileTemplateStore(templates_dir=str(tmp_path / "writable"))
-    source = tmp_path / "source"
-    source.mkdir()
-    (source / "one.json").write_text('{"name": "source-version"}', encoding="utf-8")
-
-    store.save("one", _definition("user-version"), _metadata())
-    copied = store.copy_defaults(str(source))
-
-    assert copied == 0
-    assert store.load("one").name == "user-version"
-
-
-def test_copy_defaults_missing_source_dir_returns_zero(tmp_path):
-    store = FileTemplateStore(templates_dir=str(tmp_path))
-    assert store.copy_defaults(str(tmp_path / "does-not-exist")) == 0
-
-
-def test_copy_defaults_ignores_non_json_files(tmp_path):
-    store = FileTemplateStore(templates_dir=str(tmp_path / "writable"))
-    source = tmp_path / "source"
-    source.mkdir()
-    (source / "readme.txt").write_text("not a template", encoding="utf-8")
-    (source / "keep.json").write_text('{"name": "keep"}', encoding="utf-8")
-
-    assert store.copy_defaults(str(source)) == 1
-    assert (tmp_path / "writable" / "keep.json").is_file()
-    assert not (tmp_path / "writable" / "readme.txt").exists()
-
-
-# ---------------------------------------------------------------------------
 # Roundtrip / overwrite semantics
 # ---------------------------------------------------------------------------
 
@@ -287,11 +239,21 @@ def test_load_corrupt_file_raises_value_error(tmp_path):
         store.load("broken")
 
 
-def test_load_file_missing_definition_key_raises_value_error(tmp_path):
+def test_load_file_without_definition_wrapper_loads_as_raw(tmp_path):
+    # Raw workflow files (seeded by copy_defaults) have no "definition" key;
+    # the whole file IS the definition (F3 fix).
     store = FileTemplateStore(templates_dir=str(tmp_path))
-    (tmp_path / "bare.json").write_text('{"name": "not-a-wrapper"}', encoding="utf-8")
-    with pytest.raises(ValueError, match="missing the 'definition' key"):
-        store.load("bare")
+    (tmp_path / "bare.json").write_text('{"name": "raw-wf"}', encoding="utf-8")
+    loaded = store.load("bare")
+    assert loaded.name == "raw-wf"
+
+
+def test_load_non_object_file_raises_value_error(tmp_path):
+    # A JSON file that is not an object can never be a template.
+    store = FileTemplateStore(templates_dir=str(tmp_path))
+    (tmp_path / "array.json").write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(ValueError, match="expected a JSON object"):
+        store.load("array")
 
 
 def test_explicit_templates_dir_created_on_construction(tmp_path):

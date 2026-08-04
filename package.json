@@ -52,10 +52,6 @@
           "!logs",
           "!logs/**"
         ]
-      },
-      {
-        "from": "runtime",
-        "to": "runtime"
       }
     ],
     "win": {

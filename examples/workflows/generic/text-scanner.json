@@ -1,0 +1,54 @@
+{
+  "name": "text-scanner",
+  "version": "1.0",
+  "description": "Scan text files in a directory for a regex pattern, log match count, and write a report file (builtin-only, zero external dependencies)",
+  "inputs": [
+    {"name": "target_dir", "type": {"base": "text"}, "required": true, "description": "Directory to scan recursively"},
+    {"name": "pattern", "type": {"base": "text"}, "required": true, "description": "Regular expression pattern to search for"}
+  ],
+  "outputs": [
+    {"name": "passed", "type": {"base": "boolean"}, "required": true, "description": "True when the workflow completes successfully"}
+  ],
+  "nodes": [
+    {
+      "id": "scan",
+      "tool": "text.grep",
+      "params": {
+        "path": "$inputs.target_dir",
+        "pattern": "$inputs.pattern",
+        "include": "*.ts",
+        "recursive": true
+      },
+      "next": "log_count"
+    },
+    {
+      "id": "log_count",
+      "tool": "flow.log",
+      "params": {
+        "message": "$nodes.scan.outputs.count",
+        "level": "info"
+      },
+      "next": "write_report"
+    },
+    {
+      "id": "write_report",
+      "tool": "file.write",
+      "params": {
+        "path": "text-scan-report.txt",
+        "content": "Text scan complete."
+      },
+      "next": "final_assert",
+      "on_failure": "fail"
+    },
+    {
+      "id": "final_assert",
+      "tool": "flow.assert",
+      "params": {
+        "condition": true,
+        "message": "Scan completed successfully"
+      },
+      "next": null
+    }
+  ],
+  "edges": []
+}
