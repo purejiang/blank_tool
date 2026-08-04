@@ -9,6 +9,7 @@ import os
 import platform
 import pkgutil
 import importlib
+import shutil
 import threading
 from pathlib import Path
 from typing import Dict, Optional, Any
@@ -197,7 +198,9 @@ class ToolRegistry:
                     )
                     continue
                 try:
-                    tool = DescriptorTool(descriptor, _get_env_registry())
+                    tool = DescriptorTool(
+                        descriptor, _get_env_registry(), source_dir=str(dir_path)
+                    )
                 except Exception as exc:  # construction must not block discovery
                     self.logger.warning(
                         f"failed to construct descriptor tool {descriptor.name!r}: {exc}"
@@ -337,9 +340,24 @@ class ToolRegistry:
             return Path(self._registry_overlay_dir) / "tools"
         return None
 
+    # Script-type descriptor types that carry a script file alongside the JSON.
+    _SCRIPT_TOOL_TYPES = frozenset({"python_script", "node_script", "shell_script"})
+
+    def _overlay_scripts_dir(self) -> Optional[Path]:
+        """Return ``<overlay>/scripts/``, or None when unresolvable."""
+        if self._registry_overlay_dir:
+            return Path(self._registry_overlay_dir) / "scripts"
+        return None
+
     def add_descriptor_file(self, descriptor_json: dict) -> DescriptorTool:
         """Validate *descriptor_json*, write it to the overlay tools/ dir,
         and re-discover so the new tool is immediately visible.
+
+        For script-type tools (python_script / node_script / shell_script),
+        when the ``path`` field references an existing local file, the file is
+        copied into ``<overlay>/scripts/<tool_name>/<filename>`` and the
+        descriptor's ``path`` is rewritten to the copied location so the tool
+        stays usable even when the original source file is moved or deleted.
 
         Args:
             descriptor_json: a dict conforming to :class:`ToolDescriptor`.
@@ -351,14 +369,31 @@ class ToolRegistry:
             ValueError: if the dict fails ``load_descriptor`` validation.
             OSError: if the overlay file cannot be written.
         """
-        # Validate via load_descriptor BEFORE writing (no partial files)
-        # Write to a temp path first, validate, then move.
         overlay_tools = self._overlay_tools_dir()
         if overlay_tools is None:
             raise OSError("Cannot resolve overlay tools directory")
         overlay_tools.mkdir(parents=True, exist_ok=True)
 
-        # Validate the descriptor dict via load_descriptor on a temp file
+        # ── Script type: copy the script file into the overlay ─────────
+        tool_type = descriptor_json.get("type", "")
+        if isinstance(tool_type, str) and tool_type in self._SCRIPT_TOOL_TYPES:
+            script_path = descriptor_json.get("path", "")
+            if isinstance(script_path, str) and os.path.isfile(script_path):
+                tool_name = descriptor_json.get("name", "unknown")
+                if not isinstance(tool_name, str) or not tool_name:
+                    tool_name = "unknown"
+                scripts_dir = self._overlay_scripts_dir()
+                if scripts_dir is not None:
+                    dest_dir = scripts_dir / tool_name
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    dest_file = dest_dir / os.path.basename(script_path)
+                    shutil.copy2(script_path, str(dest_file))
+                    # Rewrite the path in the descriptor dict to the copied location
+                    # so the descriptor JSON is self-contained.
+                    descriptor_json = dict(descriptor_json)
+                    descriptor_json["path"] = str(dest_file)
+
+        # Validate via load_descriptor BEFORE writing (no partial files)
         import tempfile as _tempfile
         with _tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False, encoding="utf-8",

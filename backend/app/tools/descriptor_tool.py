@@ -18,6 +18,7 @@ import json
 import os
 import platform
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -243,6 +244,17 @@ def _select_platform_type(tool_type: Union[str, Dict[str, str]]) -> str:
     return _select_platform_path(tool_type)
 
 
+def _get_platform_shell() -> str:
+    """Return the platform shell interpreter for ``shell_script`` tools.
+
+    On Windows: ``COMSPEC`` (cmd.exe) or ``cmd.exe`` from PATH.
+    On other platforms: ``/bin/sh``.
+    """
+    if platform.system() == "Windows":
+        return os.environ.get("COMSPEC", "") or shutil.which("cmd.exe") or "cmd.exe"
+    return "/bin/sh"
+
+
 class DescriptorTool:
     """Execute a third-party tool declared by a :class:`ToolDescriptor`.
 
@@ -259,10 +271,24 @@ class DescriptorTool:
         "node_script": "node",
     }
 
-    def __init__(self, descriptor: ToolDescriptor, env_registry: EnvironmentRegistry):
-        """Resolve env deps, locate the binary, and validate the tool."""
+    def __init__(
+        self,
+        descriptor: ToolDescriptor,
+        env_registry: EnvironmentRegistry,
+        source_dir: Optional[str] = None,
+    ):
+        """Resolve env deps, locate the binary, and validate the tool.
+
+        Args:
+            descriptor: tool declaration data.
+            env_registry: resolves named environments to concrete paths.
+            source_dir: optional directory the descriptor was loaded from;
+                relative script paths resolve against it (then runtime dir,
+                then unchanged).
+        """
         self._descriptor = descriptor
         self._env_registry = env_registry
+        self._source_dir = source_dir
         self._logger = Logger.get_logger(descriptor.name or "DescriptorTool")
         self._command_executor = CommandExecutor()
         self.name = descriptor.name
@@ -278,15 +304,28 @@ class DescriptorTool:
     def _resolve_tool_path(self) -> str:
         """Resolve the descriptor path to an absolute path on this platform.
 
-        Absolute paths are used as-is; relative paths anchor at the runtime
-        directory (or stay backend-relative when none is configured).
+        Priority:
+        1. Absolute paths (used as-is).
+        2. Relative to ``_source_dir`` (descriptor file location) — exists-or-not;
+           non-existent paths fall through to the next level.
+        3. Relative to the runtime directory.
+        4. Unchanged (backward-compatible, caller decides).
         """
         path = _select_platform_path(self._descriptor.path)
         if os.path.isabs(path):
             return os.path.normpath(path)
+        # Try the descriptor's source directory first
+        if self._source_dir:
+            candidate = os.path.normpath(os.path.join(self._source_dir, path))
+            if os.path.exists(candidate):
+                return candidate
         runtime_dir = get_runtime_dir()
         if runtime_dir:
             return os.path.normpath(os.path.join(runtime_dir, path))
+        # Final fallback: source_dir-relative (for overlay scripts that
+        # resolved at import time but are not yet on disk)
+        if self._source_dir:
+            return os.path.normpath(os.path.join(self._source_dir, path))
         return os.path.normpath(path)
 
     def _resolve_env_deps(self) -> Dict[str, str]:
@@ -399,12 +438,56 @@ class DescriptorTool:
     ) -> Dict[str, Any]:
         """Build the full command and delegate to CommandExecutor.
 
-        The *context* is forwarded as-is (never rebuilt), so its
-        ``process_holder`` reaches the subprocess and cancellation works.
+        For script-type tools the required interpreter env_dep is verified
+        BEFORE any command is built — missing/unresolved environments raise
+        ToolException immediately with no subprocess spawn.
         """
+        self._ensure_script_env_available()
         full_command = self._build_command(command)
         ctx = context or CommandExecutionContext()
         return self._command_executor.execute(full_command, ctx)
+
+    def _ensure_script_env_available(self) -> None:
+        """Raise ToolException if a script tool's required env_dep is unresolved.
+
+        The mapping ``_INTERPRETER_DEP_BY_TYPE`` defines which env_dep every
+        script type needs (e.g. ``python_script`` → ``"python"``).  That dep
+        MUST be present in the descriptor's ``env_deps`` and MUST have
+        resolved to a non-empty binary path through the registry.
+
+        ``shell_script`` resolves the platform shell instead of an env_dep;
+        when the platform shell cannot be located, the same "not available"
+        class of error is raised.
+        """
+        tool_type = _select_platform_type(self._descriptor.type)
+        if tool_type not in ("python_script", "node_script", "shell_script"):
+            return
+
+        if tool_type == "shell_script":
+            shell = _get_platform_shell()
+            if not shell or not os.path.exists(shell):
+                raise ToolException(
+                    f"environment 'shell' not available for script tool "
+                    f"{self.name!r}: no platform shell found"
+                )
+            return
+
+        dep_name = self._INTERPRETER_DEP_BY_TYPE.get(tool_type)
+        if not dep_name:
+            raise ToolException(
+                f"cannot determine required environment for script tool "
+                f"{self.name!r} of type {tool_type!r}"
+            )
+
+        # The interpreter dep MUST be in the descriptor's env_deps AND
+        # resolve via the registry (legacy helper fallback is NOT used
+        # for the gate — the descriptor must declare what it needs).
+        resolved = self._env_resolutions.get(dep_name, "")
+        if not resolved:
+            raise ToolException(
+                f"environment {dep_name!r} not available — cannot execute "
+                f"script tool {self.name!r}"
+            )
 
     def _build_command(self, command: List[str]) -> List[str]:
         """Prefix *command* with the invocation for this tool's type.
@@ -420,8 +503,9 @@ class DescriptorTool:
                 return list(command)
             return [self.tool_path] + list(command)
         if tool_type == "shell_script":
-            # Shell handling (e.g. .sh on Windows) is governed by the context.
-            return [self.tool_path] + list(command)
+            # Shell handling: wrap in platform shell (cmd.exe on Windows, /bin/sh elsewhere).
+            shell = _get_platform_shell()
+            return [shell, self.tool_path] + list(command)
         dep_name = self._INTERPRETER_DEP_BY_TYPE.get(tool_type)
         interpreter = self._interpreter_for(dep_name)
         if tool_type == "java_jar":
