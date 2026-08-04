@@ -381,6 +381,17 @@ export interface ApiMethodMap {
   'template.delete': { params: { name: string }; result: Record<string, unknown> }
   'template.execute': { params: { name: string; inputs?: Record<string, unknown> }; result: Record<string, unknown> }
 
+  // --- env_handler.py ---
+  'env.list': { params: Record<string, never>; result: Record<string, unknown> }
+  'env.add': { params: { descriptor: Record<string, unknown> }; result: Record<string, unknown> }
+  'env.delete': { params: { name: string }; result: Record<string, unknown> }
+  'env.set_custom': { params: { name: string; overrides: Record<string, unknown> }; result: Record<string, unknown> }
+  'env.reset_custom': { params: { name: string }; result: Record<string, unknown> }
+
+  // --- tool_handler.py (extended) ---
+  'tool.add': { params: { descriptor: Record<string, unknown> }; result: Record<string, unknown> }
+  'tool.delete': { params: { name: string }; result: Record<string, unknown> }
+
   // --- workflow_handler.py ---
   'workflow.execute': { params: { definition: Record<string, unknown>; inputs?: Record<string, unknown> }; result: Record<string, unknown> }
   'workflow.validate': { params: { definition: Record<string, unknown> }; result: Record<string, unknown> }

@@ -22,6 +22,7 @@ Resolution follows the exact priority used by the legacy hardcoded
 Results are cached until :meth:`EnvironmentRegistry.refresh` is called.
 """
 
+import json
 import logging
 import os
 import re
@@ -125,11 +126,19 @@ class EnvironmentRegistry:
     guarded by a :class:`threading.Lock`.
     """
 
-    def __init__(self) -> None:
-        """Start with no descriptors and an empty resolution cache."""
+    def __init__(self, overlay_dir: Optional[str] = None) -> None:
+        """Start with no descriptors and an empty resolution cache.
+
+        Args:
+            overlay_dir: root of the writable registry overlay directory.
+                When omitted, resolves to ``<output_dir>/registry`` at
+                :meth:`discover` time (lazy, to avoid import-time cycle
+                with ``app.utils.env``).
+        """
         self._descriptors: Dict[str, EnvironmentDescriptor] = {}
         self._cache: Dict[str, ResolvedEnvironment] = {}
         self._lock = threading.Lock()
+        self._overlay_dir: Optional[str] = overlay_dir
 
     def discover(
         self,
@@ -144,15 +153,30 @@ class EnvironmentRegistry:
             descriptor_dir: directory containing JSON descriptors. Defaults to
                 ``backend/registry/environments/`` (derived from this file).
             overlay_descriptor_dir: writable overlay directory whose same-named
-                descriptors win over bundled ones.  Omitted/absent directories
-                are silently ignored.
+                descriptors win over bundled ones.  When omitted and
+                ``self._overlay_dir`` is set, ``<overlay_dir>/environments``
+                is used.  Absent directories are silently ignored.
 
         A missing directory is a no-op (warned, not raised), so the registry
         stays usable before the descriptor directory exists. Malformed files
-        are skipped with a warning; duplicates keep the first (sorted order),
+        are skipped with a warning; duplicates keep the last (overlay wins),
         and loading replaces all descriptors and drops the cache.
         """
         dir_path = Path(descriptor_dir) if descriptor_dir else _DEFAULT_DESCRIPTOR_DIR
+
+        # Resolve the overlay environments directory
+        overlay_env_dir: Optional[Path] = None
+        if overlay_descriptor_dir:
+            overlay_env_dir = Path(overlay_descriptor_dir)
+        elif self._overlay_dir:
+            overlay_env_dir = Path(self._overlay_dir) / "environments"
+        else:
+            # Best-effort default: use get_output_dir()/registry/environments
+            try:
+                from app.utils.env import get_output_dir  # lazy import
+                overlay_env_dir = Path(get_output_dir()) / "registry" / "environments"
+            except Exception:
+                overlay_env_dir = None
 
         discovered: Dict[str, EnvironmentDescriptor] = {}
 
@@ -179,8 +203,8 @@ class EnvironmentRegistry:
                     discovered[descriptor.name] = descriptor
 
         _load_from(dir_path)
-        if overlay_descriptor_dir:
-            _load_from(Path(overlay_descriptor_dir))
+        if overlay_env_dir is not None:
+            _load_from(overlay_env_dir)
 
         with self._lock:
             self._descriptors = discovered
@@ -227,6 +251,86 @@ class EnvironmentRegistry:
         """Drop the resolution cache; discovered descriptors stay loaded."""
         with self._lock:
             self._cache.clear()
+
+    # ------------------------------------------------------------------
+    # Descriptor CRUD (T15)
+    # ------------------------------------------------------------------
+
+    def _overlay_environments_dir(self) -> Optional[Path]:
+        """Return ``<overlay>/environments/``, or None when unresolvable."""
+        if self._overlay_dir:
+            return Path(self._overlay_dir) / "environments"
+        try:
+            from app.utils.env import get_output_dir  # lazy import
+            return Path(get_output_dir()) / "registry" / "environments"
+        except Exception:
+            return None
+
+    def add_descriptor(self, name: str, descriptor_dict: dict) -> EnvironmentDescriptor:
+        """Validate *descriptor_dict*, write it to the overlay, and re-discover.
+
+        Args:
+            name: environment identifier (must match ``descriptor_dict["name"]``).
+            descriptor_dict: a dict conforming to :class:`EnvironmentDescriptor`.
+
+        Returns:
+            The validated :class:`EnvironmentDescriptor`.
+
+        Raises:
+            ValueError: if the dict fails validation.
+            OSError: if the overlay file cannot be written.
+        """
+        # Validate BEFORE writing (partial file must not land on invalid input)
+        descriptor = EnvironmentDescriptor.from_dict(descriptor_dict)
+        if descriptor.name != name:
+            raise ValueError(
+                f"name mismatch: descriptor declares {descriptor.name!r}, "
+                f"but target name is {name!r}"
+            )
+
+        overlay_envs = self._overlay_environments_dir()
+        if overlay_envs is None:
+            raise OSError("Cannot resolve overlay environments directory")
+        overlay_envs.mkdir(parents=True, exist_ok=True)
+
+        out_path = overlay_envs / f"{name}.json"
+        out_path.write_text(
+            json.dumps(descriptor.to_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        # Re-discover so the new env is immediately visible
+        self.discover()
+        return descriptor
+
+    def delete_descriptor(self, name: str) -> None:
+        """Remove the overlay descriptor file for *name* and re-discover.
+
+        Raises:
+            ValueError: if *name* has no overlay descriptor (bundled-only or
+                unknown).
+            OSError: if the overlay file cannot be removed.
+        """
+        overlay_envs = self._overlay_environments_dir()
+        if overlay_envs is None:
+            raise ValueError(f"Cannot resolve overlay directory to delete {name!r}")
+
+        file_path = overlay_envs / f"{name}.json"
+        if not file_path.exists():
+            raise ValueError(
+                f"Environment {name!r} is not an overlay descriptor "
+                f"(bundled environments cannot be deleted)"
+            )
+
+        file_path.unlink()
+        self.discover()
+
+    def is_overlay_descriptor(self, name: str) -> bool:
+        """Return True when *name* has an overlay descriptor file on disk."""
+        overlay_envs = self._overlay_environments_dir()
+        if overlay_envs is None:
+            return False
+        return (overlay_envs / f"{name}.json").exists()
 
     # ------------------------------------------------------------------
     # Internal helpers

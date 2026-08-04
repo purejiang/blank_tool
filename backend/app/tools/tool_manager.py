@@ -122,7 +122,7 @@ class ToolRegistry:
         return os.path.join(get_output_dir(), "registry")
 
     def _load_overrides(self) -> None:
-        """Load custom-path overrides from ``<overlay>/overrides.json``.
+        """Load custom-path and env overrides from ``<overlay>/overrides.json``.
 
         Missing file or malformed JSON is tolerated (no-op); the registry
         stays usable with empty overrides.
@@ -138,16 +138,24 @@ class ToolRegistry:
         paths = data.get("custom_paths")
         if isinstance(paths, dict):
             self._custom_paths = {str(k): str(v) for k, v in paths.items()}
+        env_overrides = data.get("env_overrides")
+        if isinstance(env_overrides, dict):
+            self._env_overrides = {str(k): dict(v) for k, v in env_overrides.items() if isinstance(v, dict)}
+        else:
+            self._env_overrides = {}
 
     def _save_overrides(self) -> None:
-        """Persist custom-path overrides to ``<overlay>/overrides.json``.
+        """Persist custom-path and env overrides to ``<overlay>/overrides.json``.
 
         The overlay root is created lazily (exist_ok=True) so absent-output-dir
         does not prevent discovery; only the first write materializes the dir.
         """
         os.makedirs(self._registry_overlay_dir, exist_ok=True)
         overrides_path = os.path.join(self._registry_overlay_dir, "overrides.json")
-        data = {"custom_paths": dict(self._custom_paths)}
+        data = {
+            "custom_paths": dict(self._custom_paths),
+            "env_overrides": dict(getattr(self, "_env_overrides", {})),
+        }
         with open(overrides_path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
 
@@ -320,6 +328,119 @@ class ToolRegistry:
         return dict(self._custom_paths)
 
     # ------------------------------------------------------------------
+    # Descriptor CRUD (T15)
+    # ------------------------------------------------------------------
+
+    def _overlay_tools_dir(self) -> Optional[Path]:
+        """Return ``<overlay>/tools/``, or None when unresolvable."""
+        if self._registry_overlay_dir:
+            return Path(self._registry_overlay_dir) / "tools"
+        return None
+
+    def add_descriptor_file(self, descriptor_json: dict) -> DescriptorTool:
+        """Validate *descriptor_json*, write it to the overlay tools/ dir,
+        and re-discover so the new tool is immediately visible.
+
+        Args:
+            descriptor_json: a dict conforming to :class:`ToolDescriptor`.
+
+        Returns:
+            The constructed :class:`DescriptorTool`.
+
+        Raises:
+            ValueError: if the dict fails ``load_descriptor`` validation.
+            OSError: if the overlay file cannot be written.
+        """
+        # Validate via load_descriptor BEFORE writing (no partial files)
+        # Write to a temp path first, validate, then move.
+        overlay_tools = self._overlay_tools_dir()
+        if overlay_tools is None:
+            raise OSError("Cannot resolve overlay tools directory")
+        overlay_tools.mkdir(parents=True, exist_ok=True)
+
+        # Validate the descriptor dict via load_descriptor on a temp file
+        import tempfile as _tempfile
+        with _tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8",
+        ) as tmp:
+            json.dump(descriptor_json, tmp)
+            tmp_path = tmp.name
+        try:
+            descriptor = load_descriptor(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
+        out_path = overlay_tools / f"{descriptor.name}.json"
+        out_path.write_text(
+            json.dumps(descriptor_json, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        # Re-discover so the new tool is immediately visible
+        self._rediscover_descriptors()
+
+        tool = self._descriptor_tools.get(descriptor.name)
+        if tool is None:
+            raise ToolNotFoundError(descriptor.name)
+        return tool
+
+    def delete_descriptor(self, name: str) -> None:
+        """Remove the overlay descriptor file for *name* and re-discover.
+
+        Raises:
+            ValueError: if *name* has no overlay descriptor (bundled/code-only
+                or unknown).
+        """
+        overlay_tools = self._overlay_tools_dir()
+        if overlay_tools is None:
+            raise ValueError(
+                f"Cannot resolve overlay directory to delete {name!r}"
+            )
+
+        file_path = overlay_tools / f"{name}.json"
+        if not file_path.exists():
+            raise ValueError(
+                f"Tool {name!r} is not an overlay descriptor "
+                f"(bundled or code-based tools cannot be deleted)"
+            )
+
+        file_path.unlink()
+        self._rediscover_descriptors()
+
+    def is_overlay_descriptor(self, name: str) -> bool:
+        """Return True when *name* has an overlay descriptor file on disk."""
+        overlay_tools = self._overlay_tools_dir()
+        if overlay_tools is None:
+            return False
+        return (overlay_tools / f"{name}.json").exists()
+
+    def _rediscover_descriptors(self) -> None:
+        """Clear descriptor tools and re-scan bundled + overlay dirs."""
+        self._descriptor_tools.clear()
+        self._discover_descriptors()
+
+    # ------------------------------------------------------------------
+    # Environment overrides (T15)
+    # ------------------------------------------------------------------
+
+    def get_env_overrides(self) -> Dict[str, dict]:
+        """Return all environment overrides."""
+        return dict(getattr(self, "_env_overrides", {}))
+
+    def set_env_override(self, name: str, overrides: dict) -> None:
+        """Set or replace override dict for environment *name* and persist."""
+        if not hasattr(self, "_env_overrides"):
+            self._env_overrides: Dict[str, dict] = {}
+        self._env_overrides[name] = dict(overrides)
+        self._save_overrides()
+
+    def reset_env_override(self, name: str) -> None:
+        """Remove override dict for environment *name* and persist."""
+        if hasattr(self, "_env_overrides") and name in self._env_overrides:
+            del self._env_overrides[name]
+            self._save_overrides()
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
@@ -402,6 +523,26 @@ class ToolManager:
 
     def get_custom_paths(self):
         return self._registry.get_custom_paths()
+
+    # T15: descriptor CRUD delegates
+    def add_tool_descriptor(self, descriptor_json: dict):
+        return self._registry.add_descriptor_file(descriptor_json)
+
+    def delete_tool_descriptor(self, name: str):
+        return self._registry.delete_descriptor(name)
+
+    def is_overlay_descriptor(self, name: str) -> bool:
+        return self._registry.is_overlay_descriptor(name)
+
+    # T15: env override delegates
+    def get_env_overrides(self):
+        return self._registry.get_env_overrides()
+
+    def set_env_override(self, name: str, overrides: dict):
+        return self._registry.set_env_override(name, overrides)
+
+    def reset_env_override(self, name: str):
+        return self._registry.reset_env_override(name)
 
     def _default_tool_path(self, key: str) -> str:
         return self._registry._default_tool_path(key)

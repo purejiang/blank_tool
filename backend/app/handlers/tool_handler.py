@@ -16,6 +16,11 @@ logger = Logger.get_logger("ToolHandler")
 manager = ToolManager.instance()
 
 
+def _get_registry():
+    """Return the underlying ToolRegistry (for tests to patch)."""
+    return manager._registry  # noqa: SLF001
+
+
 def _source_for(mgr: ToolManager, name: str, path: str):
     try:
         default_path = mgr._default_tool_path(name)
@@ -136,6 +141,40 @@ def get_custom_paths(params, stream_handler):
     return manager.get_custom_paths()
 
 
+@logs_errors("ToolHandler")
+def handle_tool_add(params, stream_handler):
+    """Add a tool descriptor to the writable overlay registry."""
+    descriptor = params.get("descriptor")
+    if not isinstance(descriptor, dict):
+        raise ToolException("Missing or invalid 'descriptor' field")
+
+    try:
+        registry = _get_registry()
+        tool = registry.add_descriptor_file(descriptor)
+        return {
+            "name": tool.name,
+            "is_valid": getattr(tool, "is_valid", False),
+            "path": getattr(tool, "tool_path", ""),
+        }
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+@logs_errors("ToolHandler")
+def handle_tool_delete(params, stream_handler):
+    """Remove a tool descriptor from the writable overlay registry."""
+    name = params.get("name", "")
+    if not name:
+        raise ToolException("Missing 'name' field")
+
+    try:
+        registry = _get_registry()
+        registry.delete_descriptor(name)
+        return {"deleted": name}
+    except ValueError as e:
+        return {"error": str(e)}
+
+
 API_MAP = {
     "tool.version": tool_version,
     "tool.get_tools": get_tools,
@@ -143,4 +182,6 @@ API_MAP = {
     "tool.set_custom_path": set_custom_path,
     "tool.reset_custom_path": reset_custom_path,
     "tool.get_custom_paths": get_custom_paths,
+    "tool.add": handle_tool_add,
+    "tool.delete": handle_tool_delete,
 }
