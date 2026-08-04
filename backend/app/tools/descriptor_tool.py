@@ -34,6 +34,25 @@ _PLATFORM_KEY: Dict[str, str] = {"Windows": "win", "Darwin": "mac", "Linux": "li
 
 
 @dataclass
+class Operation:
+    """A single named operation a descriptor tool can perform.
+
+    ``inputs``/``outputs`` are the typed ports the operation declares;
+    ``args_map`` is a mixed list of literal command fragments and
+    placeholders.  A placeholder is either ``{"param": <input_name>}``
+    (substitute the bound value of that input) or ``{"flag": <bool_input>,
+    "value": <arg>}`` (emit ``value`` when the boolean input is true).
+    Placeholder shape is not validated beyond "is a str or dict".
+    """
+
+    name: str
+    description: str = ""
+    inputs: List[Port] = field(default_factory=list)
+    outputs: List[Port] = field(default_factory=list)
+    args_map: list = field(default_factory=list)
+
+
+@dataclass
 class ToolDescriptor:
     """Data declaration of an external third-party tool (descriptor D1).
 
@@ -57,6 +76,7 @@ class ToolDescriptor:
     inputs: List[Port]
     outputs: List[Port]
     sensitive_arg_patterns: List[str] = field(default_factory=list)
+    operations: List[Operation] = field(default_factory=list)
 
     _VALID_TYPES = frozenset(
         {"binary", "java_jar", "python_script", "node_script", "shell_script"}
@@ -125,6 +145,35 @@ def _ports_from(entries: Any, role: str, path: str) -> List[Port]:
     return ports
 
 
+def _operations_from(entries: Any, path: str, tool_name: str) -> List[Operation]:
+    """Parse the JSON ``operations`` list into :class:`Operation` objects.
+
+    An operation dict must declare ``name``; its inputs/outputs reuse the
+    same port parsing as the descriptor-level ports, and ``args_map`` is
+    taken as-is (literal strings and dict placeholders).
+    """
+    if not isinstance(entries, list):
+        raise ValueError(f"descriptor field 'operations' must be a list: {path}")
+    operations: List[Operation] = []
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"descriptor operations[{index}] must be an object: {path}")
+        if "name" not in entry:
+            raise ValueError(
+                f"operation missing required field 'name' in descriptor {tool_name}"
+            )
+        operations.append(
+            Operation(
+                name=entry["name"],
+                description=entry.get("description", ""),
+                inputs=_ports_from(entry.get("inputs", []), "inputs", path),
+                outputs=_ports_from(entry.get("outputs", []), "outputs", path),
+                args_map=list(entry.get("args_map", [])),
+            )
+        )
+    return operations
+
+
 def load_descriptor(path: str) -> ToolDescriptor:
     """Load a tool descriptor from a JSON file.
 
@@ -145,6 +194,12 @@ def load_descriptor(path: str) -> ToolDescriptor:
         if key not in raw:
             raise ValueError(f"descriptor missing required field: {key!r}: {path}")
 
+    operations = (
+        _operations_from(raw["operations"], path, raw["name"])
+        if "operations" in raw
+        else []
+    )
+
     return ToolDescriptor(
         name=raw["name"],
         display_name=raw["display_name"],
@@ -156,6 +211,7 @@ def load_descriptor(path: str) -> ToolDescriptor:
         inputs=_ports_from(raw.get("inputs", []), "inputs", path),
         outputs=_ports_from(raw.get("outputs", []), "outputs", path),
         sensitive_arg_patterns=list(raw.get("sensitive_arg_patterns", [])),
+        operations=operations,
     )
 
 
