@@ -165,7 +165,7 @@ def handle_execute(params, stream_handler):
     workflow_stream = None
     if task_id and stream_handler:
         workflow_stream = WorkflowStreamHandler(
-            workflow_id=task_id, callback=stream_handler
+            workflow_id=task_id, callback=stream_handler, task_log_id=task_id
         )
 
     context = ExecutionContext(
