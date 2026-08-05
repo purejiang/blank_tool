@@ -34,8 +34,11 @@ workflow stops before the next node rather than interrupting a node
 mid-execution.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
+
+from app.utils.task_log_writer import append_task_log
 
 # ---------------------------------------------------------------------------
 # Event types
@@ -117,6 +120,51 @@ class WorkflowEvent:
         return event
 
 
+#: Node-level lifecycle event types (used by the tee namespacing rule).
+_NODE_LIFECYCLE_TYPES = frozenset({NODE_STARTED, NODE_COMPLETED, NODE_FAILED})
+
+
+def render_event_line(event: Dict[str, Any]) -> str:
+    """Render a workflow event dict as a plain-text log line.
+
+    Produces EXACTLY these formats (mirroring the CLI console format):
+
+    * ``[node_started] <node_id> (<tool>)``
+    * ``[node_completed] <node_id> (<duration_ms> ms)``
+    * ``[node_failed] <node_id>: <error>``
+    * ``[node_output] <node_id>: <json data>``
+    * ``[workflow_completed] success=<bool>``
+    * ``[workflow_failed] <error>``
+    * ``[workflow_cancelled]`` (bare tag when message is empty)
+    * Unknown types fall back to ``[<type>] <json dumps of event>``.
+
+    The ``if message else`` bare-tag rule from cli.py:501 is preserved.
+    """
+    event_type = event.get("type") or "event"
+    if event_type == NODE_STARTED:
+        message = f"{event.get('node_id', '?')} ({event.get('tool', '')})"
+    elif event_type == NODE_COMPLETED:
+        message = (
+            f"{event.get('node_id', '?')} ({event.get('duration_ms', '?')} ms)"
+        )
+    elif event_type == NODE_FAILED:
+        message = f"{event.get('node_id', '?')}: {event.get('error', '')}"
+    elif event_type == NODE_OUTPUT:
+        message = (
+            f"{event.get('node_id', '?')}: "
+            f"{json.dumps(event.get('data', {}), default=str, ensure_ascii=False)}"
+        )
+    elif event_type == WORKFLOW_COMPLETED:
+        message = f"success={event.get('success', '?')}"
+    elif event_type == WORKFLOW_FAILED:
+        message = str(event.get("error", ""))
+    elif event_type == WORKFLOW_CANCELLED:
+        message = ""
+    else:
+        message = json.dumps(event, default=str, ensure_ascii=False)
+    return f"[{event_type}] {message}" if message else f"[{event_type}]"
+
+
 class WorkflowStreamHandler:
     """Emits workflow streaming events through a downstream callback.
 
@@ -133,28 +181,51 @@ class WorkflowStreamHandler:
             (also the ``task_id`` the engine registers with TaskManager).
         callback: downstream callable receiving each event dict; typically
             the IPC ``stream_handler``.  ``None`` disables emission.
+        task_log_id: when set, the handler tees lifecycle event lines into
+            the per-task log via :func:`append_task_log`.  ``node_output``
+            is NEVER written to the task log.  Defaults to ``None``.
     """
 
     def __init__(
         self,
         workflow_id: str,
         callback: Optional[Callable[[dict], None]] = None,
+        *,
+        task_log_id: Optional[str] = None,
     ) -> None:
         self.workflow_id = workflow_id
         self._callback = callback
+        self.task_log_id = task_log_id
 
     def _wire(self, event_type: str, **fields: Any) -> None:
-        """Build the standard event dict and forward it to the callback.
+        """Build the standard event dict, tee to task log, then forward to
+        the callback.
 
-        No-op (silent) when no callback was provided.
+        The tee runs BEFORE the callback-None early return so logging works
+        without a stream callback.
         """
-        if self._callback is None:
-            return
         event: Dict[str, Any] = {
             "type": event_type,
             "workflow_id": self.workflow_id,
         }
         event.update(fields)
+
+        # -- task-log tee (before callback-None guard) -----------------
+        if self.task_log_id is not None and event_type != NODE_OUTPUT:
+            render_copy = dict(event)  # shallow copy for rendering
+            # Namespacing rule: prefix node_id with workflow_id for child
+            # handlers whose workflow_id differs from task_log_id.
+            if (
+                event_type in _NODE_LIFECYCLE_TYPES
+                and self.workflow_id != self.task_log_id
+            ):
+                render_copy["node_id"] = (
+                    f"{self.workflow_id}/{event.get('node_id', '?')}"
+                )
+            append_task_log(self.task_log_id, render_event_line(render_copy))
+
+        if self._callback is None:
+            return
         self._callback(event)
 
     def emit_node_started(self, node_id: str, tool: str) -> None:
