@@ -441,6 +441,7 @@ _EVENT_COLORS = {
     "workflow_completed": "\033[32m",  # green
     "node_failed": "\033[31m",  # red
     "workflow_failed": "\033[31m",  # red
+    "workflow_cancelled": "\033[33m",  # yellow
 }
 _RESET = "\033[0m"
 
@@ -478,27 +479,10 @@ def _make_console_stream_handler(use_color: bool, stream):
     """
 
     def _render(event: Dict[str, Any]) -> str:
+        from app.workflow.streaming import render_event_line
+
         event_type = event.get("type") or "event"
-        if event_type == "node_started":
-            message = f"{event.get('node_id', '?')} ({event.get('tool', '')})"
-        elif event_type == "node_completed":
-            message = (
-                f"{event.get('node_id', '?')} ({event.get('duration_ms', '?')} ms)"
-            )
-        elif event_type == "node_failed":
-            message = f"{event.get('node_id', '?')}: {event.get('error', '')}"
-        elif event_type == "node_output":
-            message = (
-                f"{event.get('node_id', '?')}: "
-                f"{json.dumps(event.get('data', {}), default=str, ensure_ascii=False)}"
-            )
-        elif event_type == "workflow_completed":
-            message = f"success={event.get('success', '?')}"
-        elif event_type == "workflow_failed":
-            message = str(event.get("error", ""))
-        else:
-            message = json.dumps(event, default=str, ensure_ascii=False)
-        line = f"[{event_type}] {message}" if message else f"[{event_type}]"
+        line = render_event_line(event)
         if use_color and event_type in _EVENT_COLORS:
             line = f"{_EVENT_COLORS[event_type]}{line}{_RESET}"
         return line
@@ -551,6 +535,7 @@ def cmd_run(
     """
     from app.workflow.engine import ExecutionContext, WorkflowEngine
     from app.workflow.streaming import WorkflowStreamHandler
+    from app.utils.task_log_writer import cleanup_task_log
 
     definition = _resolve_definition(target)
     if definition is None:
@@ -561,7 +546,8 @@ def cmd_run(
     stream = sys.stderr if json_output else sys.stdout
     raw_stream_handler = _make_console_stream_handler(use_color, stream)
     workflow_stream = WorkflowStreamHandler(
-        workflow_id=task_id or "cli", callback=raw_stream_handler
+        workflow_id=task_id or "cli", callback=raw_stream_handler,
+        task_log_id=task_id,
     )
 
     context = ExecutionContext(
@@ -577,36 +563,40 @@ def cmd_run(
         else None
     )
     try:
-        result = WorkflowEngine(registry=registry).execute(definition, inputs, context)
-    except Exception as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
+        try:
+            result = WorkflowEngine(registry=registry).execute(definition, inputs, context)
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
-    if json_output:
-        print(
-            json.dumps(
-                {
-                    "success": result.success,
-                    "outputs": result.outputs,
-                    "node_results": result.node_results,
-                    "error": result.error,
-                },
-                indent=2,
-                default=str,
-                ensure_ascii=False,
-            )
-        )
-    else:
-        print(f"success: {result.success}")
-        if result.outputs:
+        if json_output:
             print(
-                "outputs: "
-                + json.dumps(result.outputs, indent=2, default=str, ensure_ascii=False)
+                json.dumps(
+                    {
+                        "success": result.success,
+                        "outputs": result.outputs,
+                        "node_results": result.node_results,
+                        "error": result.error,
+                    },
+                    indent=2,
+                    default=str,
+                    ensure_ascii=False,
+                )
             )
-        if result.error:
-            print(f"error: {result.error}")
+        else:
+            print(f"success: {result.success}")
+            if result.outputs:
+                print(
+                    "outputs: "
+                    + json.dumps(result.outputs, indent=2, default=str, ensure_ascii=False)
+                )
+            if result.error:
+                print(f"error: {result.error}")
 
-    return 0 if result.success else 1
+        return 0 if result.success else 1
+    finally:
+        if task_id:
+            cleanup_task_log(task_id)
 
 
 def _parse_key_values(pairs: List[str]) -> Dict[str, Any]:
