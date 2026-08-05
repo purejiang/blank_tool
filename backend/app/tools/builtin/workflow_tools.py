@@ -193,8 +193,9 @@ class WorkflowRun(BuiltinTool):
             WorkflowStreamHandler(
                 workflow_id=namespace_prefix,
                 callback=namespaced_callback,
+                task_log_id=context.task_id,
             )
-            if context.stream_handler is not None
+            if context.stream_handler is not None or context.task_id
             else None
         )
 
