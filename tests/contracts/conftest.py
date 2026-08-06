@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 # Ensure backend package is importable
 backend_dir = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "backend")
+    os.path.join(os.path.dirname(__file__), "..", "..", "cli")
 )
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)

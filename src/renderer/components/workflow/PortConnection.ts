@@ -1,7 +1,7 @@
 /**
  * Port connection validation for the workflow editor (todo 35).
  *
- * Mirrors backend/app/protocol/types.py: two ports connect when their base
+ * Mirrors cli/app/protocol/types.py: two ports connect when their base
  * types match (TypeAnnotation.is_compatible). Subtypes are advisory only
  * (decision D7) and are deliberately never enforced here or in the engine.
  *
@@ -13,7 +13,7 @@ import type { InjectionKey, Ref } from 'vue'
 
 import { portTypeLabel, type PortTypeRef } from './toolMeta'
 
-/** Valid base type values (BaseType enum, backend/app/protocol/types.py). */
+/** Valid base type values (BaseType enum, cli/app/protocol/types.py). */
 export const BASE_TYPES = ['file', 'directory', 'text', 'number', 'boolean', 'json'] as const
 
 export type BaseType = (typeof BASE_TYPES)[number]

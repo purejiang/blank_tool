@@ -415,7 +415,7 @@ async function onTemplateLoad(payload: TemplateLoadPayload) {
 // events drive node status colors and the terminal banner.
 // ---------------------------------------------------------------------------
 
-/** Event types emitted by the workflow engine (backend/app/workflow/streaming.py). */
+/** Event types emitted by the workflow engine (cli/app/workflow/streaming.py). */
 const WORKFLOW_EVENT_TYPES = new Set([
   'node_started',
   'node_output',

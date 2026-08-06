@@ -4,7 +4,7 @@
  *
  * Tool categories and status values are deliberately local to the renderer:
  * the backend `workflow.list_tools` payload (see
- * backend/app/handlers/workflow_handler.py) only carries name/is_valid/
+ * cli/app/handlers/workflow_handler.py) only carries name/is_valid/
  * version/tool_path/ports/builtin, so the category is derived from the
  * dotted tool-name prefix.
  */
@@ -34,7 +34,7 @@ export interface ToolPort {
 /**
  * One named operation of a descriptor tool (T7), as exposed additively by
  * `workflow.list_tools` for descriptor tools that declare operations
- * (backend/app/handlers/workflow_handler.py). Ports are PortJSON-compatible.
+ * (cli/app/handlers/workflow_handler.py). Ports are PortJSON-compatible.
  */
 export interface ToolOperation {
   name: string

@@ -4,7 +4,8 @@ import path from 'path'
 import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 import { getPythonProcess } from '../state'
-import { getAppLocalDataPath } from '../utils/appPaths'
+import { getAppLocalDataPath, resolveFromAppBase } from '../utils/appPaths'
+import { readTail } from '../utils/logTail'
 
 export function setupElectronHandlers(): void {
   ipcMain.handle(IPC_CHANNEL_NAMES.showSystemNotification, async (event: IpcMainInvokeEvent, payload: { title?: string; body?: string }) => {
@@ -162,18 +163,7 @@ export function setupElectronHandlers(): void {
   
   // 路径解析
   ipcMain.handle(IPC_CHANNEL_NAMES.pathResolve, async (event: IpcMainInvokeEvent, pathStr: string) => {
-    if (!pathStr) return pathStr;
-  
-    if (path.isAbsolute(pathStr)) return pathStr;
-    
-    // 如果是相对路径，则相对于应用根目录解析
-    const baseDir = !app.isPackaged
-      ? path.join(__dirname, '..', '..')
-      : process.resourcesPath;
-      
-    // 移除可能存在的开头的 .\ 或 ./
-    const cleanPath = pathStr.replace(/^\.[\\/]/, '');
-    return path.join(baseDir, cleanPath);
+    return resolveFromAppBase(pathStr)
   })
 
   // Backend health check — lightweight, < 5ms (no stdin roundtrip)
@@ -188,13 +178,8 @@ export function setupElectronHandlers(): void {
     const requested = Math.max(1, Math.min(Number(params?.lines) || 200, 1000))
     const logPath = path.join(getAppLocalDataPath(), 'logs', 'electron.log')
     try {
-      const content = await fs.readFile(logPath, 'utf-8')
-      const allLines = content.split('\n')
-      // Drop trailing empty line if file ends with \n
-      if (allLines.length > 0 && allLines[allLines.length - 1] === '') allLines.pop()
-      const truncated = allLines.length > requested
-      const tail = allLines.slice(-requested)
-      return { lines: tail, truncated, log_path: logPath, process: 'main' }
+      const result = await readTail(logPath, requested)
+      return { lines: result.lines, truncated: result.truncated, log_path: logPath, process: 'main' }
     } catch (e) {
       return { lines: [], truncated: false, log_path: logPath, error: String(e), process: 'main' }
     }

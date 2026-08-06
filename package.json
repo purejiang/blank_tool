@@ -10,13 +10,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:report": "vitest run --reporter=html --outputFile=tests/reports/index.html",
     "check": "npm run lint && npm run typecheck && npm run test",
     "build": "node scripts/build.mjs",
     "build:win": "node scripts/build.mjs --win",
     "build:mac": "node scripts/build.mjs --mac",
     "build:linux": "node scripts/build.mjs --linux",
-    "dist": "npm run build",
     "release": "node scripts/release.mjs"
   },
   "keywords": [
@@ -41,8 +39,8 @@
     ],
     "extraResources": [
       {
-        "from": "backend",
-        "to": "backend",
+        "from": "cli",
+        "to": "cli",
         "filter": [
           "**/*",
           "!cache",

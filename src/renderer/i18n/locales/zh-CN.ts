@@ -134,9 +134,6 @@ export default {
     // Warnings
     warnings: '分析警告',
     metaData: '元数据',
-    // Plugin
-    pluginDev: '功能开发中',
-    pluginDevDesc: '插件功能正在开发中，敬请期待',
     dangerousPerms: '危险权限',
     otherPermsShow: '显示全部 {count} 项权限',
     otherPermsHide: '隐藏',

@@ -1,20 +1,8 @@
 import Store from 'electron-store';
 import { PATH_CONFIG_DEFAULTS, type WritableAppConfigKey } from '../../shared/config/pathConfig';
 
-export const APP_CONFIG_VERSION = 5;
+export const APP_CONFIG_VERSION = 6;
 export { PATH_CONFIG_DEFAULTS };
-
-const LEGACY_SETTINGS_DEFAULTS = {
-    language: 'zh-CN',
-    theme: 'auto',
-    enableNotifications: true,
-    autoDeleteOutputOnTaskRemove: false,
-    adbPath: '',
-    aaptPath: '',
-    apktoolPath: '',
-    bundletoolPath: '',
-    javaPath: ''
-};
 
 const schema = {
     configVersion: {
@@ -25,15 +13,6 @@ const schema = {
     app: {
         type: 'object',
         properties: {
-            theme: {
-                type: 'string',
-                enum: ['light', 'dark'],
-                default: 'light'
-            },
-            language: {
-                type: 'string',
-                default: 'zh-CN'
-            },
             autoStart: {
                 type: 'boolean',
                 default: false
@@ -44,8 +23,6 @@ const schema = {
             }
         },
         default: {
-            theme: 'light',
-            language: 'zh-CN',
             autoStart: false,
             minimizeToTray: false
         }
@@ -84,10 +61,11 @@ const schema = {
     commands: {
         type: 'object',
         properties: {
+            // 300000ms = 5min, matches commandHandlers.ts default IPC timeout
             timeout: {
                 type: 'number',
                 minimum: 1000,
-                default: 30000
+                default: 300000
             },
             maxHistory: {
                 type: 'number',
@@ -101,7 +79,7 @@ const schema = {
             }
         },
         default: {
-            timeout: 30000,
+            timeout: 300000,
             maxHistory: 100,
             outputFormat: 'json'
         }
@@ -155,40 +133,40 @@ const schema = {
     },
     language: {
         type: 'string',
-        default: LEGACY_SETTINGS_DEFAULTS.language
+        default: 'zh-CN'
     },
     theme: {
         type: 'string',
         enum: ['auto', 'light', 'dark'],
-        default: LEGACY_SETTINGS_DEFAULTS.theme
+        default: 'auto'
     },
     enableNotifications: {
         type: 'boolean',
-        default: LEGACY_SETTINGS_DEFAULTS.enableNotifications
+        default: true
     },
     autoDeleteOutputOnTaskRemove: {
         type: 'boolean',
-        default: LEGACY_SETTINGS_DEFAULTS.autoDeleteOutputOnTaskRemove
+        default: false
     },
     adbPath: {
         type: 'string',
-        default: LEGACY_SETTINGS_DEFAULTS.adbPath
+        default: ''
     },
     aaptPath: {
         type: 'string',
-        default: LEGACY_SETTINGS_DEFAULTS.aaptPath
+        default: ''
     },
     apktoolPath: {
         type: 'string',
-        default: LEGACY_SETTINGS_DEFAULTS.apktoolPath
+        default: ''
     },
     bundletoolPath: {
         type: 'string',
-        default: LEGACY_SETTINGS_DEFAULTS.bundletoolPath
+        default: ''
     },
     javaPath: {
         type: 'string',
-        default: LEGACY_SETTINGS_DEFAULTS.javaPath
+        default: ''
     },
     signatureConfigs: {
         type: 'array',
@@ -268,6 +246,14 @@ const MIGRATIONS: Record<number, () => void> = {
     4: () => {
         appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
         appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
+    },
+    5: () => {
+        const app = appStore.get('app');
+        if (app && typeof app === 'object') {
+            delete (app as Record<string, unknown>).theme;
+            delete (app as Record<string, unknown>).language;
+            appStore.set('app', app);
+        }
     }
 };
 

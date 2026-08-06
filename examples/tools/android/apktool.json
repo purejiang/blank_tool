@@ -90,6 +90,12 @@
           "type": { "base": "file", "subtype": "apk" },
           "required": true,
           "description": "Path to write the built APK to."
+        },
+        {
+          "name": "use_aapt1",
+          "type": { "base": "boolean" },
+          "required": false,
+          "description": "Use aapt1 instead of aapt2 for resource linking (helps when aapt2 fails on framework resources like Theme.Holo, android:color/transparent)."
         }
       ],
       "outputs": [
@@ -102,6 +108,7 @@
       ],
       "args_map": [
         "b",
+        { "flag": "use_aapt1", "value": "--use-aapt1" },
         { "param": "source_dir" },
         "-o",
         { "param": "output_apk" }

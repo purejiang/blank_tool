@@ -134,9 +134,6 @@ export default {
     // Warnings
     warnings: 'Analysis Warnings',
     metaData: 'Metadata',
-    // Plugin
-    pluginDev: 'Feature in Development',
-    pluginDevDesc: 'Plugin feature is under development, stay tuned',
     dangerousPerms: 'Dangerous Permissions',
     otherPermsShow: 'Show {count} permissions',
     otherPermsHide: 'Hide',

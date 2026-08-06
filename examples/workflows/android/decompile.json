@@ -18,8 +18,8 @@
         "base": "directory",
         "subtype": null
       },
-      "required": false,
-      "description": "Directory to write the decompiled tree to (default: $workdir/decompiled)."
+      "required": true,
+      "description": "Directory to write the decompiled tree to."
     }
   ],
   "outputs": [

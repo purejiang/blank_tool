@@ -6,7 +6,6 @@ export const appInfoApi = {
   resolvePath: (pathStr: string) => ipcInvoke(IPC_CHANNEL_NAMES.pathResolve, pathStr),
   getAppInfo: () => ipcInvoke(IPC_CHANNEL_NAMES.getAppInfo),
   getFontendBuildInfo: () => ipcInvoke(IPC_CHANNEL_NAMES.getFontendBuildInfo),
-  getDiskUsage: () => ipcInvoke(IPC_CHANNEL_NAMES.getDiskUsage),
   getBackendHealth: () => ipcInvoke(IPC_CHANNEL_NAMES.getBackendHealth),
   readElectronLogTail: (lines?: number) => ipcInvoke(IPC_CHANNEL_NAMES.readElectronLogTail, { lines }),
 };

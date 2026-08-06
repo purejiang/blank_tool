@@ -1,0 +1,690 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Linear workflow executor (MVP).
+
+Walks a :class:`WorkflowDefinition`'s nodes in linear chain order (following
+``node.next`` from the entry node): resolve each node's params via the
+:class:`ExpressionEngine`, validate them against the tool's ports, execute
+the tool, and record per-node results.  ``on_failure`` is ``"fail"`` (stop),
+``"skip"`` (continue past the node), or ``"retry:N"`` (re-execute up to ``N``
+times before giving up).
+
+Tool dispatch:
+    Tools resolve by name from the builtin registry (``_BUILTIN_TOOLS`` —
+    ``file.read``, ``file.write``, ...) and the injected ``ToolManager``
+    (descriptor/code tools).  Builtin tools run under the dict +
+    :class:`ToolContext` contract.  Descriptor/code tools (``apktool``,
+    ``bundletool``, ...) run under the command-list contract: the workflow
+    template declares their arguments as ``params: {"args": [...]}``, and
+    after expression resolution ``args`` is extracted and passed as the
+    command list to ``tool.execute(command, context)``; the returned
+    ``{success, returncode, stdout, stderr}`` dict is normalized into the
+    node output shape with a non-zero exit surfaced as a node error.
+
+Unsupported in linear mode:
+    Nodes with a ``condition`` field are NOT executed (raise
+    :class:`NotImplementedError`; stored for future DAG mode).  No parallel
+    execution, no state persistence.
+"""
+
+import logging
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Optional
+
+from app.common.base_executor import CommandExecutionContext
+from app.common.exceptions import ToolException
+from app.protocol import PortSet
+from app.tools.builtin.base import BuiltinTool, ToolContext
+from app.tools.builtin.exec_tools import CodeExec, ShellExec
+from app.tools.builtin.file_tools import (
+    FileCopy,
+    FileDelete,
+    FileHash,
+    FileMove,
+    FileRead,
+    FileWrite,
+)
+from app.tools.builtin.flow_tools import FlowAssert, FlowLog
+from app.tools.builtin.archive_tools import ArchiveCreate, ArchiveExtract
+from app.tools.builtin.dir_tools import DirCreate, DirDelete, DirList
+from app.tools.builtin.text_tools import TextGrep, TextReplace
+from app.tools.builtin.net_tools import NetDownload, NetRequest
+from app.tools.builtin.workflow_tools import WorkflowRun
+from app.tools.tool_manager import ToolManager
+from app.workflow.definition import WorkflowDefinition, WorkflowNode
+from app.workflow.expression import ExpressionEngine, ExpressionError, WorkflowContext
+from app.workflow.streaming import WorkflowStreamHandler
+
+logger = logging.getLogger(__name__)
+
+# Shared, stateless expression engine (safe across runs — see expression.py).
+_EXPRESSION_ENGINE = ExpressionEngine()
+
+# Builtin atomic tools by name.  These are NOT in ToolManager (which discovers
+# descriptor/code tools); the engine consults this dict first when resolving a
+# node's tool name.
+_BUILTIN_TOOLS: Dict[str, BuiltinTool] = {
+    "file.read": FileRead(),
+    "file.write": FileWrite(),
+    "file.copy": FileCopy(),
+    "file.move": FileMove(),
+    "file.delete": FileDelete(),
+    "file.hash": FileHash(),
+    "dir.list": DirList(),
+    "dir.create": DirCreate(),
+    "dir.delete": DirDelete(),
+    "text.grep": TextGrep(),
+    "text.replace": TextReplace(),
+    "archive.extract": ArchiveExtract(),
+    "archive.create": ArchiveCreate(),
+    "net.download": NetDownload(),
+    "net.request": NetRequest(),
+    "shell.exec": ShellExec(),
+    "code.exec": CodeExec(),
+    "flow.assert": FlowAssert(),
+    "flow.log": FlowLog(),
+    "workflow.run": WorkflowRun(),
+}
+
+
+@dataclass
+class ExecutionContext:
+    """Execution environment for a single workflow run.
+
+    Attributes:
+        work_dir: working directory; relative tool paths resolve against it.
+        task_id: optional task identifier, forwarded to tools for logging
+            and cancellation.
+        env: environment variables exposed to tools and ``$env.*`` expressions.
+        stream_handler: optional callback receiving ``{"type": ..., ...}``
+            dicts; forwarded to builtin tools for streaming output.
+        workflow_stream: optional ``WorkflowStreamHandler`` for emitting
+            node lifecycle events via T11 streaming.
+        template_store: optional ``TemplateStore`` for resolving sub-workflow
+            template names (used by ``workflow.run``).  Defaults to
+            ``FileTemplateStore`` when not injected.
+        engine: reference to the ``WorkflowEngine`` instance executing this
+            workflow; set automatically at the top of ``execute()`` so nested
+            ``workflow.run`` calls can pass it to child executions.
+        nesting_depth: current depth in sub-workflow chains (0 for top-level).
+        in_progress_templates: immutable set of template names currently on
+            the execution call stack for cycle detection.
+        current_node_id: id of the node currently being executed; set by
+            the engine loop before each node runs.
+    """
+
+    work_dir: str
+    task_id: Optional[str] = None
+    env: Dict[str, str] = field(default_factory=dict)
+    stream_handler: Optional[Callable[[dict], None]] = None
+    workflow_stream: Optional[WorkflowStreamHandler] = None
+    template_store: Optional[Any] = None
+    engine: Optional[Any] = None
+    nesting_depth: int = 0
+    in_progress_templates: frozenset = field(default_factory=frozenset)
+    current_node_id: Optional[str] = None
+
+
+@dataclass
+class WorkflowResult:
+    """Outcome of one workflow execution.
+
+    Attributes:
+        success: True when every executed node completed without a terminal
+            failure (``on_failure``-skipped nodes still allow success).
+        outputs: outputs of the final executed node.
+        node_results: per-node results keyed by node id, each shaped
+            ``{"outputs": {...}, "error": Optional[str], "duration_ms": int}``.
+        error: overall error message on failure, else None.
+    """
+
+    success: bool
+    outputs: Dict[str, Any]
+    node_results: Dict[str, Dict[str, Any]]
+    error: Optional[str] = None
+
+
+class WorkflowEngine:
+    """Executes linear workflows defined by :class:`WorkflowDefinition`.
+
+    Stateless between runs — a single instance executes many definitions.
+    """
+
+    def __init__(self, registry: Optional[ToolManager] = None) -> None:
+        """Initialize the engine.
+
+        Args:
+            registry: tool registry for descriptor/code tool lookup.
+                Defaults to :meth:`ToolManager.instance()` when not provided.
+        """
+        self._registry = registry if registry is not None else ToolManager.instance()
+        self._expr = _EXPRESSION_ENGINE
+
+    def execute(
+        self,
+        definition: WorkflowDefinition,
+        inputs: dict,
+        context: ExecutionContext,
+    ) -> WorkflowResult:
+        """Execute a workflow definition.
+
+        Walks the linear chain from the entry node.  For each node: resolve
+        params against the accumulated :class:`WorkflowContext`, look up the
+        tool, validate inputs against the tool's ports, execute it, record the
+        outputs, then apply ``on_failure`` semantics on error.
+
+        Args:
+            definition: the workflow to run (a valid linear definition).
+            inputs: workflow-level input values (``$inputs.<key>``).
+            context: execution environment (work dir, env, streaming).
+
+        Returns:
+            A :class:`WorkflowResult` summarizing the run.
+
+        Raises:
+            NotImplementedError: if any node carries a ``condition`` field
+                (no branching in linear mode), or if a node references a
+                tool that is neither a builtin primitive nor a command-list
+                tool (no usable execute contract).
+        """
+        # Ensure template_store and engine are available for nested
+        # workflow.run calls.  Set once so callers don't need to wire them.
+        if context.template_store is None:
+            from app.template.store import FileTemplateStore
+
+            context.template_store = FileTemplateStore()
+        if context.engine is None:
+            context.engine = self
+
+        workflow_context = WorkflowContext(
+            inputs=dict(inputs),
+            nodes={},
+            env=dict(context.env),
+            workdir=context.work_dir,
+        )
+        node_results: Dict[str, Dict[str, Any]] = {}
+        node_by_id: Dict[str, WorkflowNode] = {
+            node.id: node for node in definition.nodes
+        }
+
+        current = self._find_entry(definition, node_by_id)
+        final_outputs: Dict[str, Any] = {}
+
+        while current is not None:
+            if current.condition is not None:
+                raise NotImplementedError(
+                    f"conditional branches not yet supported: node "
+                    f"{current.id!r} declares a 'condition' field"
+                )
+
+            # Real-time node lifecycle event: node_started before execution.
+            context.current_node_id = current.id
+            if context.workflow_stream is not None:
+                context.workflow_stream.emit_node_started(
+                    current.id, current.tool
+                )
+
+            start = time.perf_counter()
+            outputs: Dict[str, Any] = {}
+            error: Optional[str] = None
+
+            try:
+                resolved_params = self._expr.resolve_params(
+                    current.params, workflow_context
+                )
+            except ExpressionError as exc:
+                error = f"failed to resolve params: {exc}"
+                resolved_params = dict(current.params)
+            else:
+                outputs, error = self._run_node(
+                    current, resolved_params, context
+                )
+
+            duration_ms = int((time.perf_counter() - start) * 1000)
+
+            # Terminal failure: on_failure "fail" (default) or an exhausted
+            # "retry:N".  Record the node then stop the workflow.
+            if error is not None and current.on_failure != "skip":
+                node_results[current.id] = {
+                    "outputs": {},
+                    "error": error,
+                    "duration_ms": duration_ms,
+                }
+                if context.workflow_stream is not None:
+                    context.workflow_stream.emit_node_failed(
+                        current.id, error
+                    )
+                    context.workflow_stream.emit_workflow_failed(
+                        f"node {current.id!r} failed: {error}"
+                    )
+                return WorkflowResult(
+                    success=False,
+                    outputs={},
+                    node_results=node_results,
+                    error=f"node {current.id!r} failed: {error}",
+                )
+
+            if error is not None:  # on_failure == "skip"
+                logger.warning(
+                    "node %s failed (on_failure=skip, continuing): %s",
+                    current.id,
+                    error,
+                )
+                if context.workflow_stream is not None:
+                    context.workflow_stream.emit_node_failed(
+                        current.id, error
+                    )
+                outputs = {}
+
+            node_results[current.id] = {
+                "outputs": outputs,
+                "error": error,
+                "duration_ms": duration_ms,
+            }
+            workflow_context.nodes[current.id] = {
+                "outputs": outputs,
+                "params": resolved_params,
+            }
+            final_outputs = outputs
+
+            # Emit node_completed when the node finished without a terminal
+            # failure (skip failures count as "completed" for flow purposes).
+            if error is None and context.workflow_stream is not None:
+                context.workflow_stream.emit_node_completed(
+                    current.id, duration_ms
+                )
+
+            current = node_by_id.get(current.next)
+
+        # Emit workflow_completed after the final node finishes successfully.
+        if context.workflow_stream is not None:
+            context.workflow_stream.emit_workflow_completed(True)
+
+        return WorkflowResult(
+            success=True,
+            outputs=final_outputs,
+            node_results=node_results,
+        )
+
+    # ------------------------------------------------------------------
+    # Node execution helpers
+    # ------------------------------------------------------------------
+
+    def _find_entry(
+        self, definition: WorkflowDefinition, node_by_id: Dict[str, WorkflowNode]
+    ) -> Optional[WorkflowNode]:
+        """Return the entry node — the one no other node references via ``next``.
+
+        ``WorkflowDefinition.__post_init__`` guarantees exactly one entry node
+        (or zero for an empty workflow); this mirrors that rule for the walk.
+        """
+        referenced = {
+            node.next for node in definition.nodes if node.next is not None
+        }
+        for node in definition.nodes:
+            if node.id not in referenced:
+                return node
+        return None
+
+    def _run_node(
+        self,
+        node: WorkflowNode,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Execute one node with retry semantics.
+
+        The retry budget comes from ``on_failure="retry:N"`` when present,
+        otherwise from ``node.retry``.  Every retry re-attempts the full node
+        (lookup, validation, execution).
+
+        Returns:
+            tuple: ``(outputs, error)`` — ``error`` is None on success and a
+                message string on failure after all retries are exhausted.
+        """
+        if node.on_failure.startswith("retry:"):
+            max_retries = self._parse_retry(node.on_failure)
+        else:
+            max_retries = node.retry if node.retry > 0 else 0
+
+        attempt = 0
+        while True:
+            outputs, error = self._attempt_node(node, resolved_params, context)
+            if error is None:
+                return outputs, None
+            attempt += 1
+            if attempt > max_retries:
+                return outputs, error
+            logger.warning(
+                "node %s failed: %s; retrying (%d/%d)",
+                node.id,
+                error,
+                attempt,
+                max_retries,
+            )
+
+    def _attempt_node(
+        self,
+        node: WorkflowNode,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """One full attempt at a node: lookup -> validate -> execute.
+
+        Returns:
+            tuple: ``(outputs, error)``.
+        """
+        tool = self._lookup_tool(node.tool)
+        if tool is None:
+            return {}, f"tool not found: {node.tool}"
+
+        validation_errors = self._validate_inputs(tool, resolved_params)
+        if validation_errors:
+            return {}, "; ".join(validation_errors)
+
+        return self._execute_tool(tool, resolved_params, context)
+
+    def _lookup_tool(self, tool_name: str) -> Optional[Any]:
+        """Resolve a tool name to a tool object.
+
+        Builtin primitives are checked first (``file.read``, ...); descriptor
+        and code tools come from the injected ToolManager registry.  Returns
+        None when the name is unknown to both sources.
+        """
+        builtin = _BUILTIN_TOOLS.get(tool_name)
+        if builtin is not None:
+            return builtin
+        if self._registry is not None:
+            return self._registry.get_tool(tool_name)
+        return None
+
+    def _validate_inputs(self, tool: Any, resolved_params: Dict[str, Any]) -> list:
+        """Validate resolved params against the tool's port set.
+
+        Builtin tools expose ``validate``; other tools expose ``ports``.  The
+        presence check (missing required inputs) is the only validation for
+        the MVP — matching ``PortSet.validate_inputs``.
+        """
+        if isinstance(tool, BuiltinTool):
+            return tool.validate(resolved_params)
+        ports = getattr(tool, "ports", None)
+        if ports is not None:
+            return ports.validate_inputs(resolved_params)
+        return []
+
+    def _execute_tool(
+        self,
+        tool: Any,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Run one tool, converting execution failures into error strings.
+
+        Three execution contracts are dispatched by tool kind and params:
+
+        - Builtin tools (``file.read``, ...) consume a params dict +
+          :class:`ToolContext`; a ``ToolException`` or a result dict
+          containing an ``"error"`` key is reported as a failure.
+        - Descriptor tools with an ``operation`` param (``params["operation"]``
+          is a non-empty string and the tool carries named operations):
+          resolve the operation, validate against its typed input ports, build
+          the command list from ``args_map`` (substituting bound inputs),
+          execute via the same ``tool.execute(command, context)`` contract,
+          and map results to the operation's declared outputs.
+        - Descriptor/code tools (``apktool``, ``bundletool``, ...) consume a
+          command list + :class:`CommandExecutionContext`.  The workflow
+          template passes the arguments as ``params["args"]`` (a list, after
+          expression resolution); the command list is extracted from it and
+          handed to ``tool.execute(command, context)``.  The result dict
+          (``success``/``returncode``/``stdout``/``stderr``) is converted to
+          the standard node output shape, with a non-zero exit or explicit
+          ``success: False`` reported as a failure so ``on_failure``
+          semantics apply.
+        - Anything else (neither builtin nor a command-list tool) raises
+          :class:`NotImplementedError`.
+
+        Returns:
+            tuple: ``(outputs, error)`` — ``error`` is None on success.
+        """
+        if isinstance(tool, BuiltinTool):
+            return self._execute_builtin_tool(tool, resolved_params, context)
+
+        if callable(getattr(tool, "execute", None)):
+            operation_name = resolved_params.get("operation")
+            descriptor = self._get_descriptor(tool)
+            if operation_name and descriptor and descriptor.operations:
+                return self._execute_operation_tool(
+                    tool, descriptor, operation_name, resolved_params, context
+                )
+            return self._execute_command_tool(tool, resolved_params, context)
+
+        raise NotImplementedError(
+            f"tool {getattr(tool, 'name', type(tool).__name__)!r} is not a "
+            f"builtin tool and has no command-list execute contract"
+        )
+
+    @staticmethod
+    def _get_descriptor(tool: Any) -> Optional[Any]:
+        """Return the tool's descriptor (if accessible) for operation lookup.
+
+        Supports both real ``DescriptorTool`` instances (``_descriptor``
+        attribute) and stub objects that expose a ``_descriptor`` property.
+        """
+        return getattr(tool, "_descriptor", None)
+
+    def _execute_operation_tool(
+        self,
+        tool: Any,
+        descriptor: Any,
+        operation_name: str,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Execute a descriptor tool via a named operation.
+
+        1. Look up the operation by name (unknown → error string).
+        2. Validate bound inputs against the operation's typed input ports
+           (missing required → error string naming the port).
+        3. Build the command list from ``operation.args_map``:
+           - literal strings pass through unchanged;
+           - ``{"param": <input_name>}`` substitutes the bound value
+             (str-coerced);
+           - ``{"flag": <bool_input>, "value": <arg>}`` emits ``arg`` only
+             when the boolean input is truthy.
+        4. Execute via the existing ``tool.execute(command, context)``
+           contract.
+        5. Return the result dict as node outputs (the same convention used
+           by the raw-args path).
+
+        Returns:
+            tuple: ``(outputs, error)``.
+        """
+        # ── 1. Look up the operation ──────────────────────────────────
+        op = None
+        for candidate in descriptor.operations:
+            if candidate.name == operation_name:
+                op = candidate
+                break
+
+        if op is None:
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            return {}, (
+                f"unknown operation {operation_name!r} for tool {tool_name!r}"
+            )
+
+        # ── 2. Validate inputs ────────────────────────────────────────
+        if op.inputs:
+            op_port_set = PortSet(list(op.inputs), list(op.outputs))
+            validation_errors = op_port_set.validate_inputs(resolved_params)
+            if validation_errors:
+                return {}, "; ".join(validation_errors)
+
+        # ── 3. Build command list from args_map ───────────────────────
+        command = self.build_operation_command(op, resolved_params)
+
+        # ── 4. Execute via the existing command-tool contract ─────────
+        return self._run_command_tool(tool, command, context)
+
+    @staticmethod
+    def build_operation_command(op: Any, resolved_params: Dict[str, Any]) -> list:
+        """Build the command list from an operation's args_map.
+
+        Each entry in ``op.args_map`` is either:
+        - A literal string (passed through unchanged).
+        - A ``{"param": <name>}`` dict: the bound value of ``<name>`` is
+          looked up in *resolved_params* and stringified.
+        - A ``{"flag": <name>, "value": <arg>}`` dict: ``<arg>`` is emitted
+          only when ``resolved_params[<name>]`` is truthy.
+
+        Returns:
+            A flat list of strings ready for ``tool.execute(command, ctx)``.
+        """
+        command: list = []
+        for entry in op.args_map:
+            if isinstance(entry, str):
+                command.append(entry)
+            elif isinstance(entry, dict):
+                if "param" in entry:
+                    value = resolved_params.get(entry["param"], "")
+                    command.append(str(value))
+                elif "flag" in entry:
+                    flag_value = resolved_params.get(entry["flag"], False)
+                    if flag_value:
+                        command.append(str(entry["value"]))
+            # Unknown dict shapes are silently skipped (forward-compatible).
+        return command
+
+    def _execute_builtin_tool(
+        self,
+        tool: BuiltinTool,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Run a builtin tool: params dict + :class:`ToolContext`.
+
+        A ``ToolException`` raised by the tool, or a result dict containing
+        an ``"error"`` key, is reported as a failure.
+
+        Returns:
+            tuple: ``(outputs, error)`` — ``error`` is None on success.
+        """
+        tool_context = ToolContext(
+            work_dir=context.work_dir,
+            task_id=context.task_id,
+            env=dict(context.env),
+            stream_handler=context.stream_handler,
+            template_store=context.template_store,
+            engine=context.engine or self,
+            nesting_depth=context.nesting_depth,
+            in_progress_templates=context.in_progress_templates,
+            current_node_id=context.current_node_id,
+            parent_workflow_id=(
+                getattr(context.workflow_stream, "workflow_id", None)
+                if context.workflow_stream is not None
+                else None
+            ),
+        )
+        try:
+            outputs = tool.execute(resolved_params, tool_context)
+        except ToolException as exc:
+            return {}, exc.message
+        if isinstance(outputs, dict) and outputs.get("error"):
+            return {}, str(outputs["error"])
+        return outputs, None
+
+    def _execute_command_tool(
+        self,
+        tool: Any,
+        resolved_params: Dict[str, Any],
+        context: ExecutionContext,
+    ) -> tuple:
+        """Run a descriptor/code tool: ``params["args"]`` as a command list.
+
+        Workflow templates declare descriptor/code tool arguments as
+        ``params: {"args": [...]}``; after expression resolution ``args`` is
+        the command list for ``tool.execute(command, context)``.  The result
+        dict (``success``/``returncode``/``stdout``/``stderr``) is converted
+        to the standard node output format; a non-zero exit or explicit
+        ``success: False`` becomes an error so ``on_failure`` semantics
+        (fail/skip/retry) apply.
+
+        Returns:
+            tuple: ``(outputs, error)`` — ``error`` is None on success.
+        """
+        command = resolved_params.get("args")
+        if not isinstance(command, list):
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            return {}, (
+                f"tool {tool_name!r} requires params['args'] (a command "
+                f"list) in workflows, got {type(command).__name__}"
+            )
+
+        return self._run_command_tool(tool, command, context)
+
+    def _run_command_tool(
+        self,
+        tool: Any,
+        command: list,
+        context: ExecutionContext,
+    ) -> tuple:
+        """Execute a descriptor/code tool against a command list.
+
+        Shared by the operation and raw-args paths.  Builds a
+        :class:`CommandExecutionContext` from the run's
+        :class:`ExecutionContext` (cwd, task_id, env, process_holder), calls
+        ``tool.execute(command, context)``, and normalizes the result dict
+        (``success``/``returncode``/``stdout``/``stderr``) into the standard
+        ``(outputs, error)`` tuple: a non-zero exit or explicit
+        ``success: False`` becomes an error string so ``on_failure``
+        semantics (fail/skip/retry) apply.
+
+        Returns:
+            tuple: ``(result_dict, error)`` — ``error`` is None on success.
+        """
+        command_context = CommandExecutionContext(
+            cwd=context.work_dir,
+            task_id=context.task_id,
+            env=dict(context.env) or None,
+            process_holder={},
+        )
+        try:
+            result = tool.execute(list(command), command_context)
+        except ToolException as exc:
+            return {}, exc.message
+        except Exception as exc:  # subprocess failures surface as error strings
+            return {}, f"tool execution failed: {exc}"
+
+        if not isinstance(result, dict):
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            return {}, (
+                f"tool {tool_name!r} returned a non-dict result: {result!r}"
+            )
+
+        success = result.get("success", True)
+        returncode = result.get("returncode", 0)
+        if success is False or returncode != 0:
+            detail = (result.get("stderr") or result.get("stdout") or "").strip()
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            message = f"tool {tool_name!r} failed (exit {returncode})"
+            if detail:
+                message += f": {detail}"
+            return result, message
+        return result, None
+
+    def _parse_retry(self, on_failure: str) -> int:
+        """Parse the ``N`` in an ``on_failure="retry:N"`` value.
+
+        The definition model validates the ``retry:`` prefix but not the
+        numeric count; a malformed count is treated as "no retry" with a
+        warning.
+        """
+        try:
+            return max(0, int(on_failure.split(":", 1)[1]))
+        except (IndexError, ValueError):
+            logger.warning(
+                "malformed retry count in on_failure=%r; treating as no retry",
+                on_failure,
+            )
+            return 0

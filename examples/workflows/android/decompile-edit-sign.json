@@ -1,0 +1,164 @@
+{
+  "name": "decompile-edit-sign",
+  "version": "1.0",
+  "description": "Decompile an APK, overwrite one file in the decompiled tree, rebuild, zipalign, and sign.",
+  "inputs": [
+    {
+      "name": "apk_path",
+      "type": {"base": "file", "subtype": "apk"},
+      "required": true,
+      "description": "Path to the input APK to decompile."
+    },
+    {
+      "name": "decompile_dir",
+      "type": {"base": "directory"},
+      "required": true,
+      "description": "Directory to write the decompiled tree to (will be created)."
+    },
+    {
+      "name": "edit_file_path",
+      "type": {"base": "file"},
+      "required": true,
+      "description": "Full path of the file to overwrite inside the decompiled tree (e.g. <decompile_dir>/res/values/strings.xml). Engine does not support path concatenation, so pass the absolute path."
+    },
+    {
+      "name": "edit_pattern",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "Python regex pattern to match in the target file (re.sub compatible)."
+    },
+    {
+      "name": "edit_replacement",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "Replacement text. Supports backreferences like \\1."
+    },
+    {
+      "name": "rebuilt_apk",
+      "type": {"base": "file", "subtype": "apk"},
+      "required": true,
+      "description": "Path to write the rebuilt APK to."
+    },
+    {
+      "name": "aligned_apk",
+      "type": {"base": "file", "subtype": "apk"},
+      "required": true,
+      "description": "Path to write the zipaligned APK to."
+    },
+    {
+      "name": "signed_apk",
+      "type": {"base": "file", "subtype": "apk"},
+      "required": true,
+      "description": "Path to write the final signed APK to."
+    },
+    {
+      "name": "ks_path",
+      "type": {"base": "file"},
+      "required": true,
+      "description": "Path to the keystore (.jks/.keystore) file."
+    },
+    {
+      "name": "ks_key_alias",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "Key alias inside the keystore."
+    },
+    {
+      "name": "ks_pass",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "Keystore password WITH the pass: prefix, e.g. pass:mypassword (apksigner requires this format)."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "signed_apk",
+      "type": {"base": "file", "subtype": "apk"},
+      "required": true,
+      "description": "Path to the final aligned + signed APK."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "decompile",
+      "type": "step",
+      "tool": "apktool",
+      "params": {
+        "operation": "decode",
+        "apk_path": "$inputs.apk_path",
+        "output_dir": "$inputs.decompile_dir",
+        "force": true
+      },
+      "next": "edit",
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    },
+    {
+      "id": "edit",
+      "type": "step",
+      "tool": "text.replace",
+      "params": {
+        "path": "$inputs.edit_file_path",
+        "pattern": "$inputs.edit_pattern",
+        "replacement": "$inputs.edit_replacement"
+      },
+      "next": "rebuild",
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    },
+    {
+      "id": "rebuild",
+      "type": "step",
+      "tool": "apktool",
+      "params": {
+        "operation": "build",
+        "source_dir": "$inputs.decompile_dir",
+        "output_apk": "$inputs.rebuilt_apk",
+        "use_aapt1": true
+      },
+      "next": "align",
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    },
+    {
+      "id": "align",
+      "type": "step",
+      "tool": "zipalign",
+      "params": {
+        "operation": "align",
+        "input_apk": "$inputs.rebuilt_apk",
+        "output_apk": "$inputs.aligned_apk",
+        "force": true
+      },
+      "next": "sign",
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    },
+    {
+      "id": "sign",
+      "type": "step",
+      "tool": "apksigner",
+      "params": {
+        "operation": "sign",
+        "apk_path": "$inputs.aligned_apk",
+        "ks_path": "$inputs.ks_path",
+        "ks_key_alias": "$inputs.ks_key_alias",
+        "ks_pass": "$inputs.ks_pass"
+      },
+      "next": null,
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    }
+  ],
+  "edges": []
+}

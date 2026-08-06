@@ -18,7 +18,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '@/shared/ipc/channels'
+import { IPC_CHANNEL_NAMES } from '@/shared/ipc/channels'
 import { APP_CONFIG_KEYS } from '@/shared/config/pathConfig'
 
 describe('Config Handler Integration', () => {
@@ -27,9 +27,12 @@ describe('Config Handler Integration', () => {
   })
 
   describe('channel name consistency', () => {
-    it('IPC_CHANNEL_NAMES values match IPC_CHANNELS name values', () => {
-      for (const key of Object.keys(IPC_CHANNELS) as Array<keyof typeof IPC_CHANNELS>) {
-        expect(IPC_CHANNEL_NAMES[key]).toBe(IPC_CHANNELS[key].name)
+    it('all IPC_CHANNEL_NAMES values are unique non-empty strings', () => {
+      const values = Object.values(IPC_CHANNEL_NAMES)
+      expect(new Set(values).size).toBe(values.length)
+      for (const value of values) {
+        expect(typeof value).toBe('string')
+        expect(value.length).toBeGreaterThan(0)
       }
     })
   })
@@ -49,57 +52,57 @@ describe('Config Handler Integration', () => {
 
   describe('config channel mapping', () => {
     it('getAppConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.getAppConfig).toBe(IPC_CHANNELS.getAppConfig.name)
+      expect(IPC_CHANNEL_NAMES.getAppConfig).toBe('get-app-config')
     })
 
     it('setAppConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.setAppConfig).toBe(IPC_CHANNELS.setAppConfig.name)
+      expect(IPC_CHANNEL_NAMES.setAppConfig).toBe('set-app-config')
     })
 
     it('getAllAppConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.getAllAppConfig).toBe(IPC_CHANNELS.getAllAppConfig.name)
+      expect(IPC_CHANNEL_NAMES.getAllAppConfig).toBe('app-config-getAll')
     })
 
     it('setManyAppConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.setManyAppConfig).toBe(IPC_CHANNELS.setManyAppConfig.name)
+      expect(IPC_CHANNEL_NAMES.setManyAppConfig).toBe('set-app-config-batch')
     })
 
     it('resetAppConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.resetAppConfig).toBe(IPC_CHANNELS.resetAppConfig.name)
+      expect(IPC_CHANNEL_NAMES.resetAppConfig).toBe('reset-app-config')
     })
 
     it('getUserConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.getUserConfig).toBe(IPC_CHANNELS.getUserConfig.name)
+      expect(IPC_CHANNEL_NAMES.getUserConfig).toBe('get-user-config')
     })
 
     it('setUserConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.setUserConfig).toBe(IPC_CHANNELS.setUserConfig.name)
+      expect(IPC_CHANNEL_NAMES.setUserConfig).toBe('set-user-config')
     })
 
     it('getAllUserConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.getAllUserConfig).toBe(IPC_CHANNELS.getAllUserConfig.name)
+      expect(IPC_CHANNEL_NAMES.getAllUserConfig).toBe('user-config-getAll')
     })
 
     it('resetUserConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.resetUserConfig).toBe(IPC_CHANNELS.resetUserConfig.name)
+      expect(IPC_CHANNEL_NAMES.resetUserConfig).toBe('reset-user-config')
     })
 
     it('getSettingsViewModel maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.getSettingsViewModel).toBe(IPC_CHANNELS.getSettingsViewModel.name)
+      expect(IPC_CHANNEL_NAMES.getSettingsViewModel).toBe('get-settings-view-model')
     })
 
     it('resolveSettingsPaths maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.resolveSettingsPaths).toBe(IPC_CHANNELS.resolveSettingsPaths.name)
+      expect(IPC_CHANNEL_NAMES.resolveSettingsPaths).toBe('resolve-settings-paths')
     })
   })
 
   describe('broadcast channels', () => {
-    it('appConfigChanged is a main-to-renderer channel', () => {
-      expect(IPC_CHANNELS.appConfigChanged.direction).toBe('main-to-renderer')
+    it('appConfigChanged maps to channel name', () => {
+      expect(IPC_CHANNEL_NAMES.appConfigChanged).toBe('app-config-changed')
     })
 
-    it('userConfigChanged is a main-to-renderer channel', () => {
-      expect(IPC_CHANNELS.userConfigChanged.direction).toBe('main-to-renderer')
+    it('userConfigChanged maps to channel name', () => {
+      expect(IPC_CHANNEL_NAMES.userConfigChanged).toBe('user-config-changed')
     })
   })
 })

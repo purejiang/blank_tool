@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from app.env.overrides_store import OverridesStore
+
 
 # ---------------------------------------------------------------------------
 # Descriptor helpers
@@ -73,7 +75,7 @@ class TestEnvList:
     def test_returns_bundled_envs(self, env_registry, monkeypatch):
         """env.list returns at least the 3 bundled environments (java, python, node)."""
         from app.handlers import env_handler
-        monkeypatch.setattr(env_handler, "_get_registry", lambda: env_registry)
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
 
         result = env_handler.handle_env_list({}, None)
         assert "environments" in result
@@ -95,8 +97,8 @@ class TestEnvAdd:
         """Given a valid env descriptor, env.add writes it to the overlay,
         and env.list immediately reflects the new env."""
         from app.handlers import env_handler
-        monkeypatch.setattr(env_handler, "_get_registry", lambda: env_registry)
-        monkeypatch.setattr(env_handler, "_get_overlay_dir", lambda: temp_registry_root)
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+        monkeypatch.setattr(env_handler, "OverridesStore", lambda: OverridesStore(root_dir=temp_registry_root))
 
         desc = _make_env_descriptor_dict(
             "my_custom_env", binary="mybin.exe",
@@ -124,8 +126,8 @@ class TestEnvAdd:
         """Given invalid descriptor JSON (missing required fields), env.add
         returns an error and writes NO partial file."""
         from app.handlers import env_handler
-        monkeypatch.setattr(env_handler, "_get_registry", lambda: env_registry)
-        monkeypatch.setattr(env_handler, "_get_overlay_dir", lambda: temp_registry_root)
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+        monkeypatch.setattr(env_handler, "OverridesStore", lambda: OverridesStore(root_dir=temp_registry_root))
 
         # Missing 'name' — will fail validation
         bad_desc = {"display_name": "NoName", "type": "custom"}
@@ -156,8 +158,8 @@ class TestEnvDelete:
         """Given an overlay env was added, env.delete removes it and
         env.list no longer shows it."""
         from app.handlers import env_handler
-        monkeypatch.setattr(env_handler, "_get_registry", lambda: env_registry)
-        monkeypatch.setattr(env_handler, "_get_overlay_dir", lambda: temp_registry_root)
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+        monkeypatch.setattr(env_handler, "OverridesStore", lambda: OverridesStore(root_dir=temp_registry_root))
 
         # Add first
         desc = _make_env_descriptor_dict("to_delete", binary="del.exe")
@@ -184,8 +186,8 @@ class TestEnvDelete:
     ):
         """Deleting a bundled (non-overlay) env like 'java' must return an error."""
         from app.handlers import env_handler
-        monkeypatch.setattr(env_handler, "_get_registry", lambda: env_registry)
-        monkeypatch.setattr(env_handler, "_get_overlay_dir", lambda: temp_registry_root)
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+        monkeypatch.setattr(env_handler, "OverridesStore", lambda: OverridesStore(root_dir=temp_registry_root))
 
         result = env_handler.handle_env_delete({"name": "java"}, None)
         assert "error" in result, (
@@ -206,8 +208,8 @@ class TestEnvOverrides:
     ):
         """env.set_custom persists an override that survives a re-read."""
         from app.handlers import env_handler
-        monkeypatch.setattr(env_handler, "_get_registry", lambda: env_registry)
-        monkeypatch.setattr(env_handler, "_get_overlay_dir", lambda: temp_registry_root)
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+        monkeypatch.setattr(env_handler, "OverridesStore", lambda: OverridesStore(root_dir=temp_registry_root))
 
         overrides = {"env_var": "MY_VAR", "path": "/custom/path"}
         result = env_handler.handle_env_set_custom(
@@ -228,8 +230,8 @@ class TestEnvOverrides:
     ):
         """env.reset_custom removes a previously set override."""
         from app.handlers import env_handler
-        monkeypatch.setattr(env_handler, "_get_registry", lambda: env_registry)
-        monkeypatch.setattr(env_handler, "_get_overlay_dir", lambda: temp_registry_root)
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+        monkeypatch.setattr(env_handler, "OverridesStore", lambda: OverridesStore(root_dir=temp_registry_root))
 
         # Set first
         env_handler.handle_env_set_custom(

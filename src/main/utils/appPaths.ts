@@ -47,3 +47,21 @@ export function ensureDir(dirPath: string): void {
     mkdirSync(dirPath, { recursive: true })
   }
 }
+
+/**
+ * 基于应用根目录解析相对路径：dev 用项目根 (app.getAppPath())，打包后用 process.resourcesPath。
+ * 与 src/main/python/paths.ts 的 getBaseDir() 用途不同（后者解析运行时/服务端根目录），保持独立。
+ */
+export function resolveFromAppBase(relativePath: string): string {
+  if (!relativePath) {
+    return relativePath
+  }
+  // 绝对路径原样返回
+  if (path.isAbsolute(relativePath)) {
+    return relativePath
+  }
+  const baseDir = app.isPackaged ? process.resourcesPath : app.getAppPath()
+  // 移除开头的 .\ 或 ./
+  const stripped = relativePath.replace(/^[.][/\\\\]+/, '')
+  return path.join(baseDir, stripped)
+}

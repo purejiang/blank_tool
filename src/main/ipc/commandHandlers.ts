@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
 import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
-import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
+import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
 
 interface CallbackInfo {
@@ -89,29 +89,10 @@ export function setupCommandHandlers(
                                 const result = (response.result || {}) as JsonObject;
                                 const resultType = typeof result.type === 'string' ? result.type : '';
                                 if (resultType && sender && !sender.isDestroyed()) {
-                                    const channelMap: Record<string, string> = {
-                                        'log': IPC_CHANNEL_NAMES.logcatOutput,
-                                        'started': IPC_CHANNEL_NAMES.logcatStarted,
-                                        'process_finished': IPC_CHANNEL_NAMES.logcatFinished
-                                    };
-
-                                    const channel = channelMap[resultType];
-
-                                    if (channel) {
-                                        const resultPayload = typeof result.payload === 'object' && result.payload !== null
-                                            ? result.payload as JsonObject
-                                            : {};
-                                        const payload = {
-                                            stream_id: response.stream_id,
-                                            ...resultPayload
-                                        };
-                                        sender.send(channel, payload);
-                                    } else {
-                                        sender.send(IPC_CHANNEL_NAMES.streamEvent, {
-                                            stream_id: response.stream_id,
-                                            data: result
-                                        });
-                                    }
+                                    sender.send(IPC_CHANNEL_NAMES.streamEvent, {
+                                        stream_id: response.stream_id,
+                                        data: result
+                                    });
                                 }
 
                                 if (!callbackInfo.resolved) {
@@ -163,7 +144,7 @@ export function setupCommandHandlers(
         return null;
     };
 
-    ipcMain.handle(IPC_CHANNELS.callBackendApi.name, async (event: IpcMainInvokeEvent, request: BackendApiRequest) => {
+    ipcMain.handle(IPC_CHANNEL_NAMES.callBackendApi, async (event: IpcMainInvokeEvent, request: BackendApiRequest) => {
         const pythonProcess = await getWritableProcess();
         log.info(`[trace ${request.id}] dispatching ${request.method}`);
         if (!pythonProcess) {

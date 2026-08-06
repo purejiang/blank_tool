@@ -60,37 +60,6 @@ export type BackendStdioMessage<T = unknown> =
   | BackendEventMessage
 
 // ---- Domain Types ----
-export interface AdbDevice {
-  serial: string
-  state: string
-  model: string
-  product: string
-}
-
-export interface InstallResult {
-  success: boolean
-  message: string
-}
-
-export interface ApkInfo {
-  packageName: string
-  versionName: string
-  versionCode: number
-  label: string
-}
-
-export interface ToolInfo {
-  name: string
-  version: string
-  path: string
-  available: boolean
-}
-
-export interface CacheClearResult {
-  cleared: string[]
-  freedBytes: number
-}
-
 export interface AppInfo {
   packageName: string
   versionName: string
@@ -98,77 +67,6 @@ export interface AppInfo {
 }
 
 // ---- Types added for backend API_MAP coverage (T15) ----
-
-/** Return type of device_info / device.get_device_info handler */
-export interface DeviceInfo {
-  deviceId: string
-  state: string
-  serial: string
-  model: string
-  brand: string
-  manufacturer: string
-  device: string
-  product: string
-  androidVersion: string
-  apiLevel: string
-  buildId: string
-  buildNumber: string
-  fingerprint: string
-  securityPatch: string
-  hardware: string
-  architecture: string
-  abiList: string
-  locale: string
-  screenResolution: string
-  density: string
-  ipAddress: string
-  batteryLevel: string
-  batteryStatus: string
-  ramTotal: string
-  totalStorage: string
-  availableStorage: string
-  systemActivationDate: string
-  pageSize: string
-}
-
-/** Return type of device.shell handler */
-export interface DeviceShellResult {
-  output: string
-  returncode: number
-}
-
-/** Return type of adb.connect / adb.disconnect */
-export interface AdbConnectionResult {
-  success: boolean
-  output: string
-  address: string
-}
-
-/** Return type of adb.stop_logcat */
-export interface AdbStopLogcatResult {
-  message?: string
-  type?: string
-  payload?: { message: string }
-}
-
-/** Return type of adb.export_logcat */
-export interface AdbExportLogcatResult {
-  success: boolean
-  file_path: string
-}
-
-/** Return type of device.reboot */
-export interface DeviceRebootResult {
-  device_id: string
-  mode: string
-}
-
-/** Return type of device.export_apk */
-export interface ExportApkResult {
-  success: boolean
-  exported_files: string[]
-  output_dir: string
-}
 
 /** Return type of cache.info / cache.get_info */
 export interface CacheInfoResult {
@@ -189,67 +87,6 @@ export interface BuildInfoResult {
   java_version: string
   python_path: string
   java_path: string
-}
-
-/** Return type of apk.get_progress / apk.getProgress */
-export interface ApkProgressResult {
-  task_id: string
-  progress: number
-}
-
-/** Return type of apk.cancel_task / apk.cancelTask */
-export interface CancelTaskResult {
-  cancelled: boolean
-  task_id: string
-  message?: string
-}
-
-/** Keystore configuration for signing operations */
-export interface KeystoreConfig {
-  path?: string
-  alias?: string
-  storepass?: string
-  keypass?: string
-  task_id?: string
-}
-
-/** Options for apk.decompile */
-export interface DecompileOptions {
-  task_id?: string
-  output_dir?: string
-  cwd?: string
-}
-
-/** Options for apk.recompile */
-export interface RecompileOptions {
-  task_id?: string
-  output_apk?: string
-  cwd?: string
-  zipalign?: boolean
-  sign?: boolean
-  keystore?: KeystoreConfig
-  v2?: boolean
-}
-
-/** Options for apk.sign */
-export interface SignOptions {
-  v2?: boolean
-  v3?: boolean
-  task_id?: string
-}
-
-/** Return type of aab.sign */
-export interface AabSignResult {
-  aab_path: string
-  cancelled?: boolean
-  task_id?: string
-}
-
-/** Return type of device.convert_aab_to_apks */
-export interface ConvertAabToApksResult {
-  apks_path: string
-  cancelled?: boolean
-  task_id?: string
 }
 
 /** Return type of storage.clear / output.clear / tasks.clear / logs.clear */
@@ -324,19 +161,11 @@ export interface LogTailResult {
 }
 
 // ---- Method-to-Type Map ----
-// Existing entries (backward compat — preserved verbatim):
-//   'adb.devices', 'adb.shell', 'adb.install', 'adb.uninstall',
-//   'apk.parse', 'apk.extract', 'aab.install', 'tool.list',
-//   'cache.clear', 'app.info'
-//
 // New entries added for backend API_MAP coverage (T15):
-//   All keys from backend/app/handlers/*.py API_MAP dicts.
+//   All keys from cli/app/handlers/*.py API_MAP dicts.
 //   Streaming handlers → result: void.
 //   Aliases → same params/result as canonical.
 export interface ApiMethodMap {
-  // --- Existing entries (preserved verbatim) ---
-  'tool.list': { params: Record<string, never>; result: ToolInfo[] }
-
   // --- app_handler.py ---
   'system.info': { params: Record<string, never>; result: SystemInfoResult }
   'build.info': { params: Record<string, never>; result: BuildInfoResult }
@@ -368,11 +197,6 @@ export interface ApiMethodMap {
 
   // --- log_handler.py ---
   'logs.tail': { params: { lines?: number }; result: LogTailResult }
-
-  // --- plugin_handler.py ---
-  'plugin.list': { params: Record<string, never>; result: Record<string, unknown>[] }
-  'plugin.run': { params: { name: string; params?: Record<string, unknown> }; result: Record<string, unknown> }
-  'plugin.reload': { params: Record<string, never>; result: Record<string, unknown>[] }
 
   // --- template_handler.py ---
   'template.save': { params: { name: string; definition: Record<string, unknown> }; result: Record<string, unknown> }

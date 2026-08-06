@@ -25,25 +25,28 @@ export const APP_CONFIG_KEYS = {
   preloadCandidates: 'preloadCandidates'
 } as const
 
-export type WritableAppConfigKey =
-  | 'app'
-  | 'runtime'
-  | 'server'
-  | 'serverEntry'
-  | 'runtimeExecutable'
-  | 'devServerUrl'
-  | 'rendererEntry'
-  | 'preloadCandidates'
-  | 'commands'
-  | 'logs'
-  | 'output'
-  | 'language'
-  | 'theme'
-  | 'enableNotifications'
-  | 'autoDeleteOutputOnTaskRemove'
-  | 'adbPath'
-  | 'aaptPath'
-  | 'apktoolPath'
-  | 'bundletoolPath'
-  | 'javaPath'
-  | 'signatureConfigs'
+export const WRITABLE_CONFIG_KEYS = {
+  app: 'app',
+  runtime: 'runtime',
+  server: 'server',
+  serverEntry: 'serverEntry',
+  runtimeExecutable: 'runtimeExecutable',
+  devServerUrl: 'devServerUrl',
+  rendererEntry: 'rendererEntry',
+  preloadCandidates: 'preloadCandidates',
+  commands: 'commands',
+  logs: 'logs',
+  output: 'output',
+  language: 'language',
+  theme: 'theme',
+  enableNotifications: 'enableNotifications',
+  autoDeleteOutputOnTaskRemove: 'autoDeleteOutputOnTaskRemove',
+  adbPath: 'adbPath',
+  aaptPath: 'aaptPath',
+  apktoolPath: 'apktoolPath',
+  bundletoolPath: 'bundletoolPath',
+  javaPath: 'javaPath',
+  signatureConfigs: 'signatureConfigs'
+} as const
+
+export type WritableAppConfigKey = keyof typeof WRITABLE_CONFIG_KEYS

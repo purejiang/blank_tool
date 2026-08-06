@@ -1,0 +1,8 @@
+# 测试相关
+/tests/
+/cache/
+/app/cache/
+/output/
+/logs/
+server.config.json
+**/__pycache__

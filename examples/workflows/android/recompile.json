@@ -18,8 +18,8 @@
         "base": "file",
         "subtype": "apk"
       },
-      "required": false,
-      "description": "Path to write the built APK to (default: $workdir/<basename>.apk)."
+      "required": true,
+      "description": "Path to write the built APK to."
     }
   ],
   "outputs": [

@@ -1,80 +1,64 @@
 import { describe, it, expect } from 'vitest'
-import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '@/shared/ipc/channels'
+import { IPC_CHANNEL_NAMES } from '@/shared/ipc/channels'
 
 describe('IPC Channel Consistency', () => {
   describe('channel definitions', () => {
     it('all channels have unique names', () => {
-      const names = Object.values(IPC_CHANNELS).map((c) => c.name)
+      const names = Object.values(IPC_CHANNEL_NAMES)
       const uniqueNames = new Set(names)
       expect(uniqueNames.size).toBe(names.length)
     })
 
-    it('all channels have a direction', () => {
-      for (const [key, def] of Object.entries(IPC_CHANNELS)) {
-        expect(def.direction).toMatch(/^(renderer-to-main|main-to-renderer)$/)
-      }
-    })
-
-    it('all channel keys have a flat name mapping', () => {
-      const keys = Object.keys(IPC_CHANNELS) as Array<keyof typeof IPC_CHANNELS>
-      for (const key of keys) {
-        expect(IPC_CHANNEL_NAMES[key]).toBeDefined()
-        expect(typeof IPC_CHANNEL_NAMES[key]).toBe('string')
-        expect(IPC_CHANNEL_NAMES[key].length).toBeGreaterThan(0)
+    it('all channel values are non-empty strings', () => {
+      for (const [key, name] of Object.entries(IPC_CHANNEL_NAMES)) {
+        expect(typeof name).toBe('string')
+        expect(name.length).toBeGreaterThan(0)
       }
     })
   })
 
   describe('renderer-to-main channels', () => {
-    const rmChannels = Object.entries(IPC_CHANNELS)
-      .filter(([, def]) => def.direction === 'renderer-to-main')
-      .map(([key]) => key)
-
     it('includes callBackendApi', () => {
-      expect(rmChannels).toContain('callBackendApi')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('callBackendApi')
     })
 
     it('includes config channels', () => {
-      expect(rmChannels).toContain('getAppConfig')
-      expect(rmChannels).toContain('setAppConfig')
-      expect(rmChannels).toContain('getAllAppConfig')
-      expect(rmChannels).toContain('resetAppConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('getAppConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('setAppConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('getAllAppConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('resetAppConfig')
     })
 
     it('includes user config channels', () => {
-      expect(rmChannels).toContain('getUserConfig')
-      expect(rmChannels).toContain('setUserConfig')
-      expect(rmChannels).toContain('getAllUserConfig')
-      expect(rmChannels).toContain('resetUserConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('getUserConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('setUserConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('getAllUserConfig')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('resetUserConfig')
     })
   })
 
   describe('main-to-renderer channels', () => {
-    const mrChannels = Object.entries(IPC_CHANNELS)
-      .filter(([, def]) => def.direction === 'main-to-renderer')
-      .map(([key]) => key)
-
     it('includes device change channel', () => {
-      expect(mrChannels).toContain('deviceChange')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('deviceChange')
     })
 
     it('includes logcat channels', () => {
-      expect(mrChannels).toContain('logcatOutput')
-      expect(mrChannels).toContain('logcatStarted')
-      expect(mrChannels).toContain('logcatFinished')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('logcatOutput')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('logcatStarted')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('logcatFinished')
     })
 
     it('includes stream event channel', () => {
-      expect(mrChannels).toContain('streamEvent')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('streamEvent')
     })
 
     it('includes config changed channels', () => {
-      expect(mrChannels).toContain('appConfigChanged')
-      expect(mrChannels).toContain('userConfigChanged')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('appConfigChanged')
+      expect(IPC_CHANNEL_NAMES).toHaveProperty('userConfigChanged')
     })
   })
 
-  describe('IPC_CHANNEL_NAMES backward compatibility', () => {
+  describe('IPC_CHANNEL_NAMES channel values', () => {
     it('maps callBackendApi to correct name', () => {
       expect(IPC_CHANNEL_NAMES.callBackendApi).toBe('call-backend-api')
     })
@@ -94,7 +78,7 @@ describe('IPC Channel Consistency', () => {
 
   describe('total channel count', () => {
     it('has expected number of channels', () => {
-      const count = Object.keys(IPC_CHANNELS).length
+      const count = Object.keys(IPC_CHANNEL_NAMES).length
       expect(count).toBeGreaterThanOrEqual(20)
       expect(count).toBeLessThanOrEqual(60) // 51 channels after T16 added 18 new ones
     })

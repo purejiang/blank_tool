@@ -16,10 +16,14 @@ class TestCacheInfo:
         result = data["result"]
         assert result["type"] == "success"
         payload = result["payload"]
-        assert "cache" in payload
-        assert "output" in payload
         assert "tasks" in payload
+        assert "output" in payload
+        assert "logs" in payload
         assert "total" in payload
+        assert {"path", "size", "files"} <= set(payload["tasks"])
+        assert {"path", "size", "files"} <= set(payload["output"])
+        assert {"path", "size", "files"} <= set(payload["logs"])
+        assert {"size", "files"} <= set(payload["total"])
 
     def test_cache_info_alias_works(self, api_handler):
         """cache.info should be the same as cache.get_info."""
@@ -31,23 +35,13 @@ class TestCacheInfo:
         result = data["result"]
         assert result["type"] == "success"
         payload = result["payload"]
-        assert "cache" in payload
-        assert "output" in payload
         assert "tasks" in payload
+        assert "output" in payload
+        assert "logs" in payload
+        assert "total" in payload
 
 
-class TestCacheClear:
-    def test_valid_request_returns_success(self, api_handler):
-        request = {"id": 53, "method": "cache.clear", "params": {}}
-        response = api_handler.handle_request(request)
-
-        data = json.loads(response) if isinstance(response, str) else response
-        assert data["id"] == 53
-        result = data["result"]
-        assert result["type"] == "success"
-        payload = result["payload"]
-        assert "path" in payload
-        assert "size" in payload
+# cache.clear alias retired — storage.clear/output.clear/tasks.clear/logs.clear cover all use cases; zero renderer callers
 
 
 class TestOutputClear:
@@ -95,7 +89,6 @@ class TestResponseShape:
     METHODS = [
         "cache.get_info",
         "cache.info",
-        "cache.clear",
         "output.clear",
         "storage.clear",
     ]

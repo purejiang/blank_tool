@@ -39,21 +39,6 @@ class CacheService {
         }
     }
 
-    async clearCache() {
-        try {
-            const api = unifiedApi.getAPI()
-            if (api && typeof api.clearCache === 'function') {
-                const result = await api.clearCache();
-                this.cacheInfo = { size: 0, files: 0 }; // 清除后重置
-                return { success: true, ...result };
-            }
-            throw new Error('clearCache API not implemented');
-        } catch (error) {
-            log.error('清除缓存失败:', error);
-            return { success: false, error: error.message || '清除缓存失败' };
-        }
-    }
-
     async clearStorage(target = 'all') {
         try {
             const api = unifiedApi.getAPI()

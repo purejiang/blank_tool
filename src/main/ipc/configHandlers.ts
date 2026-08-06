@@ -1,9 +1,8 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { app } from 'electron';
-import path from 'path';
 import { appStore, getConfigValue, isWritableConfigKey, setConfigValue, resetAppConfigToDefaults } from '../stores/index';
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathConfig';
+import { resolveFromAppBase } from '../utils/appPaths';
 
 function getUserConfigStore(): Record<string, unknown> {
     const raw = appStore.get('user');
@@ -31,15 +30,20 @@ function toNonEmptyString(value: unknown, fallback: string): string {
 }
 
 function resolvePathFromAppBase(targetPath: string): string {
-    if (!targetPath) {
-        return targetPath;
+    return resolveFromAppBase(targetPath);
+}
+
+function applyConfigUpdate(key: string, value: unknown): { success: boolean; error?: string } {
+    if (!isWritableConfigKey(key)) {
+        return { success: false, error: `Invalid app config key: ${key}` };
     }
-    if (path.isAbsolute(targetPath)) {
-        return targetPath;
+    try {
+        setConfigValue(key, value);
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
-    const baseDir = app.isPackaged ? process.resourcesPath : app.getAppPath();
-    const cleanPath = targetPath.replace(/^\.[\\/]/, '');
-    return path.join(baseDir, cleanPath);
+    broadcastConfigChange(IPC_CHANNEL_NAMES.appConfigChanged, key, value);
+    return { success: true };
 }
 
 function getSettingsViewModel() {
@@ -57,27 +61,16 @@ function getSettingsViewModel() {
 
 export function setupAppConfigHandlers(): void {
     ipcMain.handle(IPC_CHANNEL_NAMES.getAppConfig, (event: IpcMainInvokeEvent, key?: string) => {
-        console.log(`[IPC] 接收到get-app-config: key=${key}`);
         return getConfigValue(key);
     });
 
     ipcMain.handle(IPC_CHANNEL_NAMES.getAllAppConfig, () => {
-        console.log(`[IPC] 接收到app-config-getAll`);
+        // Delegates to getConfigValue() — intentionally equivalent to getAppConfig with no key; both exist for API clarity.
         return getConfigValue();
     });
 
     ipcMain.handle(IPC_CHANNEL_NAMES.setAppConfig, (event: IpcMainInvokeEvent, key: string, value: unknown) => {
-        console.log(`[IPC] 接收到set-app-config: key=${key}`);
-        if (!isWritableConfigKey(key)) {
-            return { success: false, error: `Invalid app config key: ${key}` };
-        }
-        try {
-            setConfigValue(key, value);
-        } catch (error) {
-            return { success: false, error: error instanceof Error ? error.message : String(error) };
-        }
-        broadcastConfigChange(IPC_CHANNEL_NAMES.appConfigChanged, key, value);
-        return { success: true };
+        return applyConfigUpdate(key, value);
     });
 
     ipcMain.handle(IPC_CHANNEL_NAMES.setManyAppConfig, (event: IpcMainInvokeEvent, updates: Record<string, unknown>) => {
@@ -85,21 +78,15 @@ export function setupAppConfigHandlers(): void {
             return { success: false, error: 'Invalid updates payload' };
         }
         for (const [key, value] of Object.entries(updates)) {
-            if (!isWritableConfigKey(key)) {
-                return { success: false, error: `Invalid app config key: ${key}` };
+            const result = applyConfigUpdate(key, value);
+            if (!result.success) {
+                return result;
             }
-            try {
-                setConfigValue(key, value);
-            } catch (error) {
-                return { success: false, error: error instanceof Error ? error.message : String(error) };
-            }
-            broadcastConfigChange(IPC_CHANNEL_NAMES.appConfigChanged, key, value);
         }
         return { success: true };
     });
 
     ipcMain.handle(IPC_CHANNEL_NAMES.resetAppConfig, () => {
-        console.log(`[IPC] 接收到reset-app-config`);
         resetAppConfigToDefaults();
         return true;
     });

@@ -2,8 +2,8 @@
  * Bidirectional serializer between the vue-flow canvas state (nodes/edges)
  * and the backend WorkflowDefinition JSON wire format.
  *
- * Wire contract (must stay in sync with backend/app/workflow/definition.py
- * and backend/app/protocol/ports.py — those modules own the schema):
+ * Wire contract (must stay in sync with cli/app/workflow/definition.py
+ * and cli/app/protocol/ports.py — those modules own the schema):
  *
  *   WorkflowDefinition.to_dict() produces
  *   {

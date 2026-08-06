@@ -18,12 +18,16 @@ npm run release     # 一键发版（流程见下方"发版流程"）
 
 Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。Vite 的 `root` 是 `src/`，不是项目根。
 
+### 无头 CLI（cli/cli.py）
+
+无头 CLI 入口 `cli/cli.py`（6 子命令：run/list-tools/list-envs/validate/tool/list-templates）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
+
 ## 测试有三套，分别由不同运行器驱动（最容易踩坑）
 
 | 命令 | 运行器 | 范围 | 配置 |
 |---|---|---|---|
 | `npm run test` | **vitest** | `tests/unit/**`、`tests/integration/**` | `vitest.config.ts`，环境 `happy-dom` |
-| `pytest tests/contracts/` | **pytest**（不在 npm scripts 里） | 后端 handler 契约测试（Python） | `tests/contracts/conftest.py` 自动把 `backend/` 加入 `sys.path` |
+| `pytest tests/contracts/` | **pytest**（不在 npm scripts 里） | 后端 handler 契约测试（Python） | `tests/contracts/conftest.py` 自动把 `cli/` 加入 `sys.path` |
 | `node --test tests/shared-contracts.test.mjs` | **node:test**（不在 npm scripts 里） | 校验 `src/shared/ipc/channels.ts` 与 `pathConfig.ts` 的字符串契约 | 无配置 |
 | `npx playwright test` | **Playwright** | `tests/e2e/critical-flows.spec.ts` | `tests/e2e/playwright.config.ts` |
 
@@ -46,7 +50,7 @@ Renderer (Vue 3 + Pinia + Vue Router + Naive UI)
 Main Process (Electron, src/main/)
   src/main/ipc/{commandHandlers,configHandlers,electronHandlers,updateHandlers}.ts
         │  spawn Python 子进程，stdin/stdout JSON-RPC
-Python Backend (backend/main.py)
+Python Backend (cli/main.py)
   ApiHandler → 自动扫描 app/handlers/ 下的 API_MAP
 ```
 
@@ -54,13 +58,13 @@ Python Backend (backend/main.py)
 
 - **Renderer → Main**：渲染层调 `window.electronAPI.*`，经 `contextBridge` 路由到 `src/main/ipc/` 下的 handler。
 - **Main → Python**：`commandHandlers.ts` 通过 stdin 写 JSON-RPC 请求，按 `request.id` 在 `requestCallbacks` Map 里匹配响应。**默认超时是 300000ms（5 分钟），不是 30 秒**——长任务（反编译、签名）依赖这个。
-- **流式响应**：被 `@streaming`（`backend/app/common/decorators.py`）装饰的 handler 在独立线程运行，多次回包 `finished: false`，主进程通过命名 IPC 通道（如 `stream-event`）转发给渲染层（logcat、下载进度等）。
+- **流式响应**：被 `@streaming`（`cli/app/common/decorators.py`）装饰的 handler 在独立线程运行，多次回包 `finished: false`，主进程通过命名 IPC 通道（如 `stream-event`）转发给渲染层（logcat、下载进度等）。
 
 ### 后端自动发现
 
-- **Handlers**：`backend/app/handlers/` 下任何导出 `API_MAP` 字典的 `.py` 都会被 `ApiHandler` 自动注册。键是方法名（如 `"adb.devices"`），值是 handler 函数。新增 handler 不需要改注册表。
-- **Tools**：`backend/app/tools/` 下任何 `BaseTool` 子类被 `ToolManager` 自动发现。子类按工具类型分：`BinaryTool`（exe）、`JavaTool`（.jar）、`PythonTool`（.py）、`NodeTool`（.js）。
-- **Plugins**：`backend/plugins/` 下任何带 `run(context, **params)` 的 `.py` 会被自动加载。**目前该目录为空**，自动发现机制已就绪但无实际插件。
+- **Handlers**：`cli/app/handlers/` 下任何导出 `API_MAP` 字典的 `.py` 都会被 `ApiHandler` 自动注册。键是方法名（如 `"adb.devices"`），值是 handler 函数。新增 handler 不需要改注册表。
+- **Tools**：`cli/app/tools/` 下任何 `BaseTool` 子类被 `ToolManager` 自动发现。子类按工具类型分：`BinaryTool`（exe）、`JavaTool`（.jar）、`PythonTool`（.py）、`NodeTool`（.js）。
+- **Plugins**：`cli/plugins/` 下任何带 `run(context, **params)` 的 `.py` 会被自动加载。**目前该目录为空**，自动发现机制已就绪但无实际插件。
 
 后端 Python 仅用标准库（`main.py`、`api_handler.py` 全部 import 自 stdlib + 本地 `app/` 包），**没有 `requirements.txt`**，开发时直接用系统或 `runtime/python/python.exe` 即可运行。
 
@@ -72,20 +76,20 @@ Python Backend (backend/main.py)
 ### 配置与路径
 
 - **应用配置**：主进程用 `electron-store`（`src/main/stores/appStore.ts`），带 JSON schema 校验和版本化迁移。渲染层通过 `window.electronAPI.appConfig.get/set/getAll` 访问。
-- **后端配置**：`backend/.env`（实际只有 `APP_VERSION`、`PROJECT_NAME`）+ `backend/server.config.json`（从 `server.config.example.json` 拷贝），由 `app/utils/env.py` 加载。关键 env：`BT_RUNTIME_DIR`、`BT_CACHE_DIR`、`BT_OUTPUT_DIR`、`BT_JAVA_BIN`、`BT_LOG_LEVEL`。**`server.config.json` 里的路径是相对于 `backend/` 目录的**（如 `../cache`）。
+- **后端配置**：`cli/.env`（实际只有 `APP_VERSION`、`PROJECT_NAME`）+ `cli/server.config.json`（从 `server.config.example.json` 拷贝），由 `app/utils/env.py` 加载。关键 env：`BT_RUNTIME_DIR`、`BT_CACHE_DIR`、`BT_OUTPUT_DIR`、`BT_JAVA_BIN`、`BT_LOG_LEVEL`。**`server.config.json` 里的路径是相对于 `cli/` 目录的**（如 `../cache`）。
 - **共享路径配置**：`src/shared/config/pathConfig.ts` 定义 `PATH_CONFIG_DEFAULTS`、`APP_CONFIG_KEYS`，主进程和渲染层都用它。
 - **共享 IPC 通道名**：`src/shared/ipc/channels.ts` 集中定义所有 IPC 通道字符串。**改通道名必须同步 `tests/shared-contracts.test.mjs`**，否则契约测试会挂。
 
 ### 路径解析（开发 vs 打包）
 
 - **Dev**（`!app.isPackaged`）：所有路径相对项目根。
-- **Production**（`app.isPackaged`）：路径相对 `process.resourcesPath`——即 `electron-builder` 把 `extraResources` 放置的位置（见 `package.json` 的 `build.extraResources`：`backend/` 和 `runtime/` 都会被拷过去）。
+- **Production**（`app.isPackaged`）：路径相对 `process.resourcesPath`——即 `electron-builder` 把 `extraResources` 放置的位置（见 `package.json` 的 `build.extraResources`：`cli/` 和 `runtime/` 都会被拷过去）。
 
 判别逻辑集中在 `src/main/main.ts` 的 `getBaseDir()`，请勿在别处重新实现。
 
 ### 内置运行时（`runtime/`）
 
-打包时会随应用分发，包含：`adb/`、`aapt/`（aapt2）、`apktool/`（.jar）、`bundletool/`（.jar）、`android/`（zipalign、apksigner.jar）、`jre/`（java、jarsigner）、`python/`。所有外部工具都从这里调用，不要假设系统 PATH 里有 `adb`/`java` 等。
+打包时会随应用分发，包含：`adb/`、`aapt/`（aapt2）、`apktool/`（.jar）、`bundletool/`（.jar）、`android/`（zipalign、apksigner.jar）、`jre/`（java、jarsigner）。**Python 不随包分发**，运行时优先尝试 `runtime/python/python.exe`，缺省回退系统 Python（实际以系统 Python 为准）。所有外部工具都从这里调用，不要假设系统 PATH 里有 `adb`/`java` 等。
 
 
 ## 发版流程
