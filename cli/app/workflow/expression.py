@@ -114,6 +114,8 @@ class ExpressionEngine:
         """
         if not isinstance(template, str):
             return template
+        if template.startswith("$$"):
+            return template[1:]  # Escape: strip one $, return rest as literal
         if not template.startswith("$"):
             return template
 

@@ -52,8 +52,9 @@ class WorkflowNode:
             "skip" (continue with the next node), or "retry:N".
         condition: stored but NOT evaluated in linear mode; reserved for
             future branching.
-        retry: number of retries on failure (0 = no retry).  Only used when
-            ``on_failure`` is "retry:N".
+        retry: number of retries on failure (0 = no retry), applied
+            regardless of ``on_failure`` value; ignored when ``on_failure``
+            is "retry:N" (the N from the string takes precedence).
     """
 
     id: str

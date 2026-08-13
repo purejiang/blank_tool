@@ -176,6 +176,8 @@ class ApiHandler:
                 params_dict: dict,
                 stream_id: str,
             ):
+                if stop_event.is_set():
+                    return
                 try:
                     handler(params_dict, stream_callback)
                 except Exception as e:

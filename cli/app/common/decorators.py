@@ -7,8 +7,10 @@ from app.common.exceptions import ToolException, ToolNotFoundError
 
 def streaming(func):
     """
-    Decorator to mark a handler as a streaming handler.
-    Streaming handlers run in a separate thread and can send multiple events.
+    Marker flag for streaming handlers. Threading is implemented in
+    ApiHandler.stream_handler (api_handler.py:139-205), not in this decorator.
+    The wrapper sets is_streaming=True; ApiHandler.handle_request checks this
+    flag and wraps the handler with a thread-spawning stream_handler.
     """
     @wraps(func)
     def wrapper(*args, **kwargs):

@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electro
 import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
-import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
+import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendErrorFrame, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
 
 interface CallbackInfo {
     resolve: (value: unknown) => void;
@@ -14,6 +14,10 @@ interface CallbackInfo {
 
 function isBackendEventMessage(message: BackendStdioMessage): message is BackendEventMessage {
     return (message as BackendEventMessage).type === 'event';
+}
+
+function isBackendErrorFrame(message: BackendStdioMessage): message is BackendErrorFrame {
+    return (message as BackendErrorFrame).error !== undefined;
 }
 
 function isBackendResponse(message: BackendStdioMessage): message is BackendResponse {
@@ -73,6 +77,19 @@ export function setupCommandHandlers(
                             });
                         };
                         broadcast(response.event, response.data);
+                        return;
+                    }
+
+                    if (isBackendErrorFrame(response)) {
+                        // Legacy/defensive standard JSON-RPC error frame
+                        const callbackInfo = response.id != null
+                            ? requestCallbacks.get(response.id)
+                            : undefined;
+                        if (callbackInfo && callbackInfo.process === pythonProcess) {
+                            const errMessage = response.error?.message || 'Backend error';
+                            callbackInfo.reject(new Error(errMessage));
+                            requestCallbacks.delete(response.id);
+                        }
                         return;
                     }
 
@@ -177,6 +194,23 @@ export function setupCommandHandlers(
 
             setTimeout(() => {
                 if (requestCallbacks.has(request.id)) {
+                    // Fire-and-forget cancel: signal Python to stop the task
+                    const cbInfo = requestCallbacks.get(request.id)!;
+                    const params = (request.params || {}) as Record<string, unknown>;
+                    const taskId = (params.task_id as string) || '';
+                    try {
+                        const cancelPayload = JSON.stringify({
+                            id: request.id,
+                            method: 'request.cancel',
+                            params: { task_id: taskId },
+                        }) + '\n';
+                        if (cbInfo.process.stdin && !cbInfo.process.stdin.destroyed) {
+                            cbInfo.process.stdin.write(cancelPayload);
+                        }
+                    } catch (_err) {
+                        // Fire-and-forget: silently ignore write errors
+                    }
+
                     requestCallbacks.delete(request.id);
                     log.info(`[trace ${request.id}] timed out`);
                     resolve(createErrorResponse('请求超时', -32003));

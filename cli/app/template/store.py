@@ -28,6 +28,7 @@ JSON file layout (one file per template, ``<name>.json``)::
 """
 
 import json
+import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -36,6 +37,8 @@ from typing import Any, Dict, List, Optional
 
 from app.utils.env import get_env, get_output_dir
 from app.workflow.definition import WorkflowDefinition
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -293,7 +296,10 @@ class FileTemplateStore(TemplateStore):
                     updated_at = data.get("updated_at") or ""
 
                 definition = WorkflowDefinition.from_dict(definition_data)
-            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            except (OSError, ValueError, TypeError, json.JSONDecodeError) as e:
+                logger.warning(
+                    f"Skipping corrupted template file: {filename} — {e}"
+                )
                 continue
 
             infos.append(

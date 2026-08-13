@@ -169,7 +169,11 @@ def main():
         sys.stderr.flush()
         send_json({
             "id": None,
-            "error": {"code": -32603, "message": error_msg},
+            "result": {
+                "type": "error",
+                "payload": {"code": ErrorCode.INTERNAL_ERROR, "message": error_msg},
+            },
+            "finished": True,
         })
         sys.exit(1)
 
@@ -201,15 +205,26 @@ def main():
         except json.JSONDecodeError:
             send_json({
                 "id": None,
-                "error": {"code": ErrorCode.PARSE_ERROR, "message": "Parse error"},
+                "result": {
+                    "type": "error",
+                    "payload": {
+                        "code": ErrorCode.PARSE_ERROR,
+                        "message": "Parse error",
+                    },
+                },
+                "finished": True,
             })
         except Exception as e:
             send_json({
                 "id": request_id,
-                "error": {
-                    "code": ErrorCode.INTERNAL_ERROR,
-                    "message": f"Internal error: {e}",
+                "result": {
+                    "type": "error",
+                    "payload": {
+                        "code": ErrorCode.INTERNAL_ERROR,
+                        "message": f"Internal error: {e}",
+                    },
                 },
+                "finished": True,
             })
         finally:
             with _pending_lock:
