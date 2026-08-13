@@ -2,7 +2,7 @@
 
 Blank Tool 是本地工作流编排桌面应用（Electron + Vue 3 + Python）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的模板，在任务中心或无头 CLI（`cli/cli.py`）中执行。模型通用、领域无关。
 
-应用本体**不包含任何领域内容**：不内置工作流、工具描述符或二进制。仓库提供 `examples/` 可导入示例包：**通用示例工作流**（`examples/workflows/generic/`，仅用内置原子工具、零外部依赖、导入即跑）与 **Android 示例包**（`examples/workflows/android/` + `examples/tools/android/`，需导入描述符并自备二进制）；二进制由用户自行准备（本地 `runtime/` 目录、自定义路径或系统 PATH）。该调整**已决策**，在分期计划中实施（见 [docs/05-分期开发计划.md](./docs/05-分期开发计划.md)）。
+应用本体**不包含任何领域内容**：不内置工作流、工具描述符或二进制。仓库提供 `examples/` 可导入示例包：**通用示例工作流**（`examples/workflows/generic/`，仅用内置原子工具、零外部依赖、导入即跑）与 **Android 示例包**（`examples/workflows/android/` + `examples/tools/android/`，需导入描述符并自备二进制）；二进制由用户自行准备（本地 `runtime/` 目录、自定义路径或系统 PATH）。该调整**已完成**（T21，2026-08-04）。
 
 ## 功能特性
 
@@ -14,13 +14,13 @@ Blank Tool 是本地工作流编排桌面应用（Electron + Vue 3 + Python）�
 - **任务队列**: 支持多任务并行，每个任务独立展开查看日志和输出
 - **历史记录**: 任务记录本地持久化，重启不丢失
 
-### 预置领域能力（退役规划）
+### 预置领域能力（已退役）
 
-设备管理（`/device`）、APK 工具（`/package`）等 Android 专属页面与其后端 handler **已决策退役**：随界面重设计一并移除，Android 能力改为经 `examples/` 导入的工作流与工具描述符、在任务模块中执行。该决策**已定、待实施**，当前版本仍保留这些页面，直到重设计落地。
+设备管理（`/device`）、APK 工具（`/package`）等 Android 专属页面与其后端 handler **已退役**（T22/T23，2026-08-04）：页面、服务/store、组件与对应后端 handler 均已删除，Android 能力改为经 `examples/` 导入的工作流与工具描述符、在任务模块中执行。
 
-### 界面重设计（规划）
+### 界面重设计（部分完成）
 
-结构 / 信息架构 / 交互重设计，目标形态为四个一级模块（均**规划中**）：
+结构 / 信息架构 / 交互重设计，目标形态为四个一级模块（Android 遗留模块已退役删除；新四模块中 设置 `/settings`、关于 `/about`、诊断 `/diagnostics`、工作流编辑器 `/workflow-editor` 已就位，工作流列表页、任务页、工具页**规划中**）：
 
 - **工作流** `/workflows`：管理列表（新建/编辑/删除/导入/导出）+ 二级编辑器 `/workflows/editor/:name?`；主入口，`/` 重定向至此
 - **任务** `/tasks`：全新任务页，选模板 → 按入参类型动态表单 → 执行 → 实时节点进度/日志 → 历史
@@ -84,9 +84,14 @@ npm run release -- --dry-run   # 仅预览版本号与 release notes，不做修
 blank_tool/
 ├── cli/                        # Python 后端
 │   ├── app/
-│   │   ├── handlers/           # API 处理器 (adb, apk, download, cache...)
-│   │   ├── tools/              # 工具封装 (adb, apktool, bundletool...)
+│   │   ├── handlers/           # API 处理器 (app, cache, env, log, task, template, tool, workflow)
+│   │   ├── tools/              # 工具注册表 (builtin 原子工具 + 描述符工具)
+│   │   ├── workflow/           # 工作流引擎
+│   │   ├── env/                # 环境注册表
 │   │   └── common/             # 公共模块 (decorators, exceptions...)
+│   ├── registry/
+│   │   ├── tools/              # 已清空（仅 README；描述符移至 examples/tools/android/）
+│   │   └── environments/       # java / python / node 3 个环境描述符
 │   ├── plugins/                # 插件系统
 │   └── main.py                 # 后端入口
 ├── src/
@@ -94,9 +99,9 @@ blank_tool/
 │   │   └── ipc/                # IPC 处理 (command, config, electron)
 │   ├── preload/                # contextBridge 预加载
 │   ├── renderer/               # Vue 3 前端
-│   │   ├── views/              # 页面 (PackagePage, DevicePage, Settings...)
-│   │   ├── components/         # 组件 (DeviceManager, StatusBar...)
-│   │   ├── stores/             # Pinia 状态 (task, signature, index...)
+│   │   ├── views/              # 页面 (WorkflowEditorPage, SettingsPage, DiagnosticsPage, AboutPage)
+│   │   ├── components/         # 组件 (workflow 编辑器组件, common...)
+│   │   ├── stores/             # Pinia 状态 (task, tool, appConfig, system, update...)
 │   │   ├── services/           # 服务层 (ServiceManager DI 容器)
 │   │   ├── composables/        # 组合式函数
 │   │   ├── i18n/               # 国际化 (zh-CN, en-US)
@@ -123,7 +128,7 @@ Renderer (Vue 3)  ←→  Main (Electron)  ←→  Python Backend
 ## 配置
 
 - **超时时间**: 设置 → 请求超时 (10-600s)
-- **签名管理**: 设置 → 签名配置 (添加 keystore 路径、别名、密码；**已决策退役**，随界面重设计移除)
+- **签名管理**: 已随 Android 专属模块退役移除（T22，2026-08-04）
 - **主题**: 右上角切换浅色/深色/自动
 
 ## 许可证

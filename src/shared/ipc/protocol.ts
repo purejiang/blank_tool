@@ -55,9 +55,21 @@ export interface BackendEventMessage {
   data: unknown
 }
 
+// Defensive: standard JSON-RPC error frame (main-process startup / parse
+// error path).  Kept in the union so the bridge can reject cleanly even if
+// the backend emits this legacy shape.
+export interface BackendErrorFrame {
+  id: string | number | null
+  error: {
+    code?: number
+    message: string
+  }
+}
+
 export type BackendStdioMessage<T = unknown> =
   | BackendResponse<T>
   | BackendEventMessage
+  | BackendErrorFrame
 
 // ---- Domain Types ----
 export interface AppInfo {

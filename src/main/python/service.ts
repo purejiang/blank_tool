@@ -57,7 +57,7 @@ export async function startPythonService(): Promise<ChildProcessWithoutNullStrea
   });
 
   // Ring buffer for Python stderr — forensic record, only dumped on crash.
-  // Python's own logger (StreamHandler→stderr + DailyRotatingFileHandler→backend-*.log)
+  // Python's own logger (StreamHandler→stderr + DailyRotatingFileHandler→cli-*.log)
   // already records every line; relaying it again here was the source of duplication.
   const capturer = createStderrCapturer(proc);
 

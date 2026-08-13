@@ -55,25 +55,14 @@ def get_tools(params, stream_handler):
         info["source"] = _source_for(manager, tool_name, info["path"])
         info["status"] = "available" if info["is_valid"] else "unavailable"
         return info
-    names = [
-        "adb", "apktool", "apksigner", "zipalign", "aapt",
-        "bundletool", "jarsigner",
-    ]
     report = {}
-    for name in names:
-        tool = manager.get_tool(name)
+    for name, tool in manager.get_all_tools().items():
         item = {
-            "is_valid": bool(getattr(tool, "is_valid", False))
-            if tool
-            else False,
-            "version": getattr(tool, "version", "") if tool else "",
-            "path": getattr(tool, "tool_path", "") if tool else "",
+            "is_valid": bool(getattr(tool, "is_valid", False)),
+            "version": getattr(tool, "version", ""),
+            "path": getattr(tool, "tool_path", ""),
         }
-        item["source"] = (
-            _source_for(manager, name, item["path"])
-            if tool
-            else "none"
-        )
+        item["source"] = _source_for(manager, name, item["path"])
         item["status"] = "available" if item["is_valid"] else "unavailable"
         report[name] = item
     return report

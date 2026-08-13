@@ -42,7 +42,7 @@ class DailyRotatingFileHandler(BaseRotatingHandler):
     def _get_current_log_file(self) -> Path:
         """获取当前应该使用的日志文件路径"""
         today = datetime.now().strftime('%Y-%m-%d')
-        base_file = self.log_dir / f"backend-{today}.log"
+        base_file = self.log_dir / f"cli-{today}.log"
         
         # 如果基础文件不存在或大小未超限，直接使用
         if not base_file.exists() or base_file.stat().st_size < self.max_bytes:
@@ -51,20 +51,20 @@ class DailyRotatingFileHandler(BaseRotatingHandler):
         # 查找下一个可用的文件名，最多 max_files_per_day 个
         # 超过上限后循环覆盖最早的编号文件
         for counter in range(2, self.max_files_per_day + 1):
-            numbered_file = self.log_dir / f"backend-{today}_{counter}.log"
+            numbered_file = self.log_dir / f"cli-{today}_{counter}.log"
             if not numbered_file.exists() or numbered_file.stat().st_size < self.max_bytes:
                 return numbered_file
         
         # 所有文件都满了，覆盖 _2 号文件重新开始
-        return self.log_dir / f"backend-{today}_2.log"
+        return self.log_dir / f"cli-{today}_2.log"
     
     def shouldRollover(self, record):
         """判断是否需要切换文件"""
         # 检查日期是否变化
         today = datetime.now().strftime('%Y-%m-%d')
-        # 从 backend-YYYY-MM-DD.log 提取日期
+        # 从 cli-YYYY-MM-DD.log 提取日期
         stem = self.current_log_file.stem
-        current_date = stem.replace('backend-', '').split('_')[0]
+        current_date = stem.replace('cli-', '').split('_')[0]
         
         if today != current_date:
             return True
@@ -142,8 +142,8 @@ class Logger:
             if log_dir:
                 cls._log_dir = Path(log_dir)
             else:
-                backend_dir = Path(__file__).parent.parent  # 默认在父父目录
-                cls._log_dir = backend_dir / "cache" / "logs"
+                cli_dir = Path(__file__).parent.parent  # 默认在父父目录
+                cls._log_dir = cli_dir / "cache" / "logs"
             
             # 创建自定义的日志处理器
             cls._file_handler = DailyRotatingFileHandler(
@@ -221,9 +221,9 @@ class Logger:
         try:
             # Group log files by date
             files_by_date: dict[str, list[Path]] = defaultdict(list)
-            for log_file in cls._log_dir.glob("backend-*.log"):
+            for log_file in cls._log_dir.glob("cli-*.log"):
                 stem = log_file.stem
-                file_date_str = stem.replace('backend-', '').split('_')[0]
+                file_date_str = stem.replace('cli-', '').split('_')[0]
                 files_by_date[file_date_str].append(log_file)
             
             for date_str, files in files_by_date.items():

@@ -38,10 +38,10 @@ from app.env.descriptor import EnvironmentDescriptor
 logger = logging.getLogger(__name__)
 
 # cli/ (env -> app -> cli). Note: registry.py lives at cli/app/env/.
-_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+_CLI_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Default descriptor directory: cli/registry/environments/
-_DEFAULT_DESCRIPTOR_DIR = _BACKEND_ROOT / "registry" / "environments"
+_DEFAULT_DESCRIPTOR_DIR = _CLI_ROOT / "registry" / "environments"
 
 # Well-known system env vars probed per environment type (resolution level 3).
 # ``custom`` types declare no mapping and skip level 3.
@@ -94,7 +94,7 @@ def _resolve_path(path_str: str) -> str:
         return ""
     if os.path.isabs(path_str):
         return os.path.normpath(path_str)
-    return os.path.normpath(os.path.join(str(_BACKEND_ROOT), path_str))
+    return os.path.normpath(os.path.join(str(_CLI_ROOT), path_str))
 
 
 def _runtime_dir() -> str:
@@ -108,10 +108,10 @@ def _runtime_dir() -> str:
     override = os.environ.get("BT_RUNTIME_DIR")
     if override:
         return _resolve_path(override)
-    local = _BACKEND_ROOT / "runtime"
+    local = _CLI_ROOT / "runtime"
     if local.is_dir():
         return str(local)
-    up = _BACKEND_ROOT.parent / "runtime"
+    up = _CLI_ROOT.parent / "runtime"
     if up.is_dir():
         return str(up)
     return ""

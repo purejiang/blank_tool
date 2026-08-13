@@ -13,7 +13,7 @@ cli-notify-plugin/
 .trae/
 .vscode/
 .agents/
-tests/
 __pycache__/
 *.pyc
-backend/app/cache/logs/
+cli/app/cache/logs/
+test-results/

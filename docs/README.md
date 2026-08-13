@@ -18,15 +18,19 @@ Blank Tool（本地工作流编排应用）的工程文档入口。旧文档（`
 
 ## 一句话概览
 
-Blank Tool 是本地工作流编排桌面应用（Electron + Vue3 + Python 三进程）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的模板，在任务中心或无头 CLI 中执行；模型通用、领域无关，后端同时是一个**无状态 CLI**（`cli/cli.py`），可脱离 Electron 单独跑工作流。**应用本体零领域内容**：工作流、工具描述符与二进制均不内置；仓库 `examples/` 提供可导入示例包：通用示例工作流（`examples/workflows/generic/`，仅内置原子工具、零外部依赖、导入即跑）与 Android 示例包（工作流 + 工具描述符），经工作流/工具导入功能引入，二进制由用户自备。该调整**已决策、分期实施**（见 [05-分期开发计划](./05-分期开发计划.md#phase-1-基础模型)）。
+Blank Tool 是本地工作流编排桌面应用（Electron + Vue3 + Python 三进程）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的模板，在任务中心或无头 CLI 中执行；模型通用、领域无关，后端同时是一个**无状态 CLI**（`cli/cli.py`），可脱离 Electron 单独跑工作流。**应用本体零领域内容**：工作流、工具描述符与二进制均不内置；仓库 `examples/` 提供可导入示例包：通用示例工作流（`examples/workflows/generic/`，仅内置原子工具、零外部依赖、导入即跑）与 Android 示例包（工作流 + 工具描述符），经工作流/工具导入功能引入，二进制由用户自备。该调整**已完成**（T21，2026-08-04）。
 
 ## 当前状态速览
 
 ### 已具备
 
-- **工作流引擎**：`cli/app/workflow/`，线性执行（`node.next` 驱动），内置 18 个原子工具 + 描述符工具，支持 `on_failure`（fail / skip / retry:N）与节点级流式事件。
+- **工作流引擎**：`cli/app/workflow/`，线性执行（`node.next` 驱动），内置 20 个原子工具 + 描述符工具，支持 `on_failure`（fail / skip / retry:N）与节点级流式事件。
 - **模板 CRUD + 执行**：`template.save / load / list / delete / execute`，落盘到 `<output_dir>/templates`（可被 `BT_TEMPLATES_DIR` 覆盖）。
-- **工具/环境描述符发现**：`cli/registry/tools/*.json`（当前 7 个 Android 描述符内置；**已决策**外部化至 `examples/tools/android/`，见 [05-分期开发计划](./05-分期开发计划.md#phase-1-基础模型)）与 `cli/registry/environments/*.json`（java / python / node 3 个环境，保持内置）自动加载。
+- **工具/环境描述符发现**：工具描述符不再内置，`cli/registry/tools/` 已清空（仅 README）；Android 描述符（8 个）已迁至 `examples/tools/android/`，经工具管理导入后进入可写注册表（T15/T21）；`cli/registry/environments/*.json`（java / python / node 3 个环境，保持内置）自动加载。
+- **统一工具「操作」模型（T3-T5）**：描述符增加 `operations[]`，每个操作带类型化 inputs/outputs + args 映射；引擎按 operation 校验输入、拼命令、返回类型化输出（`engine.py` 的 `_execute_operation_tool`）；APK 链路工具（apktool / adb / bundletool）已迁移为范例。
+- **单选/多选入参（T2）**：`Port` 已支持 `options`（单选下拉）与 `multi`（多选）字段，贯穿 schema、序列化与校验。
+- **脚本作为工具（T17）**：脚本可经 `*_script` 类型封装为"可导入的依赖环境的工具/节点"（如 `examples/tools/android/apk-audit.json`）；CLI 新增 `tool <name>` 子命令（T18）。
+- **遗留模块退役（T22/T23）**：Android 专属页面（PackagePage / DevicePage / APK 工具）与其服务/store/组件、签名配置区，以及对应后端 handler（apk./aab./device./install./download 等）与契约测试均已删除。
 - **任务中心**：`taskStore` + `TaskStreamService`，任务本地持久化、流式日志、取消。
 - **工作流编辑器**：`/workflow-editor`（vue-flow 画布），节点拖拽、连边、序列化/反序列化、模板保存。
 
@@ -36,12 +40,10 @@ Blank Tool 是本地工作流编排桌面应用（Electron + Vue3 + Python 三�
 
 ### 规划中
 
-- 统一工具「操作」模型（operations，每个操作带类型化 inputs/outputs + args 映射）。
-- **领域内容外部化（已决策）**：Android 工作流与工具描述符迁至 `examples/`，应用零内置领域内容；工作流经管理页/编辑器导入、描述符经工具管理页导入，二进制由用户自备（见 [05-分期开发计划](./05-分期开发计划.md#phase-1-基础模型)）。
-- **模块与界面重设计（已决策，待实施）**：退役 Android 专属页面（PackagePage / DevicePage / APK 工具）与其服务/store/组件、签名配置区，以及对应后端 handler（apk./aab./device./install./download./cache 等）与契约测试；新 IA 为 工作流 `/workflows`、任务 `/tasks`、工具 `/tools`、设置 `/settings` 四模块（结构/交互重设计；视觉以用户确认的 Stitch 设计稿为准，见 [01-产品概述](./01-产品概述.md#6-现状-vs-规划)）。
-- 工作流模块 `/workflows`（管理列表 + 二级编辑器 `/workflows/editor/:name?`）。
+- **新四模块 IA（模块与界面重设计，部分完成）**：Android 遗留模块已退役删除（T22/T23，见上）；新 IA 的目标形态为 工作流 `/workflows`、任务 `/tasks`、工具 `/tools`、设置 `/settings` 四个一级模块——其中 设置 `/settings`、关于 `/about`、诊断 `/diagnostics` 与工作流编辑器 `/workflow-editor` 已就位，工作流列表页、任务页、工具页仍**规划中**（结构/交互重设计；视觉以用户确认的 Stitch 设计稿为准，见 [01-产品概述](./01-产品概述.md#6-现状-vs-规划)）。
+- 工作流模块 `/workflows`（管理列表 + 二级编辑器 `/workflows/editor/:name?`；导入/导出）。
+- 任务模块 `/tasks`（选模板 → 动态表单 → 实时进度/日志 → 历史筛选）。
 - 工具与环境模块 `/tools`（描述符导入/删除、自定义路径）。
-- 脚本执行（脚本作为"可导入的依赖环境的工具/节点"）。
-- **冷启动与 UX 基调（已决策）**：通用示例工作流 `examples/workflows/generic/` 导入即跑（零外部依赖）；新模块空状态引导（工作流空 → 导入示例/新建，任务空 → 去创建工作流，工具空 → 从 examples/ 导入描述符）；任务历史全保留（仅手动删除）+ 状态/名称筛选；任务完成/失败以应用内提示为主，系统通知为设置项（默认关）。
+- **冷启动与 UX 基调（部分完成）**：通用示例工作流 `examples/workflows/generic/` 已随外部化落地；新模块空状态引导（工作流空 → 导入示例/新建，任务空 → 去创建工作流，工具空 → 从 examples/ 导入描述符）、任务历史状态/名称筛选、任务完成/失败应用内提示 + 可选系统通知仍**规划中**。
 
 详见 [05-分期开发计划](./05-分期开发计划.md) 与 [06-后续路线图](./06-后续路线图.md)。

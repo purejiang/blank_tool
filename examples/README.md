@@ -14,9 +14,9 @@
 
 ### Android 示例 (`workflows/android/` + `tools/android/`)
 
-- **需导入描述符**：`tools/android/` 下的 7 个工具描述符（aapt, adb, apksigner, apktool, bundletool, jarsigner, zipalign）必须通过工具管理页导入后，对应的工作流才能运行。
-- **需自备二进制**：Android 工具链（ADB、Apktool、Bundletool、JDK 等）需放置在 `runtime/` 目录或通过工具管理页配置自定义路径。
-- 当前包含 6 个工作流：download-install、decompile、recompile、sign、aab-install、decompile-edit-sign（反编译 APK，正则替换文件内容，重编译，zipalign 对齐，apksigner 签名）。
+- **需导入描述符**：`tools/android/` 下的 8 个工具描述符（aapt, adb, apksigner, apktool, bundletool, jarsigner, zipalign, apk-audit）必须通过工具管理页导入后，对应的工作流才能运行。其中 `apk-audit` 是 `python_script` 类型（依赖 Python 环境），其余 7 个是 `java_jar`/`binary` 类型。
+- **需自备二进制**：Android 工具链（ADB、Apktool、Bundletool、JDK 等）需放置在 `runtime/` 目录或通过工具管理页配置自定义路径。`apk-audit` 脚本会自动搜索 `runtime/apktool/apktool.jar` 和 Java 路径（`BT_JAVA_BIN` / `JAVA_HOME` / PATH）。
+- 当前包含 7 个工作流：download-install、decompile、recompile、sign、aab-install、decompile-edit-sign（反编译→修改→重编译→签名）、apk-audit（批量反编译多个 APK，提取关键信息，生成 HTML + Markdown 对比报告）。
 
 ## 导入方式
 
@@ -59,4 +59,15 @@ python cli/cli.py run examples/workflows/android/decompile-edit-sign.json \
     --input ks_path=your.jks \
     --input ks_key_alias=testkey \
     --input ks_pass=pass:test12345
+
+# APK 批量审计与对比（反编译多个 APK，提取关键信息，生成报告）
+python cli/cli.py run examples/workflows/android/apk-audit.json \
+    --tool-dir examples/tools/android \
+    --input apk_paths="app-v1.apk,app-v2.apk" \
+    --input output_dir=./audit-report
+# 也支持传入目录（自动扫描 .apk 文件）：
+python cli/cli.py run examples/workflows/android/apk-audit.json \
+    --tool-dir examples/tools/android \
+    --input apk_paths=./apks \
+    --input output_dir=./audit-report
 ```

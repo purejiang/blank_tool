@@ -1,6 +1,7 @@
 export const PATH_CONFIG_DEFAULTS = {
   runtime: '.\\runtime',
-  server: '.\\backend',
+  // Python 后端根目录：backend/ → cli/ 重命名后同步（打包时 extraResources 只拷 cli/）
+  server: '.\\cli',
   serverEntry: 'main.py',
   runtimeExecutable: 'python\\python.exe',
   devServerUrl: 'http://localhost:3000',

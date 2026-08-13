@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm run typecheck && npm run test",
+    "check:full": "npm run check && pytest tests/contracts/ tests/cli/ && node --test tests/shared-contracts.test.mjs && npx playwright test",
     "build": "node scripts/build.mjs",
     "build:win": "node scripts/build.mjs --win",
     "build:mac": "node scripts/build.mjs --mac",
@@ -25,7 +26,7 @@
   ],
   "author": "cyanrain",
   "license": "ISC",
-  "description": "一个基于 Electron+Vue3 的桌面应用程序，集成 Android 常用开发工具",
+  "description": "一个基于 Electron+Vue3 的本地工作流编排桌面应用",
   "build": {
     "appId": "com.cyanrain.blank-tool",
     "productName": "Blank Tool",
