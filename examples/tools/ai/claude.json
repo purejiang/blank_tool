@@ -1,0 +1,57 @@
+{
+  "name": "claude",
+  "display_name": "Claude Code",
+  "type": "binary",
+  "path": {
+    "win": "D:\\AppData\\Local\\Programs\\nodejs\\node_global\\claude.cmd",
+    "mac": "claude",
+    "linux": "claude"
+  },
+  "env_deps": [],
+  "validate": {
+    "cmd": ["--version"],
+    "expect_returncode": 0
+  },
+  "version": {
+    "cmd": ["--version"],
+    "regex": "(\\d+\\.\\d+\\.\\d+)",
+    "from_stream": "stdout"
+  },
+  "operations": [
+    {
+      "name": "fix",
+      "description": "让 Claude Code 在当前工作目录执行一个修复/改造任务（非交互 print 模式，JSON 输出）。",
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "要执行的修复任务描述，例如「修复 foo.py 里的空指针异常并提交」"
+        },
+        {
+          "name": "repo_dir",
+          "type": { "base": "directory" },
+          "required": false,
+          "description": "目标仓库目录，可选；不传则用工作流 workdir"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "命令结果（returncode, stdout, stderr）。stdout 是 claude --output-format json 的完整 JSON。"
+        }
+      ],
+      "args_map": [
+        "-p",
+        "--output-format",
+        "json",
+        "--dangerously-skip-permissions",
+        { "param": "prompt" }
+      ],
+      "timeout": 1800,
+      "cwd": "$inputs.repo_dir"
+    }
+  ]
+}

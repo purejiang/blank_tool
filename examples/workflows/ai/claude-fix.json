@@ -1,0 +1,42 @@
+{
+  "name": "claude-fix",
+  "version": "1.0",
+  "description": "让 Claude Code 在当前目录执行一个修复任务（非交互，JSON 输出）。请在目标仓库目录下运行。",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "要执行的修复任务描述"
+    },
+    {
+      "name": "repo_dir",
+      "type": { "base": "directory" },
+      "required": false,
+      "description": "目标仓库目录，可选；不传则用工作流 workdir"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": { "base": "json" },
+      "required": true,
+      "description": "claude 命令结果（stdout 为 claude 的 JSON 输出）"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "claude_fix",
+      "type": "step",
+      "tool": "claude",
+      "params": {
+        "operation": "fix",
+        "prompt": "$inputs.prompt",
+        "repo_dir": "$inputs.repo_dir"
+      },
+      "next": null,
+      "on_failure": "fail"
+    }
+  ],
+  "edges": []
+}
