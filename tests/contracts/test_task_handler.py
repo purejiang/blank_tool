@@ -239,8 +239,9 @@ def test_delete_task_dir_rejects_path_outside_tasks_root(monkeypatch):
 
 
 def test_append_log_writes_to_file():
-    """Calling handle_append_log must create the per-task log file."""
+    """Calling handle_append_log buffers the line; flushing creates the file."""
     from app.utils.env import get_task_dir
+    from app.utils.task_log_writer import flush_task_log
     task_dir = get_task_dir("ct_append_test")
     logs_dir = os.path.join(task_dir, "logs")
     log_path = os.path.join(logs_dir, "task_exec.log")
@@ -252,6 +253,8 @@ def test_append_log_writes_to_file():
     result = handle_append_log({"task_id": "ct_append_test", "line": "hello"}, None)
 
     assert result == {"written": True}
+    # Buffered design: line only hits disk after an explicit flush
+    flush_task_log("ct_append_test")
     assert os.path.exists(log_path)
     with open(log_path, "r", encoding="utf-8") as f:
         content = f.read()

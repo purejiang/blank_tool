@@ -62,7 +62,7 @@ def env_registry(temp_registry_root: str):
     # Discover with bundled descriptor_dir pointing at the real bundled dir
     # so the 3 core envs (java/python/node) are always present.
     from pathlib import Path as _Path
-    bundled = _Path(__file__).resolve().parent.parent.parent / "backend" / "registry" / "environments"
+    bundled = _Path(__file__).resolve().parent.parent.parent / "cli" / "registry" / "environments"
     registry.discover(descriptor_dir=str(bundled), overlay_descriptor_dir=temp_registry_root)
     return registry
 

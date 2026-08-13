@@ -1,0 +1,58 @@
+{
+  "name": "decode_tool",
+  "display_name": "Decode Tool",
+  "type": "java_jar",
+  "path": "decode/decode.jar",
+  "env_deps": ["java"],
+  "validate": {},
+  "version": {},
+  "inputs": [
+    {
+      "name": "args",
+      "type": { "base": "text" },
+      "required": false,
+      "description": "Raw args passthrough"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": { "base": "json" },
+      "required": true,
+      "description": "Command result with returncode, stdout, stderr"
+    }
+  ],
+  "operations": [
+    {
+      "name": "decode",
+      "description": "Decode an APK into smali sources",
+      "inputs": [
+        {
+          "name": "apk",
+          "type": { "base": "file" },
+          "required": true,
+          "description": "APK file to decode"
+        },
+        {
+          "name": "force",
+          "type": { "base": "boolean" },
+          "required": false,
+          "description": "Overwrite existing output directory"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output_dir",
+          "type": { "base": "directory" },
+          "required": true,
+          "description": "Directory where decoded sources are written"
+        }
+      ],
+      "args_map": [
+        "d",
+        { "param": "apk" },
+        { "flag": "force", "value": "-f" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "malformed_tool",
+  "display_name": "Malformed Tool",
+  "type": "binary",
+  "path": "bin/malformed",
+  "env_deps": [],
+  "validate": {},
+  "version": {},
+  "inputs": [],
+  "outputs": [],
+  "operations": [
+    {
+      "description": "operation is missing its name field",
+      "inputs": [],
+      "outputs": [],
+      "args_map": []
+    }
+  ]
+}

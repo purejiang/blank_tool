@@ -1,0 +1,45 @@
+{
+  "name": "apk-audit",
+  "version": "1.0",
+  "description": "Batch audit and compare APK files: decompile each APK, extract key info (package, version, channel_adver, google_client_id, app_name, permissions, SDK versions), generate HTML + Markdown comparison report.",
+  "inputs": [
+    {
+      "name": "apk_paths",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Comma-separated APK file paths, or a directory containing APK files."
+    },
+    {
+      "name": "output_dir",
+      "type": { "base": "directory" },
+      "required": true,
+      "description": "Directory for report output (HTML + Markdown)."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": { "base": "json" },
+      "required": true,
+      "description": "JSON summary with audit results and report paths (from script stdout)."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "audit",
+      "type": "step",
+      "tool": "apk-audit",
+      "params": {
+        "operation": "audit",
+        "apk_paths": "$inputs.apk_paths",
+        "output_dir": "$inputs.output_dir"
+      },
+      "next": null,
+      "on_success": null,
+      "on_failure": "fail",
+      "condition": null,
+      "retry": 0
+    }
+  ],
+  "edges": []
+}

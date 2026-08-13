@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const channelsPath = new URL('../src/shared/ipc/channels.ts', import.meta.url)
 const pathConfigPath = new URL('../src/shared/config/pathConfig.ts', import.meta.url)
 const protocolPath = new URL('../src/shared/ipc/protocol.ts', import.meta.url)
-const handlersDir = new URL('../backend/app/handlers/', import.meta.url)
+const handlersDir = new URL('../cli/app/handlers/', import.meta.url)
 
 test('IPC channels 包含配置相关契约', async () => {
   const content = await readFile(channelsPath, 'utf8')

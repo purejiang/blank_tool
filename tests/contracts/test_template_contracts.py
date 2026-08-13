@@ -10,6 +10,9 @@ Each test gets an isolated FileTemplateStore injected into the module singleton
 (``template_handler._store``), so no test touches the real templates dir.
 """
 
+import json
+import logging
+
 import pytest
 
 from app.handlers import template_handler as th
@@ -122,6 +125,31 @@ def test_list_returns_saved_templates_with_metadata():
     assert alpha["tags"] == ["y"]
     assert alpha["node_count"] == 2
     assert alpha["created_at"] and alpha["updated_at"]
+
+
+def test_list_logs_warning_and_skips_corrupted_template(tmp_path, caplog):
+    # One valid (wrapped format) + one corrupted (malformed JSON) file.
+    valid = {
+        "definition": _definition("valid"),
+        "created_at": "2026-08-10T00:00:00.000000",
+        "updated_at": "2026-08-10T00:00:00.000000",
+        "description": "ok",
+        "tags": ["t"],
+    }
+    (tmp_path / "valid.json").write_text(json.dumps(valid), encoding="utf-8")
+    (tmp_path / "broken.json").write_text("{ not valid json !!!", encoding="utf-8")
+
+    store = FileTemplateStore(templates_dir=str(tmp_path))
+    with caplog.at_level(logging.WARNING, logger="app.template.store"):
+        infos = store.list()
+
+    # Valid template still listed; corrupted one skipped but logged.
+    assert [info.name for info in infos] == ["valid"]
+    assert any(
+        record.levelname == "WARNING"
+        and "broken" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_delete_removes_template():

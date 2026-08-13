@@ -1,0 +1,55 @@
+{
+  "name": "apk-audit",
+  "display_name": "APK Audit",
+  "type": "python_script",
+  "path": "apk-audit/apk_audit.py",
+  "env_deps": ["python"],
+  "inputs": [
+    {
+      "name": "args",
+      "type": { "base": "text" },
+      "required": false,
+      "description": "Arguments to pass to the audit script"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": { "base": "json" },
+      "required": true,
+      "description": "Command result with returncode, stdout, stderr"
+    }
+  ],
+  "operations": [
+    {
+      "name": "audit",
+      "description": "Batch audit and compare APK files: decompile each APK, extract key info (package, version, channel_adver, google_client_id, app_name, permissions, SDK versions), generate HTML + Markdown comparison report.",
+      "inputs": [
+        {
+          "name": "apk_paths",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Comma-separated APK file paths, or a directory containing APK files."
+        },
+        {
+          "name": "output_dir",
+          "type": { "base": "directory" },
+          "required": true,
+          "description": "Directory for report output (HTML + Markdown)."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": { "base": "json" },
+          "required": true,
+          "description": "Command result with returncode, stdout (JSON summary), stderr."
+        }
+      ],
+      "args_map": [
+        { "param": "apk_paths" },
+        { "param": "output_dir" }
+      ]
+    }
+  ]
+}

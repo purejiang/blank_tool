@@ -1,0 +1,25 @@
+{
+  "name": "plain_tool",
+  "display_name": "Plain Tool",
+  "type": "binary",
+  "path": "bin/plain",
+  "env_deps": [],
+  "validate": {},
+  "version": {},
+  "inputs": [
+    {
+      "name": "args",
+      "type": { "base": "text" },
+      "required": false,
+      "description": "Raw args passthrough"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": { "base": "json" },
+      "required": true,
+      "description": "Command result"
+    }
+  ]
+}
