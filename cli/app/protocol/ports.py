@@ -39,6 +39,14 @@ class Port:
             default so pre-T2 data deserializes unchanged.
         multi: whether a select-like port accepts multiple values.  False
             by default.
+        direction: I/O direction of the port within the ``inputs`` list.
+            Default ``"input"`` — the port describes a value the tool
+            consumes.  ``"output"`` — the port names a value the tool
+            *produces* (typically a file path the user passes via
+            ``--out <path>``); the engine copies the bound value into the
+            node's outputs so downstream nodes can reference it.  Meaningful
+            only for ports inside ``PortSet.inputs``; ports inside
+            ``PortSet.outputs`` always behave as outputs regardless.
     """
 
     name: str
@@ -47,6 +55,7 @@ class Port:
     description: str = ""
     options: List[str] = field(default_factory=list)
     multi: bool = False
+    direction: str = "input"
 
     def __post_init__(self) -> None:
         """Validate name is snake_case and type is a TypeAnnotation."""
@@ -57,6 +66,10 @@ class Port:
         if not isinstance(self.type, TypeAnnotation):
             raise TypeError(
                 f"port type must be a TypeAnnotation, got {type(self.type).__name__}: {self.type!r}"
+            )
+        if self.direction not in ("input", "output"):
+            raise ValueError(
+                f"port direction must be 'input' or 'output', got: {self.direction!r}"
             )
         # Advisory base-agnostic presence check (T2): `options` is only
         # meaningful for select-like ports, but no SELECT base type exists
@@ -79,8 +92,8 @@ class Port:
 
         TypeAnnotation is a frozen dataclass without its own to_dict, so it
         is serialized inline as ``{"base": <enum-value>, "subtype": <str|None>}``.
-        ``options``/``multi`` are always emitted (empty list / False when
-        unset) so the wire shape is stable.
+        ``options``/``multi``/``direction`` are always emitted (empty list /
+        False / ``"input"`` when unset) so the wire shape is stable.
         """
         return {
             "name": self.name,
@@ -92,15 +105,16 @@ class Port:
             "description": self.description,
             "options": self.options,
             "multi": self.multi,
+            "direction": self.direction,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Port":
         """Reconstruct a Port from a dict produced by :meth:`to_dict`.
 
-        Absent ``options``/``multi`` keys keep their defaults (``[]`` /
-        ``False``) so pre-T2 workflow data without those fields still
-        deserializes unchanged.
+        Absent ``options``/``multi``/``direction`` keys keep their defaults
+        (``[]`` / ``False`` / ``"input"``) so pre-direction workflow data
+        without those fields still deserializes unchanged.
         """
         type_data = data["type"]
         return cls(
@@ -113,6 +127,7 @@ class Port:
             description=data.get("description", ""),
             options=data.get("options", []),
             multi=data.get("multi", False),
+            direction=data.get("direction", "input"),
         )
 
 

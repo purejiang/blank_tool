@@ -87,19 +87,38 @@ def _operations_payload(tool) -> list:
     without operations, so the ``workflow.list_tools`` wire shape only gains
     the additive ``operations`` key when it is meaningful.  Each entry is
     ``{"name", "description", "inputs", "outputs"}`` with PortJSON-compatible
-    ports (backend ``Port.to_dict`` always emits options/multi).
+    ports (backend ``Port.to_dict`` always emits options/multi/direction).
+
+    Input ports declared ``direction=output`` are mirrored into the
+    ``outputs`` array (deduped by name) so the editor renders them as
+    declared outputs — descriptor authors state the artifact port once
+    (on the input side, where its value is bound) and the wire shape
+    reflects it on both sides automatically.
     """
     descriptor = getattr(tool, "_descriptor", None)
     operations = getattr(descriptor, "operations", None) or []
-    return [
-        {
-            "name": operation.name,
-            "description": operation.description,
-            "inputs": [port.to_dict() for port in operation.inputs],
-            "outputs": [port.to_dict() for port in operation.outputs],
-        }
-        for operation in operations
-    ]
+    payload: list = []
+    for operation in operations:
+        inputs = [port.to_dict() for port in operation.inputs]
+        outputs = [port.to_dict() for port in operation.outputs]
+        # Mirror direction=output inputs into outputs (deduped by name).
+        existing = {p["name"] for p in outputs}
+        for port in operation.inputs:
+            if (
+                getattr(port, "direction", "input") == "output"
+                and port.name not in existing
+            ):
+                outputs.append(port.to_dict())
+                existing.add(port.name)
+        payload.append(
+            {
+                "name": operation.name,
+                "description": operation.description,
+                "inputs": inputs,
+                "outputs": outputs,
+            }
+        )
+    return payload
 
 
 def handle_list_tools(params, stream_handler):

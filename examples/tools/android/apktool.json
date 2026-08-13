@@ -50,7 +50,8 @@
           "name": "output_dir",
           "type": { "base": "directory" },
           "required": true,
-          "description": "Directory to write the decoded tree to."
+          "direction": "output",
+          "description": "Directory to write the decoded tree to. Surfaced as a node output so downstream nodes can reference it via $nodes.<id>.outputs.output_dir."
         },
         {
           "name": "force",
@@ -89,7 +90,8 @@
           "name": "output_apk",
           "type": { "base": "file", "subtype": "apk" },
           "required": true,
-          "description": "Path to write the built APK to."
+          "direction": "output",
+          "description": "Path to write the built APK to. Surfaced as a node output so downstream nodes can reference it via $nodes.<id>.outputs.output_apk."
         },
         {
           "name": "use_aapt1",
