@@ -27,6 +27,7 @@ from app.common.base_executor import CommandExecutor, CommandExecutionContext
 from app.common.exceptions import ToolException
 from app.env.registry import EnvironmentRegistry
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
+from app.tools.builtin.base import ToolContext
 from app.utils.env import get_java_bin, get_node_bin, get_python_bin, get_runtime_dir
 from app.utils.logger import Logger
 
@@ -44,6 +45,12 @@ class Operation:
     (substitute the bound value of that input) or ``{"flag": <bool_input>,
     "value": <arg>}`` (emit ``value`` when the boolean input is true).
     Placeholder shape is not validated beyond "is a str or dict".
+
+    ``timeout`` overrides the execution timeout for this operation, in
+    seconds (None = executor default, 600).  ``cwd`` overrides the working
+    directory for this operation: a static path, ``$workdir`` (the
+    workflow's work dir), or ``$inputs.<key>`` (the bound value of a
+    declared input); None = the workflow's work dir.
     """
 
     name: str
@@ -51,6 +58,8 @@ class Operation:
     inputs: List[Port] = field(default_factory=list)
     outputs: List[Port] = field(default_factory=list)
     args_map: list = field(default_factory=list)
+    timeout: Optional[int] = None
+    cwd: Optional[str] = None
 
 
 @dataclass
@@ -128,6 +137,7 @@ def _port_from_dict(data: dict) -> Port:
         type=annotation,
         required=data.get("required", True),
         description=data.get("description", ""),
+        direction=data.get("direction", "input"),
     )
 
 
@@ -170,6 +180,8 @@ def _operations_from(entries: Any, path: str, tool_name: str) -> List[Operation]
                 inputs=_ports_from(entry.get("inputs", []), "inputs", path),
                 outputs=_ports_from(entry.get("outputs", []), "outputs", path),
                 args_map=list(entry.get("args_map", [])),
+                timeout=entry.get("timeout"),
+                cwd=entry.get("cwd"),
             )
         )
     return operations
@@ -419,17 +431,157 @@ class DescriptorTool:
 
     def execute(
         self,
-        command: List[str],
-        context: Optional[CommandExecutionContext] = None,
+        inputs: dict,
+        context: ToolContext,
     ) -> Dict[str, Any]:
-        """Execute the tool with *command* appended after the invocation prefix.
+        """Unified execution entry point (single ToolProtocol contract).
 
-        ``context.process_holder`` is threaded through untouched so an
-        external coordinator (e.g. TaskManager) can cancel long-running
-        descriptor tools.  Returns ``{success, stdout, stderr, returncode,
-        command}``.
+        Routes internally:
+        - ``inputs["operation"]`` → operation path: lookup the named
+          operation, validate bound values against its typed input ports,
+          build the command from ``args_map``, execute via ``_run``.
+        - ``inputs["args"]`` → bare-args path: extract the command list,
+          execute via ``_run`` (backward-compatible).
+
+        Returns ``{success, stdout, stderr, returncode, command}``.
         """
-        return self._run(command, context)
+        cmd_context = self._to_command_context(context)
+
+        operation_name = inputs.get("operation")
+        if operation_name:
+            return self._execute_operation(operation_name, inputs, cmd_context)
+
+        command_list = inputs.get("args")
+        if isinstance(command_list, list):
+            return self._run(command_list, cmd_context)
+
+        raise ToolException(
+            f"tool {self.name!r} requires either 'operation' or 'args' "
+            f"in inputs, got keys: {list(inputs.keys())}"
+        )
+
+    def _execute_operation(
+        self,
+        operation_name: str,
+        inputs: dict,
+        cmd_context: CommandExecutionContext,
+    ) -> Dict[str, Any]:
+        """Execute via a named operation: lookup, validate, build command, run.
+
+        Returns:
+            dict: ``{success, stdout, stderr, returncode, command}``.
+        Raises:
+            ToolException: on unknown operation, missing required inputs,
+                or execution failure.
+        """
+        # ── 1. Look up the operation ──────────────────────────────────
+        op = None
+        for candidate in self._descriptor.operations:
+            if candidate.name == operation_name:
+                op = candidate
+                break
+
+        if op is None:
+            raise ToolException(
+                f"unknown operation {operation_name!r} for tool {self.name!r}"
+            )
+
+        # ── 2. Validate inputs against the operation's typed ports ────
+        if op.inputs:
+            op_port_set = PortSet(list(op.inputs), list(op.outputs))
+            validation_errors = op_port_set.validate_inputs(inputs)
+            if validation_errors:
+                raise ToolException("; ".join(validation_errors))
+
+        # ── 3. Build command list from args_map ───────────────────────
+        command = self._build_operation_command(op, inputs)
+
+        # ── 3.5 Apply per-operation cwd / timeout overrides ─────────────
+        if op.timeout is not None:
+            if isinstance(op.timeout, (int, float)) and not isinstance(op.timeout, bool):
+                cmd_context.timeout = op.timeout
+            else:
+                self._logger.warning(
+                    "operation timeout must be a number, got %r; using default",
+                    op.timeout,
+                )
+        if op.cwd:  # 空字符串视为「不覆盖」，避免 cwd="" 破坏 subprocess
+            cmd_context.cwd = self._resolve_operation_cwd(op.cwd, inputs, cmd_context.cwd)
+
+        # ── 4. Execute via the internal _run contract ─────────────────
+        result = self._run(command, cmd_context)
+
+        # ── 5. Surface input ports declared direction=output ──────────
+        # Tools that produce files (e.g. ``--out <path>``) declare those
+        # paths as inputs with ``direction=output``.  The bound value is
+        # the user-supplied destination; copy it into the result dict so
+        # downstream nodes can reference it as ``$nodes.<id>.outputs.<name>``
+        # without the descriptor having to redeclare the port on the
+        # ``outputs`` side.  Real tool output (stdout/stderr/returncode)
+        # is preserved — output-direction inputs only ADD keys, never
+        # overwrite existing ones.
+        for in_port in op.inputs:
+            if getattr(in_port, "direction", "input") == "output":
+                if in_port.name in inputs:
+                    result.setdefault(in_port.name, inputs[in_port.name])
+        return result
+
+    @staticmethod
+    def _build_operation_command(op: Any, resolved_params: dict) -> list:
+        """Build the command list from an operation's args_map.
+
+        Each entry in ``op.args_map`` is either:
+        - A literal string (passed through unchanged).
+        - A ``{"param": <name>}`` dict: the bound value of ``<name>`` is
+          looked up in *resolved_params* and stringified.
+        - A ``{"flag": <name>, "value": <arg>}`` dict: ``<arg>`` is emitted
+          only when ``resolved_params[<name>]`` is truthy.
+
+        Returns:
+            A flat list of strings ready for ``self._run(command, ctx)``.
+        """
+        command: list = []
+        for entry in op.args_map:
+            if isinstance(entry, str):
+                command.append(entry)
+            elif isinstance(entry, dict):
+                if "param" in entry:
+                    value = resolved_params.get(entry["param"], "")
+                    command.append(str(value))
+                elif "flag" in entry:
+                    flag_value = resolved_params.get(entry["flag"], False)
+                    if flag_value:
+                        command.append(str(entry["value"]))
+        return command
+
+    def _resolve_operation_cwd(
+        self, cwd_spec: str, inputs: dict, default_cwd: Optional[str]
+    ) -> Optional[str]:
+        if cwd_spec == "$workdir":
+            return default_cwd
+        if cwd_spec.startswith("$inputs."):
+            key = cwd_spec[len("$inputs."):]
+            value = inputs.get(key)
+            if isinstance(value, str) and value:
+                return value
+            self._logger.warning(
+                "operation cwd %r references missing/empty input %r; "
+                "falling back to work dir",
+                cwd_spec,
+                key,
+            )
+            return default_cwd
+        return cwd_spec
+
+    @staticmethod
+    def _to_command_context(context: ToolContext) -> CommandExecutionContext:
+        """Convert a workflow ToolContext to a CommandExecutionContext."""
+        return CommandExecutionContext(
+            cwd=context.work_dir,
+            task_id=context.task_id,
+            env=dict(context.env) or None,
+            process_holder={},
+        )
 
     def _run(
         self,
