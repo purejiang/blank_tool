@@ -31,8 +31,8 @@
         {
           "name": "repo_dir",
           "type": { "base": "directory" },
-          "required": false,
-          "description": "目标仓库目录，可选；不传则用工作流 workdir"
+          "required": true,
+          "description": "目标仓库目录（必填），claude 将在该目录下执行"
         }
       ],
       "outputs": [
