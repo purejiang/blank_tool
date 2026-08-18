@@ -328,3 +328,10 @@ def unmount_all() -> None:
     if _default_loader is not None:
         _default_loader.unmount_all()
         _default_loader = None
+
+
+def loaded() -> List[LoadedPlugin]:
+    """Return the currently-loaded plugin records (empty when none loaded)."""
+    if _default_loader is None:
+        return []
+    return _default_loader.loaded

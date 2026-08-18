@@ -27,6 +27,8 @@ from app.api_handler import ApiHandler
 from app.utils.logger import Logger
 from app.utils.env import get_env, get_output_dir, load_dotenv, load_server_config, resolve_path
 from app.protocol import ErrorCode
+from app.plugins.context import PluginContext
+from app.plugins import loader as plugin_loader
 
 # Thread-safe lock for writing to stdout
 stdout_lock = threading.Lock()
@@ -179,6 +181,13 @@ def main():
 
     # Inject health-check handler
     api_handler.api_map["health"] = _handle_health
+
+    # Wire the plugin loader (defensive: a loader bug must not prevent boot).
+    try:
+        plugin_context = PluginContext()
+        plugin_loader.load_plugins(plugin_context)
+    except Exception as e:
+        logger.warning(f"Plugin loading failed (continuing without plugins): {e}")
 
     # Thread pool for request processing
     executor = ThreadPoolExecutor(max_workers=4)
