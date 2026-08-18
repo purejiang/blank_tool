@@ -18,8 +18,9 @@ Each entry is a dict:
 * ``config`` (any, optional): passed through to ``apply(ctx, config)``.
 * ``kind`` (str, REQUIRED): ``"shipped-native"`` or ``"native"``.
 
-Manifest sources (first present wins, else empty manifest):
-the ``plugins`` section of ``server.config.json``, then
+Manifest sources: the shipped-native builtin plugins (ALWAYS loaded first, via
+:data:`SHIPPED_MANIFEST`), followed by user plugins (first present wins, else
+none) from the ``plugins`` section of ``server.config.json``, then
 ``<output_dir>/plugins.json``.
 
 Lifecycle
@@ -54,6 +55,21 @@ from app.utils.env import (
 logger = logging.getLogger(__name__)
 
 _ALLOWED_KINDS = ("shipped-native", "native")
+
+#: The shipped-native builtin plugins, ALWAYS loaded at startup (before any
+#: user ``native`` plugins from config).  Each entry registers a subset of the
+#: 20 builtin primitives into the shared tool registry as ``shipped-native``.
+#: Direct import only — no directory scanning.
+SHIPPED_MANIFEST = [
+    {"module": "app.plugins.builtin.file", "kind": "shipped-native"},
+    {"module": "app.plugins.builtin.dir", "kind": "shipped-native"},
+    {"module": "app.plugins.builtin.archive", "kind": "shipped-native"},
+    {"module": "app.plugins.builtin.text", "kind": "shipped-native"},
+    {"module": "app.plugins.builtin.net", "kind": "shipped-native"},
+    {"module": "app.plugins.builtin.exec", "kind": "shipped-native"},
+    {"module": "app.plugins.builtin.flow", "kind": "shipped-native"},
+    {"module": "app.plugins.builtin.workflow", "kind": "shipped-native"},
+]
 
 
 @dataclass
@@ -114,14 +130,19 @@ def _read_output_plugins() -> Optional[list]:
 
 
 def _default_manifest() -> list:
-    """Resolve the implicit manifest from config sources, or ``[]``."""
-    server = _read_server_plugins()
-    if server is not None:
-        return server
-    output = _read_output_plugins()
-    if output is not None:
-        return output
-    return []
+    """Resolve the implicit manifest: shipped-native first, then user plugins.
+
+    The shipped-native builtin plugins (:data:`SHIPPED_MANIFEST`) always load
+    first, in addition to any user ``native`` plugins from config sources
+    (``server.config.json`` ``plugins`` then ``<output_dir>/plugins.json``,
+    first present wins — an absent/empty user source contributes nothing).
+    """
+    user_plugins = _read_server_plugins()
+    if user_plugins is None:
+        user_plugins = _read_output_plugins()
+    if user_plugins is None:
+        user_plugins = []
+    return SHIPPED_MANIFEST + user_plugins
 
 
 def _invoke_apply(apply, ctx, config) -> Any:

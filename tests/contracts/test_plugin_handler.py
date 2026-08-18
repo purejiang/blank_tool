@@ -62,9 +62,14 @@ class TestPluginList:
         loader.load_plugins(PluginContext())
         result = plugin_handler.list_plugins({}, None)
 
-        assert result["plugins"] == [
-            {"module": "vplug", "kind": "native", "version": "1.2.3"},
-        ]
+        # Shipped-native builtins are ALWAYS loaded first, then user plugins.
+        by_module = {p["module"]: p for p in result["plugins"]}
+        assert by_module["vplug"] == {
+            "module": "vplug", "kind": "native", "version": "1.2.3",
+        }
+        assert sum(
+            1 for p in result["plugins"] if p["kind"] == "shipped-native"
+        ) == 8
 
     def test_list_uses_empty_version_when_absent(
         self, tmp_path, monkeypatch, mock_tool_manager,

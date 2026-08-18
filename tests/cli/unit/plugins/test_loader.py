@@ -8,6 +8,7 @@ import sys
 
 from app.plugins.loader import (
     PluginLoader,
+    SHIPPED_MANIFEST,
     load_plugins,
     unmount_all,
 )
@@ -16,6 +17,41 @@ from app.plugins.loader import (
 def _write_module(tmp_path, name, body):
     """Write a single-file module ``name``.py under tmp_path."""
     (tmp_path / f"{name}.py").write_text(body, encoding="utf-8")
+
+
+SHIPPED_MODULES = [entry["module"] for entry in SHIPPED_MANIFEST]
+
+
+class _StubTools:
+    """Stand-in registry exposing the plugin-tool seam shipped ``apply`` needs."""
+
+    def __init__(self):
+        self.registered = {}
+
+    def get_kind(self, name):
+        return self.registered.get(name)
+
+    def register_tool(self, tool, kind):
+        self.registered[tool.name] = kind
+        return tool
+
+
+class _StubCtx:
+    """Minimal ctx supporting shipped ``apply`` (``.tools``/``.register_tool``)
+    and user plugin ``apply`` (dict item assignment)."""
+
+    def __init__(self):
+        self.tools = _StubTools()
+        self._data = {}
+
+    def register_tool(self, tool, kind="native"):
+        return self.tools.register_tool(tool, kind)
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+    def __getitem__(self, key):
+        return self._data[key]
 
 
 def test_apply_called_once_with_config(tmp_path):
@@ -270,11 +306,12 @@ def test_invalid_kind_is_skipped(tmp_path, caplog):
     assert any("invalid kind" in r.message for r in caplog.records)
 
 
-def test_default_manifest_empty_when_no_sources(monkeypatch, tmp_path):
+def test_default_manifest_loads_shipped_when_no_sources(monkeypatch, tmp_path):
     monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
     monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
-    loader = PluginLoader(ctx={})
-    assert loader.load() == []
+    loader = PluginLoader(ctx=_StubCtx())
+    loaded = loader.load()
+    assert [p.module for p in loaded] == SHIPPED_MODULES
 
 
 def test_reads_plugins_from_server_config(monkeypatch, tmp_path):
@@ -300,10 +337,10 @@ def test_reads_plugins_from_server_config(monkeypatch, tmp_path):
     )
     monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
     monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
-    ctx = {}
+    ctx = _StubCtx()
     loader = PluginLoader(ctx=ctx)
     loaded = loader.load()
-    assert [p.module for p in loaded] == ["cfg_plugin"]
+    assert [p.module for p in loaded] == SHIPPED_MODULES + ["cfg_plugin"]
     assert ctx["from"] == "server"
     loader.unmount_all()
 
