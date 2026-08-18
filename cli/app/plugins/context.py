@@ -50,35 +50,30 @@ class PluginContext:
         self.events: EventBus = events if events is not None else EventBus()
         self._plugin_tools: Dict[str, Any] = {}
 
-    def register_tool(self, tool: Any, kind: str = "code") -> Any:
+    def register_tool(self, tool: Any, kind: str = "native") -> Any:
         """Register *tool* into the shared tool registry under ``tool.name``.
 
-        Delegates to the registry's plugin-tool registration method when one
-        exists (probed names: ``register_plugin_tool``, then
-        ``add_plugin_tool``); Wave 2 is expected to add it. Until then (Wave
-        1) the tool is staged in ``self._plugin_tools`` AND written into the
-        shared registry's ``_tools`` instance cache — the registry's
-        ``get()`` consults ``_tools`` first (tool_manager.py:189), so the
-        tool becomes immediately visible to the engine.
-
-        Decision: store-into-context (allowed by the plan) instead of raising,
-        because Wave 1 has no registry-side plugin-tool API yet and plugins
-        must be able to contribute tools today. The ``_tools`` write is the
-        stopgap that makes the tool actually reachable; Wave 2's native
-        ``_plugin_tools`` dict on the registry supersedes it.
+        Delegates to the registry's ``register_plugin_tool(name, tool, kind)``
+        (Wave 2). Until that method exists (Wave 1) the tool is staged in
+        ``self._plugin_tools`` AND written into the shared registry's
+        ``_tools`` instance cache — the registry's ``get()`` consults
+        ``_tools`` first, so the tool becomes immediately visible to the
+        engine. The stopgap is superseded by Wave 2's native ``_plugin_tools``
+        dict on the registry.
 
         Raises:
-            ValueError: if *tool* has no non-empty string ``name`` attribute.
+            ValueError: if *tool* has no non-empty string ``name`` attribute,
+                or if the registry rejects the registration (e.g. invalid
+                kind / name conflict).
         """
         name = getattr(tool, "name", None)
         if not isinstance(name, str) or not name:
             raise ValueError(
                 "plugin tool must expose a non-empty string `name` attribute"
             )
-        for method_name in ("register_plugin_tool", "add_plugin_tool"):
-            register = getattr(self.tools, method_name, None)
-            if callable(register):
-                return register(tool, kind)
+        register = getattr(self.tools, "register_plugin_tool", None)
+        if callable(register):
+            return register(name, tool, kind)
         self._plugin_tools[name] = (tool, kind)
         self.tools._tools[name] = tool
         return tool

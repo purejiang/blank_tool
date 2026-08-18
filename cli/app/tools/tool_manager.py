@@ -42,6 +42,11 @@ class ToolRegistry:
         self._custom_paths: Dict[str, str] = {}
         self._discovered: Dict[str, type] = {}
         self._descriptor_tools: Dict[str, DescriptorTool] = {}
+        # Plugin tools (BuiltinTool/native plugin instances, NOT BaseTool) and
+        # their kind metadata.  These are resident (registered explicitly, not
+        # discovered) and survive refresh().
+        self._plugin_tools: Dict[str, Any] = {}
+        self._kinds: Dict[str, str] = {}
         self._discover_lock = threading.Lock()
         self._initialized = False
         # Writable registry overlay directory (user-imported descriptors + overrides)
@@ -181,13 +186,23 @@ class ToolRegistry:
     def get(self, name: str) -> BaseTool:
         """Lazy-instantiate and return a tool by name.
 
-        Descriptor-declared tools win over code-based classes (they are
-        instantiated at discovery time and returned directly); anything else
-        falls through to the lazy code-class path. Raises
-        ToolNotFoundError if the tool class was not discovered.
+        Resolution priority (first match wins):
+        1. instance cache ``self._tools``;
+        2. plugin tools ``self._plugin_tools`` (resident BuiltinTool/native
+           instances — a ``shipped-native`` builtin wins over a same-name
+           descriptor/code tool);
+        3. descriptor tools ``self._descriptor_tools`` (instantiated at
+           discovery time);
+        4. code classes ``self._discovered`` (lazy instantiation).
+        Raises ToolNotFoundError if the tool was not found in any source.
         """
         if name in self._tools:
             return self._tools[name]
+
+        plugin_tool = self._plugin_tools.get(name)
+        if plugin_tool is not None:
+            self._tools[name] = plugin_tool
+            return plugin_tool
 
         descriptor_tool = self._descriptor_tools.get(name)
         if descriptor_tool is not None:
@@ -232,10 +247,12 @@ class ToolRegistry:
         return instance
 
     def list_all(self) -> list[str]:
-        """Return names of all discovered tools (code classes + descriptors)."""
+        """Return names of all known tools (descriptors + plugin tools + code classes)."""
         return list(
             dict.fromkeys(
-                list(self._discovered.keys()) + list(self._descriptor_tools.keys())
+                list(self._descriptor_tools.keys())
+                + list(self._plugin_tools.keys())
+                + list(self._discovered.keys())
             )
         )
 
@@ -252,8 +269,74 @@ class ToolRegistry:
         return result
 
     def refresh(self):
-        """Clear cached instances so the next get() re-instantiates."""
+        """Clear cached instances so the next get() re-instantiates.
+
+        Only ``self._tools`` (the instance cache) is cleared.  Plugin tools
+        in ``self._plugin_tools`` are resident (registered explicitly by
+        plugins) and MUST survive refresh so they are not lost on a tool
+        re-scan.
+        """
         self._tools.clear()
+
+    # ------------------------------------------------------------------
+    # Plugin tool registration (Wave 2)
+    # ------------------------------------------------------------------
+
+    _PLUGIN_TOOL_KINDS = frozenset({"shipped-native", "native"})
+
+    def register_plugin_tool(self, name: str, tool: Any, kind: str) -> Any:
+        """Register a plugin-provided tool instance under *name* with *kind*.
+
+        Plugin tools are resident instances (``BuiltinTool`` or other native
+        plugin objects — NOT ``BaseTool`` subclasses) registered explicitly
+        by plugins, distinct from discovered code classes and descriptors.
+
+        Args:
+            name: unique tool identifier.
+            tool: the tool instance to register.
+            kind: one of ``"shipped-native"`` (bundled builtin, exempt from
+                descriptor/code name-conflicts; ``get()`` priority makes it
+                win) or ``"native"`` (plugin native tool, must not override
+                a descriptor/code tool).
+
+        Returns:
+            The registered *tool* instance.
+
+        Raises:
+            ValueError: on an unknown *kind*, a duplicate plugin-tool name,
+                or (for ``"native"``) a name conflict with a descriptor or
+                discovered code tool.
+        """
+        if kind not in self._PLUGIN_TOOL_KINDS:
+            raise ValueError(
+                f"invalid plugin tool kind {kind!r}; must be one of "
+                f"{sorted(self._PLUGIN_TOOL_KINDS)}"
+            )
+
+        if name in self._plugin_tools:
+            raise ValueError(f"plugin tool {name!r} is already registered")
+
+        if kind == "native" and (
+            name in self._descriptor_tools or name in self._discovered
+        ):
+            raise ValueError(
+                f"native plugin tool {name!r} conflicts with an existing "
+                f"descriptor/code tool"
+            )
+
+        self._plugin_tools[name] = tool
+        self._kinds[name] = kind
+        return tool
+
+    def unregister_plugin_tool(self, name: str) -> None:
+        """Remove a plugin tool by *name*, re-resolving it on next get()."""
+        self._plugin_tools.pop(name, None)
+        self._kinds.pop(name, None)
+        self._tools.pop(name, None)
+
+    def get_kind(self, name: str) -> Optional[str]:
+        """Return the kind of a registered plugin tool, or None if unknown."""
+        return self._kinds.get(name)
 
     # ------------------------------------------------------------------
     # Custom path management

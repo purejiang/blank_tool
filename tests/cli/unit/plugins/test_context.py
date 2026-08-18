@@ -30,12 +30,13 @@ def test_register_tool_is_visible_via_shared_registry():
     ctx = PluginContext()
     tool = FakeTool("plugin.fake_tool")
     try:
-        ctx.register_tool(tool, kind="code")
+        ctx.register_tool(tool, kind="native")
         assert ctx.tools.get("plugin.fake_tool") is tool
     finally:
         # Cleanup: the registry is a process-wide singleton shared by the
-        # whole pytest session — do not leak the fake tool into other tests.
-        ctx.tools._tools.pop("plugin.fake_tool", None)
+        # whole pytest session — fully unregister (not just cache-pop) so the
+        # fake tool does not leak into other tests via _plugin_tools/_kinds.
+        ctx.tools.unregister_plugin_tool("plugin.fake_tool")
 
 
 def test_register_tool_requires_non_empty_name():

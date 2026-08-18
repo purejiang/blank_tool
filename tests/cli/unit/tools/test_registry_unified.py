@@ -11,8 +11,11 @@ import os
 
 import pytest
 
+from app.common.exceptions import ToolNotFoundError
+from app.protocol import PortSet
+from app.tools.builtin.base import BuiltinTool
 from app.tools.descriptor_tool import DescriptorTool
-from app.tools.tool_manager import ToolManager
+from app.tools.tool_manager import ToolManager, ToolRegistry
 
 _RUNTIME_ADB = os.path.join("runtime", "adb", "adb.exe")
 _RUNTIME_APKTOOL = os.path.join("runtime", "apktool", "apktool.jar")
@@ -74,3 +77,86 @@ def test_code_tools_discovered_when_runtime_present():
         assert tool.is_valid is True
     # At minimum, adb should be available (it's a code class, not a descriptor)
     assert "adb" in available
+
+
+# ── Wave 2 Task 5: plugin-tool registration ────────────────────────────────
+
+
+def _make_builtin(name: str) -> BuiltinTool:
+    """Build a minimal BuiltinTool instance carrying *name*."""
+    cls = type(
+        f"_FakeBuiltin_{name.replace('.', '_')}",
+        (BuiltinTool,),
+        {
+            "name": name,
+            "description": "fake plugin builtin",
+            "ports": PortSet([], []),
+            "execute": staticmethod(lambda inputs, context: {}),
+        },
+    )
+    return cls()
+
+
+@pytest.fixture
+def registry(tmp_path):
+    """A fresh, undiscovered ToolRegistry isolated from the real output dir."""
+    return ToolRegistry(registry_overlay_dir=str(tmp_path))
+
+
+def test_register_plugin_tool_list_get_kind(registry):
+    tool = _make_builtin("file.read")
+    returned = registry.register_plugin_tool("file.read", tool, "shipped-native")
+    assert returned is tool
+    assert "file.read" in registry.list_all()
+    assert registry.get("file.read") is tool
+    assert registry.get_kind("file.read") == "shipped-native"
+
+
+def test_unregister_plugin_tool_removes_and_re_resolves(registry):
+    tool = _make_builtin("file.read")
+    registry.register_plugin_tool("file.read", tool, "shipped-native")
+    # cache the instance so we also verify the cache is purged on unregister
+    assert registry.get("file.read") is tool
+    registry.unregister_plugin_tool("file.read")
+    assert "file.read" not in registry.list_all()
+    assert registry.get_kind("file.read") is None
+    with pytest.raises(ToolNotFoundError):
+        registry.get("file.read")
+
+
+def test_register_plugin_tool_duplicate_raises(registry):
+    registry.register_plugin_tool("file.read", _make_builtin("file.read"), "shipped-native")
+    with pytest.raises(ValueError):
+        registry.register_plugin_tool(
+            "file.read", _make_builtin("file.read"), "shipped-native"
+        )
+
+
+def test_register_plugin_tool_invalid_kind_raises(registry):
+    with pytest.raises(ValueError):
+        registry.register_plugin_tool("file.read", _make_builtin("file.read"), "code")
+
+
+def test_native_conflicts_with_descriptor(registry):
+    registry._descriptor_tools["conflict.tool"] = object()
+    with pytest.raises(ValueError):
+        registry.register_plugin_tool(
+            "conflict.tool", _make_builtin("conflict.tool"), "native"
+        )
+
+
+def test_native_conflicts_with_discovered_code(registry):
+    registry._discovered["code.tool"] = object
+    with pytest.raises(ValueError):
+        registry.register_plugin_tool(
+            "code.tool", _make_builtin("code.tool"), "native"
+        )
+
+
+def test_shipped_native_coexists_with_descriptor_and_wins(registry):
+    registry._descriptor_tools["file.read"] = object()
+    shipped = _make_builtin("file.read")
+    # shipped-native is EXEMPT from descriptor name-conflict: no raise
+    registry.register_plugin_tool("file.read", shipped, "shipped-native")
+    # get() priority makes the shipped builtin win over the descriptor
+    assert registry.get("file.read") is shipped
