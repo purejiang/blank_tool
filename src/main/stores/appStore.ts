@@ -148,29 +148,9 @@ const schema = {
         type: 'boolean',
         default: false
     },
-    adbPath: {
-        type: 'string',
-        default: ''
-    },
-    aaptPath: {
-        type: 'string',
-        default: ''
-    },
-    apktoolPath: {
-        type: 'string',
-        default: ''
-    },
-    bundletoolPath: {
-        type: 'string',
-        default: ''
-    },
     javaPath: {
         type: 'string',
         default: ''
-    },
-    signatureConfigs: {
-        type: 'array',
-        default: []
     }
 };
 

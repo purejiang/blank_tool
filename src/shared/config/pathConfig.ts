@@ -42,12 +42,7 @@ export const WRITABLE_CONFIG_KEYS = {
   theme: 'theme',
   enableNotifications: 'enableNotifications',
   autoDeleteOutputOnTaskRemove: 'autoDeleteOutputOnTaskRemove',
-  adbPath: 'adbPath',
-  aaptPath: 'aaptPath',
-  apktoolPath: 'apktoolPath',
-  bundletoolPath: 'bundletoolPath',
-  javaPath: 'javaPath',
-  signatureConfigs: 'signatureConfigs'
+  javaPath: 'javaPath'
 } as const
 
 export type WritableAppConfigKey = keyof typeof WRITABLE_CONFIG_KEYS
