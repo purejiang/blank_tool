@@ -11,9 +11,11 @@ import logging
 
 import pytest
 
-from app.common.exceptions import ToolException
+from app.common.exceptions import ToolException, ToolNotFoundError
+from app.plugins.loader import SHIPPED_MANIFEST, load_plugins
 from app.protocol import PortSet
 from app.tools.builtin.base import BuiltinTool
+from app.tools.tool_manager import ToolRegistry
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.engine import ExecutionContext, WorkflowEngine
 
@@ -26,6 +28,28 @@ class _StubRegistry:
 
     def get_tool(self, name):
         return self._tools.get(name)
+
+
+class _RegistryAdapter:
+    """Wrap a ToolRegistry to expose ``get_tool`` + the plugin ``apply`` seam.
+
+    The engine resolves tools via ``get_tool(name)``; the shipped plugins'
+    ``apply`` calls ``ctx.register_tool(tool, kind=...)`` and reads
+    ``ctx.tools.get_kind``.  ``get_tool`` maps the registry's
+    ``ToolNotFoundError`` to None (matching ``ToolManager.get_tool``).
+    """
+
+    def __init__(self, registry):
+        self.tools = registry
+
+    def get_tool(self, name):
+        try:
+            return self.tools.get(name)
+        except ToolNotFoundError:
+            return None
+
+    def register_tool(self, tool, kind="native"):
+        return self.tools.register_plugin_tool(tool.name, tool, kind)
 
 
 class _FlakyTool(BuiltinTool):
@@ -46,6 +70,29 @@ class _FlakyTool(BuiltinTool):
         return {"ok": True, "attempts": self.attempts}
 
 
+class _DescriptorStub:
+    """Descriptor-shaped tool (command-list contract, NOT a BuiltinTool)."""
+
+    name = "desc.tool"
+
+    def __init__(self):
+        self.ports = PortSet(inputs=[], outputs=[])
+
+    def execute(self, inputs, context):
+        return {"success": True, "returncode": 0, "stdout": "desc-ok"}
+
+
+class _NativePluginStub(BuiltinTool):
+    """Native-plugin BuiltinTool registered via register_plugin_tool(kind="native")."""
+
+    name = "native.tool"
+    description = "native plugin stub"
+    ports = PortSet(inputs=[], outputs=[])
+
+    def execute(self, inputs, context):
+        return {"native": True}
+
+
 def _node(node_id, tool="file.write", **overrides) -> WorkflowNode:
     data = {"id": node_id, "tool": tool}
     data.update(overrides)
@@ -56,8 +103,49 @@ def _definition(nodes) -> WorkflowDefinition:
     return WorkflowDefinition(name="wf", nodes=nodes)
 
 
+def _build_shipped_registry(overlay_dir):
+    """Build a real (undiscovered) ToolRegistry with the 20 shipped builtins.
+
+    Loads ``SHIPPED_MANIFEST`` via ``load_plugins`` with an adapter exposing
+    the plugin ``apply`` seam (``register_tool`` + ``tools.get_kind``), then
+    returns the adapter so the engine can resolve tools via ``get_tool``.
+    """
+    registry = ToolRegistry(registry_overlay_dir=overlay_dir)
+    adapter = _RegistryAdapter(registry)
+    load_plugins(adapter, manifest=SHIPPED_MANIFEST)
+    return adapter
+
+
+def _shipped_registry(tmp_path):
+    """Fresh shipped registry for tests that mutate it (no cross-test leak)."""
+    return _build_shipped_registry(str(tmp_path))
+
+
+_DEFAULT_REGISTRY = None
+
+
+def _default_registry():
+    """Module-cached shipped registry used when a test passes no registry.
+
+    The engine now resolves tools exclusively via ``registry.get_tool``, so the
+    default registry must actually provide the 20 builtins (as shipped-native
+    plugin tools).  Cached: builtins are stateless and rebuilding per test is
+    wasteful.
+    """
+    global _DEFAULT_REGISTRY
+    if _DEFAULT_REGISTRY is None:
+        import tempfile
+
+        _DEFAULT_REGISTRY = _build_shipped_registry(
+            tempfile.mkdtemp(prefix="wf-engine-")
+        )
+    return _DEFAULT_REGISTRY
+
+
 def _engine(registry=None) -> WorkflowEngine:
-    return WorkflowEngine(registry=registry if registry is not None else _StubRegistry())
+    return WorkflowEngine(
+        registry=registry if registry is not None else _default_registry()
+    )
 
 
 def _context(tmp_path, **overrides) -> ExecutionContext:
@@ -294,3 +382,59 @@ def test_descriptor_tool_raises_not_implemented(tmp_path):
     engine = _engine(registry=_StubRegistry({"legacy.tool": _LegacyTool()}))
     with pytest.raises(NotImplementedError, match="has no execute"):
         engine.execute(_definition(nodes), {}, _context(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# Unified-registry resolution (todo 7): builtin / descriptor / native plugin
+# ---------------------------------------------------------------------------
+
+def test_builtin_descriptor_native_each_in_linear_workflow(tmp_path):
+    """Each tool kind resolves through the registry in its own linear workflow."""
+    registry = _shipped_registry(tmp_path)
+    engine = _engine(registry=registry)
+
+    # 1. builtin (shipped-native plugin tool) resolves through the registry.
+    result = engine.execute(
+        _definition(_write_read_nodes()), {"message": "hi"}, _context(tmp_path)
+    )
+    assert result.success is True
+    assert result.outputs["content"] == "hi"
+
+    # 2. descriptor tool (command-list contract) resolves via _descriptor_tools.
+    registry.tools._descriptor_tools["desc.tool"] = _DescriptorStub()
+    result = engine.execute(
+        _definition([_node("d", "desc.tool", params={"args": ["x"]})]),
+        {},
+        _context(tmp_path),
+    )
+    assert result.success is True
+    assert result.outputs == {"success": True, "returncode": 0, "stdout": "desc-ok"}
+
+    # 3. native plugin tool (BuiltinTool) resolves via _plugin_tools.
+    registry.tools.register_plugin_tool("native.tool", _NativePluginStub(), "native")
+    result = engine.execute(
+        _definition([_node("n", "native.tool")]), {}, _context(tmp_path)
+    )
+    assert result.success is True
+    assert result.outputs == {"native": True}
+
+
+def test_shipped_builtin_wins_over_same_name_descriptor(tmp_path):
+    """A same-name ``file.read`` descriptor must NOT shadow the shipped builtin."""
+    registry = _shipped_registry(tmp_path)
+    fake = _DescriptorStub()
+    fake.name = "file.read"
+    registry.tools._descriptor_tools["file.read"] = fake
+
+    from app.tools.builtin.file_tools import FileRead
+
+    # get() priority: shipped-native plugin tool beats the descriptor.
+    assert isinstance(registry.get_tool("file.read"), FileRead)
+
+    result = _engine(registry=registry).execute(
+        _definition(_write_read_nodes()),
+        {"message": "shadow-test"},
+        _context(tmp_path),
+    )
+    assert result.success is True
+    assert result.outputs["content"] == "shadow-test"

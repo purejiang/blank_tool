@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.engine import ExecutionContext, WorkflowEngine
 
@@ -63,7 +64,7 @@ def test_cancel_between_nodes_stops_after_first_success(tmp_path):
               params={"path": "$nodes.a.outputs.path"}),
     ]
     definition = WorkflowDefinition(name="wf", nodes=nodes)
-    engine = WorkflowEngine(registry=_StubRegistry())
+    engine = WorkflowEngine(registry=ToolManager.instance())
     context = ExecutionContext(work_dir=str(tmp_path), task_id="task-2")
 
     call_count = [0]

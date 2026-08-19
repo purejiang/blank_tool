@@ -95,7 +95,14 @@ def test_workflow_list_tools_non_empty_with_builtin_and_registered():
     assert "file.read" in names
     assert "file.write" in names
     assert "flow.assert" in names
-    builtin = next(entry for entry in tools if entry["name"] == "file.read")
+    # The 20 builtins are now also shipped-native plugin tools in the registry
+    # (todo 7), so ``get_all_tools()`` emits a registry entry alongside the
+    # ``_BUILTIN_TOOLS`` entry; select the ``builtin: True`` entry (the one the
+    # editor consumes) — todo 8 removes the ``_BUILTIN_TOOLS`` duplication.
+    builtin = next(
+        entry for entry in tools
+        if entry["name"] == "file.read" and entry.get("builtin") is True
+    )
     assert builtin["is_valid"] is True
     assert builtin["builtin"] is True
     assert "ports" in builtin

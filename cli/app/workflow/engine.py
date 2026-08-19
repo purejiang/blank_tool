@@ -11,10 +11,10 @@ the tool, and record per-node results.  ``on_failure`` is ``"fail"`` (stop),
 times before giving up).
 
 Tool dispatch:
-    Tools resolve by name from the builtin registry (``_BUILTIN_TOOLS`` —
-    ``file.read``, ``file.write``, ...) and the injected ``ToolManager``
-    (descriptor/code tools).  Builtin tools run under the dict +
-    :class:`ToolContext` contract.  Descriptor/code tools (``apktool``,
+    Tools resolve by name exclusively from the injected ``ToolManager``
+    (whose shared registry holds the builtin primitives as ``shipped-native``
+    plugin tools, plus descriptor/code tools).  Builtin tools run under the
+    dict + :class:`ToolContext` contract.  Descriptor/code tools (``apktool``,
     ``bundletool``, ...) run under the command-list contract: the workflow
     template declares their arguments as ``params: {"args": [...]}``, and
     after expression resolution ``args`` is extracted and passed as the
@@ -61,9 +61,11 @@ logger = logging.getLogger(__name__)
 # Shared, stateless expression engine (safe across runs — see expression.py).
 _EXPRESSION_ENGINE = ExpressionEngine()
 
-# Builtin atomic tools by name.  These are NOT in ToolManager (which discovers
-# descriptor/code tools); the engine consults this dict first when resolving a
-# node's tool name.
+# Builtin atomic tools by name.  These are now registered as shipped-native
+# plugin tools in the shared registry (see ``app.plugins.builtin.*``) and
+# resolved via the injected registry — ``_lookup_tool`` no longer consults this
+# dict.  It is retained ONLY for ``workflow_handler.py`` list_tools
+# serialization (removed by todo 8).
 _BUILTIN_TOOLS: Dict[str, BuiltinTool] = {
     "file.read": FileRead(),
     "file.write": FileWrite(),
@@ -403,15 +405,14 @@ class WorkflowEngine:
         return self._execute_tool(tool, resolved_params, context)
 
     def _lookup_tool(self, tool_name: str) -> Optional[Any]:
-        """Resolve a tool name to a tool object.
+        """Resolve a tool name to a tool object via the unified registry.
 
-        Builtin primitives are checked first (``file.read``, ...); descriptor
-        and code tools come from the injected ToolManager registry.  Returns
-        None when the name is unknown to both sources.
+        All tools — builtin primitives (registered as ``shipped-native`` plugin
+        tools), descriptor tools, and code tools — resolve exclusively through
+        ``self._registry.get_tool``.  ``get_tool``'s priority (shipped-native
+        > descriptor > code) makes a builtin win over a same-name descriptor.
+        Returns None when the name is unknown.
         """
-        builtin = _BUILTIN_TOOLS.get(tool_name)
-        if builtin is not None:
-            return builtin
         if self._registry is not None:
             return self._registry.get_tool(tool_name)
         return None

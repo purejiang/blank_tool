@@ -568,6 +568,28 @@ class ToolManager:
         self._registry = ToolRegistry(search_system=search_system)
         self._registry.discover()
         self.logger = Logger.get_logger("ToolManager")
+        # The engine now resolves tools exclusively via get_tool(), so the
+        # shipped-native builtins must live in the shared registry — load them
+        # here (headless CLI + tests construct ToolManager without cli/main.py's
+        # bootstrap).  Runs once (guarded by _initialized).
+        self._load_shipped_plugins()
+
+    def _load_shipped_plugins(self) -> None:
+        """Register the shipped-native builtin plugins into the shared registry.
+
+        Deferred import avoids a top-level circular import (plugin context /
+        loader import ToolManager).  A loader bug must NOT prevent ToolManager
+        from constructing, so failures are logged, not raised.
+        """
+        try:
+            from app.plugins.context import PluginContext
+            from app.plugins.loader import SHIPPED_MANIFEST, load_plugins
+
+            load_plugins(PluginContext(), manifest=SHIPPED_MANIFEST)
+        except Exception:
+            self.logger.warning(
+                "failed to load shipped-native builtin plugins", exc_info=True
+            )
 
     @classmethod
     def instance(cls, search_system: bool = False) -> "ToolManager":
