@@ -1,11 +1,12 @@
 """
-Contract tests for the plugin handler (plugin.list / plugin.reload).
+Contract tests for the plugin handler (plugin.list / add / delete / reload).
 """
 import json
 import logging
 
 import pytest
 
+from app.common.exceptions import ToolException
 from app.handlers import plugin_handler
 from app.plugins import loader
 from app.plugins.context import PluginContext
@@ -66,6 +67,7 @@ class TestPluginList:
         by_module = {p["module"]: p for p in result["plugins"]}
         assert by_module["vplug"] == {
             "module": "vplug", "kind": "native", "version": "1.2.3",
+            "loaded": True, "error": "",
         }
         assert sum(
             1 for p in result["plugins"] if p["kind"] == "shipped-native"
@@ -86,6 +88,129 @@ class TestPluginList:
         result = plugin_handler.list_plugins({}, None)
 
         assert result["plugins"][0]["version"] == ""
+
+
+class TestPluginAdd:
+    def test_add_writes_manifest_and_reloads(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        _write_module(
+            tmp_path,
+            "addplug",
+            "__version__ = '9.9.9'\n"
+            "def apply(ctx, config):\n"
+            "    pass\n",
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        result = plugin_handler.add_plugin(
+            {"module": "addplug", "path": str(tmp_path)}, None
+        )
+
+        by_module = {p["module"]: p for p in result["plugins"]}
+        assert by_module["addplug"] == {
+            "module": "addplug", "kind": "native", "version": "9.9.9",
+            "loaded": True, "error": "",
+        }
+
+        manifest_path = tmp_path / "plugins.json"
+        assert manifest_path.exists()
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert manifest == [
+            {"module": "addplug", "path": str(tmp_path), "kind": "native"},
+        ]
+
+    def test_add_persists_optional_config(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        _write_module(tmp_path, "cfgplug", "def apply(ctx, config):\n    pass\n")
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        plugin_handler.add_plugin(
+            {"module": "cfgplug", "path": str(tmp_path), "config": {"k": "v"}},
+            None,
+        )
+
+        manifest = json.loads(
+            (tmp_path / "plugins.json").read_text(encoding="utf-8")
+        )
+        assert manifest == [
+            {
+                "module": "cfgplug",
+                "path": str(tmp_path),
+                "config": {"k": "v"},
+                "kind": "native",
+            },
+        ]
+
+    @pytest.mark.parametrize("suffix", [".exe", ".jar", ".js", ".sh", ".py"])
+    def test_add_rejects_script_or_binary_path(
+        self, tmp_path, monkeypatch, mock_tool_manager, suffix,
+    ):
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        with pytest.raises(ToolException, match="use tool.add"):
+            plugin_handler.add_plugin(
+                {"module": "sometool", "path": f"C:/tools/tool{suffix}"}, None
+            )
+
+    def test_add_requires_module(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        with pytest.raises(ToolException, match="module"):
+            plugin_handler.add_plugin({}, None)
+
+
+class TestPluginDelete:
+    def test_delete_removes_manifest_entry_and_reloads(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        _write_module(
+            tmp_path,
+            "delplug",
+            "def apply(ctx, config):\n    pass\n",
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        plugin_handler.add_plugin(
+            {"module": "delplug", "path": str(tmp_path)}, None
+        )
+        result = plugin_handler.delete_plugin({"module": "delplug"}, None)
+
+        by_module = {p["module"] for p in result["plugins"]}
+        assert "delplug" not in by_module
+
+        manifest = json.loads(
+            (tmp_path / "plugins.json").read_text(encoding="utf-8")
+        )
+        assert manifest == []
+
+    def test_delete_rejects_shipped_plugin(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        with pytest.raises(ToolException, match="cannot delete shipped plugin"):
+            plugin_handler.delete_plugin(
+                {"module": "app.plugins.builtin.file"}, None
+            )
+
+    def test_delete_requires_module(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        with pytest.raises(ToolException, match="module"):
+            plugin_handler.delete_plugin({}, None)
 
 
 class TestPluginReload:

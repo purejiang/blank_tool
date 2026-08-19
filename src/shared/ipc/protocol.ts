@@ -172,6 +172,15 @@ export interface LogTailResult {
   process: 'backend' | 'main'
 }
 
+/** Single plugin entry in plugin.list / plugin.add / plugin.delete */
+export interface PluginEntry {
+  module: string
+  kind: string
+  version: string
+  loaded: boolean
+  error: string
+}
+
 // ---- Method-to-Type Map ----
 // New entries added for backend API_MAP coverage (T15):
 //   All keys from cli/app/handlers/*.py API_MAP dicts.
@@ -235,6 +244,8 @@ export interface ApiMethodMap {
   'workflow.list_envs': { params: Record<string, never>; result: Record<string, unknown>[] }
 
   // --- plugin_handler.py ---
-  'plugin.list': { params: Record<string, never>; result: { plugins: { module: string; kind: string; version: string }[] } }
+  'plugin.list': { params: Record<string, never>; result: { plugins: PluginEntry[] } }
+  'plugin.add': { params: { module: string; path?: string; config?: Record<string, unknown> }; result: { plugins: PluginEntry[] } }
+  'plugin.delete': { params: { module: string }; result: { plugins: PluginEntry[] } }
   'plugin.reload': { params: Record<string, never>; result: { ok: boolean } }
 }
