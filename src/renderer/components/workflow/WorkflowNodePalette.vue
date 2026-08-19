@@ -39,7 +39,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import unifiedApi from '@/api/unifiedApi'
 import { log } from '@utils/logger'
-import { TOOL_DRAG_MIME, type WorkflowToolInfo } from './toolMeta'
+import { TOOL_DRAG_MIME, groupWorkflowTools, type WorkflowToolInfo } from './toolMeta'
 
 const { t } = useI18n()
 
@@ -65,15 +65,9 @@ async function loadTools() {
   }
 }
 
-const groups = computed(() => {
-  const byName = (a: WorkflowToolInfo, b: WorkflowToolInfo) => a.name.localeCompare(b.name)
-  const builtin = tools.value.filter((tool) => tool.builtin === true).sort(byName)
-  const registered = tools.value.filter((tool) => tool.builtin !== true).sort(byName)
-  return [
-    { label: 'Built-in', tools: builtin },
-    { label: 'Tools', tools: registered },
-  ].filter((group) => group.tools.length > 0)
-})
+// Grouping by `kind` (shipped-native → Built-in, native/descriptor →
+// Plugins), with legacy `builtin` fallback — see toolMeta.groupWorkflowTools.
+const groups = computed(() => groupWorkflowTools(tools.value))
 
 /**
  * One-line description for the palette entry. The backend payload has no

@@ -5,13 +5,22 @@
  * Tool categories and status values are deliberately local to the renderer:
  * the backend `workflow.list_tools` payload (see
  * cli/app/handlers/workflow_handler.py) only carries name/is_valid/
- * version/tool_path/ports/builtin, so the category is derived from the
- * dotted tool-name prefix.
+ * version/tool_path/ports/builtin (+ kind since todo 8), so the category
+ * is derived from the dotted tool-name prefix.
  */
 
 export type ToolStatus = 'idle' | 'running' | 'success' | 'error'
 
 export type ToolCategory = 'file' | 'net' | 'exec' | 'flow' | 'tool'
+
+/**
+ * Provenance of a tool, as emitted by backend `workflow.list_tools`
+ * (todo 8/16): 'shipped-native' = built-in workflow primitives,
+ * 'native' = Tier-1 native plugin, 'descriptor' = Tier-2 descriptor tool.
+ * Optional — older backends omit it, in which case callers fall back to
+ * the legacy `builtin` boolean.
+ */
+export type ToolKind = 'shipped-native' | 'native' | 'descriptor'
 
 /** A port's type annotation, as serialized by backend Port.to_dict(). */
 export interface PortTypeRef {
@@ -66,6 +75,8 @@ export interface WorkflowToolInfo {
   tool_path: string
   ports?: ToolPorts
   builtin?: boolean
+  /** Tool provenance (todo 16); absent on older backends — see ToolKind. */
+  kind?: ToolKind
   description?: string
   /** Descriptor tools only (T7): present and non-empty for operation-capable tools. */
   operations?: ToolOperation[]
@@ -94,6 +105,31 @@ const CATEGORY_BY_PREFIX: Record<string, ToolCategory> = {
 export function categoryOfToolName(name: string): ToolCategory {
   const prefix = name.split('.')[0]
   return CATEGORY_BY_PREFIX[prefix] ?? 'tool'
+}
+
+/** One labeled group in the workflow node palette. */
+export interface WorkflowToolGroup {
+  label: string
+  tools: WorkflowToolInfo[]
+}
+
+/**
+ * Group tools for the node palette (todo 16): `shipped-native` goes to
+ * "Built-in", `native`/`descriptor` go to "Plugins". When `kind` is absent
+ * (older backends), fall back to the legacy `builtin` boolean
+ * (`builtin === true` → Built-in, else Plugins). Each group is sorted by
+ * tool name; empty groups are dropped. Ordering is stable: Built-in first.
+ */
+export function groupWorkflowTools(tools: WorkflowToolInfo[]): WorkflowToolGroup[] {
+  const byName = (a: WorkflowToolInfo, b: WorkflowToolInfo) => a.name.localeCompare(b.name)
+  const isBuiltin = (tool: WorkflowToolInfo) =>
+    tool.kind ? tool.kind === 'shipped-native' : tool.builtin === true
+  const builtin = tools.filter(isBuiltin).sort(byName)
+  const plugins = tools.filter((tool) => !isBuiltin(tool)).sort(byName)
+  return [
+    { label: 'Built-in', tools: builtin },
+    { label: 'Plugins', tools: plugins },
+  ].filter((group) => group.tools.length > 0)
 }
 
 /**
