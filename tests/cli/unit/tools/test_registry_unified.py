@@ -160,3 +160,51 @@ def test_shipped_native_coexists_with_descriptor_and_wins(registry):
     registry.register_plugin_tool("file.read", shipped, "shipped-native")
     # get() priority makes the shipped builtin win over the descriptor
     assert registry.get("file.read") is shipped
+
+
+# ── Wave 2 Task 9: 20 builtins resolve via the unified registry ───────────
+
+#: The 20 builtin primitive names (exact mirror of
+#: tests/cli/unit/plugins/test_builtin_shipped.py::NAMES).
+_BUILTIN_NAMES = [
+    # app.plugins.builtin.file (6)
+    "file.read", "file.write", "file.copy", "file.move", "file.delete",
+    "file.hash",
+    # app.plugins.builtin.dir (3)
+    "dir.list", "dir.create", "dir.delete",
+    # app.plugins.builtin.archive (2)
+    "archive.extract", "archive.create",
+    # app.plugins.builtin.text (2)
+    "text.grep", "text.replace",
+    # app.plugins.builtin.net (2)
+    "net.download", "net.request",
+    # app.plugins.builtin.exec (2)
+    "shell.exec", "code.exec",
+    # app.plugins.builtin.flow (2)
+    "flow.assert", "flow.log",
+    # app.plugins.builtin.workflow (1)
+    "workflow.run",
+]
+
+
+@pytest.mark.parametrize("name", _BUILTIN_NAMES)
+def test_builtin_primitive_resolves_via_unified_registry(name):
+    """Wave 2 (todo 9): every builtin resolves through ToolManager.get_tool().
+
+    Locks the unified-registry path: ToolManager (NOT the deprecated
+    ``_BUILTIN_TOOLS`` dict) is the resolution source for the shipped
+    builtin primitives.  The shipped plugins are loaded once in
+    ``ToolManager.__init__`` (todo 7), so the singleton already has them
+    resident — no explicit manifest loading here, and they are NOT
+    unregistered (process-resident).
+    """
+    tm = ToolManager.instance()
+    tool = tm.get_tool(name)
+    assert tool is not None, f"{name!r} must resolve via ToolManager.get_tool()"
+    assert isinstance(tool, BuiltinTool), (
+        f"{name!r} should be a BuiltinTool, got {type(tool).__name__}"
+    )
+    assert tool.name == name
+    assert tm._registry.get_kind(name) == "shipped-native", (
+        f"{name!r} must be kind 'shipped-native'"
+    )
