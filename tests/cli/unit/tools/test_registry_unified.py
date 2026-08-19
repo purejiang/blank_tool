@@ -162,6 +162,50 @@ def test_shipped_native_coexists_with_descriptor_and_wins(registry):
     assert registry.get("file.read") is shipped
 
 
+# ── Wave 2 Task 10: descriptor tools are kind="descriptor" ─────────────────
+
+#: Minimal valid descriptor dict (same shape the tool page imports).
+_DESCRIPTOR_JSON = {
+    "name": "demo.descriptor",
+    "display_name": "Demo Descriptor",
+    "type": "binary",
+    "path": "demo/bin",
+    "env_deps": [],
+    "validate": {},
+    "version": {},
+    "inputs": [],
+    "outputs": [],
+}
+
+
+def test_descriptor_add_and_delete_kind(registry):
+    """Wave 2 (todo 10): descriptors carry kind 'descriptor'.
+
+    add_descriptor_file() -> re-discover -> get_kind(name) == "descriptor";
+    delete_descriptor() -> re-discover clears the stale kind, so the name
+    disappears from list_all() and get_kind returns None.
+    """
+    tool = registry.add_descriptor_file(dict(_DESCRIPTOR_JSON))
+    name = tool.name
+    assert name in registry.list_all()
+    assert registry.get_kind(name) == "descriptor"
+
+    registry.delete_descriptor(name)
+    assert name not in registry.list_all()
+    assert registry.get_kind(name) is None
+
+
+def test_rediscover_preserves_plugin_kinds(registry):
+    """Wave 2 (todo 10): re-discovering descriptors must not clobber
+    native / shipped-native plugin kinds."""
+    registry.register_plugin_tool("file.read", _make_builtin("file.read"), "shipped-native")
+    registry.register_plugin_tool("net.request", _make_builtin("net.request"), "native")
+    registry.add_descriptor_file(dict(_DESCRIPTOR_JSON))
+    assert registry.get_kind("file.read") == "shipped-native"
+    assert registry.get_kind("net.request") == "native"
+    assert registry.get_kind("demo.descriptor") == "descriptor"
+
+
 # ── Wave 2 Task 9: 20 builtins resolve via the unified registry ───────────
 
 #: The 20 builtin primitive names (exact mirror of

@@ -173,6 +173,7 @@ class ToolRegistry:
                     )
                     continue
                 self._descriptor_tools[descriptor.name] = tool
+                self._kinds[descriptor.name] = "descriptor"
                 self.logger.info(f"Discovered tool (descriptor): {descriptor.name}")
 
         _scan_descriptor_dir(bundled_dir)
@@ -496,6 +497,13 @@ class ToolRegistry:
     def _rediscover_descriptors(self) -> None:
         """Clear descriptor tools and re-scan bundled + overlay dirs."""
         self._descriptor_tools.clear()
+        # Drop stale descriptor kinds before re-scanning; native /
+        # shipped-native plugin kinds are untouched.
+        self._kinds = {
+            name: kind
+            for name, kind in self._kinds.items()
+            if kind != "descriptor"
+        }
         self._discover_descriptors()
 
     # ------------------------------------------------------------------
