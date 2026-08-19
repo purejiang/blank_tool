@@ -7,14 +7,16 @@ ToolRegistry still works correctly: code-based tools are discovered when
 unregistered names, and an empty descriptor dir does not crash discovery.
 """
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 
 from app.common.exceptions import ToolNotFoundError
 from app.protocol import PortSet
 from app.tools.builtin.base import BuiltinTool
-from app.tools.descriptor_tool import DescriptorTool
+from app.tools.descriptor_tool import DescriptorTool, load_descriptor
 from app.tools.tool_manager import ToolManager, ToolRegistry
 
 _RUNTIME_ADB = os.path.join("runtime", "adb", "adb.exe")
@@ -204,6 +206,64 @@ def test_rediscover_preserves_plugin_kinds(registry):
     assert registry.get_kind("file.read") == "shipped-native"
     assert registry.get_kind("net.request") == "native"
     assert registry.get_kind("demo.descriptor") == "descriptor"
+
+
+# ── Wave 2 Task 11: real descriptor import / delete regression ─────────────
+
+#: Real Android descriptor shipped in examples/ (bundled registry ships none).
+_EXAMPLES_ROOT = Path(__file__).resolve().parents[4] / "examples"
+_EXAMPLES_ADB = _EXAMPLES_ROOT / "tools" / "android" / "adb.json"
+
+
+def _import_example_adb(registry) -> str:
+    """Import the real examples/tools/android/adb.json into *registry*
+    (fresh overlay in tmp_path — never mutates the real output dir)."""
+    assert _EXAMPLES_ADB.is_file(), f"missing example descriptor: {_EXAMPLES_ADB}"
+    tool = registry.add_descriptor_file(
+        json.loads(_EXAMPLES_ADB.read_text(encoding="utf-8"))
+    )
+    return tool.name
+
+
+def test_descriptor_imported_from_examples_registers_kind_descriptor(registry):
+    """Wave 2 (todo 11): importing a real examples/tools/android descriptor
+    registers it with kind 'descriptor' and DescriptorTool semantics.
+
+    adb may be valid or invalid depending on whether a runtime binary is
+    reachable — assert the field is a bool consistent with DescriptorTool
+    (version populated only when valid), not a hardcoded True.
+    """
+    descriptor = load_descriptor(str(_EXAMPLES_ADB))
+    assert descriptor.name == "adb"
+
+    name = _import_example_adb(registry)
+
+    assert name in registry.list_all()
+    assert registry.get_kind(name) == "descriptor"
+    tool = registry.get(name)
+    assert isinstance(tool, DescriptorTool)
+    assert isinstance(tool.is_valid, bool)
+    if not tool.is_valid:
+        assert tool.version == ""
+
+
+def test_descriptor_imported_from_examples_can_be_deleted(registry):
+    """Wave 2 (todo 11): a real imported descriptor disappears from the
+    registry after delete_descriptor — gone from list_all, kind cleared."""
+    name = _import_example_adb(registry)
+    assert name in registry.list_all()
+
+    registry.delete_descriptor(name)
+
+    assert name not in registry.list_all()
+    assert registry.get_kind(name) is None
+
+
+def test_delete_bundled_only_name_raises_value_error(registry):
+    """Wave 2 (todo 11): deleting a bundled/code-only name (no overlay file)
+    raises ValueError — mirrors tool_manager.py delete_descriptor."""
+    with pytest.raises(ValueError, match="cannot be deleted"):
+        registry.delete_descriptor("file.read")
 
 
 # ── Wave 2 Task 9: 20 builtins resolve via the unified registry ───────────
