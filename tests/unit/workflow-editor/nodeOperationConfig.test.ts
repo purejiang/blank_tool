@@ -3,8 +3,10 @@
  *
  * Covers the NodeConfigPanel operation mode (descriptor tools that expose
  * operations via workflow.list_tools), the legacy free-form params fallback
- * (builtin tools / descriptors without operations), and the serializer
- * mapping between node.data.{operation, inputs} and the engine wire params
+ * (builtin tools / descriptors without operations), native plugin tools
+ * (kind "native", todo 20: ports render like builtins, operations trigger
+ * operation mode), and the serializer mapping between
+ * node.data.{operation, inputs} and the engine wire params
  * `{operation, <input_name>: value}` (T4 contract), including the T5
  * round-trip shape of examples/workflows/android/decompile.json.
  */
@@ -118,7 +120,43 @@ const FILEREAD = {
   },
 }
 
-const TOOL_LIST = { tools: [APKTOOL, SYNTHTOOL, FILEREAD] }
+/**
+ * Native plugin tool (kind "native", legacy builtin flag false) with plain
+ * ports and no operations — must render exactly like a builtin (todo 20).
+ */
+const NATIVEPLUGIN = {
+  name: 'my.native',
+  is_valid: true,
+  version: '0.1.0',
+  tool_path: '',
+  kind: 'native',
+  builtin: false,
+  ports: {
+    inputs: [port('input_text', 'text'), port('count', 'number', { required: false })],
+    outputs: [port('result', 'text')],
+  },
+}
+
+/** Native plugin tool that declares operations — must use operation mode. */
+const NATIVEOP = {
+  name: 'my.nativeop',
+  is_valid: true,
+  version: '0.1.0',
+  tool_path: '',
+  kind: 'native',
+  builtin: false,
+  ports: { inputs: [port('ignored', 'text')], outputs: [] },
+  operations: [
+    {
+      name: 'transform',
+      description: 'Transform a value.',
+      inputs: [port('value', 'text')],
+      outputs: [port('value', 'text')],
+    },
+  ],
+}
+
+const TOOL_LIST = { tools: [APKTOOL, SYNTHTOOL, FILEREAD, NATIVEPLUGIN, NATIVEOP] }
 
 // ---------------------------------------------------------------------------
 // Naive-ui stubs — plain render functions (no runtime template compilation).
@@ -469,5 +507,52 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const doc = serializeWorkflow([node], [], { name: 'wf' })
     expect(doc.nodes[0].params).toEqual({ operation: 'configure', mode: 'alpha' })
     expect(doc.nodes[0].params).not.toHaveProperty('tags')
+  })
+
+  it('(h) native plugin tool (kind "native") with ports renders the legacy port form like builtins', async () => {
+    // Palette grouping puts kind "native" under Plugins, but the panel's
+    // config mode is operations-driven, not kind/builtin-driven: a native
+    // plugin without operations gets the same free-form params UI as a
+    // shipped-native builtin.
+    const node = makeNode({ tool: 'my.native', ports: NATIVEPLUGIN.ports })
+    const wrapper = mountPanel(node)
+    await settled()
+
+    expect(wrapper.findAll('.n-select-stub').length).toBe(0) // no operation selector
+    expect(labels(wrapper)).toEqual(['input_text', 'count'])
+
+    await wrapper.find('.n-input-stub').setValue('hello')
+    await clickSave(wrapper)
+
+    const data = node.data as Record<string, any>
+    expect(data.params).toEqual({ input_text: 'hello' })
+    expect(data.operation).toBeUndefined()
+    expect(data.inputs).toBeUndefined()
+
+    const doc = serializeWorkflow([node], [], { name: 'wf' })
+    expect(doc.nodes[0].params).toEqual({ input_text: 'hello' })
+  })
+
+  it('(i) native plugin tool declaring operations uses operation mode', async () => {
+    const node = makeNode({ tool: 'my.nativeop', ports: NATIVEOP.ports })
+    const wrapper = mountPanel(node)
+    await settled()
+
+    const selects = wrapper.findAll('.n-select-stub')
+    expect(selects.length).toBe(1) // operation selector only
+    expect(selects[0].findAll('option').map((o) => o.text())).toEqual(['transform'])
+    expect(wrapper.findAll('.form-item-stub').length).toBe(0) // no op selected yet
+
+    await selects[0].setValue('transform')
+    await nextTick()
+    expect(labels(wrapper)).toEqual(['value'])
+
+    await wrapper.find('.n-input-stub').setValue('abc')
+    await clickSave(wrapper)
+
+    const data = node.data as Record<string, any>
+    expect(data.operation).toBe('transform')
+    expect(data.inputs).toEqual({ value: 'abc' })
+    expect(data.params).toBeUndefined()
   })
 })
