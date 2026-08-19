@@ -3,6 +3,7 @@ import { ConfigService } from './ConfigService'
 import NotificationService from './NotificationService'
 import { ThemeService } from './ThemeService'
 import ToolService from './ToolService'
+import PluginService from './PluginService'
 import ErrorService from './ErrorService'
 import SystemService from './SystemService'
 import CacheService from './CacheService'
@@ -16,6 +17,7 @@ export function registerServices(sm: typeof serviceManager = serviceManager): vo
   sm.register('notification', NotificationService)
   sm.register('theme', ThemeService)
   sm.register('tools', ToolService, ['config'])
+  sm.register('plugins', PluginService)
   sm.register('error', ErrorService, ['notification'])
   sm.register('system', SystemService)
   sm.register('cache', CacheService, ['config'])

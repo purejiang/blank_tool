@@ -1,54 +1,36 @@
+/**
+ * 插件服务 - 封装后端 plugin.* handler 调用。
+ * 所有方法经 unifiedApi.call 转发到主进程 -> Python 后端。
+ */
 import unifiedApi from '../api/unifiedApi'
-import { log } from '@utils/logger'
+import type { ApiMethodMap } from '../../shared/ipc/protocol'
 
-interface PluginApiLike {
-  callBackend?: (method: string, payload: Record<string, unknown>) => Promise<unknown>
-}
+type PluginList = ApiMethodMap['plugin.list']['result']
+type PluginAddParams = ApiMethodMap['plugin.add']['params']
 
 class PluginService {
-  private api: PluginApiLike | null
-
-  constructor() {
-    this.api = unifiedApi.getAPI() as PluginApiLike | null
+  /** 获取插件列表 */
+  list(): Promise<PluginList> {
+    return unifiedApi.call<PluginList>('plugin.list', {})
   }
 
-  /**
-   * 获取插件列表
-   */
-  async getPlugins() {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.list', {})
-    }
-    // Mock data for browser environment
-    return [
-      { name: 'hello_world', description: 'Mock Plugin', version: '1.0.0', author: 'Dev' }
-    ]
+  /** 添加插件（path/config 可选，仅当传入时才携带） */
+  add(module: string, path?: string, config?: Record<string, unknown>): Promise<PluginList> {
+    const params: PluginAddParams = { module }
+    if (path !== undefined) params.path = path
+    if (config !== undefined) params.config = config
+    return unifiedApi.call<PluginList>('plugin.add', params)
   }
 
-  /**
-   * 运行插件
-   * @param {string} pluginName 插件名称
-   * @param {Object} params 参数
-   */
-  async runPlugin(pluginName: string, params: Record<string, unknown> = {}) {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.run', {
-        name: pluginName,
-        params: params
-      })
-    }
-    return { success: true, message: 'Mock execution result' }
+  /** 删除插件 */
+  delete(module: string): Promise<PluginList> {
+    return unifiedApi.call<PluginList>('plugin.delete', { module })
   }
 
-  /**
-   * 重新加载插件
-   */
-  async reloadPlugins() {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.reload', {})
-    }
-    return await this.getPlugins()
+  /** 重载所有插件 */
+  reload(): Promise<ApiMethodMap['plugin.reload']['result']> {
+    return unifiedApi.call<ApiMethodMap['plugin.reload']['result']>('plugin.reload', {})
   }
 }
 
-export default new PluginService()
+export default PluginService
