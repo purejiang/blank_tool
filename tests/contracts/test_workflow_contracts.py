@@ -91,21 +91,39 @@ def test_workflow_list_tools_non_empty_with_builtin_and_registered():
     tools = result["tools"]
     assert tools
     names = {entry["name"] for entry in tools}
-    # 18 builtin primitives are always present.
+    # 20 shipped-native builtin primitives are always present.
     assert "file.read" in names
     assert "file.write" in names
     assert "flow.assert" in names
-    # The 20 builtins are now also shipped-native plugin tools in the registry
-    # (todo 7), so ``get_all_tools()`` emits a registry entry alongside the
-    # ``_BUILTIN_TOOLS`` entry; select the ``builtin: True`` entry (the one the
-    # editor consumes) — todo 8 removes the ``_BUILTIN_TOOLS`` duplication.
+
+    # Every entry carries a ``kind`` (todo 8).
+    assert all("kind" in entry for entry in tools)
+
+    # The shipped-native (builtin) set is exactly the 20 primitives.
+    shipped_native = {entry["name"] for entry in tools if entry["kind"] == "shipped-native"}
+    expected_builtins = {
+        "file.read", "file.write", "file.copy", "file.move", "file.delete",
+        "file.hash", "dir.list", "dir.create", "dir.delete",
+        "archive.extract", "archive.create", "text.grep", "text.replace",
+        "net.download", "net.request", "shell.exec", "code.exec",
+        "flow.assert", "flow.log", "workflow.run",
+    }
+    assert shipped_native == expected_builtins
+    assert len(shipped_native) == 20
+
+    # Legacy ``builtin`` boolean is True only for shipped-native.
     builtin = next(
         entry for entry in tools
-        if entry["name"] == "file.read" and entry.get("builtin") is True
+        if entry["name"] == "file.read" and entry["builtin"] is True
     )
+    assert builtin["kind"] == "shipped-native"
     assert builtin["is_valid"] is True
-    assert builtin["builtin"] is True
     assert "ports" in builtin
+    assert "description" in builtin
+    # Non-builtin entries (descriptor/native) must NOT be grouped as builtin.
+    for entry in tools:
+        if entry["kind"] != "shipped-native":
+            assert entry.get("builtin") is False
 
 
 def test_workflow_list_envs_returns_java_python_node():

@@ -15,7 +15,7 @@ need no registration code elsewhere:
 - ``workflow.validate``  statically validate a workflow definition against
   the tool registry, returning a list of findings;
 - ``workflow.list_tools``  list every registered tool — descriptor/code tools
-  from :class:`ToolManager` plus the 18 builtin workflow primitives;
+  from :class:`ToolManager` plus the 20 builtin workflow primitives;
 - ``workflow.list_envs``   list every resolved environment from the
   :class:`EnvironmentRegistry`.
 """
@@ -23,9 +23,9 @@ need no registration code elsewhere:
 from app.common.decorators import streaming
 from app.common.exceptions import ToolException
 from app.env.registry import EnvironmentRegistry
+from app.tools.descriptor_tool import DescriptorTool
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition
-from app.workflow.engine import _BUILTIN_TOOLS
 from app.workflow.runner import run_workflow
 from app.workflow.validation import validate_workflow
 
@@ -122,37 +122,78 @@ def _operations_payload(tool) -> list:
 
 
 def handle_list_tools(params, stream_handler):
-    """List every registered tool.
+    """List every registered tool from the unified registry.
 
-    Descriptor/code tools come from :class:`ToolManager` (with their runtime
-    state); the 18 builtin workflow primitives come from the engine's
-    ``_BUILTIN_TOOLS`` registry (always valid, with their port contracts).
-    Descriptor tools that declare operations additionally expose them (T7).
+    Every tool comes from :class:`ToolManager`'s shared registry: the 20
+    shipped-native builtins (kind ``"shipped-native"`` — always valid, with
+    their port contracts), native plugin tools (``"native"``), and descriptor
+    tools (``"descriptor"``).  Each entry carries a ``kind`` and a
+    ``description``; the legacy ``builtin`` boolean is ``True`` only for
+    shipped-native so the renderer palette keeps grouping correctly until it
+    migrates to ``kind`` (todo 16).  Descriptor tools that declare operations
+    additionally expose them (T7).
     """
     tools = []
     tm = ToolManager.instance()
+    registry = tm._registry
     for name, tool in tm.get_all_tools().items():
-        entry = {
-            "name": name,
-            "is_valid": getattr(tool, "is_valid", False),
-            "version": getattr(tool, "version", ""),
-            "tool_path": getattr(tool, "tool_path", ""),
-        }
-        operations = _operations_payload(tool)
-        if operations:
-            entry["operations"] = operations
-        tools.append(entry)
-    for name, tool in _BUILTIN_TOOLS.items():
-        tools.append(
-            {
+        kind = registry.get_kind(name)
+        if kind not in ("shipped-native", "native"):
+            if isinstance(tool, DescriptorTool) or hasattr(tool, "_descriptor"):
+                kind = "descriptor"
+
+        if kind == "shipped-native":
+            entry = {
                 "name": name,
+                "kind": "shipped-native",
                 "is_valid": True,
                 "version": "",
                 "tool_path": "",
                 "ports": tool.ports.to_dict(),
                 "builtin": True,
+                "description": tool.description,
             }
-        )
+        elif kind == "native":
+            entry = {
+                "name": name,
+                "kind": "native",
+                "is_valid": getattr(tool, "is_valid", False),
+                "version": getattr(tool, "version", ""),
+                "tool_path": getattr(tool, "tool_path", ""),
+                "builtin": False,
+                "description": getattr(tool, "description", ""),
+            }
+            ports = getattr(tool, "ports", None)
+            if ports is not None:
+                entry["ports"] = ports.to_dict()
+        elif kind == "descriptor":
+            descriptor = getattr(tool, "_descriptor", None)
+            entry = {
+                "name": name,
+                "kind": "descriptor",
+                "is_valid": getattr(tool, "is_valid", False),
+                "version": getattr(tool, "version", ""),
+                "tool_path": getattr(tool, "tool_path", ""),
+                "builtin": False,
+                "description": (
+                    getattr(descriptor, "description", "")
+                    or getattr(descriptor, "display_name", "")
+                ),
+            }
+            ports = getattr(tool, "ports", None)
+            if ports is not None:
+                entry["ports"] = ports.to_dict()
+            operations = _operations_payload(tool)
+            if operations:
+                entry["operations"] = operations
+        else:
+            # Unknown kind (a discovered code-class BaseTool) — registry code
+            # discovery is currently empty (only the excluded CommandTool), so
+            # this branch is effectively unreachable; skip it to keep the wire
+            # shape to the three documented kinds.
+            continue
+
+        tools.append(entry)
     return {"tools": tools}
 
 

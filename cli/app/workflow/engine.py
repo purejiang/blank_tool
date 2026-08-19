@@ -61,11 +61,12 @@ logger = logging.getLogger(__name__)
 # Shared, stateless expression engine (safe across runs — see expression.py).
 _EXPRESSION_ENGINE = ExpressionEngine()
 
-# Builtin atomic tools by name.  These are now registered as shipped-native
-# plugin tools in the shared registry (see ``app.plugins.builtin.*``) and
-# resolved via the injected registry — ``_lookup_tool`` no longer consults this
-# dict.  It is retained ONLY for ``workflow_handler.py`` list_tools
-# serialization (removed by todo 8).
+# Builtin atomic tools by name (DEPRECATED backward-compat shim).  These are
+# now registered as shipped-native plugin tools in the shared registry (see
+# ``app.plugins.builtin.*``) and resolved via the injected registry —
+# ``_lookup_tool`` no longer consults this dict.  It is retained ONLY for the
+# pre-existing dirty ``cli/cli.py`` (its ``list-tools``/``tool`` commands still
+# iterate it) and will be removed once ``cli.py`` is migrated to the registry.
 _BUILTIN_TOOLS: Dict[str, BuiltinTool] = {
     "file.read": FileRead(),
     "file.write": FileWrite(),
