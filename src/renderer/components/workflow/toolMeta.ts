@@ -107,18 +107,22 @@ export function categoryOfToolName(name: string): ToolCategory {
   return CATEGORY_BY_PREFIX[prefix] ?? 'tool'
 }
 
-/** One labeled group in the workflow node palette. */
+/** Group keys in the workflow node palette (labels are i18n'd by the consumer). */
+export type WorkflowGroupKey = 'builtin' | 'plugins'
+
+/** One grouped set of tools in the workflow node palette. */
 export interface WorkflowToolGroup {
-  label: string
+  key: WorkflowGroupKey
   tools: WorkflowToolInfo[]
 }
 
 /**
- * Group tools for the node palette (todo 16): `shipped-native` goes to
- * "Built-in", `native`/`descriptor` go to "Plugins". When `kind` is absent
+ * Group tools for the node palette (todo 16): `shipped-native` goes to the
+ * `builtin` group, `native`/`descriptor` to `plugins`. When `kind` is absent
  * (older backends), fall back to the legacy `builtin` boolean
- * (`builtin === true` → Built-in, else Plugins). Each group is sorted by
- * tool name; empty groups are dropped. Ordering is stable: Built-in first.
+ * (`builtin === true` → builtin, else plugins). Each group is sorted by
+ * tool name; empty groups are dropped. Ordering is stable: builtin first.
+ * The group `key` is translated to a display label by the palette via i18n.
  */
 export function groupWorkflowTools(tools: WorkflowToolInfo[]): WorkflowToolGroup[] {
   const byName = (a: WorkflowToolInfo, b: WorkflowToolInfo) => a.name.localeCompare(b.name)
@@ -126,10 +130,11 @@ export function groupWorkflowTools(tools: WorkflowToolInfo[]): WorkflowToolGroup
     tool.kind ? tool.kind === 'shipped-native' : tool.builtin === true
   const builtin = tools.filter(isBuiltin).sort(byName)
   const plugins = tools.filter((tool) => !isBuiltin(tool)).sort(byName)
-  return [
-    { label: 'Built-in', tools: builtin },
-    { label: 'Plugins', tools: plugins },
-  ].filter((group) => group.tools.length > 0)
+  const groups: WorkflowToolGroup[] = [
+    { key: 'builtin', tools: builtin },
+    { key: 'plugins', tools: plugins },
+  ]
+  return groups.filter((group) => group.tools.length > 0)
 }
 
 /**

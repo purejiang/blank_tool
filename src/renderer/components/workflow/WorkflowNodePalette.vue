@@ -8,8 +8,8 @@
       </div>
       <div v-else-if="tools.length === 0" class="wnp-status-text">No tools available</div>
       <template v-else>
-        <div v-for="group in groups" :key="group.label" class="wnp-group">
-          <div class="wnp-group-label">{{ group.label }}</div>
+        <div v-for="group in groups" :key="group.key" class="wnp-group">
+          <div class="wnp-group-label">{{ t('workflow.editor.palette.groups.' + group.key) }}</div>
           <div
             v-for="tool in group.tools"
             :key="tool.name"
@@ -65,8 +65,9 @@ async function loadTools() {
   }
 }
 
-// Grouping by `kind` (shipped-native → Built-in, native/descriptor →
-// Plugins), with legacy `builtin` fallback — see toolMeta.groupWorkflowTools.
+// Grouping by `kind` (shipped-native → builtin group, native/descriptor →
+// plugins group), with legacy `builtin` fallback — see toolMeta.groupWorkflowTools.
+// Group labels are rendered via i18n (workflow.editor.palette.groups.*).
 const groups = computed(() => groupWorkflowTools(tools.value))
 
 /**

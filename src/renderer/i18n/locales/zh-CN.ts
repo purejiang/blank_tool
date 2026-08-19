@@ -225,6 +225,10 @@ export default {
       delete: '删除模板',
       palette: {
         title: '工具',
+        groups: {
+          builtin: '内置',
+          plugins: '插件',
+        },
       },
       config: {
         title: '节点配置',

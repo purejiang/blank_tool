@@ -225,6 +225,10 @@ export default {
       delete: 'Delete Template',
       palette: {
         title: 'Tools',
+        groups: {
+          builtin: 'Built-in',
+          plugins: 'Plugins',
+        },
       },
       config: {
         title: 'Node Configuration',

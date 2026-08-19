@@ -15,34 +15,34 @@ function makeTool(overrides: Partial<WorkflowToolInfo>): WorkflowToolInfo {
 }
 
 describe('groupWorkflowTools (WorkflowNodePalette grouping)', () => {
-  it('groups shipped-native into Built-in', () => {
+  it('groups shipped-native into the builtin group', () => {
     const groups = groupWorkflowTools([
       makeTool({ name: 'flow.assert', kind: 'shipped-native', builtin: true }),
       makeTool({ name: 'my.plugin', kind: 'native', builtin: false }),
     ])
     expect(groups).toHaveLength(2)
-    expect(groups[0].label).toBe('Built-in')
+    expect(groups[0].key).toBe('builtin')
     expect(groups[0].tools.map((t) => t.name)).toEqual(['flow.assert'])
-    expect(groups[1].label).toBe('Plugins')
+    expect(groups[1].key).toBe('plugins')
     expect(groups[1].tools.map((t) => t.name)).toEqual(['my.plugin'])
   })
 
-  it('groups native into Plugins (even when legacy builtin flag is true)', () => {
+  it('groups native into plugins (even when legacy builtin flag is true)', () => {
     const groups = groupWorkflowTools([
       makeTool({ name: 'native.a', kind: 'native' }),
       makeTool({ name: 'native.b', kind: 'native', builtin: true }),
     ])
     expect(groups).toHaveLength(1)
-    expect(groups[0].label).toBe('Plugins')
+    expect(groups[0].key).toBe('plugins')
     expect(groups[0].tools.map((t) => t.name)).toEqual(['native.a', 'native.b'])
   })
 
-  it('groups descriptor into Plugins', () => {
+  it('groups descriptor into plugins', () => {
     const groups = groupWorkflowTools([
       makeTool({ name: 'adb.install', kind: 'descriptor', builtin: false }),
     ])
     expect(groups).toHaveLength(1)
-    expect(groups[0].label).toBe('Plugins')
+    expect(groups[0].key).toBe('plugins')
     expect(groups[0].tools.map((t) => t.name)).toEqual(['adb.install'])
   })
 
@@ -53,9 +53,9 @@ describe('groupWorkflowTools (WorkflowNodePalette grouping)', () => {
       makeTool({ name: 'legacy.other' }),
     ])
     expect(groups).toHaveLength(2)
-    expect(groups[0].label).toBe('Built-in')
+    expect(groups[0].key).toBe('builtin')
     expect(groups[0].tools.map((t) => t.name)).toEqual(['file.read'])
-    expect(groups[1].label).toBe('Plugins')
+    expect(groups[1].key).toBe('plugins')
     expect(groups[1].tools.map((t) => t.name)).toEqual(['legacy.other', 'legacy.tool'])
   })
 
@@ -65,7 +65,7 @@ describe('groupWorkflowTools (WorkflowNodePalette grouping)', () => {
       makeTool({ name: 'a.shipped', kind: 'shipped-native' }),
     ])
     expect(groups).toHaveLength(1)
-    expect(groups[0].label).toBe('Built-in')
+    expect(groups[0].key).toBe('builtin')
     expect(groups[0].tools.map((t) => t.name)).toEqual(['a.shipped', 'z.shipped'])
   })
 
