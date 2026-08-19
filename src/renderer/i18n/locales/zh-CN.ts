@@ -16,6 +16,7 @@ export default {
   nav: {
     settings: '设置',
     about: '关于',
+    tools: '工具',
   },
   // Task
   task: {
@@ -334,6 +335,35 @@ export default {
     checkUpdate: '检查更新',
     error: '更新失败',
     networkError: '网络连接失败，请稍后重试',
+  },
+  // Tools page (plugin management)
+  tools: {
+    title: '工具',
+    subtitle: '管理后端插件：添加、删除、重新加载',
+    addPlugin: '添加插件',
+    module: '模块名',
+    modulePlaceholder: '例如 my_plugin（Python 模块名）',
+    path: '路径',
+    pathPlaceholder: '可选，插件文件/目录路径',
+    config: '配置',
+    configPlaceholder: '可选，JSON 格式配置，如 {"key": "value"}',
+    submit: '添加',
+    invalidJson: '配置不是合法的 JSON',
+    addSuccess: '插件已添加',
+    addFailed: '添加插件失败',
+    listTitle: '插件列表',
+    refresh: '刷新',
+    refreshFailed: '刷新插件失败',
+    empty: '暂无插件',
+    loaded: '已加载',
+    loadError: '加载失败',
+    kindShippedNative: '内置',
+    kindNative: '原生',
+    kindDescriptor: '描述符',
+    deleteConfirmTitle: '删除插件',
+    deleteConfirmContent: '确定要删除插件 {module} 吗？',
+    deleteSuccess: '插件已删除',
+    deleteFailed: '删除插件失败',
   },
   // Diagnostics page
   diagnostics: {

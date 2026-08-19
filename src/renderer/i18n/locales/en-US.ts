@@ -16,6 +16,7 @@ export default {
   nav: {
     settings: 'Settings',
     about: 'About',
+    tools: 'Tools',
   },
   // Task
   task: {
@@ -334,6 +335,35 @@ export default {
     checkUpdate: 'Check for Updates',
     error: 'Update failed',
     networkError: 'Network error, please try again',
+  },
+  // Tools page (plugin management)
+  tools: {
+    title: 'Tools',
+    subtitle: 'Manage backend plugins: add, delete, reload',
+    addPlugin: 'Add Plugin',
+    module: 'Module',
+    modulePlaceholder: 'e.g. my_plugin (Python module name)',
+    path: 'Path',
+    pathPlaceholder: 'Optional plugin file/directory path',
+    config: 'Config',
+    configPlaceholder: 'Optional JSON config, e.g. {"key": "value"}',
+    submit: 'Add',
+    invalidJson: 'Config is not valid JSON',
+    addSuccess: 'Plugin added',
+    addFailed: 'Failed to add plugin',
+    listTitle: 'Plugins',
+    refresh: 'Refresh',
+    refreshFailed: 'Failed to refresh plugins',
+    empty: 'No plugins yet',
+    loaded: 'Loaded',
+    loadError: 'Load failed',
+    kindShippedNative: 'Built-in',
+    kindNative: 'Native',
+    kindDescriptor: 'Descriptor',
+    deleteConfirmTitle: 'Delete Plugin',
+    deleteConfirmContent: 'Delete plugin {module}?',
+    deleteSuccess: 'Plugin deleted',
+    deleteFailed: 'Failed to delete plugin',
   },
   // Diagnostics page
   diagnostics: {

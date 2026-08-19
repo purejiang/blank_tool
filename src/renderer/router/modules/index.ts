@@ -1,5 +1,6 @@
 import settingsRoutes from './settings'
 import workflowRoutes from './workflow'
+import toolsRoutes from './tools'
 
 const routes = [
   {
@@ -7,7 +8,8 @@ const routes = [
     redirect: '/workflow-editor'
   },
   ...workflowRoutes,
-  ...settingsRoutes
+  ...settingsRoutes,
+  ...toolsRoutes
 ]
 
 export default routes
