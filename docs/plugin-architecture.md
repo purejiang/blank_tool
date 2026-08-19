@@ -55,3 +55,33 @@
 - **native = 在进程内写 Python**：可以触碰工作流引擎、模板库、流式回调等后端对象，代价是"零安装、但语言锁定 Python、且运行在后端进程里"。它适合编排逻辑、需要访问上下文的能力。
 - **descriptor = 在进程边界外声明任意命令**：不写一行可执行代码，`type` 决定运行器，语言可以是 Java / Python / Node / shell / 任意二进制，后端只是拼命令、起子进程、按声明校验与取版本。它适合封装外部工具与脚本，缺点是无法访问后端对象，只能通过类型化 ports 交换数据。
 - 两者共存于同一注册表、同一套 `list_tools` kind 体系（shipped-native / native / descriptor），工作流引擎对它们统一按 `get_tool` 解析、按 ports 校验、按 `execute(inputs, context)` 调用。
+
+## 内核边界
+
+插件生态的边界是"内核固定、轴开放"。内核（engine / task / exec / env / config / events）永不插件化；可扩展的只有两条轴：工具（native + descriptor，见上文）与环境（预留）。`PluginContext` 是插件与内核之间唯一的接缝。
+
+### 固定内核服务
+
+| 服务 | 实现 | 职责 | 插件可否触及 |
+|---|---|---|---|
+| engine | `WorkflowEngine`（`cli/app/workflow/engine.py`） | 线性工作流执行：`node.next` 驱动节点、ports 校验、`on_failure`（fail / skip / retry:N）、节点级流式事件 | 否。引擎经 `ToolManager.instance()`（`engine.py:161`）读共享注册表，插件只能向注册表**新增**工具，不能替换引擎 |
+| task | `TaskManager`（`cli/app/common/task_manager.py:22`） | 任务取消注册表：进程级线程安全单例，跟踪 `process_holder` 与 `stop_event` | 否。内核持有，插件不可见、不可替换 |
+| exec | `BaseCommandExecutor` / `CommandExecutor`（`cli/app/common/base_executor.py`） | 子进程生命周期（spawn / 超时 / 取消，经 `ProcessExecutor` 委托）与敏感参数日志脱敏（`_SENSITIVE_PATTERNS`，`base_executor.py:132`） | 否。描述符工具的执行**委托**给它（`descriptor_tool.py:14`），但 executor 本身不可替换、不可被插件绕开 |
+| env | `EnvironmentRegistry`（`cli/app/env/registry.py:120`；进程单例 `get_env_registry` `:369`） | 把环境描述符解析为具体运行时路径（env 覆盖 → runtime/ → 系统环境变量 → PATH 四层优先级），结果缓存至 `refresh` | 只读。`PluginContext.env` 暴露同一个单例（`context.py:49`），插件只能查询解析结果，不能替换解析逻辑 |
+| config | `app.utils.env`（`cli/app/utils/env.py`） | `.env` 加载（`load_dotenv` `:51`）、`server.config.json` 加载（`load_server_config` `:86`）、`get_env` 与目录/二进制路径兜底（`get_output_dir` `:131` 起） | 否。后端配置的唯一入口 |
+| events | `EventBus`（`cli/app/plugins/events.py`） | 进程内同步事件分发：`subscribe` / `emit` / `unsubscribe`；handler 异常被捕获记录、`emit` 永不重抛 | 可订阅、可发。`PluginContext.events`（`context.py:50`）默认新建总线；插件能收发事件，不能替换总线本身 |
+
+两点澄清：`EventBus` 虽然位于 `cli/app/plugins/` 目录，但它是内核服务（插件系统的接缝），本身不是插件；`EnvironmentRegistry` 的 overlay 描述符 CRUD（`add_descriptor` / `delete_descriptor`，`registry.py:269` / `:306`）属于内核 env 服务，与"环境插件化"是两回事（见下文）。
+
+### 插件轴
+
+插件生态只开放两条轴，其余一切不在可扩展范围内：
+
+1. **工具轴**：native（shipped-native / native）与 descriptor 两层，见上文"描述符即声明式插件"。
+2. **环境轴（预留）**：按计划（scope = tools + orchestration + environments），环境是声明的扩展轴，但**今天尚未插件化**。现状是内核的 `EnvironmentRegistry` 读取 bundled `cli/registry/environments/`（java / python / node 三个内置环境描述符）与 overlay，并支持描述符 CRUD；这些都属于内核 env 服务，不进入两层插件模型。环境插件化是未来工作，不是当前事实，本文档不以任何方式声称环境已插件化。
+
+### Must-NOT-Have
+
+1. **内核服务永不插件化**：engine / task / exec / env / config / events 六个内核服务不允许被插件替换、覆写或绕过。插件只能经 `PluginContext.register_tool`（`context.py:53`）向共享注册表**新增**工具（kind 限 `shipped-native` / `native`），不能替换任何内核组件。
+2. **UI / LLM / storage / scheduling 永不插件化**：这四个方向是文档级的保留扩展点，不在插件生态 scope 内（scope = tools + orchestration + environments）。不为它们设计插件机制，也不接受此类插件。
+3. **零第三方依赖 + `base_tool.py` 保留**：后端保持 stdlib-only（Python 3.10+，无 `requirements.txt`），插件生态不得引入第三方包。同时 `cli/app/tools/base_tool.py`（`BaseTool` / `CommandTool`）保留为工具接口的规范层：`DescriptorTool` 镜像其表面（`name` / `is_valid` / `version` / `tool_path` / `execute`，`descriptor_tool.py:9-11`），使注册表对代码类工具与描述符工具统一管理（`tool_manager.py:87` 在自动发现中显式排除 `base_tool.py` 内定义的类）。
