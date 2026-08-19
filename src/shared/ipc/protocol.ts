@@ -192,7 +192,7 @@ export interface ApiMethodMap {
   'storage.clear': { params: { target?: string }; result: ClearResult }
 
   // --- tool_handler.py ---
-  'tool.version': { params: Record<string, never>; result: { version: string } }
+  'tool.version': { params: { tool_name: string }; result: { version: string } }
   'tool.get_tools': { params: { tool_name?: string; refresh?: boolean }; result: ToolDetail | Record<string, ToolDetail> }
   'tool.set_search_mode': { params: { system_search?: boolean }; result: { system_search: boolean } }
   'tool.set_custom_path': { params: { tool_name: string; path: string }; result: Record<string, unknown> }
@@ -233,4 +233,8 @@ export interface ApiMethodMap {
   'workflow.validate': { params: { definition: Record<string, unknown> }; result: Record<string, unknown> }
   'workflow.list_tools': { params: Record<string, never>; result: Record<string, unknown>[] }
   'workflow.list_envs': { params: Record<string, never>; result: Record<string, unknown>[] }
+
+  // --- plugin_handler.py ---
+  'plugin.list': { params: Record<string, never>; result: { plugins: { module: string; kind: string; version: string }[] } }
+  'plugin.reload': { params: Record<string, never>; result: { ok: boolean } }
 }

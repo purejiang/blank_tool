@@ -101,7 +101,11 @@ class TestGetTools:
 
 class TestToolVersion:
     def test_valid_request_returns_success(self, api_handler):
-        request = {"id": 45, "method": "tool.version", "params": {}}
+        request = {
+            "id": 45,
+            "method": "tool.version",
+            "params": {"tool_name": "mock_tool"},
+        }
         response = api_handler.handle_request(request)
 
         data = json.loads(response) if isinstance(response, str) else response
@@ -111,6 +115,26 @@ class TestToolVersion:
         result = data["result"]
         assert result["type"] == "success"
         assert "version" in result["payload"]
+
+    def test_missing_tool_name_returns_error(self, api_handler):
+        request = {"id": 451, "method": "tool.version", "params": {}}
+        response = api_handler.handle_request(request)
+
+        data = json.loads(response) if isinstance(response, str) else response
+        result = data["result"]
+        assert result["type"] == "error"
+
+    def test_unknown_tool_name_returns_error(self, api_handler):
+        request = {
+            "id": 452,
+            "method": "tool.version",
+            "params": {"tool_name": "nonexistent"},
+        }
+        response = api_handler.handle_request(request)
+
+        data = json.loads(response) if isinstance(response, str) else response
+        result = data["result"]
+        assert result["type"] == "error"
 
 
 class TestSetSearchMode:

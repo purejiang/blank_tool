@@ -70,10 +70,13 @@ def get_tools(params, stream_handler):
 
 @logs_errors("ToolHandler")
 def tool_version(params, stream_handler):
-    aapt = manager.get_tool("aapt")
-    if not aapt or not aapt.is_valid:
-        raise ToolNotFoundError("aapt")
-    return {"version": getattr(aapt, "version", "")}
+    tool_name = params.get("tool_name")
+    if not tool_name:
+        raise ToolException("Missing 'tool_name' field")
+    tool = manager.get_tool(tool_name)
+    if not tool or not getattr(tool, "is_valid", False):
+        raise ToolNotFoundError(tool_name)
+    return {"version": getattr(tool, "version", "")}
 
 
 @logs_errors("ToolHandler")
