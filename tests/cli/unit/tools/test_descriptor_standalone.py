@@ -17,7 +17,7 @@ import sys
 import pytest
 
 from app.tools.descriptor_tool import DescriptorTool, ToolDescriptor, load_descriptor
-from app.common.base_executor import CommandExecutionContext
+from app.tools.builtin.base import ToolContext
 
 # ── Verify ZERO Android tool classes are imported ─────────────────────────
 _ANDROID_MODULES = {
@@ -78,7 +78,9 @@ class TestDescriptorStandaloneBinary:
     def test_execute_runs_command_via_executor(self):
         desc = _make_binary_descriptor()
         tool = DescriptorTool(desc, StubEnvRegistry())
-        result = tool.execute(["-c", "print('ok')"])
+        result = tool.execute(
+            {"args": ["-c", "print('ok')"]}, ToolContext(work_dir=os.getcwd())
+        )
         assert result.get("returncode") == 0
         assert "ok" in (result.get("stdout") or "")
 

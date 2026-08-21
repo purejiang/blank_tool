@@ -19,7 +19,7 @@ E2E 测试**推迟到新 UI 模块落地之后**编写。
 - 工作流列表：新建 / 编辑 / 删除 / 导入 / 导出
 - 任务页：选模板 → 动态表单 → 执行 → 节点进度与日志
 
-在无测试文件的情况下，`npm run check:full` 中的 Playwright 步骤会报告 "no tests found"，属正常现象，无需改动 `package.json`。
+在无测试文件的情况下，`npm run check:full` 中的 Playwright 步骤会报告 "no tests found"，但以 exit 0 通过（`playwright.config.ts` 已设 `passWithNoTests: true`）；写入真实 e2e 用例后该选项自动失效。
 
 ## 运行方式（未来）
 

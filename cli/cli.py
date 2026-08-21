@@ -3,8 +3,8 @@
 """
 Headless CLI entry point for the Blank Tool workflow system.
 
-Provides five subcommands (``run``, ``list-tools``, ``list-envs``,
-``validate``, ``list-templates``) that operate independently of the Electron
+Provides six subcommands (``run``, ``list-tools``, ``list-envs``,
+``validate``, ``tool``, ``list-templates``) that operate independently of the Electron
 app — no stdin JSON-RPC pipe, no streaming IPC.  The CLI initializes logging
 and config (the same setup ``main.bootstrap`` performs), then invokes the
 workflow engine, validator, tool registry and environment registry directly.
@@ -223,7 +223,6 @@ def cmd_tool(
     human-readable summary.  Returns 0 on success, non-zero on failure.
     """
     from app.tools.builtin.base import BuiltinTool, ToolContext
-    from app.common.base_executor import CommandExecutionContext
     from app.workflow.engine import _BUILTIN_TOOLS, WorkflowEngine
 
     inputs = _parse_key_values(raw_inputs or [])
@@ -292,10 +291,11 @@ def cmd_tool(
                         print(f"error: {err}", file=sys.stderr)
                     return 1
 
-            command = WorkflowEngine.build_operation_command(op, inputs)
-            command_context = CommandExecutionContext(cwd=os.getcwd())
+            tool_context = ToolContext(work_dir=os.getcwd())
             try:
-                result = tool.execute(list(command), command_context)
+                result = tool.execute(
+                    {**inputs, "operation": operation}, tool_context
+                )
             except Exception as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 1

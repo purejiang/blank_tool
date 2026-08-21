@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from app.common.base_executor import CommandExecutionContext
+from app.tools.builtin.base import ToolContext
 from app.env.registry import EnvironmentRegistry
 from app.tools.descriptor_tool import DescriptorTool, ToolDescriptor, load_descriptor, Operation
 from app.common.exceptions import ToolException
@@ -133,7 +134,7 @@ def test_python_script_execute_real(tmp_path):
     tool = DescriptorTool(desc, _real_env_registry())
     assert tool.is_valid is True
 
-    result = tool.execute(["--flag", "value"])
+    result = tool.execute({"args": ["--flag", "value"]}, ToolContext(work_dir=os.getcwd()))
     assert result["success"] is True
     assert result["returncode"] == 0
     parsed = json.loads(result["stdout"].strip())
@@ -188,7 +189,7 @@ def test_python_script_execute_via_operations(tmp_path):
     tool = DescriptorTool(desc, _real_env_registry())
     assert tool.is_valid is True
 
-    result = tool.execute(["alice"])
+    result = tool.execute({"args": ["alice"]}, ToolContext(work_dir=os.getcwd()))
     assert result["success"] is True
     assert result["returncode"] == 0
     parsed = json.loads(result["stdout"].strip())
@@ -239,7 +240,7 @@ def test_python_script_unresolved_env_blocks_execution(tmp_path):
 
     # But the CRITICAL test: calling execute() MUST block
     with pytest.raises(ToolException) as exc_info:
-        tool.execute(["--arg"])
+        tool.execute({"args": ["--arg"]}, ToolContext(work_dir=os.getcwd()))
 
     message = str(exc_info.value)
     assert "python" in message.lower(), (
@@ -273,7 +274,7 @@ def test_fake_env_name_blocks_execution_no_spawn(tmp_path):
     assert tool.is_valid is False
 
     with pytest.raises(ToolException) as exc_info:
-        tool.execute(["x"])
+        tool.execute({"args": ["x"]}, ToolContext(work_dir=os.getcwd()))
 
     message = str(exc_info.value)
     assert "python" in message.lower(), (
@@ -317,7 +318,7 @@ def test_node_script_execute_real(tmp_path):
     tool = DescriptorTool(desc, _real_env_registry())
     assert tool.is_valid is True
 
-    result = tool.execute(["--flag", "value"])
+    result = tool.execute({"args": ["--flag", "value"]}, ToolContext(work_dir=os.getcwd()))
     assert result["success"] is True
     assert result["returncode"] == 0
     parsed = json.loads(result["stdout"].strip())

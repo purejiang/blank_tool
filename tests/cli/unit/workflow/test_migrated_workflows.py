@@ -281,7 +281,7 @@ _REFERENCE_CONTRACTS = {
     "decompile": {
         "inputs": {
             ("apk_path", "file", "apk", True),
-            ("output_dir", "directory", None, False),
+            ("output_dir", "directory", None, True),
         },
         "outputs": {
             ("output_dir", "directory", None, True),
@@ -290,7 +290,7 @@ _REFERENCE_CONTRACTS = {
     "recompile": {
         "inputs": {
             ("source_dir", "directory", None, True),
-            ("output_apk", "file", "apk", False),
+            ("output_apk", "file", "apk", True),
         },
         "outputs": {
             ("output_apk", "file", "apk", True),
@@ -386,14 +386,12 @@ class TestDecompileEndToEnd:
         nr = result.node_results["decompile"]
         assert nr["error"] is None
 
-    def test_decompile_e2e_with_default_output_dir(self, tmp_path):
+    def test_decompile_e2e_passes_output_dir_through(self, tmp_path):
         """
-        When output_dir is NOT provided (optional input), the workflow
-        should still execute successfully — the old decompile.json had
-        output_dir as optional (required: false) with a default applied
-        at the expression level.
-
-        We test with output_dir='auto_out' to verify it is passed through.
+        output_dir is a REQUIRED input on the current decompile.json; the
+        engine must resolve the bound value and the operation command must
+        carry it through.  We pass output_dir='auto_out' and assert it
+        appears verbatim in the captured argv.
         """
         definition = _load_wf("decompile")
 

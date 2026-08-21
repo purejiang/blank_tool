@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.common.base_executor import CommandExecutionContext
+from app.tools.builtin.base import ToolContext
 from app.tools.descriptor_tool import (
     DescriptorTool,
     ToolDescriptor,
@@ -147,19 +148,32 @@ def test_validate_expect_in_stream_selects_configured_stream():
 
 def test_execute_runs_command_and_returns_result_dict():
     tool = _make_tool()
-    result = tool.execute(["-c", "print(42)"])
+    result = tool.execute(
+        {"args": ["-c", "print(42)"]}, ToolContext(work_dir=os.getcwd())
+    )
     assert result["success"] is True
     assert result["returncode"] == 0
     assert "42" in result["stdout"]
 
 
-def test_execute_threads_process_holder_through_to_subprocess():
+def test_command_executor_threads_process_holder_through_to_subprocess():
+    """The holder wiring TaskManager cancellation relies on lives at the
+    CommandExecutor/ProcessExecutor layer.
+
+    DescriptorTool's unified contract routes through
+    ``DescriptorTool._to_command_context``, which builds a fresh
+    ``process_holder`` per call — the external-holder injection the old
+    signature allowed is gone, so the cancellation-relevant threading is
+    asserted directly at the executor level here.
+    """
+    from app.common.base_executor import CommandExecutor
+
     holder: dict = {}
     ctx = CommandExecutionContext(process_holder=holder)
-    tool = _make_tool()
-    tool.execute(["-c", "import time; time.sleep(1)"], ctx)
+    executor = CommandExecutor()
+    executor.execute([sys.executable, "-c", "import time; time.sleep(0.2)"], ctx)
     assert "process" in holder, (
-        "process_holder must reach CommandExecutor so TaskManager can cancel"
+        "process_holder must reach the subprocess so TaskManager can cancel"
     )
     assert hasattr(holder["process"], "pid")
 

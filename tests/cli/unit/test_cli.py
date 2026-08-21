@@ -73,10 +73,10 @@ def _write_read_workflow(output_path: Path) -> dict:
 # --help / list subcommands
 # ---------------------------------------------------------------------------
 
-def test_help_exits_zero_and_lists_all_five_subcommands():
+def test_help_exits_zero_and_lists_all_six_subcommands():
     result = run_cli("--help")
     assert result.returncode == 0
-    for subcommand in ("run", "list-tools", "list-envs", "validate", "list-templates"):
+    for subcommand in ("run", "list-tools", "list-envs", "validate", "tool", "list-templates"):
         assert subcommand in result.stdout
 
 

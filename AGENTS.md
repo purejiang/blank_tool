@@ -29,9 +29,9 @@ Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接�
 |---|---|---|---|
 | `npm run test` | **vitest** | `tests/unit/**`、`tests/integration/**` | `vitest.config.ts`，环境 `happy-dom` |
 | `pytest tests/contracts/` | **pytest**（不在 npm scripts 里） | 后端 handler 契约测试（Python） | `tests/contracts/conftest.py` 自动把 `cli/` 加入 `sys.path` |
-| `pytest tests/cli/` | **pytest**（不在 npm scripts 里） | Python 单测（协议类型、端口模型、工具、引擎、环境、CLI） | `tests/cli/unit/conftest.py` |
+| `pytest tests/cli/` | **pytest**（不在 npm scripts 里） | Python 单测（协议类型、端口模型、工具、引擎、环境、CLI） | 根级 `tests/conftest.py` 自动把 `cli/` 加入 `sys.path` |
 | `node --test tests/shared-contracts.test.mjs` | **node:test**（不在 npm scripts 里） | 校验 `src/shared/ipc/channels.ts` 与 `pathConfig.ts` 的字符串契约 | 无配置 |
-| `npx playwright test` | **Playwright** | `tests/e2e/critical-flows.spec.ts` | `tests/e2e/playwright.config.ts` |
+| `npx playwright test` | **Playwright** | `tests/e2e/`（当前无 spec——占位套件已删、推迟到 `/workflows`、`/tasks` 落地；`playwright.config.ts` 设了 `passWithNoTests`，门禁不会挂） | `tests/e2e/playwright.config.ts` |
 
 `npm run test` 在 `vitest.config.ts` 里显式 **exclude** 了 `tests/e2e/**` 和 `shared-contracts.test.mjs`，所以它不会跑后两者。改了后端 handler 或 IPC 通道名后，必须手动跑对应的契约测试。
 
