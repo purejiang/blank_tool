@@ -419,7 +419,9 @@ def _coerce_input_value(value: str) -> Any:
     """Coerce a raw ``--input`` value to a typed Python value.
 
     ``true``/``false`` (case-insensitive) become bools, integer and float
-    literals become numbers, everything else stays a string.
+    literals become numbers, a value starting with ``[``/``{`` is parsed as
+    JSON (arrays/objects for structured inputs like a mapping table), and
+    everything else stays a string.
     """
     lowered = value.lower()
     if lowered == "true":
@@ -434,6 +436,11 @@ def _coerce_input_value(value: str) -> Any:
         return float(value)
     except ValueError:
         pass
+    if value[:1] in ("[", "{"):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
     return value
 
 

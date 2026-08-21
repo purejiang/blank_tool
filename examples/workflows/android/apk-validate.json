@@ -1,0 +1,99 @@
+{
+  "name": "apk-validate",
+  "version": "1.0",
+  "description": "Resolve an APK, extract its signature, validate every mapping entry, and generate a Markdown validation report.",
+  "inputs": [
+    {
+      "name": "apk_path",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Local path or http(s) URL of the APK to validate."
+    },
+    {
+      "name": "mapping",
+      "type": { "base": "json" },
+      "required": true,
+      "description": "List of validation entries, each with name/type plus type-specific fields (path, md5, value, match, key, pattern)."
+    },
+    {
+      "name": "output_path",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Path to write the Markdown validation report to."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "report_path",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Absolute path to the generated Markdown report."
+    },
+    {
+      "name": "all_passed",
+      "type": { "base": "boolean" },
+      "required": true,
+      "description": "True when every validation entry passed."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "resolve",
+      "tool": "apk-resolve",
+      "params": {
+        "operation": "resolve",
+        "apk_path": "$inputs.apk_path"
+      },
+      "next": "sign"
+    },
+    {
+      "id": "sign",
+      "tool": "apk-signature",
+      "params": {
+        "operation": "signature",
+        "apk_path": "$nodes.resolve.outputs.apk_path"
+      },
+      "next": "loop"
+    },
+    {
+      "id": "loop",
+      "tool": "flow.foreach",
+      "params": {
+        "items": "$inputs.mapping",
+        "template": "apk-validate-entry",
+        "item_key": "entry",
+        "inputs": {
+          "apk_path": "$nodes.resolve.outputs.apk_path",
+          "signature_md5": "$nodes.sign.outputs.signature_md5",
+          "path": "",
+          "md5": "",
+          "value": "",
+          "match": "",
+          "key": "",
+          "pattern": ""
+        }
+      },
+      "next": "report"
+    },
+    {
+      "id": "report",
+      "tool": "validate-report",
+      "params": {
+        "operation": "report",
+        "results_file": "$nodes.loop.outputs.results_file",
+        "output_path": "$inputs.output_path"
+      },
+      "next": "assert"
+    },
+    {
+      "id": "assert",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.loop.outputs.all_passed",
+        "message": "APK validation failed: one or more entries did not match"
+      },
+      "next": null
+    }
+  ],
+  "edges": []
+}

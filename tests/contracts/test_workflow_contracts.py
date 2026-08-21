@@ -91,7 +91,8 @@ def test_workflow_list_tools_non_empty_with_builtin_and_registered():
     tools = result["tools"]
     assert tools
     names = {entry["name"] for entry in tools}
-    # 20 shipped-native builtin primitives are always present.
+    # The 8 CORE shipped-native builtin primitives are always present (the
+    # extended atomic tools are opt-in and NOT part of the default surface).
     assert "file.read" in names
     assert "file.write" in names
     assert "flow.assert" in names
@@ -99,17 +100,14 @@ def test_workflow_list_tools_non_empty_with_builtin_and_registered():
     # Every entry carries a ``kind`` (todo 8).
     assert all("kind" in entry for entry in tools)
 
-    # The shipped-native (builtin) set is exactly the 20 primitives.
+    # The shipped-native (builtin) set is exactly the 8 core primitives.
     shipped_native = {entry["name"] for entry in tools if entry["kind"] == "shipped-native"}
     expected_builtins = {
-        "file.read", "file.write", "file.copy", "file.move", "file.delete",
-        "file.hash", "dir.list", "dir.create", "dir.delete",
-        "archive.extract", "archive.create", "text.grep", "text.replace",
-        "net.download", "net.request", "shell.exec", "code.exec",
-        "flow.assert", "flow.log", "workflow.run",
+        "file.read", "file.write", "text.grep", "shell.exec",
+        "flow.assert", "flow.log", "flow.foreach", "workflow.run",
     }
     assert shipped_native == expected_builtins
-    assert len(shipped_native) == 20
+    assert len(shipped_native) == 8
 
     # Legacy ``builtin`` boolean is True only for shipped-native.
     builtin = next(

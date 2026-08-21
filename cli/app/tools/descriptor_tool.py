@@ -87,6 +87,7 @@ class ToolDescriptor:
     outputs: List[Port]
     sensitive_arg_patterns: List[str] = field(default_factory=list)
     operations: List[Operation] = field(default_factory=list)
+    parse_stdout_json: bool = False
 
     _VALID_TYPES = frozenset(
         {"binary", "java_jar", "python_script", "node_script", "shell_script"}
@@ -225,6 +226,7 @@ def load_descriptor(path: str) -> ToolDescriptor:
         outputs=_ports_from(raw.get("outputs", []), "outputs", path),
         sensitive_arg_patterns=list(raw.get("sensitive_arg_patterns", [])),
         operations=operations,
+        parse_stdout_json=bool(raw.get("parse_stdout_json", False)),
     )
 
 
@@ -511,6 +513,17 @@ class DescriptorTool:
         # ── 4. Execute via the internal _run contract ─────────────────
         result = self._run(command, cmd_context)
 
+        # ── 4.5 Surface script stdout JSON as structured outputs ──────
+        # When the descriptor declares ``parse_stdout_json``, a successful
+        # script's stdout is expected to be a JSON object.  Its keys are
+        # merged into the result so downstream nodes can reference them
+        # directly (``$nodes.<id>.outputs.passed`` etc.).  The executor's
+        # control keys (success/returncode/stdout/stderr/command) win over
+        # same-named script keys, and a non-object / unparsable stdout is
+        # left untouched (no failure — the raw stdout string is still there).
+        if self._descriptor.parse_stdout_json:
+            self._merge_parsed_stdout_json(result)
+
         # ── 5. Surface input ports declared direction=output ──────────
         # Tools that produce files (e.g. ``--out <path>``) declare those
         # paths as inputs with ``direction=output``.  The bound value is
@@ -525,6 +538,26 @@ class DescriptorTool:
                 if in_port.name in inputs:
                     result.setdefault(in_port.name, inputs[in_port.name])
         return result
+
+    def _merge_parsed_stdout_json(self, result: Dict[str, Any]) -> None:
+        """Merge a JSON-object stdout into *result* (mutates in place).
+
+        Only when ``parse_stdout_json`` is declared: parses ``stdout`` as JSON
+        and, when it is an object, adds every key via ``setdefault`` so the
+        executor's control keys (``success``/``returncode``/``stdout``/
+        ``stderr``/``command``) are never overwritten by a script key of the
+        same name.  Unparsable or non-object stdout is silently ignored.
+        """
+        raw = result.get("stdout")
+        if not isinstance(raw, str) or not raw.strip():
+            return
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return
+        if isinstance(parsed, dict):
+            for key, value in parsed.items():
+                result.setdefault(key, value)
 
     @staticmethod
     def _build_operation_command(op: Any, resolved_params: dict) -> list:

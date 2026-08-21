@@ -266,26 +266,19 @@ def test_delete_bundled_only_name_raises_value_error(registry):
         registry.delete_descriptor("file.read")
 
 
-# ── Wave 2 Task 9: 20 builtins resolve via the unified registry ───────────
+# ── Wave 2 Task 9: core builtins resolve via the unified registry ─────────
 
-#: The 20 builtin primitive names (exact mirror of
-#: tests/cli/unit/plugins/test_builtin_shipped.py::NAMES).
+#: The 8 CORE builtin primitive names (always shipped-native; the 13 extended
+#: atomics are opt-in — covered by test_builtin_shipped.py::EXTENDED_NAMES).
 _BUILTIN_NAMES = [
-    # app.plugins.builtin.file (6)
-    "file.read", "file.write", "file.copy", "file.move", "file.delete",
-    "file.hash",
-    # app.plugins.builtin.dir (3)
-    "dir.list", "dir.create", "dir.delete",
-    # app.plugins.builtin.archive (2)
-    "archive.extract", "archive.create",
-    # app.plugins.builtin.text (2)
-    "text.grep", "text.replace",
-    # app.plugins.builtin.net (2)
-    "net.download", "net.request",
-    # app.plugins.builtin.exec (2)
-    "shell.exec", "code.exec",
-    # app.plugins.builtin.flow (2)
-    "flow.assert", "flow.log",
+    # app.plugins.builtin.file (2)
+    "file.read", "file.write",
+    # app.plugins.builtin.text (1)
+    "text.grep",
+    # app.plugins.builtin.exec (1)
+    "shell.exec",
+    # app.plugins.builtin.flow (3)
+    "flow.assert", "flow.log", "flow.foreach",
     # app.plugins.builtin.workflow (1)
     "workflow.run",
 ]

@@ -1,0 +1,73 @@
+{
+  "name": "apk-signature",
+  "display_name": "APK Signature",
+  "type": "python_script",
+  "path": "apk-signature/apk_signature.py",
+  "env_deps": ["python"],
+  "parse_stdout_json": true,
+  "inputs": [
+    {
+      "name": "apk_path",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Path to the APK file whose signer certificate fingerprints to extract."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "signature_md5",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Signer certificate MD5 fingerprint (empty when unavailable)."
+    },
+    {
+      "name": "signature_sha1",
+      "type": { "base": "text" },
+      "required": false,
+      "description": "Signer certificate SHA1 fingerprint (empty when unavailable)."
+    },
+    {
+      "name": "signature_sha256",
+      "type": { "base": "text" },
+      "required": false,
+      "description": "Signer certificate SHA256 fingerprint (empty when unavailable)."
+    }
+  ],
+  "operations": [
+    {
+      "name": "signature",
+      "description": "Extract the APK signer certificate fingerprints (MD5/SHA1/SHA256) via keytool -printcert.",
+      "inputs": [
+        {
+          "name": "apk_path",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Path to the APK file to inspect."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "signature_md5",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Signer certificate MD5 fingerprint."
+        },
+        {
+          "name": "signature_sha1",
+          "type": { "base": "text" },
+          "required": false,
+          "description": "Signer certificate SHA1 fingerprint."
+        },
+        {
+          "name": "signature_sha256",
+          "type": { "base": "text" },
+          "required": false,
+          "description": "Signer certificate SHA256 fingerprint."
+        }
+      ],
+      "args_map": [
+        { "param": "apk_path" }
+      ]
+    }
+  ]
+}

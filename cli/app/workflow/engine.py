@@ -36,20 +36,10 @@ from typing import Any, Callable, Dict, Optional
 from app.common.exceptions import ToolException
 from app.protocol import BaseType, PortSet
 from app.tools.builtin.base import BuiltinTool, ToolContext
-from app.tools.builtin.exec_tools import CodeExec, ShellExec
-from app.tools.builtin.file_tools import (
-    FileCopy,
-    FileDelete,
-    FileHash,
-    FileMove,
-    FileRead,
-    FileWrite,
-)
-from app.tools.builtin.flow_tools import FlowAssert, FlowLog
-from app.tools.builtin.archive_tools import ArchiveCreate, ArchiveExtract
-from app.tools.builtin.dir_tools import DirCreate, DirDelete, DirList
-from app.tools.builtin.text_tools import TextGrep, TextReplace
-from app.tools.builtin.net_tools import NetDownload, NetRequest
+from app.tools.builtin.exec_tools import ShellExec
+from app.tools.builtin.file_tools import FileRead, FileWrite
+from app.tools.builtin.flow_tools import FlowAssert, FlowForeach, FlowLog
+from app.tools.builtin.text_tools import TextGrep
 from app.tools.builtin.workflow_tools import WorkflowRun
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
@@ -70,23 +60,11 @@ _EXPRESSION_ENGINE = ExpressionEngine()
 _BUILTIN_TOOLS: Dict[str, BuiltinTool] = {
     "file.read": FileRead(),
     "file.write": FileWrite(),
-    "file.copy": FileCopy(),
-    "file.move": FileMove(),
-    "file.delete": FileDelete(),
-    "file.hash": FileHash(),
-    "dir.list": DirList(),
-    "dir.create": DirCreate(),
-    "dir.delete": DirDelete(),
     "text.grep": TextGrep(),
-    "text.replace": TextReplace(),
-    "archive.extract": ArchiveExtract(),
-    "archive.create": ArchiveCreate(),
-    "net.download": NetDownload(),
-    "net.request": NetRequest(),
     "shell.exec": ShellExec(),
-    "code.exec": CodeExec(),
     "flow.assert": FlowAssert(),
     "flow.log": FlowLog(),
+    "flow.foreach": FlowForeach(),
     "workflow.run": WorkflowRun(),
 }
 

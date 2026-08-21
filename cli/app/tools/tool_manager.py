@@ -591,9 +591,14 @@ class ToolManager:
         """
         try:
             from app.plugins.context import PluginContext
-            from app.plugins.loader import SHIPPED_MANIFEST, load_plugins
+            from app.plugins.loader import (
+                load_plugins,
+                shipped_manifest_with_extensions,
+            )
 
-            load_plugins(PluginContext(), manifest=SHIPPED_MANIFEST)
+            load_plugins(
+                PluginContext(), manifest=shipped_manifest_with_extensions()
+            )
         except Exception:
             self.logger.warning(
                 "failed to load shipped-native builtin plugins", exc_info=True

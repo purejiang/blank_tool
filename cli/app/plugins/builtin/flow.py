@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Shipped-native plugin registering the two ``flow.*`` builtin tools."""
+"""Shipped-native plugin registering the three ``flow.*`` builtin tools."""
 
 from app.plugins.builtin._common import _register
-from app.tools.builtin.flow_tools import FlowAssert, FlowLog
+from app.tools.builtin.flow_tools import FlowAssert, FlowForeach, FlowLog
 
 
 def apply(ctx, config=None):
     """Register the ``flow.*`` builtins as shipped-native plugin tools."""
-    for tool in (FlowAssert(), FlowLog()):
+    for tool in (FlowAssert(), FlowLog(), FlowForeach()):
         _register(ctx, tool)

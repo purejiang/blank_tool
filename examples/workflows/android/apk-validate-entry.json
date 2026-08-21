@@ -1,0 +1,46 @@
+{
+  "name": "apk-validate-entry",
+  "version": "1.0",
+  "description": "Validate a single APK validation entry (run per-item by flow.foreach).",
+  "inputs": [
+    { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry display name." },
+    { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type: file | text | apk | signature." },
+    { "name": "path", "type": { "base": "text" }, "required": false, "description": "File path for file/text checks." },
+    { "name": "md5", "type": { "base": "text" }, "required": false, "description": "Expected MD5 (hex)." },
+    { "name": "value", "type": { "base": "text" }, "required": false, "description": "Expected value or download URL." },
+    { "name": "match", "type": { "base": "text" }, "required": false, "description": "Text match mode: equals | exact | regex | absent." },
+    { "name": "key", "type": { "base": "text" }, "required": false, "description": "Property key for key=value files." },
+    { "name": "pattern", "type": { "base": "text" }, "required": false, "description": "Regex pattern for regex/absent checks." },
+    { "name": "apk_path", "type": { "base": "text" }, "required": false, "description": "Resolved APK path for apk checks." },
+    { "name": "signature_md5", "type": { "base": "text" }, "required": false, "description": "Signer MD5 fingerprint for signature checks." }
+  ],
+  "outputs": [
+    { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry name (echoed)." },
+    { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type (echoed)." },
+    { "name": "passed", "type": { "base": "boolean" }, "required": true, "description": "Whether the entry passed." },
+    { "name": "actual", "type": { "base": "text" }, "required": true, "description": "Actual value measured." },
+    { "name": "expected", "type": { "base": "text" }, "required": true, "description": "Expected value." },
+    { "name": "message", "type": { "base": "text" }, "required": true, "description": "Human-readable pass/fail message." }
+  ],
+  "nodes": [
+    {
+      "id": "validate",
+      "tool": "validate-entry",
+      "params": {
+        "operation": "validate",
+        "name": "$inputs.name",
+        "type": "$inputs.type",
+        "path": "$inputs.path",
+        "md5": "$inputs.md5",
+        "value": "$inputs.value",
+        "match": "$inputs.match",
+        "key": "$inputs.key",
+        "pattern": "$inputs.pattern",
+        "apk_path": "$inputs.apk_path",
+        "signature_md5": "$inputs.signature_md5"
+      },
+      "next": null
+    }
+  ],
+  "edges": []
+}

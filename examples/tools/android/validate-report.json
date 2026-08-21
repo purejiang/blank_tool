@@ -1,0 +1,98 @@
+{
+  "name": "validate-report",
+  "display_name": "Validate Report",
+  "type": "python_script",
+  "path": "validate-report/validate_report.py",
+  "env_deps": ["python"],
+  "parse_stdout_json": true,
+  "inputs": [
+    {
+      "name": "results_file",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Path to the flow.foreach results JSON file."
+    },
+    {
+      "name": "output_path",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Path to write the generated Markdown report to."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "report_path",
+      "type": { "base": "text" },
+      "required": true,
+      "description": "Absolute path to the generated Markdown report."
+    },
+    {
+      "name": "passed_count",
+      "type": { "base": "number" },
+      "required": true,
+      "description": "Number of entries that passed."
+    },
+    {
+      "name": "failed_count",
+      "type": { "base": "number" },
+      "required": true,
+      "description": "Number of entries that failed."
+    },
+    {
+      "name": "all_passed",
+      "type": { "base": "boolean" },
+      "required": true,
+      "description": "True when every entry passed."
+    }
+  ],
+  "operations": [
+    {
+      "name": "report",
+      "description": "Read the flow.foreach results file and generate a Markdown validation report.",
+      "inputs": [
+        {
+          "name": "results_file",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Path to the flow.foreach results JSON file."
+        },
+        {
+          "name": "output_path",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Path to write the generated Markdown report to."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report_path",
+          "type": { "base": "text" },
+          "required": true,
+          "description": "Absolute path to the generated Markdown report."
+        },
+        {
+          "name": "passed_count",
+          "type": { "base": "number" },
+          "required": true,
+          "description": "Number of entries that passed."
+        },
+        {
+          "name": "failed_count",
+          "type": { "base": "number" },
+          "required": true,
+          "description": "Number of entries that failed."
+        },
+        {
+          "name": "all_passed",
+          "type": { "base": "boolean" },
+          "required": true,
+          "description": "True when every entry passed."
+        }
+      ],
+      "args_map": [
+        { "param": "results_file" },
+        { "param": "output_path" }
+      ]
+    }
+  ]
+}

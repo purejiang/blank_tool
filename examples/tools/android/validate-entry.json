@@ -1,0 +1,66 @@
+{
+  "name": "validate-entry",
+  "display_name": "Validate Entry",
+  "type": "python_script",
+  "path": "validate-entry/validate_entry.py",
+  "env_deps": ["python"],
+  "parse_stdout_json": true,
+  "inputs": [
+    { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry display name." },
+    { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type: file | text | apk | signature." },
+    { "name": "path", "type": { "base": "text" }, "required": false, "description": "File path for file/text checks." },
+    { "name": "md5", "type": { "base": "text" }, "required": false, "description": "Expected MD5 (hex) for file/apk/signature checks." },
+    { "name": "value", "type": { "base": "text" }, "required": false, "description": "Expected value, or a URL to download for file checks." },
+    { "name": "match", "type": { "base": "text" }, "required": false, "description": "Text match mode: equals | exact | regex | absent." },
+    { "name": "key", "type": { "base": "text" }, "required": false, "description": "Property key to extract from a key=value properties file." },
+    { "name": "pattern", "type": { "base": "text" }, "required": false, "description": "Regex pattern for regex/absent text checks." },
+    { "name": "apk_path", "type": { "base": "text" }, "required": false, "description": "Resolved APK path for apk checks." },
+    { "name": "signature_md5", "type": { "base": "text" }, "required": false, "description": "Signer MD5 fingerprint for signature checks." }
+  ],
+  "outputs": [
+    { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry name (echoed)." },
+    { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type (echoed)." },
+    { "name": "passed", "type": { "base": "boolean" }, "required": true, "description": "Whether the entry passed its check." },
+    { "name": "actual", "type": { "base": "text" }, "required": true, "description": "Actual value measured from the APK/file." },
+    { "name": "expected", "type": { "base": "text" }, "required": true, "description": "Expected value the entry should match." },
+    { "name": "message", "type": { "base": "text" }, "required": true, "description": "Human-readable pass/fail message." }
+  ],
+  "operations": [
+    {
+      "name": "validate",
+      "description": "Validate a single APK validation entry against its declared type and expected value.",
+      "inputs": [
+        { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry display name." },
+        { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type: file | text | apk | signature." },
+        { "name": "path", "type": { "base": "text" }, "required": false, "description": "File path for file/text checks." },
+        { "name": "md5", "type": { "base": "text" }, "required": false, "description": "Expected MD5 (hex) for file/apk/signature checks." },
+        { "name": "value", "type": { "base": "text" }, "required": false, "description": "Expected value, or a URL to download for file checks." },
+        { "name": "match", "type": { "base": "text" }, "required": false, "description": "Text match mode: equals | exact | regex | absent." },
+        { "name": "key", "type": { "base": "text" }, "required": false, "description": "Property key to extract from a key=value properties file." },
+        { "name": "pattern", "type": { "base": "text" }, "required": false, "description": "Regex pattern for regex/absent text checks." },
+        { "name": "apk_path", "type": { "base": "text" }, "required": false, "description": "Resolved APK path for apk checks." },
+        { "name": "signature_md5", "type": { "base": "text" }, "required": false, "description": "Signer MD5 fingerprint for signature checks." }
+      ],
+      "outputs": [
+        { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry name (echoed)." },
+        { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type (echoed)." },
+        { "name": "passed", "type": { "base": "boolean" }, "required": true, "description": "Whether the entry passed its check." },
+        { "name": "actual", "type": { "base": "text" }, "required": true, "description": "Actual value measured from the APK/file." },
+        { "name": "expected", "type": { "base": "text" }, "required": true, "description": "Expected value the entry should match." },
+        { "name": "message", "type": { "base": "text" }, "required": true, "description": "Human-readable pass/fail message." }
+      ],
+      "args_map": [
+        { "param": "name" },
+        { "param": "type" },
+        { "param": "path" },
+        { "param": "md5" },
+        { "param": "value" },
+        { "param": "match" },
+        { "param": "key" },
+        { "param": "pattern" },
+        { "param": "apk_path" },
+        { "param": "signature_md5" }
+      ]
+    }
+  ]
+}
