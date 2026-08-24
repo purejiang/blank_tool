@@ -8,13 +8,13 @@
   "inputs": [
     { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry display name." },
     { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type: file | text | apk | signature." },
-    { "name": "path", "type": { "base": "text" }, "required": false, "description": "File path for file/text checks." },
-    { "name": "md5", "type": { "base": "text" }, "required": false, "description": "Expected MD5 (hex) for file/apk/signature checks." },
-    { "name": "value", "type": { "base": "text" }, "required": false, "description": "Expected value, or a URL to download for file checks." },
+    { "name": "path", "type": { "base": "text" }, "required": false, "description": "File path for file/text checks — a local file on disk or an entry inside the APK (e.g. assets/login.png); disk is tried first, then the APK zip." },
+    { "name": "md5", "type": { "base": "text" }, "required": false, "description": "Expected MD5 (hex) for file/apk/signature checks. For file checks every available source (local/APK file and URL download) must match it; without it, multiple sources must be mutually identical." },
+    { "name": "value", "type": { "base": "text" }, "required": false, "description": "Expected value, or a URL to download as a reference file for file checks." },
     { "name": "match", "type": { "base": "text" }, "required": false, "description": "Text match mode: equals | exact | regex | absent." },
     { "name": "key", "type": { "base": "text" }, "required": false, "description": "Property key to extract from a key=value properties file." },
     { "name": "pattern", "type": { "base": "text" }, "required": false, "description": "Regex pattern for regex/absent text checks." },
-    { "name": "apk_path", "type": { "base": "text" }, "required": false, "description": "Resolved APK path for apk checks." },
+    { "name": "apk_path", "type": { "base": "text" }, "required": false, "description": "Resolved APK path — required for apk checks, and used as the zip source when a file/text path is an entry inside the APK." },
     { "name": "signature_md5", "type": { "base": "text" }, "required": false, "description": "Signer MD5 fingerprint for signature checks." }
   ],
   "outputs": [
@@ -32,13 +32,13 @@
       "inputs": [
         { "name": "name", "type": { "base": "text" }, "required": true, "description": "Entry display name." },
         { "name": "type", "type": { "base": "text" }, "required": true, "description": "Validation type: file | text | apk | signature." },
-        { "name": "path", "type": { "base": "text" }, "required": false, "description": "File path for file/text checks." },
-        { "name": "md5", "type": { "base": "text" }, "required": false, "description": "Expected MD5 (hex) for file/apk/signature checks." },
-        { "name": "value", "type": { "base": "text" }, "required": false, "description": "Expected value, or a URL to download for file checks." },
+        { "name": "path", "type": { "base": "text" }, "required": false, "description": "File path for file/text checks — a local file on disk or an entry inside the APK (e.g. assets/login.png); disk is tried first, then the APK zip." },
+        { "name": "md5", "type": { "base": "text" }, "required": false, "description": "Expected MD5 (hex) for file/apk/signature checks. For file checks every available source (local/APK file and URL download) must match it; without it, multiple sources must be mutually identical." },
+        { "name": "value", "type": { "base": "text" }, "required": false, "description": "Expected value, or a URL to download as a reference file for file checks." },
         { "name": "match", "type": { "base": "text" }, "required": false, "description": "Text match mode: equals | exact | regex | absent." },
         { "name": "key", "type": { "base": "text" }, "required": false, "description": "Property key to extract from a key=value properties file." },
         { "name": "pattern", "type": { "base": "text" }, "required": false, "description": "Regex pattern for regex/absent text checks." },
-        { "name": "apk_path", "type": { "base": "text" }, "required": false, "description": "Resolved APK path for apk checks." },
+        { "name": "apk_path", "type": { "base": "text" }, "required": false, "description": "Resolved APK path — required for apk checks, and used as the zip source when a file/text path is an entry inside the APK." },
         { "name": "signature_md5", "type": { "base": "text" }, "required": false, "description": "Signer MD5 fingerprint for signature checks." }
       ],
       "outputs": [

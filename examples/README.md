@@ -14,9 +14,24 @@
 
 ### Android 示例 (`workflows/android/` + `tools/android/`)
 
-- **需导入描述符**：`tools/android/` 下的 8 个工具描述符（aapt, adb, apksigner, apktool, bundletool, jarsigner, zipalign, apk-audit）必须通过工具管理页导入后，对应的工作流才能运行。其中 `apk-audit` 是 `python_script` 类型（依赖 Python 环境），其余 7 个是 `java_jar`/`binary` 类型。
-- **需自备二进制**：Android 工具链（ADB、Apktool、Bundletool、JDK 等）需放置在 `runtime/` 目录或通过工具管理页配置自定义路径。`apk-audit` 脚本会自动搜索 `runtime/apktool/apktool.jar` 和 Java 路径（`BT_JAVA_BIN` / `JAVA_HOME` / PATH）。
-- 当前包含 7 个工作流：download-install、decompile、recompile、sign、aab-install、decompile-edit-sign（反编译→修改→重编译→签名）、apk-audit（批量反编译多个 APK，提取关键信息，生成 HTML + Markdown 对比报告）。
+- **需导入描述符**：`tools/android/` 下的 12 个工具描述符（aapt, adb, apk-audit, apk-resolve, apk-signature, apksigner, apktool, bundletool, jarsigner, validate-entry, validate-report, zipalign）必须通过工具管理页导入后，对应的工作流才能运行。其中 `apk-audit`、`apk-resolve`、`apk-signature`、`validate-entry`、`validate-report` 是 `python_script` 类型（依赖 Python 环境），其余 7 个是 `java_jar`/`binary` 类型。
+- **需自备二进制**：Android 工具链（ADB、Apktool、Bundletool、JDK 等）需放置在 `runtime/` 目录或通过工具管理页配置自定义路径。`apk-audit` 脚本会自动搜索 `runtime/apktool/apktool.jar` 和 Java 路径（`BT_JAVA_BIN` / `JAVA_HOME` / PATH）；`apk-signature` 先用 keytool 读 v1 签名，v2/v3-only 包回退到 `runtime/android/apksigner.jar`。
+- 当前包含 9 个工作流：download-install、decompile、recompile、sign、aab-install、decompile-edit-sign（反编译→修改→重编译→签名）、apk-audit（批量反编译多个 APK，提取关键信息，生成 HTML + Markdown 对比报告）、apk-validate + apk-validate-entry（APK 参数验证，见下）。
+
+#### APK 参数验证（apk-validate）
+
+按映射表逐条验证 APK 内容并生成 Markdown 报告。三个入参：`apk_path`（本地路径或 http(s) 链接，远程自动下载）、`mapping`（映射表，JSON 列表）、`output_path`（报告输出路径）。映射表每条 entry：
+
+```json
+{"name": "login", "type": "file", "path": "assets/login.png", "value": "http://xxxx/login.png", "md5": "xxxxxx"}
+```
+
+- `type: "file"` — 验证文件 md5。`path` 可以是本地文件或 **APK 包内路径**（先查磁盘，再查 APK zip）；`value` 为 http(s) 链接时下载作为参考文件。有 `md5` 时**所有**来源都必须一致（all-match）；无 `md5` 且有两个来源时两者互比。
+- `type: "text"` — 文本匹配：`key` 提取 properties 键值（支持 `=`/`:`），`match` 取 `equals`（默认）/ `exact` / `regex` / `absent`，如验证 `assets/channel.properties` 中 `channel=huawei`。
+- `type: "apk"` — APK 整包 md5。
+- `type: "signature"` — 签名证书 MD5 指纹比对。
+
+任一 entry 失败时 `flow.assert` 使整个工作流失败（报告仍会生成）。**注意**：`apk-validate` 依赖 `apk-validate-entry` 子模板，两个模板都必须导入（GUI 分别导入两个 JSON；CLI 需先把 `apk-validate-entry.json` 放入模板目录）。
 
 ## 导入方式
 
@@ -70,4 +85,14 @@ python cli/cli.py run examples/workflows/android/apk-audit.json \
     --tool-dir examples/tools/android \
     --input apk_paths=./apks \
     --input output_dir=./audit-report
+
+# APK 参数验证（需先把 apk-validate-entry 子模板放入模板目录）：
+#   方式一：设置 BT_TEMPLATES_DIR 指向包含 apk-validate-entry.json 的目录
+mkdir .templates && cp examples/workflows/android/apk-validate-entry.json .templates/
+export BT_TEMPLATES_DIR=.templates
+python cli/cli.py run examples/workflows/android/apk-validate.json \
+    --tool-dir examples/tools/android \
+    --input apk_path=app.apk \
+    --input 'mapping=[{"name":"login","type":"file","path":"assets/login.png","md5":"xxxxxx"},{"name":"channel","type":"text","path":"assets/channel.properties","key":"channel","value":"huawei","match":"equals"},{"name":"whole","type":"apk","md5":"yyyyyy"},{"name":"sig","type":"signature","md5":"zzzzzz"}]' \
+    --input output_path=./validation-report.md
 ```

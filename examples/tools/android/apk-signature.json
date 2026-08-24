@@ -36,7 +36,7 @@
   "operations": [
     {
       "name": "signature",
-      "description": "Extract the APK signer certificate fingerprints (MD5/SHA1/SHA256) via keytool -printcert.",
+      "description": "Extract the APK signer certificate fingerprints (MD5/SHA1/SHA256): keytool -printcert for v1 (JAR) signatures, falling back to apksigner verify --print-certs for v2/v3-only APKs.",
       "inputs": [
         {
           "name": "apk_path",

@@ -159,6 +159,36 @@ def test_foreach_writes_results_file(tmp_path):
     assert payload["results"][0]["outputs"]["passed"] is True
 
 
+def test_foreach_accepts_json_string_items(tmp_path):
+    """A JSON-encoded list/dict string is parsed instead of raising."""
+    engine = _StubEngine(
+        lambda inputs: SimpleNamespace(success=True, outputs={}, error=None)
+    )
+    tool = FlowForeach()
+    ctx = _foreach_ctx(tmp_path, engine, _StubStore())
+
+    as_list = tool.execute(
+        {"items": '[{"n": 1}, {"n": 2}]', "template": "child"}, ctx
+    )
+    assert as_list["count"] == 2
+
+    as_wrapped = tool.execute(
+        {"items": '{"entries": [{"n": 1}]}', "template": "child"}, ctx
+    )
+    assert as_wrapped["count"] == 1
+
+
+def test_foreach_non_list_json_string_still_raises(tmp_path):
+    engine = _StubEngine(
+        lambda inputs: SimpleNamespace(success=True, outputs={}, error=None)
+    )
+    ctx = _foreach_ctx(tmp_path, engine, _StubStore())
+    with pytest.raises(ToolException, match="must be a list"):
+        FlowForeach().execute({"items": '"just a string"', "template": "child"}, ctx)
+    with pytest.raises(ToolException, match="must be a list"):
+        FlowForeach().execute({"items": "not json at all", "template": "child"}, ctx)
+
+
 def test_foreach_missing_template_raises(tmp_path):
     ctx = ToolContext(
         work_dir=str(tmp_path), template_store=None, engine=_StubEngine(lambda i: None)

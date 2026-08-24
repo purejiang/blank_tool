@@ -211,9 +211,24 @@ class FlowForeach(BuiltinTool):
                 items = [items]
 
         if isinstance(items, (str, bytes)):
-            raise ToolException(
-                "foreach 'items' must be a list, got a scalar"
-            )
+            # Tolerate a JSON-encoded list passed as a string (e.g. an entry
+            # point that stringified the mapping table); anything else is an
+            # error.
+            try:
+                parsed = json.loads(items)
+            except (ValueError, TypeError):
+                raise ToolException(
+                    "foreach 'items' must be a list, got a scalar"
+                ) from None
+            if isinstance(parsed, (dict, list)):
+                items = parsed
+            else:
+                raise ToolException(
+                    "foreach 'items' must be a list, got a scalar"
+                )
+            if isinstance(items, dict):
+                entries = items.get("entries")
+                items = entries if isinstance(entries, list) else [items]
         if not isinstance(items, list):
             raise ToolException(
                 f"foreach 'items' must be a list, got {type(items).__name__}"
