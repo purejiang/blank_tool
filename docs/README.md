@@ -36,7 +36,7 @@ Blank Tool 是本地工作流编排桌面应用（Electron + Vue3 + Python 三�
 
 ### 已解决
 
-- **`cli/app/protocol.py` 与 `cli/app/protocol/` 包同名冲突（已修复）**：包目录曾遮蔽同名模块，导致 `from app.protocol import ...`（`api_handler.py`、`main.py`）导入失败、后端无法启动。现已修复：`cli/app/protocol/__init__.py` 第 5-12 行统一导出消息类（`BackendResponse`/`BackendSuccessPayload`/`BackendErrorPayload`/`BackendStreamEvent`/`BackendApiRequest`/`ErrorCode`）与类型系统，后端可正常启动；`cli.py` 亦从 `main` 导入复用 `bootstrap`（`from main import bootstrap`），无需各自维护。
+- **`cli/app/protocol.py` 与 `cli/app/protocol/` 包同名冲突（已修复）**：包目录曾遮蔽同名模块，导致 `from app.protocol import ...`（`api_handler.py`、`main.py`）导入失败、后端无法启动。现已修复：`cli/app/protocol/__init__.py` 统一导出消息类与类型系统（当前为 `BackendSuccessPayload`/`BackendErrorPayload`/`ErrorCode` + `BaseType`/`TypeAnnotation`/`Port`/`PortSet`），后端可正常启动；`cli.py` 亦从 `main` 导入复用 `bootstrap`（`from main import bootstrap`），无需各自维护。
 
 ### 规划中
 

@@ -84,8 +84,8 @@ Python Backend (cli/main.py)
 ### 后端自动发现
 
 - **Handlers**：`cli/app/handlers/` 下任何导出 `API_MAP` 字典的 `.py` 都会被 `ApiHandler` 自动注册。键是方法名（如 `"adb.devices"`），值是 handler 函数。新增 handler 不需要改注册表。
-- **Tools**：`cli/app/tools/` 下任何 `BaseTool` 子类被 `ToolManager` 自动发现。子类按工具类型分：`BinaryTool`（exe）、`JavaTool`（.jar）、`PythonTool`（.py）、`NodeTool`（.js）。
-- **Plugins**：`cli/plugins/` 下任何带 `run(context, **params)` 的 `.py` 会被自动加载。**目前该目录为空**，自动发现机制已就绪但无实际插件。
+- **Tools**：工具不再是目录扫描的代码类。现行为两类：① `DescriptorTool`（`cli/app/tools/descriptor_tool.py`）从 JSON 描述符发现（内置 `cli/registry/tools/*.json` + 用户覆盖层 `<output>/registry/tools/*.json`，覆盖层同名优先）；② 内置/插件工具（`BuiltinTool`，见 `cli/app/tools/builtin/base.py`）由 shipped-native 插件经 `register_plugin_tool` 显式注册（`cli/app/plugins/builtin/*` 包装 `cli/app/tools/builtin/*`）。旧的 `BaseTool`/`CommandTool`/`BinaryTool` 类层级（`cli/app/tools/base_tool.py`）已废弃删除，不再参与发现。
+- **Plugins**：清单（manifest）驱动的加载器 `cli/app/plugins/loader.py`，入口是 `apply(ctx, config)`（可选的 `unmount(ctx)` 卸载钩子）。清单条目为 `{module, kind, path?, config?}`，`kind` 取 `"shipped-native"` 或 `"native"`。来源依次：`SHIPPED_MANIFEST`（5 个核心内置，总是先加载）→ 按 `server.config.json` 的 `tools.atomic_extensions` 启用的 `EXTENDED_MANIFEST`（6 个扩展内置）→ 用户插件（`server.config.json` 的 `plugins` 段，其次 `<output>/plugins.json`，先出现者生效）。
 
 ### Python 标准库策略
 

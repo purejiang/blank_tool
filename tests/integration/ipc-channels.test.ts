@@ -38,16 +38,6 @@ describe('IPC Channel Consistency', () => {
   })
 
   describe('main-to-renderer channels', () => {
-    it('includes device change channel', () => {
-      expect(IPC_CHANNEL_NAMES).toHaveProperty('deviceChange')
-    })
-
-    it('includes logcat channels', () => {
-      expect(IPC_CHANNEL_NAMES).toHaveProperty('logcatOutput')
-      expect(IPC_CHANNEL_NAMES).toHaveProperty('logcatStarted')
-      expect(IPC_CHANNEL_NAMES).toHaveProperty('logcatFinished')
-    })
-
     it('includes stream event channel', () => {
       expect(IPC_CHANNEL_NAMES).toHaveProperty('streamEvent')
     })

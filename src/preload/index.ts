@@ -5,19 +5,16 @@ import { callBackendAPI, callBackendByRequest } from './core/callBackend';
 import { toolApi } from './api/tool';
 import { cacheApi } from './api/cache';
 import { systemApi } from './api/system';
-import { taskApi } from './api/task';
 import { logsApi } from './api/logs';
 import { appApi } from './api/app';
 import { dialogApi } from './electron/dialog';
 import { fsApi } from './electron/fs';
 import { clipboardApi } from './electron/clipboard';
-import { windowApi } from './electron/window';
 import { appInfoApi } from './electron/appInfo';
 import { rendererLogApi } from './electron/rendererLog';
 import { appConfigApi } from './config/appConfig';
 import { userConfigApi } from './config/userConfig';
 import { settingsApi } from './config/settings';
-import { deviceEventsApi } from './events/deviceEvents';
 import { streamEventsApi } from './events/streamEvents';
 import { updateEventsApi } from './events/updateEvents';
 import { quitDialogApi } from './events/quitDialog';
@@ -31,7 +28,6 @@ const electronApi = {
   ...toolApi,
   ...cacheApi,
   ...systemApi,
-  ...taskApi,
   ...logsApi,
   ...appApi,
 
@@ -39,7 +35,6 @@ const electronApi = {
   ...dialogApi,
   ...fsApi,
   ...clipboardApi,
-  ...windowApi,
   ...appInfoApi,
   ...rendererLogApi,
 
@@ -49,7 +44,6 @@ const electronApi = {
   ...settingsApi,
 
   // ==================== 事件监听 (extracted into src/preload/events/) ====================
-  ...deviceEventsApi,
   ...streamEventsApi,
   ...updateEventsApi,
   ...quitDialogApi,

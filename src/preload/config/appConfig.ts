@@ -10,10 +10,4 @@ const appConfig = {
   reset: () => ipcRenderer.invoke(IPC_CHANNEL_NAMES.resetAppConfig),
 };
 
-const onAppConfigChange = (callback: (key: string, value: unknown) => void) => {
-  const handler = (_event: Electron.IpcRendererEvent, key: string, value: unknown) => callback(key, value);
-  ipcRenderer.on(IPC_CHANNEL_NAMES.appConfigChanged, handler);
-  return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.appConfigChanged, handler);
-};
-
-export const appConfigApi = { appConfig, onAppConfigChange };
+export const appConfigApi = { appConfig };

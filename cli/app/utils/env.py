@@ -36,6 +36,10 @@ def resolve_path(path_str: str) -> str:
     """
     Resolve a path string to an absolute path.
     If the path is relative, it is resolved relative to the cli root.
+
+    NOTE: intentionally duplicated as :func:`app.env.registry._resolve_path`.
+    This module imports ``app.env.registry`` at the top, so the registry
+    cannot import back here (that would be a cycle).  Keep the two in sync.
     """
     if not path_str:
         return ""
@@ -138,6 +142,10 @@ def get_output_dir() -> str:
 def get_runtime_dir() -> str:
     """
     Get the runtime directory.
+
+    NOTE: intentionally duplicated as :func:`app.env.registry._runtime_dir`.
+    This module imports ``app.env.registry`` at the top, so the registry
+    cannot import back here (that would be a cycle).  Keep the two in sync.
     """
     runtime_dir = get_env(ENV_BT_RUNTIME_DIR)
     if runtime_dir:

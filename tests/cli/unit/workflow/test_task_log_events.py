@@ -3,7 +3,6 @@
 Covers:
   - render_event_line() exact output for all 7 event types + unknown fallback
   - Tee writes 6 lifecycle types into _per_task_buffers[task_log_id]
-  - Tee does NOT write node_output
   - Tee silent when task_log_id=None
   - Tee STILL writes when callback=None but task_log_id set
   - Child-namespacing rule: handlers with workflow_id != task_log_id prefix
@@ -168,38 +167,6 @@ class TestTeeWritesLifecycleTypes:
         ), f"buffer should contain rendered line for {method_name}"
 
 
-class TestTeeFiltersNodeOutput:
-    """node_output is NEVER written to the task log."""
-
-    def test_node_output_not_in_buffer(self):
-        handler = WorkflowStreamHandler(
-            workflow_id="w1", callback=lambda e: None, task_log_id=TASK_ID
-        )
-        before = list(_buffer_lines())
-        handler.emit_node_output("n1", {"x": 1})
-        after = _buffer_lines()
-        assert len(after) == len(before), (
-            "node_output must NOT write to task log buffer"
-        )
-
-    def test_node_output_not_in_buffer_even_with_callback(self):
-        """Verify node_output is excluded even when callback is set."""
-        events = []
-        handler = WorkflowStreamHandler(
-            workflow_id="w1", callback=events.append, task_log_id=TASK_ID
-        )
-        before = list(_buffer_lines())
-        handler.emit_node_output("n1", {"x": 1})
-        after = _buffer_lines()
-        # Callback still received it
-        assert len(events) == 1
-        assert events[0]["type"] == NODE_OUTPUT
-        # Buffer unchanged
-        assert len(after) == len(before), (
-            "node_output must NOT write to task log buffer"
-        )
-
-
 class TestTeeSilentWhenTaskLogIdNone:
     """No writes when task_log_id is None (default)."""
 
@@ -234,16 +201,6 @@ class TestTeeWithCallbackNone:
         assert any(
             "node_started" in line and "n1" in line for line in after
         ), f"buffer missing node_started for n1: {after}"
-
-    def test_tee_callback_none_node_output_still_excluded(self):
-        handler = WorkflowStreamHandler(
-            workflow_id="w1", callback=None, task_log_id=TASK_ID
-        )
-        before = len(_buffer_lines())
-        handler.emit_node_output("n1", {"x": 1})
-        assert len(_buffer_lines()) == before, (
-            "node_output excluded even when callback=None"
-        )
 
 
 class TestChildNamespacingRule:

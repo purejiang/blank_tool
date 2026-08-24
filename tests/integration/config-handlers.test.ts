@@ -60,11 +60,11 @@ describe('Config Handler Integration', () => {
     })
 
     it('getAllAppConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.getAllAppConfig).toBe('app-config-getAll')
+      expect(IPC_CHANNEL_NAMES.getAllAppConfig).toBe('app-config-get-all')
     })
 
     it('setManyAppConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.setManyAppConfig).toBe('set-app-config-batch')
+      expect(IPC_CHANNEL_NAMES.setManyAppConfig).toBe('set-app-config-many')
     })
 
     it('resetAppConfig maps to valid channel name', () => {
@@ -80,7 +80,7 @@ describe('Config Handler Integration', () => {
     })
 
     it('getAllUserConfig maps to valid channel name', () => {
-      expect(IPC_CHANNEL_NAMES.getAllUserConfig).toBe('user-config-getAll')
+      expect(IPC_CHANNEL_NAMES.getAllUserConfig).toBe('user-config-get-all')
     })
 
     it('resetUserConfig maps to valid channel name', () => {

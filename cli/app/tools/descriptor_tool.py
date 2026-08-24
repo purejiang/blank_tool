@@ -349,10 +349,6 @@ class DescriptorTool:
             resolutions[dep] = self._env_registry.resolve(dep).binary_path or ""
         return resolutions
 
-    def get_env_resolutions(self) -> Dict[str, str]:
-        """Return the resolved binary path for every declared env_dep."""
-        return dict(self._env_resolutions)
-
     @property
     def ports(self) -> PortSet:
         """The declared input/output port set (uniform with BuiltinTool)."""
@@ -700,18 +696,6 @@ class DescriptorTool:
             return invocation + list(command)
         # python_script / node_script
         return [interpreter, self.tool_path] + list(command)
-
-    def get_java_path(self) -> str:
-        """Return the resolved Java interpreter path (JavaTool compatibility).
-
-        Legacy handlers build bundletool/jarsigner command lines manually
-        via ``tool.get_java_path()``; a descriptor-based java_jar tool
-        exposes the same surface so those callers keep working unchanged.
-        """
-        resolved = self._env_resolutions.get("java")
-        if resolved:
-            return resolved
-        return get_java_bin()
 
     def _interpreter_for(self, dep_name: Optional[str]) -> str:
         """Return the interpreter binary for a script-type tool.

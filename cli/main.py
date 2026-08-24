@@ -115,7 +115,7 @@ def bootstrap():
 # Signal handling (graceful shutdown)
 # ------------------------------------------------------------------
 
-def _install_signal_handlers(executor: ThreadPoolExecutor, logger: Logger):
+def _install_signal_handlers(logger: Logger):
     """Register OS signal handlers for graceful shutdown.
 
     On SIGTERM / SIGINT the handler sets a shutdown flag, drains pending
@@ -191,10 +191,7 @@ def main():
 
     # Thread pool for request processing
     executor = ThreadPoolExecutor(max_workers=4)
-    _install_signal_handlers(executor, logger)
-
-    # Track submitted futures so we can drain on shutdown
-    _futures = []
+    _install_signal_handlers(logger)
 
     def process_request(line: str):
         """Parse one JSON-RPC request line and dispatch to ApiHandler."""
@@ -251,11 +248,7 @@ def main():
             line = line.strip()
             if not line:
                 continue
-            future = executor.submit(process_request, line)
-            _futures.append(future)
-            # Prune completed futures to prevent unbounded memory growth
-            if len(_futures) > 100:
-                _futures[:] = [f for f in _futures if not f.done()]
+            executor.submit(process_request, line)
 
         # stdin loop exited (EOF) — attempt reconnect
         logger.warning("stdin closed, attempting reconnect...")

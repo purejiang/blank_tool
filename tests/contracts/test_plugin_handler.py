@@ -64,6 +64,9 @@ class TestPluginList:
         result = plugin_handler.list_plugins({}, None)
 
         # Shipped-native builtins are ALWAYS loaded first, then user plugins.
+        # Only the 5 CORE shipped plugins load by default (the extended set is
+        # opt-in via server.config.json tools.atomic_extensions, and the config
+        # written above selects none).
         by_module = {p["module"]: p for p in result["plugins"]}
         assert by_module["vplug"] == {
             "module": "vplug", "kind": "native", "version": "1.2.3",
@@ -71,7 +74,7 @@ class TestPluginList:
         }
         assert sum(
             1 for p in result["plugins"] if p["kind"] == "shipped-native"
-        ) == 8
+        ) == 5
 
     def test_list_uses_empty_version_when_absent(
         self, tmp_path, monkeypatch, mock_tool_manager,

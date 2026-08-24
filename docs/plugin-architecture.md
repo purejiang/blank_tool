@@ -69,9 +69,8 @@
 | exec | `BaseCommandExecutor` / `CommandExecutor`（`cli/app/common/base_executor.py`） | 子进程生命周期（spawn / 超时 / 取消，经 `ProcessExecutor` 委托）与敏感参数日志脱敏（`_SENSITIVE_PATTERNS`，`base_executor.py:132`） | 否。描述符工具的执行**委托**给它（`descriptor_tool.py:14`），但 executor 本身不可替换、不可被插件绕开 |
 | env | `EnvironmentRegistry`（`cli/app/env/registry.py:120`；进程单例 `get_env_registry` `:369`） | 把环境描述符解析为具体运行时路径（env 覆盖 → runtime/ → 系统环境变量 → PATH 四层优先级），结果缓存至 `refresh` | 只读。`PluginContext.env` 暴露同一个单例（`context.py:49`），插件只能查询解析结果，不能替换解析逻辑 |
 | config | `app.utils.env`（`cli/app/utils/env.py`） | `.env` 加载（`load_dotenv` `:51`）、`server.config.json` 加载（`load_server_config` `:86`）、`get_env` 与目录/二进制路径兜底（`get_output_dir` `:131` 起） | 否。后端配置的唯一入口 |
-| events | `EventBus`（`cli/app/plugins/events.py`） | 进程内同步事件分发：`subscribe` / `emit` / `unsubscribe`；handler 异常被捕获记录、`emit` 永不重抛 | 可订阅、可发。`PluginContext.events`（`context.py:50`）默认新建总线；插件能收发事件，不能替换总线本身 |
 
-两点澄清：`EventBus` 虽然位于 `cli/app/plugins/` 目录，但它是内核服务（插件系统的接缝），本身不是插件；`EnvironmentRegistry` 的 overlay 描述符 CRUD（`add_descriptor` / `delete_descriptor`，`registry.py:269` / `:306`）属于内核 env 服务，与"环境插件化"是两回事（见下文）。
+澄清：`EnvironmentRegistry` 的 overlay 描述符 CRUD（`add_descriptor` / `delete_descriptor`，`registry.py:269` / `:306`）属于内核 env 服务，与"环境插件化"是两回事（见下文）。
 
 ### 插件轴
 
@@ -84,4 +83,4 @@
 
 1. **内核服务永不插件化**：engine / task / exec / env / config / events 六个内核服务不允许被插件替换、覆写或绕过。插件只能经 `PluginContext.register_tool`（`context.py:53`）向共享注册表**新增**工具（kind 限 `shipped-native` / `native`），不能替换任何内核组件。
 2. **UI / LLM / storage / scheduling 永不插件化**：这四个方向是文档级的保留扩展点，不在插件生态 scope 内（scope = tools + orchestration + environments）。不为它们设计插件机制，也不接受此类插件。
-3. **零第三方依赖 + `base_tool.py` 保留**：后端保持 stdlib-only（Python 3.10+，无 `requirements.txt`），插件生态不得引入第三方包。同时 `cli/app/tools/base_tool.py`（`BaseTool` / `CommandTool`）保留为工具接口的规范层：`DescriptorTool` 镜像其表面（`name` / `is_valid` / `version` / `tool_path` / `execute`，`descriptor_tool.py:9-11`），使注册表对代码类工具与描述符工具统一管理（`tool_manager.py:87` 在自动发现中显式排除 `base_tool.py` 内定义的类）。
+3. **零第三方依赖 + stdlib-only 内核**：后端保持 stdlib-only（Python 3.10+，无 `requirements.txt`），插件生态不得引入第三方包。工具接口的规范表面由 `DescriptorTool`（`name` / `is_valid` / `version` / `tool_path` / `execute`，`descriptor_tool.py`）定义，`BuiltinTool`（`cli/app/tools/builtin/base.py`）镜像该表面；旧的 `BaseTool` / `CommandTool` 类层级（`base_tool.py`）已删除，注册表对描述符工具与内置/插件工具统一管理。

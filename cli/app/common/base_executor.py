@@ -7,7 +7,6 @@ Base command executor — template method pattern with ProcessExecutor delegatio
 import re
 import subprocess
 import traceback
-import shutil
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Union, Optional
 from app.utils.logger import Logger
@@ -93,19 +92,6 @@ class BaseCommandExecutor(ABC):
 
         Returns:
             Result dict with keys: returncode, stdout, stderr, success, command
-        """
-        pass
-
-    @abstractmethod
-    def validate_command(self, command: Union[str, List[str]]) -> bool:
-        """
-        Validate whether a command is executable.
-
-        Args:
-            command: Command to validate
-
-        Returns:
-            True if the command is valid
         """
         pass
 
@@ -246,23 +232,3 @@ class CommandExecutor(BaseCommandExecutor):
             tb = traceback.format_exc()
             self._log_error(f"[COMMAND] {error_msg}\n{tb}")
             raise
-
-    def validate_command(self, command: Union[str, List[str]]) -> bool:
-        """
-        Validate whether a system command is available.
-
-        Args:
-            command: Command as string or list
-
-        Returns:
-            True if the command executable is found in PATH
-        """
-        if isinstance(command, str):
-            cmd_name = command.split()[0] if command.strip() else ""
-        else:
-            cmd_name = command[0] if command else ""
-
-        if not cmd_name:
-            return False
-
-        return shutil.which(cmd_name) is not None

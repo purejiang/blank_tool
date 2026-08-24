@@ -57,25 +57,3 @@ class TypeAnnotation:
         Subtype is advisory (D7) and deliberately ignored here.
         """
         return source.base == target.base
-
-
-class TypeRegistry:
-    """Registry mapping type names to their TypeAnnotation."""
-
-    def __init__(self) -> None:
-        self._annotations: dict[str, TypeAnnotation] = {}
-
-    def register(self, name: str, annotation: TypeAnnotation) -> None:
-        """Register an annotation under a name (later registrations overwrite)."""
-        self._annotations[name] = annotation
-
-    def resolve(self, name: str) -> TypeAnnotation:
-        """Return the annotation registered under `name` (KeyError if absent)."""
-        return self._annotations[name]
-
-    def is_compatible(self, source_name: str, target_name: str) -> bool:
-        """Return True when the registered annotations share a base type.
-
-        Raises KeyError if either name is not registered.
-        """
-        return self._annotations[source_name].base == self._annotations[target_name].base

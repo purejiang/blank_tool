@@ -3,6 +3,7 @@ import { appStore, getConfigValue, isWritableConfigKey, setConfigValue, resetApp
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathConfig';
 import { resolveFromAppBase } from '../utils/appPaths';
+import { toNonEmptyString } from '../python/paths';
 
 function getUserConfigStore(): Record<string, unknown> {
     const raw = appStore.get('user');
@@ -20,13 +21,6 @@ function broadcastConfigChange(channel: string, key: string, value: unknown): vo
     BrowserWindow.getAllWindows().forEach(win => {
         win.webContents.send(channel, key, value);
     });
-}
-
-function toNonEmptyString(value: unknown, fallback: string): string {
-    if (typeof value === 'string' && value.trim()) {
-        return value.trim();
-    }
-    return fallback;
 }
 
 function resolvePathFromAppBase(targetPath: string): string {

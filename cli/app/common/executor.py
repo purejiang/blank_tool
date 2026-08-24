@@ -72,7 +72,3 @@ class ProcessExecutor:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
-
-    @property
-    def is_running(self) -> bool:
-        return self.process is not None and self.process.poll() is None

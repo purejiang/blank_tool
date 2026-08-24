@@ -1,8 +1,8 @@
-"""Tests for cli/app/protocol/types.py — BaseType, TypeAnnotation, TypeRegistry."""
+"""Tests for cli/app/protocol/types.py — BaseType, TypeAnnotation."""
 
 import pytest
 
-from app.protocol.types import BaseType, TypeAnnotation, TypeRegistry
+from app.protocol.types import BaseType, TypeAnnotation
 
 
 # ---------------------------------------------------------------------------
@@ -65,29 +65,3 @@ def test_is_compatible_false_on_base_mismatch():
     source = TypeAnnotation(BaseType.FILE)
     target = TypeAnnotation(BaseType.TEXT)
     assert TypeAnnotation.is_compatible(source, target) is False
-
-
-# ---------------------------------------------------------------------------
-# TypeRegistry
-# ---------------------------------------------------------------------------
-
-def test_registry_register_and_resolve_roundtrip():
-    registry = TypeRegistry()
-    annotation = TypeAnnotation(BaseType.FILE, "apk")
-    registry.register("apk", annotation)
-    assert registry.resolve("apk") is annotation
-
-
-def test_registry_is_compatible_by_name():
-    registry = TypeRegistry()
-    registry.register("apk", TypeAnnotation(BaseType.FILE, "apk"))
-    registry.register("aab", TypeAnnotation(BaseType.FILE, "aab"))
-    registry.register("text", TypeAnnotation(BaseType.TEXT))
-    assert registry.is_compatible("apk", "aab") is True
-    assert registry.is_compatible("apk", "text") is False
-
-
-def test_registry_resolve_missing_name_raises_keyerror():
-    registry = TypeRegistry()
-    with pytest.raises(KeyError):
-        registry.resolve("missing")

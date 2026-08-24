@@ -30,18 +30,6 @@ export function setupElectronHandlers(): void {
     return await dialog.showOpenDialog(win, options)
   })
 
-  ipcMain.handle(IPC_CHANNEL_NAMES.showSaveDialog, async (event: IpcMainInvokeEvent, options: any) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (!win) return { canceled: true }
-    return await dialog.showSaveDialog(win, options)
-  })
-
-  ipcMain.handle(IPC_CHANNEL_NAMES.showMessagebox, async (event: IpcMainInvokeEvent, options: any) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (!win) return { response: -1 }
-    return await dialog.showMessageBox(win, options)
-  })
-
   ipcMain.handle(IPC_CHANNEL_NAMES.getFileStats, async (event: IpcMainInvokeEvent, filePath: string) => {
     try {
       const stats = await fs.stat(filePath)
@@ -58,24 +46,6 @@ export function setupElectronHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNEL_NAMES.writeFile, async (event: IpcMainInvokeEvent, filePath: string, content: any) => {
-    try {
-      await fs.writeFile(filePath, typeof content === 'string' ? content : String(content), 'utf8')
-      return { success: true }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNEL_NAMES.readFile, async (event: IpcMainInvokeEvent, filePath: string) => {
-    try {
-      const data = await fs.readFile(filePath, 'utf8')
-      return { success: true, data }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-  
   // 文件/目录打开
   ipcMain.handle(IPC_CHANNEL_NAMES.openPath, async (event: IpcMainInvokeEvent, targetPath: string) => {
     if (!targetPath) return { success: false, error: 'Path is required' }
@@ -104,29 +74,6 @@ export function setupElectronHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNEL_NAMES.openDevTools, async (event: IpcMainInvokeEvent) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && !win.isDestroyed()) {
-      win.webContents.openDevTools()
-      return true
-    }
-    return false
-  })
-
-  ipcMain.handle(IPC_CHANNEL_NAMES.toggleDevTools, async (event: IpcMainInvokeEvent) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && !win.isDestroyed()) {
-      const isOpen = win.webContents.isDevToolsOpened()
-      if (isOpen) {
-        win.webContents.closeDevTools()
-      } else {
-        win.webContents.openDevTools()
-      }
-      return true
-    }
-    return false
-  })
-
   ipcMain.handle(IPC_CHANNEL_NAMES.getAppInfo, async (event: IpcMainInvokeEvent) => {
     return { version: app.getVersion() }
   })
@@ -152,10 +99,6 @@ export function setupElectronHandlers(): void {
   })
 
   // 剪贴板处理
-  ipcMain.handle(IPC_CHANNEL_NAMES.readClipboardText, async () => {
-    return clipboard.readText()
-  })
-
   ipcMain.handle(IPC_CHANNEL_NAMES.writeClipboardText, async (event: IpcMainInvokeEvent, text: string) => {
     clipboard.writeText(text || '')
     return true

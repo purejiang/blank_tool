@@ -10,12 +10,17 @@ export interface BackendApiRequest<
   M extends string = string,
   P extends JsonObject = JsonObject
 > {
-  id: string | number
+  id: string
   method: M
   params: P
 }
 
 // ---- Response ----
+// The Python backend (cli/app/api_handler.py) emits exactly ONE envelope:
+//   { id, result: { type: 'success' | 'error', payload }, finished, stream_id? }
+//   - finished: false → streaming frame (forwarded to renderer via `streamEvent`)
+//   - finished: true  → terminal frame (the final `result` is the payload)
+// There is no `{ error: ... }` / `{ type: 'event' }` frame in the current backend.
 export interface BackendSuccessPayload<T = unknown> {
   type: 'success'
   payload: T
@@ -34,42 +39,13 @@ export type BackendResult<T = unknown> =
   | BackendErrorPayload
 
 export interface BackendResponse<T = unknown> {
-  id: string | number
+  id: string
   result: BackendResult<T>
   finished: boolean
   stream_id?: string
 }
 
-// ---- Streaming ----
-export interface BackendStreamEvent<T = unknown> {
-  id: string | number
-  result: BackendResult<T>
-  stream_id: string
-  finished: false
-}
-
-// ---- Event message (reserved, unused by current Python backend) ----
-export interface BackendEventMessage {
-  type: 'event'
-  event: string
-  data: unknown
-}
-
-// Defensive: standard JSON-RPC error frame (main-process startup / parse
-// error path).  Kept in the union so the bridge can reject cleanly even if
-// the backend emits this legacy shape.
-export interface BackendErrorFrame {
-  id: string | number | null
-  error: {
-    code?: number
-    message: string
-  }
-}
-
-export type BackendStdioMessage<T = unknown> =
-  | BackendResponse<T>
-  | BackendEventMessage
-  | BackendErrorFrame
+export type BackendStdioMessage<T = unknown> = BackendResponse<T>
 
 // ---- Domain Types ----
 export interface AppInfo {
@@ -230,8 +206,6 @@ export interface ApiMethodMap {
   'env.list': { params: Record<string, never>; result: Record<string, unknown> }
   'env.add': { params: { descriptor: Record<string, unknown> }; result: Record<string, unknown> }
   'env.delete': { params: { name: string }; result: Record<string, unknown> }
-  'env.set_custom': { params: { name: string; overrides: Record<string, unknown> }; result: Record<string, unknown> }
-  'env.reset_custom': { params: { name: string }; result: Record<string, unknown> }
 
   // --- tool_handler.py (extended) ---
   'tool.add': { params: { descriptor: Record<string, unknown> }; result: Record<string, unknown> }

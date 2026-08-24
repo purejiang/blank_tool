@@ -22,7 +22,7 @@ need no registration code elsewhere:
 
 from app.common.decorators import streaming
 from app.common.exceptions import ToolException
-from app.env.registry import EnvironmentRegistry
+from app.env.registry import get_env_registry
 from app.tools.descriptor_tool import DescriptorTool
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition
@@ -199,8 +199,7 @@ def handle_list_tools(params, stream_handler):
 
 def handle_list_envs(params, stream_handler):
     """List every resolved environment from the :class:`EnvironmentRegistry`."""
-    registry = EnvironmentRegistry()
-    registry.discover()
+    registry = get_env_registry()
     envs = registry.list_all()
     return {
         "environments": [

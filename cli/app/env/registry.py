@@ -56,16 +56,6 @@ _SYSTEM_ENV_VARS_BY_TYPE: Dict[str, List[str]] = {
 _VERSION_TIMEOUT_SECONDS = 15.0
 
 
-class EnvironmentNotFoundError(Exception):
-    """
-    Strict alternative for a missing/unknown environment.
-
-    ``EnvironmentRegistry.resolve`` deliberately does **not** raise this — it
-    returns an invalid :class:`ResolvedEnvironment` instead (graceful handling).
-    The class exists for callers that want an exception.
-    """
-
-
 @dataclass
 class ResolvedEnvironment:
     """
@@ -89,7 +79,12 @@ class ResolvedEnvironment:
 
 
 def _resolve_path(path_str: str) -> str:
-    """Resolve *path_str* to an absolute path (relative paths anchor to cli/)."""
+    """Resolve *path_str* to an absolute path (relative paths anchor to cli/).
+
+    Intentionally duplicated as :func:`app.utils.env.resolve_path`: that
+    module imports this one at the top, so this module cannot import back
+    (that would be a cycle).  Keep the two in sync.
+    """
     if not path_str:
         return ""
     if os.path.isabs(path_str):
@@ -216,9 +211,9 @@ class EnvironmentRegistry:
         Resolve the environment named *name* to a concrete instance.
 
         Unknown names are handled gracefully: an invalid
-        :class:`ResolvedEnvironment` with empty paths is returned (never
-        :class:`EnvironmentNotFoundError`). Results — negative ones included —
-        are cached until :meth:`refresh`.
+        :class:`ResolvedEnvironment` with empty paths is returned (never an
+        exception). Results — negative ones included — are cached until
+        :meth:`refresh`.
         """
         with self._lock:
             cached = self._cache.get(name)

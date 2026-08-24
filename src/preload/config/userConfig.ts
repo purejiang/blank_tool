@@ -9,10 +9,4 @@ const userConfig = {
   reset: () => ipcRenderer.invoke(IPC_CHANNEL_NAMES.resetUserConfig),
 };
 
-const onUserConfigChange = (callback: (key: string, value: unknown) => void) => {
-  const handler = (_event: Electron.IpcRendererEvent, key: string, value: unknown) => callback(key, value);
-  ipcRenderer.on(IPC_CHANNEL_NAMES.userConfigChanged, handler);
-  return () => ipcRenderer.removeListener(IPC_CHANNEL_NAMES.userConfigChanged, handler);
-};
-
-export const userConfigApi = { userConfig, onUserConfigChange };
+export const userConfigApi = { userConfig };

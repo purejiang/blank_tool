@@ -8,9 +8,6 @@ type DialogOptions = {
 }
 
 export const dialogApi = {
-  showOpenDialog: (options: DialogOptions) => ipcInvoke(IPC_CHANNEL_NAMES.showOpenDialog, options),
-  showSaveDialog: (options: DialogOptions) => ipcInvoke(IPC_CHANNEL_NAMES.showSaveDialog, options),
-  showMessageBox: (options: DialogOptions) => ipcInvoke(IPC_CHANNEL_NAMES.showMessagebox, options),
   selectFile: (options: DialogOptions = {}) => {
     const props = Array.isArray(options.properties) ? [...options.properties] : []
     if (!props.includes('openFile')) props.push('openFile')

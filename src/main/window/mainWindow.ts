@@ -7,17 +7,11 @@ import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathC
 import { setMainWindow } from '../state';
 import { createTray } from './tray';
 import { setupQuitDialog } from './quitDialog';
+import { toNonEmptyString } from '../python/paths';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const __iconPath = path.join(__dirname, 'assets', 'images', 'icon.png');
-
-function toNonEmptyString(value: unknown, fallback: string): string {
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim();
-  }
-  return fallback;
-}
 
 // At runtime (vite-plugin-electron bundle) __dirname is dist/main/; the '..' ascends to dist/,
 // so candidates like 'preload\index.mjs' resolve to dist/preload/index.mjs.

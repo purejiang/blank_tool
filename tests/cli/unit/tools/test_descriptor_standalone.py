@@ -154,17 +154,3 @@ class TestDescriptorStandaloneLoadFromExamples:
         # is_valid may be True or False depending on whether the binary exists
         # — the key point is that construction succeeded without importing
         # any Android tool class.
-
-    def test_get_java_path_falls_back_to_utils_env(self):
-        desc = _make_binary_descriptor(
-            name="bundletool",
-            type="java_jar",
-            path=r"/fake/bundletool.jar",
-            env_deps=["java"],
-        )
-        registry = StubEnvRegistry()  # no java resolved
-        tool = DescriptorTool(desc, registry)
-        java_path = tool.get_java_path()
-        # Falls back to app.utils.env.get_java_bin() — should return a string
-        assert isinstance(java_path, str)
-        assert len(java_path) > 0

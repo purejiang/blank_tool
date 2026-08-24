@@ -1,8 +1,9 @@
-import { ipcMain, BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, WebContents, IpcMainInvokeEvent } from 'electron';
 import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
-import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendErrorFrame, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
+import type { BackendApiRequest, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
+import { MAIN_BRIDGE_ERROR_CODES } from '../../shared/errors';
 
 interface CallbackInfo {
     resolve: (value: unknown) => void;
@@ -10,21 +11,24 @@ interface CallbackInfo {
     sender: WebContents;
     process: ChildProcessWithoutNullStreams;
     resolved?: boolean;
+    timer?: ReturnType<typeof setTimeout>;
+    taskId?: string;
 }
 
-function isBackendEventMessage(message: BackendStdioMessage): message is BackendEventMessage {
-    return (message as BackendEventMessage).type === 'event';
+function isBackendResponse(message: unknown): message is BackendResponse {
+    return typeof (message as BackendResponse)?.id !== 'undefined';
 }
 
-function isBackendErrorFrame(message: BackendStdioMessage): message is BackendErrorFrame {
-    return (message as BackendErrorFrame).error !== undefined;
+// Mirrors cli/app/api_handler.py stream_handler task_id extraction order
+// (params.task_id → params.options.task_id → params.keystore.task_id).
+function extractTaskId(params: unknown): string {
+    const p = (params || {}) as Record<string, unknown>;
+    const options = (p.options || {}) as Record<string, unknown>;
+    const keystore = (p.keystore || {}) as Record<string, unknown>;
+    return String(p.task_id || options.task_id || keystore.task_id || '');
 }
 
-function isBackendResponse(message: BackendStdioMessage): message is BackendResponse {
-    return typeof (message as BackendResponse).id !== 'undefined';
-}
-
-export const createErrorResponse = (message: string, code: number = -32603) => ({
+export const createErrorResponse = (message: string, code: number = MAIN_BRIDGE_ERROR_CODES.INTERNAL_ERROR) => ({
     type: 'error' as const,
     payload: { code, message }
 });
@@ -34,9 +38,13 @@ export function setupCommandHandlers(
     ensurePythonProcess?: () => Promise<ChildProcessWithoutNullStreams | null>,
     requestTimeout = 300000
 ): void {
-    const requestCallbacks = new Map<string | number, CallbackInfo>();
+    const requestCallbacks = new Map<string, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
 
+    // Local copy of the process-writability check (duplicated in service.ts as
+    // isProcessWritable): keeping it inline avoids importing service.ts here,
+    // which would drag electron-store into this module and break the vitest
+    // unit tests that import commandHandlers under a minimal electron mock.
     const isBackendWritable = (pythonProcess: ChildProcessWithoutNullStreams | null): boolean => {
         return Boolean(
             pythonProcess &&
@@ -47,6 +55,46 @@ export function setupCommandHandlers(
             !pythonProcess.stdin.writableEnded &&
             pythonProcess.stdin.writable
         );
+    };
+
+    const clearTimer = (callbackInfo: CallbackInfo) => {
+        if (callbackInfo.timer) {
+            clearTimeout(callbackInfo.timer);
+            callbackInfo.timer = undefined;
+        }
+    };
+
+    // Inactivity timeout: re-armed on every streaming frame, so a long-running
+    // stream (e.g. decompile) is only cancelled after `requestTimeout` of silence,
+    // not after `requestTimeout` of total runtime.
+    const armTimeout = (requestId: string, callbackInfo: CallbackInfo) => {
+        clearTimer(callbackInfo);
+        if (!requestCallbacks.has(requestId)) {
+            return;
+        }
+        callbackInfo.timer = setTimeout(() => {
+            if (!requestCallbacks.has(requestId)) {
+                return;
+            }
+            const cb = requestCallbacks.get(requestId)!;
+            // Fire-and-forget cancel: signal the Python stream to stop via task_id.
+            const taskId = cb.taskId || '';
+            try {
+                const cancelPayload = JSON.stringify({
+                    id: `${requestId}-cancel`,
+                    method: 'request.cancel',
+                    params: { task_id: taskId },
+                }) + '\n';
+                if (cb.process.stdin && !cb.process.stdin.destroyed) {
+                    cb.process.stdin.write(cancelPayload);
+                }
+            } catch (_err) {
+                // Fire-and-forget: silently ignore write errors.
+            }
+            requestCallbacks.delete(requestId);
+            log.info(`[trace ${requestId}] timed out`);
+            cb.resolve(createErrorResponse('请求超时', MAIN_BRIDGE_ERROR_CODES.TIMEOUT));
+        }, requestTimeout);
     };
 
     const bindProcess = (pythonProcess: ChildProcessWithoutNullStreams | null): void => {
@@ -61,83 +109,63 @@ export function setupCommandHandlers(
             const lines = dataBuffer.split('\n');
             dataBuffer = lines.pop() || '';
 
-            lines.forEach(message => {
-                const msg = message.trim();
-                if (!msg) return;
-                if (!msg.startsWith('{')) return;
+            for (const line of lines) {
+                if (!line.trim()) {
+                    continue;
+                }
                 try {
-                    const response = JSON.parse(msg) as BackendStdioMessage;
+                    const response = JSON.parse(line) as unknown;
+                    if (!isBackendResponse(response)) {
+                        continue;
+                    }
+                    const callbackInfo = requestCallbacks.get(response.id);
+                    if (!callbackInfo || callbackInfo.process !== pythonProcess) {
+                        // Late response or fire-and-forget cancel ack — ignore.
+                        continue;
+                    }
+                    const { resolve, reject, sender } = callbackInfo;
 
-                    if (isBackendEventMessage(response)) {
-                        const broadcast = (channel: string, payload: unknown) => {
-                            BrowserWindow.getAllWindows().forEach(win => {
-                                if (!win.isDestroyed()) {
-                                    win.webContents.send(channel, payload);
-                                }
+                    if (response.finished === false) {
+                        // Streaming frame — forward to renderer and re-arm the timeout.
+                        const result = (response.result || {}) as JsonObject;
+                        if (result.task_id) {
+                            callbackInfo.taskId = String(result.task_id);
+                        }
+                        const resultType = typeof result.type === 'string' ? result.type : '';
+                        if (resultType && sender && !sender.isDestroyed()) {
+                            sender.send(IPC_CHANNEL_NAMES.streamEvent, {
+                                stream_id: response.stream_id,
+                                data: result
                             });
-                        };
-                        broadcast(response.event, response.data);
-                        return;
-                    }
-
-                    if (isBackendErrorFrame(response)) {
-                        // Legacy/defensive standard JSON-RPC error frame
-                        const callbackInfo = response.id != null
-                            ? requestCallbacks.get(response.id)
-                            : undefined;
-                        if (callbackInfo && callbackInfo.process === pythonProcess) {
-                            const errMessage = response.error?.message || 'Backend error';
-                            callbackInfo.reject(new Error(errMessage));
-                            requestCallbacks.delete(response.id);
                         }
-                        return;
-                    }
-
-                    if (isBackendResponse(response)) {
-                        if (requestCallbacks.has(response.id)) {
-                            const callbackInfo = requestCallbacks.get(response.id)!;
-                            if (callbackInfo.process !== pythonProcess) {
-                                return;
-                            }
-                            const { resolve, reject, sender } = callbackInfo;
-
-                            if (response.finished === false) {
-                                // Streaming event — forward to renderer regardless of result type
-                                const result = (response.result || {}) as JsonObject;
-                                const resultType = typeof result.type === 'string' ? result.type : '';
-                                if (resultType && sender && !sender.isDestroyed()) {
-                                    sender.send(IPC_CHANNEL_NAMES.streamEvent, {
-                                        stream_id: response.stream_id,
-                                        data: result
-                                    });
-                                }
-
-                                if (!callbackInfo.resolved) {
-                                    resolve(response.result);
-                                    callbackInfo.resolved = true;
-                                }
-                            } else if (response.result && (response.result as unknown as JsonObject).type === 'error') {
-                                const errorPayload = ((response.result as unknown as JsonObject).payload) as JsonObject | undefined;
-                                const message = (errorPayload?.message as string) || 'Unknown backend error';
-                                reject(new Error(message));
-                                requestCallbacks.delete(response.id);
-                            } else {
-                                if (!callbackInfo.resolved) {
-                                    resolve(response.result);
-                                }
-                                requestCallbacks.delete(response.id);
-                            }
+                        if (!callbackInfo.resolved) {
+                            resolve(response.result);
+                            callbackInfo.resolved = true;
                         }
+                        armTimeout(response.id, callbackInfo);
+                    } else if (response.result && (response.result as unknown as JsonObject).type === 'error') {
+                        clearTimer(callbackInfo);
+                        const errorPayload = (response.result as unknown as JsonObject).payload as JsonObject | undefined;
+                        const message = (errorPayload?.message as string) || 'Unknown backend error';
+                        reject(new Error(message));
+                        requestCallbacks.delete(response.id);
+                    } else {
+                        clearTimer(callbackInfo);
+                        if (!callbackInfo.resolved) {
+                            resolve(response.result);
+                        }
+                        requestCallbacks.delete(response.id);
                     }
                 } catch (e) {
                     console.error('Error parsing JSON from Python:', e);
                 }
-            });
+            }
         });
 
         pythonProcess.on('close', () => {
             for (const [id, callbackInfo] of requestCallbacks.entries()) {
                 if (callbackInfo.process === pythonProcess) {
+                    clearTimer(callbackInfo);
                     callbackInfo.reject(new Error('后端服务已退出'));
                     requestCallbacks.delete(id);
                 }
@@ -163,59 +191,45 @@ export function setupCommandHandlers(
 
     ipcMain.handle(IPC_CHANNEL_NAMES.callBackendApi, async (event: IpcMainInvokeEvent, request: BackendApiRequest) => {
         const pythonProcess = await getWritableProcess();
-        log.info(`[trace ${request.id}] dispatching ${request.method}`);
+        const requestId = String(request.id);
+        log.info(`[trace ${requestId}] dispatching ${request.method}`);
         if (!pythonProcess) {
-            return createErrorResponse('后端服务未运行', -32001);
+            return createErrorResponse('后端服务未运行', MAIN_BRIDGE_ERROR_CODES.BACKEND_NOT_RUNNING);
         }
 
         return new Promise((resolve, reject) => {
             const wrappedResolve = (value: unknown) => {
-                log.info(`[trace ${request.id}] resolved`);
+                log.info(`[trace ${requestId}] resolved`);
                 resolve(value);
             };
             const wrappedReject = (reason?: unknown) => {
                 const message = reason instanceof Error ? reason.message : String(reason);
-                log.info(`[trace ${request.id}] rejected: ${message}`);
+                log.info(`[trace ${requestId}] rejected: ${message}`);
                 reject(reason);
             };
-            requestCallbacks.set(request.id, { resolve: wrappedResolve, reject: wrappedReject, sender: event.sender, process: pythonProcess });
+            const callbackInfo: CallbackInfo = {
+                resolve: wrappedResolve,
+                reject: wrappedReject,
+                sender: event.sender,
+                process: pythonProcess,
+                taskId: extractTaskId(request.params),
+            };
+            requestCallbacks.set(requestId, callbackInfo);
 
             try {
-                const payload = JSON.stringify(request) + '\n';
+                const payload = JSON.stringify({ ...request, id: requestId }) + '\n';
                 const success = pythonProcess.stdin.write(payload);
                 if (!success && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {
                     pythonProcess.stdin.once('drain', () => {});
                 }
             } catch (err) {
-                requestCallbacks.delete(request.id);
+                requestCallbacks.delete(requestId);
                 const message = err instanceof Error ? err.message : String(err);
-                resolve(createErrorResponse(`发送请求失败: ${message}`, -32002));
+                resolve(createErrorResponse(`发送请求失败: ${message}`, MAIN_BRIDGE_ERROR_CODES.SEND_FAILED));
+                return;
             }
 
-            setTimeout(() => {
-                if (requestCallbacks.has(request.id)) {
-                    // Fire-and-forget cancel: signal Python to stop the task
-                    const cbInfo = requestCallbacks.get(request.id)!;
-                    const params = (request.params || {}) as Record<string, unknown>;
-                    const taskId = (params.task_id as string) || '';
-                    try {
-                        const cancelPayload = JSON.stringify({
-                            id: request.id,
-                            method: 'request.cancel',
-                            params: { task_id: taskId },
-                        }) + '\n';
-                        if (cbInfo.process.stdin && !cbInfo.process.stdin.destroyed) {
-                            cbInfo.process.stdin.write(cancelPayload);
-                        }
-                    } catch (_err) {
-                        // Fire-and-forget: silently ignore write errors
-                    }
-
-                    requestCallbacks.delete(request.id);
-                    log.info(`[trace ${request.id}] timed out`);
-                    resolve(createErrorResponse('请求超时', -32003));
-                }
-            }, requestTimeout);
+            armTimeout(requestId, callbackInfo);
         });
     });
 }

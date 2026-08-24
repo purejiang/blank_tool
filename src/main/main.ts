@@ -9,7 +9,7 @@ import {
   getTray, setTray,
   getMainWindow
 } from './state';
-import { startPythonService, ensurePythonService } from './python/service';
+import { ensurePythonService } from './python/service';
 import { appStore } from './stores/index';
 
 app.whenReady().then(async () => {

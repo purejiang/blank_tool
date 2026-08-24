@@ -68,22 +68,22 @@ def _print_table(headers: List[str], rows: List[List[str]]) -> None:
 def cmd_list_tools() -> int:
     """List every registered tool (descriptor/code + builtin primitives)."""
     from app.tools.tool_manager import ToolManager
-    from app.workflow.engine import _BUILTIN_TOOLS
 
     rows: List[List[str]] = []
     tm = ToolManager.instance()
     for name, tool in tm.get_all_tools().items():
-        tool_type = getattr(tool, "type", None) or type(tool).__name__
-        rows.append(
-            [
-                name,
-                tool_type,
-                "yes" if getattr(tool, "is_valid", False) else "no",
-                getattr(tool, "version", "") or "",
-            ]
-        )
-    for name in sorted(_BUILTIN_TOOLS):
-        rows.append([name, "builtin", "yes", ""])
+        if tm._registry.get_kind(name) == "shipped-native":
+            rows.append([name, "builtin", "yes", ""])
+        else:
+            tool_type = getattr(tool, "type", None) or type(tool).__name__
+            rows.append(
+                [
+                    name,
+                    tool_type,
+                    "yes" if getattr(tool, "is_valid", False) else "no",
+                    getattr(tool, "version", "") or "",
+                ]
+            )
 
     _print_table(["name", "type", "is_valid", "version"], rows)
     return 0
@@ -223,23 +223,21 @@ def cmd_tool(
     human-readable summary.  Returns 0 on success, non-zero on failure.
     """
     from app.tools.builtin.base import BuiltinTool, ToolContext
-    from app.workflow.engine import _BUILTIN_TOOLS, WorkflowEngine
 
     inputs = _parse_key_values(raw_inputs or [])
 
     # ── 1. Resolve the tool ──────────────────────────────────────────
-    tool: Any = _BUILTIN_TOOLS.get(name)
+    tool: Any = None
+    registry = (
+        _augment_registry_with_tool_dirs(tool_dirs)
+        if tool_dirs
+        else None
+    )
+    if registry is not None:
+        tool = registry.get_tool(name)
     if tool is None:
-        registry = (
-            _augment_registry_with_tool_dirs(tool_dirs)
-            if tool_dirs
-            else None
-        )
-        if registry is not None:
-            tool = registry.get_tool(name)
-        if tool is None:
-            from app.tools.tool_manager import ToolManager
-            tool = ToolManager.instance().get_tool(name)
+        from app.tools.tool_manager import ToolManager
+        tool = ToolManager.instance().get_tool(name)
 
     if tool is None:
         print(f"error: unknown tool {name!r}", file=sys.stderr)

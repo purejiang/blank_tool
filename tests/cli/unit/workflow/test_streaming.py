@@ -3,18 +3,16 @@
 Covers the WorkflowStreamHandler emit methods and their wire-schema dicts
 (node_started / node_completed / workflow_completed / workflow_failed /
 workflow_cancelled), workflow_id propagation, the silent no-op when the
-callback is None, event ordering, and WorkflowEvent.to_dict serialization.
+callback is None, and event ordering.
 """
 
 from app.workflow.streaming import (
     NODE_COMPLETED,
     NODE_FAILED,
-    NODE_OUTPUT,
     NODE_STARTED,
     WORKFLOW_CANCELLED,
     WORKFLOW_COMPLETED,
     WORKFLOW_FAILED,
-    WorkflowEvent,
     WorkflowStreamHandler,
     is_cancelled,
 )
@@ -49,17 +47,6 @@ def test_emit_node_completed_with_duration_ms():
         "workflow_id": "wf-1",
         "node_id": "convert",
         "duration_ms": 42,
-    }
-
-
-def test_emit_node_output_with_data():
-    events = []
-    _handler(events.append).emit_node_output("convert", {"path": "/tmp/a.apk"})
-    assert events[0] == {
-        "type": NODE_OUTPUT,
-        "workflow_id": "wf-1",
-        "node_id": "convert",
-        "data": {"path": "/tmp/a.apk"},
     }
 
 
@@ -128,27 +115,3 @@ def test_noop_when_callback_is_none():
 
 def test_is_cancelled_false_for_unregistered_workflow():
     assert is_cancelled("definitely-not-registered") is False
-
-
-# ---------------------------------------------------------------------------
-# WorkflowEvent typed representation
-# ---------------------------------------------------------------------------
-
-def test_workflow_event_to_dict_omits_unset_fields():
-    event = WorkflowEvent(type=NODE_STARTED, workflow_id="wf-1", node_id="a")
-    assert event.to_dict() == {"type": NODE_STARTED, "workflow_id": "wf-1", "node_id": "a"}
-
-
-def test_workflow_event_to_dict_includes_set_fields():
-    event = WorkflowEvent(
-        type=NODE_COMPLETED,
-        workflow_id="wf-1",
-        node_id="a",
-        duration_ms=12,
-    )
-    assert event.to_dict() == {
-        "type": NODE_COMPLETED,
-        "workflow_id": "wf-1",
-        "node_id": "a",
-        "duration_ms": 12,
-    }

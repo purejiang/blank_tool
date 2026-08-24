@@ -12,7 +12,7 @@ const handlersDir = new URL('../cli/app/handlers/', import.meta.url)
 test('IPC channels 包含配置相关契约', async () => {
   const content = await readFile(channelsPath, 'utf8')
   assert.match(content, /getAppConfig:\s*'get-app-config'/)
-  assert.match(content, /setManyAppConfig:\s*'set-app-config-batch'/)
+  assert.match(content, /setManyAppConfig:\s*'set-app-config-many'/)
   assert.match(content, /appConfigChanged:\s*'app-config-changed'/)
   assert.match(content, /getUserConfig:\s*'get-user-config'/)
   assert.match(content, /setUserConfig:\s*'set-user-config'/)

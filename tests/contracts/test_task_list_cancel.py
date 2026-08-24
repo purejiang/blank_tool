@@ -6,6 +6,8 @@ cross-test pollution. The ``with tm._tasks_lock: tm._tasks.clear()`` pattern
 handles this.
 """
 
+import threading
+
 import pytest
 from app.common.task_manager import TaskManager
 
@@ -27,12 +29,12 @@ def test_list_tasks_returns_registered_task():
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
-    tm.register("test-task-1")
+    tm.register_stream("test-task-1", threading.Event())
     try:
         result = tm.list_tasks()
         assert len(result) == 1
         assert result[0]["task_id"] == "test-task-1"
-        assert result[0]["type"] == "blocking"
+        assert result[0]["type"] == "streaming"
         assert result[0]["cancelled"] is False
         assert result[0]["has_process"] is False
         assert "started_at" in result[0]
@@ -46,7 +48,7 @@ def test_list_tasks_does_not_expose_process_holder():
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
-    tm.register("test-task-2")
+    tm.register_stream("test-task-2", threading.Event())
     try:
         result = tm.list_tasks()
         assert len(result) == 1
@@ -61,7 +63,6 @@ def test_list_tasks_does_not_expose_process_holder():
 
 def test_list_tasks_streaming_type():
     """register_stream tasks should report type='streaming'."""
-    import threading
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
@@ -82,7 +83,7 @@ def test_list_tasks_reflects_cancelled_state():
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
-    tm.register("test-cancel-1")
+    tm.register_stream("test-cancel-1", threading.Event())
     tm.cancel("test-cancel-1")
     try:
         result = tm.list_tasks()
@@ -110,7 +111,7 @@ def test_cancel_request_with_registered_task():
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
-    tm.register("test-cancel-2")
+    tm.register_stream("test-cancel-2", threading.Event())
     try:
         result = tm.cancel("test-cancel-2")
         assert result is True
@@ -131,7 +132,7 @@ def test_handle_list_tasks():
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
-    tm.register("handler-test-1")
+    tm.register_stream("handler-test-1", threading.Event())
     try:
         response = handle_list_tasks({}, None)
         assert "tasks" in response
@@ -156,7 +157,7 @@ def test_handle_cancel_request_by_request_id():
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
-    tm.register("req-cancel-test")
+    tm.register_stream("req-cancel-test", threading.Event())
     try:
         response = handle_cancel_request({"request_id": "req-cancel-test"}, None)
         assert response["cancelled"] is True
@@ -173,7 +174,7 @@ def test_handle_cancel_request_by_task_id_alias():
     tm = TaskManager()
     with tm._tasks_lock:
         tm._tasks.clear()
-    tm.register("task-alias-test")
+    tm.register_stream("task-alias-test", threading.Event())
     try:
         response = handle_cancel_request({"task_id": "task-alias-test"}, None)
         assert response["cancelled"] is True

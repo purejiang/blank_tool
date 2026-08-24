@@ -6,28 +6,25 @@ ToolRegistry — lazy-loading tool registry with auto-discovery and dependency i
 
 import json
 import os
-import platform
-import pkgutil
-import importlib
 import shutil
 import threading
 from pathlib import Path
 from typing import Dict, Optional, Any
 
-from app.tools.base_tool import BaseTool
 from app.tools.descriptor_tool import DescriptorTool, load_descriptor
 from app.env.registry import get_env_registry
 from app.env.overrides_store import OverridesStore
 from app.utils.logger import Logger
-from app.utils.env import get_output_dir, get_runtime_dir
+from app.utils.env import get_output_dir
 from app.common.exceptions import ToolNotFoundError
 
 
 class ToolRegistry:
     """Lazy-loading tool registry with dependency injection.
 
-    Discovers BaseTool subclasses at import time but only instantiates
-    them on first access via get().
+    Discovers descriptor-declared tools and instantiates them lazily on
+    first access via get().  Plugin tools (shipped-native / native) are
+    registered explicitly via :meth:`register_plugin_tool`.
     """
 
     def __init__(
@@ -38,7 +35,7 @@ class ToolRegistry:
         env_flag = os.environ.get("BT_SEARCH_SYSTEM_TOOLS") == "1"
         self.search_system = search_system or env_flag
         self.logger = Logger.get_logger("ToolRegistry")
-        self._tools: Dict[str, BaseTool] = {}
+        self._tools: Dict[str, Any] = {}
         self._custom_paths: Dict[str, str] = {}
         self._discovered: Dict[str, type] = {}
         self._descriptor_tools: Dict[str, DescriptorTool] = {}
@@ -61,37 +58,18 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def discover(self, tool_package: str = 'app.tools'):
-        """Auto-discover code-based and descriptor-based tools.
+        """Auto-discover descriptor-declared tools.
 
-        Scans all modules in *tool_package* for classes that inherit from
-        BaseTool (excluding BaseTool itself, CommandTool, and classes
-        defined in base_tool.py), then registers descriptor-declared tools
-        from ``registry/tools/*.json`` (descriptors win over code classes).
+        Scans bundled and overlay descriptor directories
+        (``registry/tools/*.json``).  Code-class (``BaseTool`` subclass)
+        discovery was removed — descriptors are the only discoverable code
+        surface; plugin tools are registered explicitly via
+        :meth:`register_plugin_tool`.
         """
         with self._discover_lock:
             if self._initialized:
                 return
             self._initialized = True
-            package = importlib.import_module(tool_package)
-            for _, name, _ in pkgutil.walk_packages(
-                package.__path__, package.__name__ + '.'
-            ):
-                module = importlib.import_module(name)
-                for attr_name in dir(module):
-                    attr = getattr(module, attr_name)
-                    if (
-                        isinstance(attr, type)
-                        and issubclass(attr, BaseTool)
-                        and attr is not BaseTool
-                        and attr.__name__ != "CommandTool"
-                        and attr.__module__ != "app.tools.base_tool"
-                    ):
-                        key = self._canonical_tool_name(attr.__name__)
-                        default_path = self._default_tool_path(key)
-                        self.logger.info(
-                            f"Discovered tool: {attr.__name__} -> {default_path}"
-                        )
-                        self._discovered[key] = attr
             self._discover_descriptors()
 
     def _resolve_registry_overlay_dir(self, explicit: Optional[str]) -> str:
@@ -105,7 +83,7 @@ class ToolRegistry:
         return os.path.join(get_output_dir(), "registry")
 
     def _load_overrides(self) -> None:
-        """Load custom-path and env overrides from ``<overlay>/overrides.json``.
+        """Load custom-path overrides from ``<overlay>/overrides.json``.
 
         Missing file or malformed JSON is tolerated (no-op); the registry
         stays usable with empty overrides.
@@ -114,21 +92,15 @@ class ToolRegistry:
         paths = data.get("custom_paths")
         if isinstance(paths, dict):
             self._custom_paths = {str(k): str(v) for k, v in paths.items()}
-        env_overrides = data.get("env_overrides")
-        if isinstance(env_overrides, dict):
-            self._env_overrides = {str(k): dict(v) for k, v in env_overrides.items() if isinstance(v, dict)}
-        else:
-            self._env_overrides = {}
 
     def _save_overrides(self) -> None:
-        """Persist custom-path and env overrides to ``<overlay>/overrides.json``.
+        """Persist custom-path overrides to ``<overlay>/overrides.json``.
 
         The overlay root is created lazily (exist_ok=True) so absent-output-dir
         does not prevent discovery; only the first write materializes the dir.
         """
         data = {
             "custom_paths": dict(self._custom_paths),
-            "env_overrides": dict(getattr(self, "_env_overrides", {})),
         }
         OverridesStore(self._registry_overlay_dir).save(data)
 
@@ -184,7 +156,7 @@ class ToolRegistry:
     # Lazy access
     # ------------------------------------------------------------------
 
-    def get(self, name: str) -> BaseTool:
+    def get(self, name: str) -> Any:
         """Lazy-instantiate and return a tool by name.
 
         Resolution priority (first match wins):
@@ -257,9 +229,9 @@ class ToolRegistry:
             )
         )
 
-    def get_available_tools(self) -> Dict[str, BaseTool]:
+    def get_available_tools(self) -> Dict[str, Any]:
         """Return all tools that are currently valid/available."""
-        result: Dict[str, BaseTool] = {}
+        result: Dict[str, Any] = {}
         for name in self.list_all():
             try:
                 tool = self.get(name)
@@ -507,42 +479,8 @@ class ToolRegistry:
         self._discover_descriptors()
 
     # ------------------------------------------------------------------
-    # Environment overrides (T15)
-    # ------------------------------------------------------------------
-
-    def get_env_overrides(self) -> Dict[str, dict]:
-        """Return all environment overrides."""
-        return dict(getattr(self, "_env_overrides", {}))
-
-    def set_env_override(self, name: str, overrides: dict) -> None:
-        """Set or replace override dict for environment *name* and persist."""
-        if not hasattr(self, "_env_overrides"):
-            self._env_overrides: Dict[str, dict] = {}
-        self._env_overrides[name] = dict(overrides)
-        self._save_overrides()
-
-    def reset_env_override(self, name: str) -> None:
-        """Remove override dict for environment *name* and persist."""
-        if hasattr(self, "_env_overrides") and name in self._env_overrides:
-            del self._env_overrides[name]
-            self._save_overrides()
-
-    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _canonical_tool_name(self, class_name: str) -> str:
-        return class_name.lower()
-
-    def _tools_base_dir(self) -> str:
-        runtime_dir = get_runtime_dir()
-        if runtime_dir and os.path.exists(runtime_dir):
-            return runtime_dir
-        raise RuntimeError(
-            f"Environment variable 'BT_RUNTIME_DIR' is missing or invalid: "
-            f"{runtime_dir}. Please configure the runtime path in "
-            f"application settings."
-        )
 
     def _default_tool_path(self, key: str) -> str:
         return ""
@@ -608,14 +546,14 @@ class ToolManager:
     def instance(cls, search_system: bool = False) -> "ToolManager":
         return cls(search_system=search_system)
 
-    def get_tool(self, tool_name: str) -> Optional[BaseTool]:
+    def get_tool(self, tool_name: str) -> Optional[Any]:
         try:
             return self._registry.get(tool_name)
         except ToolNotFoundError:
             return None
 
-    def get_all_tools(self) -> Dict[str, BaseTool]:
-        result: Dict[str, BaseTool] = {}
+    def get_all_tools(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
         for name in self._registry.list_all():
             try:
                 result[name] = self._registry.get(name)
@@ -623,7 +561,7 @@ class ToolManager:
                 pass
         return result
 
-    def get_available_tools(self) -> Dict[str, BaseTool]:
+    def get_available_tools(self) -> Dict[str, Any]:
         return self._registry.get_available_tools()
 
     def refresh_tools(self):
@@ -647,16 +585,6 @@ class ToolManager:
 
     def is_overlay_descriptor(self, name: str) -> bool:
         return self._registry.is_overlay_descriptor(name)
-
-    # T15: env override delegates
-    def get_env_overrides(self):
-        return self._registry.get_env_overrides()
-
-    def set_env_override(self, name: str, overrides: dict):
-        return self._registry.set_env_override(name, overrides)
-
-    def reset_env_override(self, name: str):
-        return self._registry.reset_env_override(name)
 
     def _default_tool_path(self, key: str) -> str:
         return self._registry._default_tool_path(key)

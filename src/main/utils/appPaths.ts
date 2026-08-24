@@ -26,20 +26,6 @@ export function getAppLocalDataPath(): string {
 }
 
 /**
- * 获取应用漫游数据目录 (跟随用户账号漫游)
- * 即 Electron 内置的 userData 路径
- *
- * Windows:  %APPDATA%\blank_tool\
- * macOS:    ~/Library/Application Support/blank_tool/
- * Linux:    ~/.config/blank_tool/
- *
- * 适用于：用户配置、偏好设置等小容量且需漫游的数据
- */
-export function getAppRoamingDataPath(): string {
-  return app.getPath('userData')
-}
-
-/**
  * 确保指定目录存在（递归创建）
  */
 export function ensureDir(dirPath: string): void {

@@ -125,7 +125,7 @@ def test_env_dep_referencing_nonexistent_environment_is_invalid_not_crash():
     )
     tool = DescriptorTool(descriptor, _StubEnvRegistry({"ghost_env": ""}))
     assert tool.is_valid is False
-    assert tool.get_env_resolutions() == {"ghost_env": ""}
+    assert tool._env_resolutions == {"ghost_env": ""}
 
 
 # ---------------------------------------------------------------------------

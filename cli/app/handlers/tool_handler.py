@@ -5,7 +5,6 @@ Tool listing, version, and search-mode handlers.
 """
 
 import os
-import os.path
 
 from app.tools.tool_manager import ToolManager
 from app.common.exceptions import ToolNotFoundError, ToolException
@@ -22,17 +21,10 @@ def _get_registry():
 
 
 def _source_for(mgr: ToolManager, name: str, path: str):
-    try:
-        default_path = mgr._default_tool_path(name)
-        if path and default_path and os.path.abspath(path) == os.path.abspath(
-            default_path
-        ):
-            return "builtin"
-        if path:
-            return "system"
-        return "none"
-    except Exception:
-        return "unknown"
+    # ``_default_tool_path`` always returns "" (no bundled binary path is
+    # derived from a tool name anymore), so the "builtin" branch is dead:
+    # a tool is on a custom/system path ("system") or unresolved ("none").
+    return "system" if path else "none"
 
 
 @logs_errors("ToolHandler")

@@ -219,14 +219,8 @@ const MIGRATIONS: Record<number, () => void> = {
         appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
         appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
     },
-    3: () => {
-        appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
-        appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
-    },
-    4: () => {
-        appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
-        appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
-    },
+    // Migrations 3 and 4 were byte-identical to 2 (re-set the same two defaults)
+    // and have been folded into 2; the version loop still advances through 3/4.
     5: () => {
         const app = appStore.get('app');
         if (app && typeof app === 'object') {

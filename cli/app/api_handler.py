@@ -4,8 +4,8 @@
 API handler with middleware-style error formatting and protocol compliance.
 
 Handler functions throw typed business exceptions; the middleware layer
-catches and formats them into BackendResponse JSON using the protocol
-models from ``app.protocol``.
+catches and formats them into JSON-RPC responses using the protocol
+payload models from ``app.protocol``.
 """
 
 import threading
@@ -17,7 +17,6 @@ from typing import Callable, Any
 from app.utils.logger import Logger
 from app.common.task_manager import TaskManager
 from app.protocol import (
-    BackendResponse,
     BackendSuccessPayload,
     BackendErrorPayload,
     ErrorCode,
@@ -31,7 +30,6 @@ class ApiHandler:
 
     def __init__(self, send_response: Callable[[dict], None]):
         self.send_response = send_response
-        self.streaming_threads: dict[str, tuple] = {}
         self.logger = Logger.get_logger(self.__class__.__name__)
         self.api_map = self._load_handlers()
 
@@ -62,9 +60,9 @@ class ApiHandler:
     def handle_request(self, request_data: dict) -> dict:
         """Dispatch a JSON-RPC request to the appropriate handler.
 
-        Returns a dict suitable for JSON serialisation (the output of
-        ``BackendResponse.to_json()`` if the result is a protocol object,
-        or the raw dict for streaming init responses).
+        Returns a dict suitable for JSON serialisation: a success/error
+        envelope built from the protocol payload models, or the raw dict
+        for streaming init responses.
         """
         req_id = request_data.get("id")
         method = request_data.get("method", "unknown")
@@ -87,7 +85,7 @@ class ApiHandler:
 
                 if is_streaming:
                     raw_result = self.stream_handler(handler, req_id)(params)
-                    # Streaming init — return a raw dict (not a BackendResponse)
+                    # Streaming init — return a raw dict (not a full response envelope)
                     return {"id": req_id, "result": raw_result, "finished": False}
                 else:
                     raw_result = handler(params, None)
@@ -176,9 +174,9 @@ class ApiHandler:
                 params_dict: dict,
                 stream_id: str,
             ):
-                if stop_event.is_set():
-                    return
                 try:
+                    if stop_event.is_set():
+                        return
                     handler(params_dict, stream_callback)
                 except Exception as e:
                     self.logger.error(f"Error in stream thread: {e}")
@@ -192,9 +190,9 @@ class ApiHandler:
                     self.send_response({
                         "id": request_id,
                         "stream_id": stream_id,
+                        "result": BackendSuccessPayload(payload=None).to_dict(),
                         "finished": True,
                     })
-                    self.streaming_threads.pop(stream_id, None)
 
             thread = threading.Thread(
                 target=stream_worker,
@@ -202,7 +200,6 @@ class ApiHandler:
             )
             thread.start()
 
-            self.streaming_threads[stream_id] = (thread, stop_event)
             return {"stream_id": stream_id}
 
         return wrapper

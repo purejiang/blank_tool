@@ -49,6 +49,9 @@ export interface ElectronApi {
   setToolCustomPath?: (toolName: string, path: string) => Promise<unknown>
   resetToolCustomPath?: (toolName: string) => Promise<unknown>
   getToolCustomPaths?: () => Promise<Record<string, string>>
+  // Index signature is load-bearing: the preload exposes additional IPC
+  // wrappers (getAppInfo, selectFile, pathResolve, writeClipboardText, ...)
+  // that are not yet enumerated here. Keep it until those are typed.
   [key: string]: unknown
 }
 

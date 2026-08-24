@@ -36,11 +36,6 @@ from typing import Any, Callable, Dict, Optional
 from app.common.exceptions import ToolException
 from app.protocol import BaseType, PortSet
 from app.tools.builtin.base import BuiltinTool, ToolContext
-from app.tools.builtin.exec_tools import ShellExec
-from app.tools.builtin.file_tools import FileRead, FileWrite
-from app.tools.builtin.flow_tools import FlowAssert, FlowForeach, FlowLog
-from app.tools.builtin.text_tools import TextGrep
-from app.tools.builtin.workflow_tools import WorkflowRun
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.expression import ExpressionEngine, ExpressionError, WorkflowContext
@@ -50,23 +45,6 @@ logger = logging.getLogger(__name__)
 
 # Shared, stateless expression engine (safe across runs — see expression.py).
 _EXPRESSION_ENGINE = ExpressionEngine()
-
-# Builtin atomic tools by name (DEPRECATED backward-compat shim).  These are
-# now registered as shipped-native plugin tools in the shared registry (see
-# ``app.plugins.builtin.*``) and resolved via the injected registry —
-# ``_lookup_tool`` no longer consults this dict.  It is retained ONLY for the
-# pre-existing dirty ``cli/cli.py`` (its ``list-tools``/``tool`` commands still
-# iterate it) and will be removed once ``cli.py`` is migrated to the registry.
-_BUILTIN_TOOLS: Dict[str, BuiltinTool] = {
-    "file.read": FileRead(),
-    "file.write": FileWrite(),
-    "text.grep": TextGrep(),
-    "shell.exec": ShellExec(),
-    "flow.assert": FlowAssert(),
-    "flow.log": FlowLog(),
-    "flow.foreach": FlowForeach(),
-    "workflow.run": WorkflowRun(),
-}
 
 
 @dataclass

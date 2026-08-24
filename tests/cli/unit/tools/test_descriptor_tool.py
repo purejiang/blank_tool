@@ -121,7 +121,7 @@ def test_missing_env_dep_makes_tool_invalid():
     tool = _make_tool(descriptor, env={"nonexistent_env": ""})
     assert tool.is_valid is False
     assert tool.version == ""
-    assert tool.get_env_resolutions() == {"nonexistent_env": ""}
+    assert tool._env_resolutions == {"nonexistent_env": ""}
 
 
 def test_validate_expect_in_stream_selects_configured_stream():

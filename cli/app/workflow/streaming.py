@@ -35,7 +35,6 @@ mid-execution.
 """
 
 import json
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 from app.utils.task_log_writer import append_task_log
@@ -73,51 +72,6 @@ try:
     from app.common.task_manager import TaskManager
 except ImportError:  # TaskManager unavailable — is_cancelled() reports False
     TaskManager = None  # type: ignore[assignment]
-
-
-@dataclass
-class WorkflowEvent:
-    """Typed representation of one workflow streaming event.
-
-    Attributes:
-        type: one of the module-level event-type constants
-            (``NODE_STARTED``, ``NODE_OUTPUT``, ...).
-        workflow_id: identifier of the workflow the event belongs to.
-        node_id: id of the node the event refers to; ``None`` for
-            workflow-level events (``workflow_completed`` / ``workflow_failed``
-            / ``workflow_cancelled``).
-        data: free-form payload.  For ``node_output`` this is the
-            intermediate tool output dict.  The :class:`WorkflowStreamHandler`
-            emit methods place their event-specific fields (``tool``,
-            ``success``, ...) at the TOP level of the wire dict per the
-            schema in the module docstring; this ``data`` bucket exists for
-            programmatic event construction.
-        duration_ms: node execution duration in milliseconds (``node_completed``).
-        error: human-readable error message (``node_failed`` / ``workflow_failed``).
-
-    :meth:`to_dict` keeps ``data`` nested under its own key — the flat
-    schema-exact dicts documented in the module docstring are built by
-    :class:`WorkflowStreamHandler`.
-    """
-
-    type: str
-    workflow_id: str
-    node_id: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
-    duration_ms: Optional[int] = None
-    error: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize to a JSON-able dict, omitting unset optional fields."""
-        event: Dict[str, Any] = {
-            "type": self.type,
-            "workflow_id": self.workflow_id,
-        }
-        for name in ("node_id", "data", "duration_ms", "error"):
-            value = getattr(self, name)
-            if value is not None:
-                event[name] = value
-        return event
 
 
 #: Node-level lifecycle event types (used by the tee namespacing rule).
@@ -231,10 +185,6 @@ class WorkflowStreamHandler:
     def emit_node_started(self, node_id: str, tool: str) -> None:
         """Emit ``node_started``: the engine is about to run ``tool``."""
         self._wire(NODE_STARTED, node_id=node_id, tool=tool)
-
-    def emit_node_output(self, node_id: str, data: dict) -> None:
-        """Emit ``node_output``: intermediate output produced by a node."""
-        self._wire(NODE_OUTPUT, node_id=node_id, data=data)
 
     def emit_node_completed(self, node_id: str, duration_ms: int) -> None:
         """Emit ``node_completed`` after a node finishes successfully."""

@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Environment descriptor CRUD and override handlers (T15).
+Environment descriptor CRUD handlers (T15).
 
-Provides ``env.list``, ``env.add``, ``env.delete``, ``env.set_custom``,
-and ``env.reset_custom`` JSON-RPC methods.  Descriptors are validated via
-:class:`~app.env.descriptor.EnvironmentDescriptor.from_dict` and
-persisted to the T14 writable overlay under
-``<output_dir>/registry/environments/``.  Bundled environments
-(``cli/registry/environments/``) are protected from deletion.
-
-Environment overrides (custom env-vars, paths) are persisted alongside
-tool custom paths in ``<output_dir>/registry/overrides.json`` under
-an ``env_overrides`` key (tolerant of missing sections).
+Provides ``env.list``, ``env.add``, and ``env.delete`` JSON-RPC methods.
+Descriptors are validated via
+:class:`~app.env.descriptor.EnvironmentDescriptor.from_dict` and persisted
+to the T14 writable overlay under ``<output_dir>/registry/environments/``.
+Bundled environments (``cli/registry/environments/``) are protected from
+deletion.
 """
 
 from app.env.registry import get_env_registry
 from app.env.descriptor import EnvironmentDescriptor
-from app.env.overrides_store import OverridesStore
 from app.utils.logger import Logger
 
 logger = Logger.get_logger("EnvHandler")
@@ -86,55 +81,8 @@ def handle_env_delete(params, stream_handler):
         return {"error": str(exc)}
 
 
-def handle_env_set_custom(params, stream_handler):
-    """Persist an environment override dict for *name*.
-
-    Expects ``params.name`` and ``params.overrides`` (a free-form dict).
-    Overrides are stored in ``overrides.json`` under ``env_overrides``.
-    """
-    name = params.get("name", "")
-    overrides = params.get("overrides")
-    if not name:
-        return {"error": "Missing 'name' field"}
-    if not isinstance(overrides, dict):
-        return {"error": "Missing or invalid 'overrides' field"}
-
-    store = OverridesStore()
-    data = store.load()
-    env_overrides = data.get("env_overrides")
-    if not isinstance(env_overrides, dict):
-        env_overrides = {}
-    env_overrides[name] = dict(overrides)
-    data["env_overrides"] = env_overrides
-    store.save(data)
-
-    return {"set": name, "overrides": dict(overrides)}
-
-
-def handle_env_reset_custom(params, stream_handler):
-    """Remove the environment override dict for *name*.
-
-    Expects ``params.name``.  No-op when no override existed.
-    """
-    name = params.get("name", "")
-    if not name:
-        return {"error": "Missing 'name' field"}
-
-    store = OverridesStore()
-    data = store.load()
-    env_overrides = data.get("env_overrides")
-    if isinstance(env_overrides, dict):
-        env_overrides.pop(name, None)
-        data["env_overrides"] = env_overrides
-        store.save(data)
-
-    return {"reset": name}
-
-
 API_MAP = {
     "env.list": handle_env_list,
     "env.add": handle_env_add,
     "env.delete": handle_env_delete,
-    "env.set_custom": handle_env_set_custom,
-    "env.reset_custom": handle_env_reset_custom,
 }

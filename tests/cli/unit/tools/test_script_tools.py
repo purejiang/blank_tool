@@ -113,8 +113,8 @@ def test_python_script_descriptor_constructs_with_real_env():
     tool = DescriptorTool(desc, _real_env_registry())
     # Script file doesn't exist, but env resolves → tool_path is set
     assert tool.name == "test_py"
-    assert "python" in tool.get_env_resolutions()
-    assert tool.get_env_resolutions()["python"] != ""
+    assert "python" in tool._env_resolutions
+    assert tool._env_resolutions["python"] != ""
 
 
 def test_python_script_execute_real(tmp_path):
@@ -301,7 +301,7 @@ def test_node_script_descriptor_constructs_with_real_env(tmp_path):
     desc = _make_node_script_descriptor(str(script))
     tool = DescriptorTool(desc, _real_env_registry())
     assert tool.is_valid is True
-    envs = tool.get_env_resolutions()
+    envs = tool._env_resolutions
     assert "node" in envs
     assert envs["node"] != ""
 
