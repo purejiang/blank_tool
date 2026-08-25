@@ -14,7 +14,7 @@
 | 执行边界 | **进程内**：与后端同一 Python 解释器，直接注册实例进共享注册表 | **进程边界**：经 `CommandExecutor` 以子进程方式运行，后端进程不执行工具代码 |
 | 语言 | 仅 Python | 任意：由 `type` 字段决定运行器（binary / java_jar / python_script / node_script / shell_script） |
 | 注册方式 | `apply(ctx, config)` → `PluginContext.register_tool` → `ToolRegistry.register_plugin_tool(name, tool, kind)` | 扫描 bundled/overlay 工具目录 → `self._descriptor_tools[name] = DescriptorTool(...)`（`tool_manager.py:175`） |
-| 注册 kind | `"shipped-native"`（内置 20 个原子工具）或 `"native"`（用户插件） | `"descriptor"`（`workflow_handler.py:139-143`：非前两种 kind 且为 `DescriptorTool`/带 `_descriptor` 属性时归入） |
+| 注册 kind | `"shipped-native"`（内置 23 个原子工具）或 `"native"`（用户插件） | `"descriptor"`（`workflow_handler.py:139-143`：非前两种 kind 且为 `DescriptorTool`/带 `_descriptor` 属性时归入） |
 | 生命周期 | 由 `app.plugins.loader.PluginLoader` 管理（config list + importlib + load/unmount）；`unmount_all` 只卸载 `native`，`shipped-native` 常驻 | 与注册表同生命周期：`refresh`/`_rediscover_descriptors` 重建，`add_descriptor_file` / `delete_descriptor`（T15）增删 |
 | 对工作流上下文 | 可访问完整 `ToolContext`（`stream_handler`、`engine`、`template_store`） | 只能拿到 inputs 绑定值与 `ToolContext` 转成的 `CommandExecutionContext`（cwd/task_id/env） |
 

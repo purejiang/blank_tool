@@ -35,14 +35,27 @@
 
 ## 导入方式
 
-### 工作流
+### 批量导入（推荐）
+
+```bash
+# 一次导入整个 Android 工具包（12 个描述符，两阶段校验，任一坏文件整体不写）
+python cli/cli.py import-pack examples/tools/android
+
+# 一次导入整个工作流目录（含 apk-validate 与其子模板 apk-validate-entry）
+python cli/cli.py import-templates examples/workflows/android
+python cli/cli.py import-templates examples/workflows/generic
+```
+
+后端 API 同样可用：`tool.import_pack {path}` / `template.import_path {path}`（目录或单文件）。
+
+### 工作流（单个）
 
 1. 打开应用 → 工作流管理页（Phase 4）
 2. 点击"导入"按钮
 3. 选择 `examples/workflows/generic/` 或 `examples/workflows/android/` 下的 `.json` 文件
 4. 导入后即可在任务中心选择模板执行
 
-### 工具描述符
+### 工具描述符（单个）
 
 1. 打开应用 → 工具管理页（Phase 4）
 2. 点击"导入描述符"按钮
@@ -87,7 +100,9 @@ python cli/cli.py run examples/workflows/android/apk-audit.json \
     --input output_dir=./audit-report
 
 # APK 参数验证（需先把 apk-validate-entry 子模板放入模板目录）：
-#   方式一：设置 BT_TEMPLATES_DIR 指向包含 apk-validate-entry.json 的目录
+#   方式一（推荐）：用 import-templates 导入整个工作流目录（主模板+子模板一次到位）
+python cli/cli.py import-templates examples/workflows/android
+#   方式二：设置 BT_TEMPLATES_DIR 指向包含 apk-validate-entry.json 的目录
 mkdir .templates && cp examples/workflows/android/apk-validate-entry.json .templates/
 export BT_TEMPLATES_DIR=.templates
 python cli/cli.py run examples/workflows/android/apk-validate.json \

@@ -8,7 +8,9 @@ Walks a :class:`WorkflowDefinition`'s nodes in linear chain order (following
 :class:`ExpressionEngine`, validate them against the tool's ports, execute
 the tool, and record per-node results.  ``on_failure`` is ``"fail"`` (stop),
 ``"skip"`` (continue past the node), or ``"retry:N"`` (re-execute up to ``N``
-times before giving up).
+times before giving up).  Retries back off exponentially — before retry
+``n`` the engine waits ``min(2^(n-1), 30)`` seconds, slept in short
+cancellation-aware slices (fixed policy, not configurable per node).
 
 Tool dispatch:
     Tools resolve by name exclusively from the injected ``ToolManager``
@@ -339,6 +341,44 @@ class WorkflowEngine:
                 attempt,
                 max_retries,
             )
+            self._sleep_before_retry(attempt, context)
+
+    # ── retry backoff ────────────────────────────────────────────────
+    # Retries wait with a fixed exponential policy (not configurable — a
+    # per-node backoff field would not survive a canvas round-trip, since
+    # the renderer serializer only passes a fixed set of advanced node
+    # fields through).
+
+    #: Upper bound for a single retry backoff, in seconds.
+    _RETRY_BACKOFF_CAP_SECONDS = 30
+    #: Cancellation poll interval while backing off, in seconds.
+    _RETRY_SLEEP_SLICE_SECONDS = 0.5
+
+    @staticmethod
+    def _retry_delay(attempt: int) -> float:
+        """Backoff before retry *attempt* (1-indexed): min(2^(n-1), cap)."""
+        return min(
+            float(2 ** (attempt - 1)),
+            float(WorkflowEngine._RETRY_BACKOFF_CAP_SECONDS),
+        )
+
+    def _sleep_before_retry(self, attempt: int, context: "ExecutionContext") -> None:
+        """Sleep the backoff for retry *attempt*, cancellation-aware.
+
+        The delay is slept in short slices that poll
+        :func:`app.workflow.streaming.is_cancelled`, so a cancellation is
+        honored within a slice instead of after the full backoff.  A cancel
+        simply ends the sleep early — the retry proceeds immediately and the
+        engine's between-node cancellation check stops the workflow.
+        """
+        deadline = time.monotonic() + self._retry_delay(attempt)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            if is_cancelled(context.task_id or ""):
+                return
+            time.sleep(min(self._RETRY_SLEEP_SLICE_SECONDS, remaining))
 
     def _attempt_node(
         self,

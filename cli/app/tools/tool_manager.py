@@ -366,9 +366,12 @@ class ToolRegistry:
             return Path(self._registry_overlay_dir) / "scripts"
         return None
 
-    def add_descriptor_file(self, descriptor_json: dict) -> DescriptorTool:
-        """Validate *descriptor_json*, write it to the overlay tools/ dir,
-        and re-discover so the new tool is immediately visible.
+    def _write_descriptor_file(self, descriptor_json: dict) -> str:
+        """Validate *descriptor_json* and write it to the overlay tools/ dir.
+
+        Does NOT re-discover — the caller decides when to rebuild the
+        descriptor cache (single adds re-discover immediately; batch imports
+        re-discover once at the end).
 
         For script-type tools (python_script / node_script / shell_script),
         when the ``path`` field references an existing local file, the file is
@@ -376,11 +379,7 @@ class ToolRegistry:
         descriptor's ``path`` is rewritten to the copied location so the tool
         stays usable even when the original source file is moved or deleted.
 
-        Args:
-            descriptor_json: a dict conforming to :class:`ToolDescriptor`.
-
-        Returns:
-            The constructed :class:`DescriptorTool`.
+        Returns the validated descriptor's name.
 
         Raises:
             ValueError: if the dict fails ``load_descriptor`` validation.
@@ -427,14 +426,148 @@ class ToolRegistry:
             json.dumps(descriptor_json, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+        return descriptor.name
+
+    def add_descriptor_file(self, descriptor_json: dict) -> DescriptorTool:
+        """Validate *descriptor_json*, write it to the overlay tools/ dir,
+        and re-discover so the new tool is immediately visible.
+
+        Args:
+            descriptor_json: a dict conforming to :class:`ToolDescriptor`.
+
+        Returns:
+            The constructed :class:`DescriptorTool`.
+
+        Raises:
+            ValueError: if the dict fails ``load_descriptor`` validation.
+            OSError: if the overlay file cannot be written.
+        """
+        name = self._write_descriptor_file(descriptor_json)
 
         # Re-discover so the new tool is immediately visible
         self._rediscover_descriptors()
 
-        tool = self._descriptor_tools.get(descriptor.name)
+        tool = self._descriptor_tools.get(name)
         if tool is None:
-            raise ToolNotFoundError(descriptor.name)
+            raise ToolNotFoundError(name)
         return tool
+
+    def import_descriptor_dir(self, dir_path: str) -> Dict[str, Any]:
+        """Import every ``*.json`` descriptor in *dir_path* (two-phase).
+
+        Phase 1 pre-validates every file with :func:`load_descriptor`; ANY
+        failure aborts the whole import with zero writes (the failing entries
+        carry ``status: "failed"`` + ``reason``, the valid ones are reported
+        as ``status: "skipped"``).  Phase 2 writes each descriptor via
+        :meth:`_write_descriptor_file` (script self-containment included) and
+        re-discovers ONCE at the end.
+
+        A tool that already had an overlay descriptor is reported as
+        ``"updated"``, otherwise ``"added"``.  Post-import, a tool that is
+        not ``is_valid`` gets non-blocking ``warnings`` (unresolved env
+        deps, missing binary/script).
+
+        Returns:
+            ``{"ok": bool, "imported": int, "updated": int, "failed": int,
+            "results": [{name, status, reason?, warnings?}, ...]}``; when
+            *dir_path* is unusable a top-level ``"error"`` key is set.
+        """
+        empty = {"ok": False, "imported": 0, "updated": 0, "failed": 0,
+                 "results": []}
+        if not isinstance(dir_path, str) or not os.path.isdir(dir_path):
+            return {**empty, "error": f"not a directory: {dir_path!r}"}
+
+        files = sorted(
+            f for f in os.listdir(dir_path)
+            if f.endswith(".json")
+            and os.path.isfile(os.path.join(dir_path, f))
+        )
+        if not files:
+            return {**empty,
+                    "error": f"no *.json descriptors found in {dir_path!r}"}
+
+        # ── Phase 1: pre-validate everything, write nothing ────────────
+        payloads = []  # (filename, raw_dict, descriptor_name)
+        results = []
+        precheck_failed = False
+        for fname in files:
+            fpath = os.path.join(dir_path, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                if not isinstance(raw, dict):
+                    raise ValueError("descriptor root must be an object")
+                descriptor = load_descriptor(fpath)
+                payloads.append((fname, raw, descriptor.name))
+            except Exception as exc:
+                results.append({
+                    "name": fname[: -len(".json")],
+                    "status": "failed",
+                    "reason": f"{fname}: {exc}",
+                })
+                precheck_failed = True
+
+        if precheck_failed:
+            for _fname, _raw, name in payloads:
+                results.append({
+                    "name": name,
+                    "status": "skipped",
+                    "reason": "aborted: another descriptor failed validation",
+                })
+            results.sort(key=lambda r: r["name"])
+            return {**empty, "failed": sum(
+                1 for r in results if r["status"] == "failed"
+            ), "results": results}
+
+        # ── Phase 2: write all, re-discover once ───────────────────────
+        written = []  # (name, had_overlay_before)
+        for _fname, raw, name in payloads:
+            had_overlay = self.is_overlay_descriptor(name)
+            try:
+                self._write_descriptor_file(raw)
+                written.append((name, had_overlay))
+            except Exception as exc:
+                results.append({
+                    "name": name, "status": "failed", "reason": str(exc),
+                })
+
+        self._rediscover_descriptors()
+
+        for name, had_overlay in written:
+            entry: Dict[str, Any] = {
+                "name": name,
+                "status": "updated" if had_overlay else "added",
+            }
+            tool = self._descriptor_tools.get(name)
+            if tool is not None and not getattr(tool, "is_valid", False):
+                warnings = []
+                unresolved = [
+                    dep for dep, binary
+                    in getattr(tool, "_env_resolutions", {}).items()
+                    if not binary
+                ]
+                if unresolved:
+                    warnings.append(
+                        f"env deps unresolved: {', '.join(unresolved)}"
+                    )
+                tool_path = getattr(tool, "tool_path", "")
+                if not tool_path or not os.path.exists(tool_path):
+                    warnings.append(
+                        f"binary/script not found: {tool_path or '(unresolved)'}"
+                    )
+                if warnings:
+                    entry["warnings"] = warnings
+            results.append(entry)
+
+        results.sort(key=lambda r: r["name"])
+        failed = sum(1 for r in results if r["status"] == "failed")
+        return {
+            "ok": failed == 0,
+            "imported": sum(1 for r in results if r["status"] == "added"),
+            "updated": sum(1 for r in results if r["status"] == "updated"),
+            "failed": failed,
+            "results": results,
+        }
 
     def delete_descriptor(self, name: str) -> None:
         """Remove the overlay descriptor file for *name* and re-discover.

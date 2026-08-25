@@ -73,10 +73,13 @@ def _write_read_workflow(output_path: Path) -> dict:
 # --help / list subcommands
 # ---------------------------------------------------------------------------
 
-def test_help_exits_zero_and_lists_all_six_subcommands():
+def test_help_exits_zero_and_lists_all_nine_subcommands():
     result = run_cli("--help")
     assert result.returncode == 0
-    for subcommand in ("run", "list-tools", "list-envs", "validate", "tool", "list-templates"):
+    for subcommand in (
+        "run", "list-tools", "list-envs", "validate", "tool",
+        "list-templates", "import-pack", "import-templates", "history",
+    ):
         assert subcommand in result.stdout
 
 
@@ -380,3 +383,127 @@ def test_tool_no_operation_on_descriptor_with_ops_lists_them(tmp_path):
     assert "operation" in stdout_and_stderr.lower()
     # Should name available operations or give guidance.
     assert "decode" in stdout_and_stderr or "build" in stdout_and_stderr or "specify" in stdout_and_stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# import-pack / import-templates (domain pack bulk import)
+# ---------------------------------------------------------------------------
+
+def _minimal_descriptor(name: str) -> dict:
+    return {
+        "name": name,
+        "display_name": name,
+        "type": "binary",
+        "path": sys.executable,  # exists on every test machine
+        "env_deps": [],
+        "validate": {},
+        "version": {},
+        "inputs": [],
+        "outputs": [],
+    }
+
+
+def test_import_pack_imports_descriptor_dir(tmp_path):
+    """``cli.py import-pack <dir>`` bulk-imports descriptors into the overlay."""
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    (pack / "alpha.json").write_text(
+        json.dumps(_minimal_descriptor("alpha")), encoding="utf-8"
+    )
+    (pack / "beta.json").write_text(
+        json.dumps(_minimal_descriptor("beta")), encoding="utf-8"
+    )
+
+    result = run_cli(
+        "import-pack", str(pack),
+        env={"BT_OUTPUT_DIR": str(tmp_path / "out")},
+    )
+
+    assert result.returncode == 0, (
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "alpha" in result.stdout
+    assert "beta" in result.stdout
+    assert "added" in result.stdout
+
+
+def test_import_pack_bad_dir_exits_one(tmp_path):
+    result = run_cli(
+        "import-pack", str(tmp_path / "nope"),
+        env={"BT_OUTPUT_DIR": str(tmp_path / "out")},
+    )
+    assert result.returncode == 1
+    assert "error" in result.stderr.lower()
+
+
+def test_import_templates_imports_workflow_dir(tmp_path):
+    """``cli.py import-templates <dir>`` imports workflows into the store."""
+    pack = tmp_path / "wfpack"
+    pack.mkdir()
+    (pack / "solo.json").write_text(
+        json.dumps(
+            {
+                "name": "solo",
+                "nodes": [
+                    {"id": "log", "tool": "flow.log", "params": {"message": "hi"}}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "import-templates", str(pack),
+        env={"BT_TEMPLATES_DIR": str(tmp_path / "templates")},
+    )
+
+    assert result.returncode == 0, (
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "solo" in result.stdout
+    assert "imported" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# history subcommand
+# ---------------------------------------------------------------------------
+
+def test_history_empty_then_after_run(tmp_path):
+    """``cli.py history`` lists nothing, then shows a run after `cli.py run`."""
+    env = {"BT_OUTPUT_DIR": str(tmp_path / "out")}
+
+    result = run_cli("history", env=env)
+    assert result.returncode == 0
+    assert "no run history" in result.stdout
+
+    # A CLI run is a top-level run and must be recorded.
+    wf_path = tmp_path / "run.json"
+    output_path = tmp_path / "out.txt"
+    wf_path.write_text(
+        json.dumps(_write_read_workflow(output_path)), encoding="utf-8"
+    )
+    run = run_cli(
+        "run", str(wf_path), "--input", "message=hist", "--json", env=env
+    )
+    assert run.returncode == 0
+
+    listing = run_cli("history", env=env)
+    assert listing.returncode == 0
+    assert "cli-run" in listing.stdout
+    assert "yes" in listing.stdout
+
+    # Detail view: the listed (short) run id prefix resolves to a record.
+    run_id = None
+    for line in listing.stdout.splitlines():
+        if "cli-run" in line:
+            run_id = line.split()[0]
+            break
+    assert run_id
+    history_dir = tmp_path / "out" / "history"
+    full_ids = [p.stem for p in history_dir.glob("*.json")]
+    assert len(full_ids) == 1
+    detail = run_cli("history", full_ids[0], env=env)
+    assert detail.returncode == 0
+    payload = json.loads(detail.stdout)
+    assert payload["workflow_name"] == "cli-run"
+    assert payload["success"] is True

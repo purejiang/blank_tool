@@ -102,13 +102,22 @@ def add_plugin(params, stream_handler):
         if path.lower().endswith(_SCRIPT_SUFFIXES):
             raise ToolException("exe/jar/script tools are descriptors; use tool.add")
 
+    if module in {entry["module"] for entry in loader.SHIPPED_MANIFEST}:
+        raise ToolException(
+            f"cannot add shipped plugin {module!r} as a user plugin "
+            f"(shipped-native plugins are always loaded)"
+        )
+
+    plugins = _read_plugins_config()
+    if any(isinstance(p, dict) and p.get("module") == module for p in plugins):
+        raise ToolException(f"plugin {module!r} is already in the manifest")
+
     entry = {"module": module, "kind": "native"}
     if isinstance(path, str) and path:
         entry["path"] = path
     if config is not None:
         entry["config"] = config
 
-    plugins = _read_plugins_config()
     plugins.append(entry)
     _write_plugins_config(plugins)
 

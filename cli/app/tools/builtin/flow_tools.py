@@ -3,9 +3,8 @@
 """
 Builtin flow-control tools for the workflow engine.
 
-Two atomic flow primitives (flow.assert, flow.log), each a ``BuiltinTool``
-subclass declaring its port contract and a stdlib-only ``execute``
-implementation:
+Atomic flow primitives, each a ``BuiltinTool`` subclass declaring its port
+contract and a stdlib-only ``execute`` implementation:
 
 - ``flow.assert`` is the validation gate: workflows assert intermediate state
   (e.g. "file exists after download") before proceeding.  A falsy ``condition``
@@ -15,9 +14,16 @@ implementation:
 - ``flow.log`` writes a message through the standard :mod:`logging` framework
   (child loggers inherit the handlers configured by the ``main.py`` bootstrap)
   and, when a task context is present, also appends a line to the per-task log.
-
-No conditional branching is implemented here — the ``condition`` field of the
-workflow schema is reserved for a future feature, not consumed by these tools.
+- ``flow.foreach`` executes a sub-workflow template once per list item.
+- ``flow.branch`` is the if/else primitive: a truthy ``condition`` runs
+  ``true_template``, a falsy one runs ``false_template`` (optional; absent
+  means no-op).  Branching is realized through sub-workflow composition (the
+  shared :func:`app.tools.builtin.workflow_tools._run_child_template`
+  helper), NOT by consuming the workflow schema's reserved ``condition``
+  field — that field stays parked for a future DAG mode.
+- ``flow.compare`` produces the booleans branches consume: ``{a, b, op}`` →
+  ``{"result": bool}`` (numbers compare numerically, everything else as
+  strings).
 """
 
 import json
@@ -30,9 +36,8 @@ from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.template.store import TemplateNotFoundError
 from app.tools.builtin.workflow_tools import (
     MAX_NESTING_DEPTH,
-    _make_namespaced_stream_handler,
+    _run_child_template,
 )
-from app.workflow.streaming import WorkflowStreamHandler
 from app.utils.task_log_writer import append_task_log
 
 logger = logging.getLogger(__name__)
@@ -274,8 +279,6 @@ class FlowForeach(BuiltinTool):
                 f"template not found: {template_name!r}"
             ) from None
 
-        from app.workflow.engine import ExecutionContext
-
         parent_wf_id = context.parent_workflow_id or "root"
         current_node_id = context.current_node_id or "unknown"
 
@@ -290,36 +293,14 @@ class FlowForeach(BuiltinTool):
             child_inputs[item_key] = item
 
             namespace_prefix = f"{parent_wf_id}/{current_node_id}/{index}"
-            namespaced_callback = _make_namespaced_stream_handler(
-                context.stream_handler, namespace_prefix
-            )
-            child_stream = (
-                WorkflowStreamHandler(
-                    workflow_id=namespace_prefix,
-                    callback=namespaced_callback,
-                    task_log_id=context.task_id,
-                )
-                if context.stream_handler is not None or context.task_id
-                else None
-            )
-
-            child_context = ExecutionContext(
-                work_dir=context.work_dir,
-                task_id=context.task_id,
-                env=dict(context.env),
-                stream_handler=context.stream_handler,
-                workflow_stream=child_stream,
-                template_store=template_store,
-                engine=engine,
-                nesting_depth=context.nesting_depth + 1,
-                in_progress_templates=(
-                    context.in_progress_templates | frozenset([template_name])
-                ),
-            )
 
             try:
-                child_result = engine.execute(
-                    child_definition, child_inputs, child_context
+                child_result = _run_child_template(
+                    template_name,
+                    child_inputs,
+                    context,
+                    namespace_prefix,
+                    child_definition=child_definition,
                 )
             except Exception as exc:
                 results.append({"item": item, "outputs": {}, "error": str(exc)})
@@ -386,3 +367,216 @@ class FlowForeach(BuiltinTool):
             "all_passed": failed_count == 0,
             "results_file": results_file,
         }
+
+
+class FlowBranch(BuiltinTool):
+    """Conditionally execute one of two sub-workflow templates (if/else).
+
+    A truthy ``condition`` runs ``true_template``; a falsy one runs
+    ``false_template`` when given, otherwise the node is a successful no-op
+    (``executed=False``) — which doubles as a "conditional skip".  The chosen
+    template is executed inline through the shared
+    :func:`~app.tools.builtin.workflow_tools._run_child_template` helper, so
+    recursion guards (cycle + ``MAX_NESTING_DEPTH``) and namespaced nested
+    events behave exactly like ``workflow.run`` / ``flow.foreach``.
+
+    Branching is composition, not engine surgery: the workflow schema's
+    reserved ``condition`` field stays untouched (it is parked for a future
+    DAG mode), and the linear chain keeps a single ``next`` pointer — this
+    node simply delegates to one of two sub-workflows at runtime.
+
+    ``condition`` uses Python truthiness (same convention as
+    ``flow.assert``); pair it with ``flow.compare`` or a boolean tool output
+    (e.g. ``$nodes.check.outputs.passed``) to produce the value.
+    """
+
+    name = "flow.branch"
+    description = (
+        "Conditionally execute one of two sub-workflow templates: truthy "
+        "condition runs true_template, falsy runs false_template (optional; "
+        "absent means no-op)."
+    )
+
+    ports = PortSet(
+        inputs=[
+            Port(
+                "condition",
+                _BOOLEAN,
+                required=True,
+                description="Branch selector; truthy runs true_template, falsy runs false_template.",
+            ),
+            Port(
+                "true_template",
+                _TEXT,
+                required=True,
+                description="Sub-workflow template to run when condition is truthy.",
+            ),
+            Port(
+                "false_template",
+                _TEXT,
+                required=False,
+                description="Sub-workflow template to run when condition is falsy (omit for no-op).",
+            ),
+            Port(
+                "inputs",
+                _JSON,
+                required=False,
+                description="Inputs passed to the chosen child workflow as $inputs.* (default {}).",
+            ),
+        ],
+        outputs=[
+            Port(
+                "executed",
+                _BOOLEAN,
+                required=True,
+                description="True when a branch template actually ran.",
+            ),
+            Port(
+                "template",
+                _TEXT,
+                required=True,
+                description="Name of the template that ran (empty string when no-op).",
+            ),
+            Port(
+                "outputs",
+                _JSON,
+                required=True,
+                description="The chosen child workflow's outputs ({} when no-op).",
+            ),
+        ],
+    )
+
+    def execute(self, inputs: dict, context: ToolContext) -> dict:
+        condition = inputs.get("condition")
+        true_template = inputs.get("true_template")
+        false_template = inputs.get("false_template") or ""
+        chosen = true_template if condition else false_template
+
+        if not chosen:
+            return {"executed": False, "template": "", "outputs": {}}
+
+        parent_wf_id = context.parent_workflow_id or "root"
+        current_node_id = context.current_node_id or "unknown"
+        namespace_prefix = f"{parent_wf_id}/{current_node_id}"
+
+        child_result = _run_child_template(
+            chosen, inputs.get("inputs") or {}, context, namespace_prefix
+        )
+
+        if not child_result.success:
+            raise ToolException(
+                f"branch template {chosen!r} failed: "
+                f"{child_result.error or 'unknown error'}"
+            )
+
+        return {
+            "executed": True,
+            "template": chosen,
+            "outputs": (
+                child_result.outputs
+                if isinstance(child_result.outputs, dict)
+                else {}
+            ),
+        }
+
+
+#: Operators accepted by flow.compare.
+_COMPARE_OPS = (
+    "eq", "ne", "lt", "le", "gt", "ge", "contains", "starts_with", "ends_with",
+)
+
+
+def _coerce_compare_pair(a, b):
+    """Coerce (a, b) for comparison: numeric pair when BOTH are real numbers
+    (bools excluded), otherwise a string pair (``str()`` of each side)."""
+    numeric = (
+        isinstance(a, (int, float))
+        and not isinstance(a, bool)
+        and isinstance(b, (int, float))
+        and not isinstance(b, bool)
+    )
+    return (a, b) if numeric else (str(a), str(b))
+
+
+class FlowCompare(BuiltinTool):
+    """Compare two values and return a boolean — the branch-condition producer.
+
+    ``op`` is one of ``eq`` / ``ne`` / ``lt`` / ``le`` / ``gt`` / ``ge`` /
+    ``contains`` / ``starts_with`` / ``ends_with`` (default ``eq``).  When
+    both operands are numbers the comparison is numeric; anything else
+    compares as strings (so ``5`` vs ``"5"`` is ``eq`` — handy when a CLI
+    ``--input`` coerced one side).  Ordering on mixed types is lexicographic.
+
+    The expression engine deliberately has no comparison operators (its
+    documented MVP boundary), so conditions for ``flow.branch`` /
+    ``flow.assert`` are produced by atomic tools like this one instead.
+    """
+
+    name = "flow.compare"
+    description = (
+        "Compare two values with an operator (eq/ne/lt/le/gt/ge/contains/"
+        "starts_with/ends_with) and return a boolean result."
+    )
+
+    ports = PortSet(
+        inputs=[
+            Port(
+                "a",
+                _JSON,
+                required=True,
+                description="Left operand (number or string).",
+            ),
+            Port(
+                "b",
+                _JSON,
+                required=True,
+                description="Right operand (number or string).",
+            ),
+            Port(
+                "op",
+                _TEXT,
+                required=False,
+                description=(
+                    "Operator: eq (default) / ne / lt / le / gt / ge / "
+                    "contains / starts_with / ends_with."
+                ),
+            ),
+        ],
+        outputs=[
+            Port(
+                "result",
+                _BOOLEAN,
+                required=True,
+                description="Comparison outcome.",
+            ),
+        ],
+    )
+
+    def execute(self, inputs: dict, context: ToolContext) -> dict:
+        op = inputs.get("op") or "eq"
+        if op not in _COMPARE_OPS:
+            raise ToolException(
+                f"unknown op {op!r}; must be one of {', '.join(_COMPARE_OPS)}"
+            )
+        a, b = _coerce_compare_pair(inputs.get("a"), inputs.get("b"))
+
+        if op == "eq":
+            result = a == b
+        elif op == "ne":
+            result = a != b
+        elif op == "lt":
+            result = a < b
+        elif op == "le":
+            result = a <= b
+        elif op == "gt":
+            result = a > b
+        elif op == "ge":
+            result = a >= b
+        elif op == "contains":
+            result = b in a
+        elif op == "starts_with":
+            result = a.startswith(b)
+        else:  # ends_with
+            result = a.endswith(b)
+
+        return {"result": result}

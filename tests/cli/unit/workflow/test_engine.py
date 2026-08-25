@@ -104,7 +104,7 @@ def _definition(nodes) -> WorkflowDefinition:
 
 
 def _build_shipped_registry(overlay_dir):
-    """Build a real (undiscovered) ToolRegistry with the 20 shipped builtins.
+    """Build a real (undiscovered) ToolRegistry with the 23 shipped builtins.
 
     Loads ``SHIPPED_MANIFEST`` via ``load_plugins`` with an adapter exposing
     the plugin ``apply`` seam (``register_tool`` + ``tools.get_kind``), then
@@ -128,7 +128,7 @@ def _default_registry():
     """Module-cached shipped registry used when a test passes no registry.
 
     The engine now resolves tools exclusively via ``registry.get_tool``, so the
-    default registry must actually provide the 20 builtins (as shipped-native
+    default registry must actually provide the 23 builtins (as shipped-native
     plugin tools).  Cached: builtins are stateless and rebuilding per test is
     wasteful.
     """

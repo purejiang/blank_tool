@@ -3,8 +3,9 @@
 """
 Headless CLI entry point for the Blank Tool workflow system.
 
-Provides six subcommands (``run``, ``list-tools``, ``list-envs``,
-``validate``, ``tool``, ``list-templates``) that operate independently of the Electron
+Provides nine subcommands (``run``, ``list-tools``, ``list-envs``,
+``validate``, ``tool``, ``list-templates``, ``import-pack``,
+``import-templates``, ``history``) that operate independently of the Electron
 app — no stdin JSON-RPC pipe, no streaming IPC.  The CLI initializes logging
 and config (the same setup ``main.bootstrap`` performs), then invokes the
 workflow engine, validator, tool registry and environment registry directly.
@@ -23,12 +24,18 @@ Usage (from the ``cli/`` directory):
     python cli.py validate <workflow.json>
     python cli.py list-templates
     python cli.py run <workflow.json|template-name> --input key=value
+    python cli.py import-pack examples/tools/android
+    python cli.py import-templates examples/workflows/android
+    python cli.py history [--limit 20]
+    python cli.py history <run_id>
 """
 
 import argparse
 import json
 import os
 import sys
+import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 # Make the cli/ directory importable regardless of the working directory.
@@ -374,6 +381,100 @@ def _print_result_summary(tool_name: str, result: dict) -> None:
         print(f"  {key}: {val_str}")
 
 
+def cmd_import_pack(path: str) -> int:
+    """Import every tool descriptor in a directory (domain pack).
+
+    Delegates to :meth:`ToolRegistry.import_descriptor_dir` (two-phase:
+    pre-validate all, write all), prints a per-tool summary, and returns
+    0 when every descriptor imported cleanly, 1 otherwise.
+    """
+    from app.tools.tool_manager import ToolManager
+
+    registry = ToolManager.instance()._registry
+    report = registry.import_descriptor_dir(path)
+
+    if "error" in report:
+        print(f"error: {report['error']}", file=sys.stderr)
+        return 1
+
+    rows = []
+    for entry in report["results"]:
+        note = entry.get("reason") or "; ".join(entry.get("warnings") or [])
+        rows.append([entry["name"], entry["status"], note])
+    _print_table(["name", "status", "note"], rows)
+    print(
+        f"imported: {report['imported']}, updated: {report['updated']}, "
+        f"failed: {report['failed']}"
+    )
+    return 0 if report["ok"] else 1
+
+
+def cmd_import_templates(path: str) -> int:
+    """Import workflow JSON file(s) into the template store.
+
+    Accepts a single workflow file or a directory of workflow JSON files
+    (e.g. ``examples/workflows/android``).  Returns 0 when every file
+    imported cleanly, 1 otherwise.
+    """
+    from app.handlers.template_handler import import_templates_from_path
+
+    try:
+        report = import_templates_from_path(path)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    rows = []
+    for entry in report["results"]:
+        note = entry.get("reason") or ""
+        if entry.get("renamed_from"):
+            note = f"name from definition; file stem {entry['renamed_from']!r}"
+        rows.append(
+            [entry.get("name") or entry["file"], entry["status"], note]
+        )
+    _print_table(["name", "status", "note"], rows)
+    print(f"imported: {report['imported']}, failed: {report['failed']}")
+    return 0 if report["ok"] else 1
+
+
+def cmd_history(run_id: Optional[str], limit: int) -> int:
+    """Show run history: a summary table, or one full record as JSON.
+
+    ``history`` lists the newest runs (``--limit``, default 50);
+    ``history <run_id>`` prints the full record as JSON.
+    """
+    from app.history import store as history_store
+
+    if run_id:
+        try:
+            record = history_store.get_run(run_id)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        if record is None:
+            print(f"error: run not found: {run_id}", file=sys.stderr)
+            return 1
+        print(json.dumps(record, indent=2, ensure_ascii=False, default=str))
+        return 0
+
+    runs = history_store.list_runs(limit=limit)
+    if not runs:
+        print("no run history")
+        return 0
+    rows = [
+        [
+            (r.get("run_id") or "")[:8],
+            r.get("workflow_name") or "",
+            "yes" if r.get("success") else "no",
+            str(r.get("duration_ms") or ""),
+            r.get("started_at") or "",
+        ]
+        for r in runs
+    ]
+    _print_table(["run_id", "workflow", "success", "ms", "started_at"], rows)
+    return 0
+
+
 def cmd_list_templates() -> int:
     """List saved workflow templates.
 
@@ -508,6 +609,7 @@ def cmd_run(
     or a human-readable summary.  Returns 0 on success, 1 on failure.
     """
     from app.workflow.engine import ExecutionContext, WorkflowEngine
+    from app.workflow.runner import _record_history
     from app.workflow.streaming import WorkflowStreamHandler
     from app.utils.task_log_writer import cleanup_task_log
 
@@ -516,6 +618,8 @@ def cmd_run(
         return 1
 
     inputs = _parse_key_values(raw_inputs or [])
+    started_at = datetime.now().isoformat()
+    start = time.perf_counter()
     use_color = (not json_output) and sys.stdout.isatty()
     stream = sys.stderr if json_output else sys.stdout
     raw_stream_handler = _make_console_stream_handler(use_color, stream)
@@ -542,6 +646,12 @@ def cmd_run(
         except Exception as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
+
+        # CLI runs are top-level runs too — record them (best-effort).
+        _record_history(
+            definition, {"path": target}, task_id, inputs, result,
+            started_at, start,
+        )
 
         if json_output:
             print(
@@ -652,6 +762,37 @@ def _build_parser() -> argparse.ArgumentParser:
     # list-templates
     subparsers.add_parser("list-templates", help="List saved workflow templates")
 
+    # import-pack
+    pack_parser = subparsers.add_parser(
+        "import-pack",
+        help="Import every tool descriptor in a directory (domain pack)",
+    )
+    pack_parser.add_argument(
+        "path", help="Directory of *.json tool descriptors to import",
+    )
+
+    # import-templates
+    tpl_parser = subparsers.add_parser(
+        "import-templates",
+        help="Import workflow JSON file(s) into the template store",
+    )
+    tpl_parser.add_argument(
+        "path", help="Workflow JSON file or directory of workflow JSON files",
+    )
+
+    # history
+    history_parser = subparsers.add_parser(
+        "history", help="Show run history (list, or one record by run_id)"
+    )
+    history_parser.add_argument(
+        "run_id", nargs="?", default=None,
+        help="Show the full record for this run id (omit to list runs)",
+    )
+    history_parser.add_argument(
+        "--limit", type=int, default=50,
+        help="Max runs to list (default 50; 0 = no limit)",
+    )
+
     return parser
 
 
@@ -667,6 +808,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         "list-envs": cmd_list_envs,
         "validate": lambda: cmd_validate(args.path, args.tool_dir),
         "list-templates": cmd_list_templates,
+        "import-pack": lambda: cmd_import_pack(args.path),
+        "import-templates": lambda: cmd_import_templates(args.path),
+        "history": lambda: cmd_history(args.run_id, args.limit),
         "tool": lambda: cmd_tool(
             args.name, args.operation, args.input, args.json, args.tool_dir
         ),

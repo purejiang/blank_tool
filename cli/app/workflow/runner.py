@@ -9,10 +9,22 @@ available), assemble the :class:`ExecutionContext`, run the
 :class:`WorkflowEngine`, and return the ``{success, outputs, node_results,
 error}`` wire shape.  Definition *loading* stays in the caller (file path vs
 template store).
+
+Every top-level run is recorded into the run-history store
+(:mod:`app.history.store`) on a best-effort basis: a recording failure is
+logged and never affects the run's result.  Only top-level runs are
+recorded — nested sub-workflow executions go through the engine directly
+and are visible in the parent's ``node_results``.
 """
+
+import logging
+import time
+from datetime import datetime
 
 from app.workflow.engine import ExecutionContext, WorkflowEngine
 from app.workflow.streaming import WorkflowStreamHandler
+
+logger = logging.getLogger(__name__)
 
 
 def run_workflow(definition, params, stream_handler, task_id):
@@ -30,6 +42,8 @@ def run_workflow(definition, params, stream_handler, task_id):
     """
     inputs = params.get("inputs") or {}
     engine = WorkflowEngine()
+    started_at = datetime.now().isoformat()
+    start = time.perf_counter()
 
     # The engine passes ``context.stream_handler`` straight through to the
     # builtin tools (``ToolContext.stream_handler``), so it must stay a plain
@@ -52,9 +66,35 @@ def run_workflow(definition, params, stream_handler, task_id):
 
     result = engine.execute(definition, inputs, context)
 
-    return {
+    payload = {
         "success": result.success,
         "outputs": result.outputs,
         "node_results": result.node_results,
         "error": result.error,
     }
+    _record_history(definition, params, task_id, inputs, result, started_at, start)
+    return payload
+
+
+def _record_history(definition, params, task_id, inputs, result, started_at, start):
+    """Best-effort history write — a recording failure never fails the run."""
+    try:
+        from app.history import store as history_store
+
+        history_store.record_run(
+            {
+                "run_id": history_store.new_run_id(),
+                "task_id": task_id,
+                "workflow_name": getattr(definition, "name", ""),
+                "source": params.get("name") or params.get("path") or "inline",
+                "started_at": started_at,
+                "ended_at": datetime.now().isoformat(),
+                "duration_ms": int((time.perf_counter() - start) * 1000),
+                "inputs": inputs,
+                "node_results": result.node_results,
+                "success": result.success,
+                "error": result.error,
+            }
+        )
+    except Exception:
+        logger.warning("failed to record run history", exc_info=True)

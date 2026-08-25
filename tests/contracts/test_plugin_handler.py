@@ -169,6 +169,37 @@ class TestPluginAdd:
         with pytest.raises(ToolException, match="module"):
             plugin_handler.add_plugin({}, None)
 
+    def test_add_rejects_duplicate_module(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        _write_module(tmp_path, "dupplug", "def apply(ctx, config):\n    pass\n")
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        plugin_handler.add_plugin(
+            {"module": "dupplug", "path": str(tmp_path)}, None
+        )
+        with pytest.raises(ToolException, match="already in the manifest"):
+            plugin_handler.add_plugin(
+                {"module": "dupplug", "path": str(tmp_path)}, None
+            )
+
+        manifest = json.loads(
+            (tmp_path / "plugins.json").read_text(encoding="utf-8")
+        )
+        assert len(manifest) == 1
+
+    def test_add_rejects_shipped_module(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "nope.json"))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        with pytest.raises(ToolException, match="shipped"):
+            plugin_handler.add_plugin(
+                {"module": "app.plugins.builtin.flow"}, None
+            )
+
 
 class TestPluginDelete:
     def test_delete_removes_manifest_entry_and_reloads(

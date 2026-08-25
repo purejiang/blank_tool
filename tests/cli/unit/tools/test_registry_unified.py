@@ -268,7 +268,7 @@ def test_delete_bundled_only_name_raises_value_error(registry):
 
 # ── Wave 2 Task 9: core builtins resolve via the unified registry ─────────
 
-#: The 8 CORE builtin primitive names (always shipped-native; the 13 extended
+#: The 10 CORE builtin primitive names (always shipped-native; the 13 extended
 #: atomics are opt-in — covered by test_builtin_shipped.py::EXTENDED_NAMES).
 _BUILTIN_NAMES = [
     # app.plugins.builtin.file (2)
@@ -277,8 +277,8 @@ _BUILTIN_NAMES = [
     "text.grep",
     # app.plugins.builtin.exec (1)
     "shell.exec",
-    # app.plugins.builtin.flow (3)
-    "flow.assert", "flow.log", "flow.foreach",
+    # app.plugins.builtin.flow (5)
+    "flow.assert", "flow.log", "flow.foreach", "flow.branch", "flow.compare",
     # app.plugins.builtin.workflow (1)
     "workflow.run",
 ]

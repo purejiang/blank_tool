@@ -18,7 +18,7 @@ from app.plugins.loader import (
     shipped_manifest_with_extensions,
 )
 
-#: The 8 CORE primitive names, grouped by module.
+#: The 10 CORE primitive names, grouped by module.
 CORE_NAMES = [
     # app.plugins.builtin.file (2)
     "file.read", "file.write",
@@ -26,8 +26,8 @@ CORE_NAMES = [
     "text.grep",
     # app.plugins.builtin.exec (1)
     "shell.exec",
-    # app.plugins.builtin.flow (3)
-    "flow.assert", "flow.log", "flow.foreach",
+    # app.plugins.builtin.flow (5)
+    "flow.assert", "flow.log", "flow.foreach", "flow.branch", "flow.compare",
     # app.plugins.builtin.workflow (1)
     "workflow.run",
 ]
@@ -69,14 +69,14 @@ def test_extended_manifest_is_6_modules():
     ]
 
 
-def test_all_8_core_registered_as_shipped_native():
+def test_all_10_core_registered_as_shipped_native():
     ctx = PluginContext()
     load_plugins(ctx, manifest=SHIPPED_MANIFEST)
     for name in CORE_NAMES:
         assert name in ctx.tools.list_all(), f"{name!r} missing from list_all()"
         assert ctx.tools.get_kind(name) == "shipped-native"
         assert ctx.tools.get(name).name == name
-    assert len(CORE_NAMES) == 8
+    assert len(CORE_NAMES) == 10
 
 
 def test_all_13_extended_registered_as_shipped_native():

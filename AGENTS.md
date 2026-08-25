@@ -21,7 +21,7 @@ Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接�
 
 ### 无头 CLI（cli/cli.py）
 
-无头 CLI 入口 `cli/cli.py`（6 子命令：run/list-tools/list-envs/validate/tool/list-templates）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
+无头 CLI 入口 `cli/cli.py`（9 子命令：run/list-tools/list-envs/validate/tool/list-templates/import-pack/import-templates/history）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
 
 ## 测试有五套，分别由不同运行器驱动（最容易踩坑）
 

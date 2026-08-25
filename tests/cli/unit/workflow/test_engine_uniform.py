@@ -187,7 +187,7 @@ def _context(tmp_path, **overrides) -> ExecutionContext:
 
 
 def _build_shipped_registry(overlay_dir):
-    """Build a real (undiscovered) ToolRegistry with the 20 shipped builtins.
+    """Build a real (undiscovered) ToolRegistry with the 23 shipped builtins.
 
     Loads ``SHIPPED_MANIFEST`` via ``load_plugins`` with an adapter exposing
     the plugin ``apply`` seam, then returns the adapter so the engine can

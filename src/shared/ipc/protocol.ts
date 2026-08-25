@@ -200,6 +200,7 @@ export interface ApiMethodMap {
   'template.load': { params: { name: string }; result: Record<string, unknown> }
   'template.list': { params: Record<string, never>; result: Record<string, unknown>[] }
   'template.delete': { params: { name: string }; result: Record<string, unknown> }
+  'template.import_path': { params: { path: string }; result: Record<string, unknown> }
   'template.execute': { params: { name: string; inputs?: Record<string, unknown> }; result: Record<string, unknown> }
 
   // --- env_handler.py ---
@@ -210,6 +211,13 @@ export interface ApiMethodMap {
   // --- tool_handler.py (extended) ---
   'tool.add': { params: { descriptor: Record<string, unknown> }; result: Record<string, unknown> }
   'tool.delete': { params: { name: string }; result: Record<string, unknown> }
+  'tool.import_pack': { params: { path: string }; result: Record<string, unknown> }
+
+  // --- history_handler.py ---
+  'history.list': { params: { limit?: number; offset?: number }; result: { runs: Record<string, unknown>[] } }
+  'history.get': { params: { run_id: string }; result: { run: Record<string, unknown> } }
+  'history.delete': { params: { run_id: string }; result: { deleted: string } }
+  'history.clear': { params: Record<string, never>; result: { cleared: number } }
 
   // --- workflow_handler.py ---
   'workflow.execute': { params: { definition: Record<string, unknown>; inputs?: Record<string, unknown> }; result: Record<string, unknown> }

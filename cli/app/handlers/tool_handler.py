@@ -159,6 +159,24 @@ def handle_tool_delete(params, stream_handler):
         return {"error": str(e)}
 
 
+@logs_errors("ToolHandler")
+def handle_tool_import_pack(params, stream_handler):
+    """Import every ``*.json`` descriptor in a directory (domain pack).
+
+    Params:
+        path: directory containing tool descriptor JSON files (e.g.
+            ``examples/tools/android``).  The directory IS the pack — no
+            manifest file is required.
+
+    Returns the registry's two-phase import report:
+    ``{"ok", "imported", "updated", "failed", "results": [...]}``.
+    """
+    path = params.get("path")
+    if not isinstance(path, str) or not path:
+        raise ToolException("Missing 'path' field")
+    return _get_registry().import_descriptor_dir(path)
+
+
 API_MAP = {
     "tool.version": tool_version,
     "tool.get_tools": get_tools,
@@ -168,4 +186,5 @@ API_MAP = {
     "tool.get_custom_paths": get_custom_paths,
     "tool.add": handle_tool_add,
     "tool.delete": handle_tool_delete,
+    "tool.import_pack": handle_tool_import_pack,
 }

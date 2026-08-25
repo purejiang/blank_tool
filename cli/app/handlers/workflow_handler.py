@@ -15,7 +15,8 @@ need no registration code elsewhere:
 - ``workflow.validate``  statically validate a workflow definition against
   the tool registry, returning a list of findings;
 - ``workflow.list_tools``  list every registered tool — descriptor/code tools
-  from :class:`ToolManager` plus the 20 builtin workflow primitives;
+  from :class:`ToolManager` plus the builtin workflow primitives (10 core
+  by default; 13 extended opt-in via ``tools.atomic_extensions``);
 - ``workflow.list_envs``   list every resolved environment from the
   :class:`EnvironmentRegistry`.
 """
@@ -124,7 +125,7 @@ def _operations_payload(tool) -> list:
 def handle_list_tools(params, stream_handler):
     """List every registered tool from the unified registry.
 
-    Every tool comes from :class:`ToolManager`'s shared registry: the 20
+    Every tool comes from :class:`ToolManager`'s shared registry: the
     shipped-native builtins (kind ``"shipped-native"`` — always valid, with
     their port contracts), native plugin tools (``"native"``), and descriptor
     tools (``"descriptor"``).  Each entry carries a ``kind`` and a
