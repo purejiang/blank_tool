@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from app.env.descriptor import EnvironmentDescriptor
+from app.utils.paths import resolve_path, get_runtime_dir
 
 logger = logging.getLogger(__name__)
 
@@ -76,40 +77,6 @@ class ResolvedEnvironment:
     binary_path: str
     version: str
     is_valid: bool
-
-
-def _resolve_path(path_str: str) -> str:
-    """Resolve *path_str* to an absolute path (relative paths anchor to cli/).
-
-    Intentionally duplicated as :func:`app.utils.env.resolve_path`: that
-    module imports this one at the top, so this module cannot import back
-    (that would be a cycle).  Keep the two in sync.
-    """
-    if not path_str:
-        return ""
-    if os.path.isabs(path_str):
-        return os.path.normpath(path_str)
-    return os.path.normpath(os.path.join(str(_CLI_ROOT), path_str))
-
-
-def _runtime_dir() -> str:
-    """
-    Return the runtime base directory, mirroring ``app.utils.env.get_runtime_dir``.
-
-    Priority: ``BT_RUNTIME_DIR`` env var (resolved against cli/), then
-    ``cli/runtime``, then the project-root ``runtime/``. Implemented
-    locally to avoid an import cycle with ``app.utils.env``.
-    """
-    override = os.environ.get("BT_RUNTIME_DIR")
-    if override:
-        return _resolve_path(override)
-    local = _CLI_ROOT / "runtime"
-    if local.is_dir():
-        return str(local)
-    up = _CLI_ROOT.parent / "runtime"
-    if up.is_dir():
-        return str(up)
-    return ""
 
 
 class EnvironmentRegistry:
@@ -390,13 +357,13 @@ def _find_binary(descriptor: EnvironmentDescriptor) -> Tuple[str, str]:
     if descriptor.env_var_override:
         raw = os.environ.get(descriptor.env_var_override)
         if raw:
-            override = _resolve_path(raw)
+            override = resolve_path(raw)
             if os.path.isfile(override):
                 return override, os.path.dirname(override)
 
     # Level 2: bundled runtimes under the runtime directory.
     if descriptor.search_paths:
-        runtime_dir = _runtime_dir()
+        runtime_dir = get_runtime_dir()
         if runtime_dir:
             for search_path in descriptor.search_paths:
                 root = os.path.join(runtime_dir, search_path)

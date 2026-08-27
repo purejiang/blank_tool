@@ -6,6 +6,11 @@ import json
 import subprocess
 from typing import Dict, Optional, Set
 
+# Pure path helpers (resolve_path / get_runtime_dir / ROOT) now live in the
+# leaf module app.utils.paths to avoid duplicating them with app.env.registry.
+# Re-exported here so existing callers are unaffected.
+from app.utils.paths import ROOT, resolve_path, get_runtime_dir
+
 from app.env.registry import get_env_registry
 
 # JAVA 环境变量
@@ -29,29 +34,6 @@ ENV_PROJECT_NAME = 'PROJECT_NAME'
 ENV_BT_OUTPUT_DIR = 'BT_OUTPUT_DIR'
 
 
-# Backend root directory (absolute path)
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-
-def resolve_path(path_str: str) -> str:
-    """
-    Resolve a path string to an absolute path.
-    If the path is relative, it is resolved relative to the cli root.
-
-    NOTE: intentionally duplicated as :func:`app.env.registry._resolve_path`.
-    This module imports ``app.env.registry`` at the top, so the registry
-    cannot import back here (that would be a cycle).  Keep the two in sync.
-    """
-    if not path_str:
-        return ""
-    
-    # If absolute, return as is
-    if os.path.isabs(path_str):
-        return path_str
-        
-    # Resolve relative to root
-    resolved = os.path.normpath(os.path.join(ROOT, path_str))
-    return resolved
-
 def load_dotenv(path: str = None) -> Set[str]:
     """
     Simple .env file loader.
@@ -59,7 +41,7 @@ def load_dotenv(path: str = None) -> Set[str]:
     if path is None:
         # Default to .env in root
         path = os.path.join(ROOT, '.env')
-    
+
     loaded_keys: Set[str] = set()
     if not os.path.exists(path):
         return loaded_keys
@@ -78,7 +60,7 @@ def load_dotenv(path: str = None) -> Set[str]:
                     if (value.startswith('"') and value.endswith('"')) or \
                        (value.startswith("'") and value.endswith("'")):
                         value = value[1:-1]
-                    
+
                     if key and key not in os.environ:
                         os.environ[key] = value
                         loaded_keys.add(key)
@@ -138,31 +120,6 @@ def get_output_dir() -> str:
     """
     output_dir = get_env(ENV_BT_OUTPUT_DIR, "./output")
     return resolve_path(output_dir)
-
-def get_runtime_dir() -> str:
-    """
-    Get the runtime directory.
-
-    NOTE: intentionally duplicated as :func:`app.env.registry._runtime_dir`.
-    This module imports ``app.env.registry`` at the top, so the registry
-    cannot import back here (that would be a cycle).  Keep the two in sync.
-    """
-    runtime_dir = get_env(ENV_BT_RUNTIME_DIR)
-    if runtime_dir:
-        return resolve_path(runtime_dir)
-    
-    # Fallback: Try to find 'runtime' in the project root or up one level
-    # Development: cli/../runtime -> ROOT/runtime
-    local_runtime = os.path.join(ROOT, 'runtime')
-    if os.path.exists(local_runtime):
-        return local_runtime
-        
-    # Production/Alternative: ROOT/../runtime
-    up_runtime = os.path.abspath(os.path.join(ROOT, '..', 'runtime'))
-    if os.path.exists(up_runtime):
-        return up_runtime
-        
-    return ""
 
 def get_cache_dir() -> str:
     """
@@ -295,7 +252,7 @@ def get_java_bin() -> str:
     if runtime_dir:
         is_windows = platform.system() == 'Windows'
         java_exe = 'java.exe' if is_windows else 'java'
-        
+
         # Possible locations for java executable in runtime
         candidates = [
             os.path.join(runtime_dir, 'jre', 'bin', java_exe),
@@ -303,7 +260,7 @@ def get_java_bin() -> str:
             os.path.join(runtime_dir, 'bin', java_exe),
             os.path.join(runtime_dir, java_exe)
         ]
-        
+
         for candidate in candidates:
             if _is_executable_usable(candidate):
                 return candidate
@@ -314,7 +271,7 @@ def get_java_bin() -> str:
         candidate = os.path.join(jh, 'bin', 'java.exe' if platform.system() == 'Windows' else 'java')
         if _is_executable_usable(candidate):
             return candidate
-        
+
     # 4. Last priority: System PATH
     which = shutil.which('java')
     if which and _is_executable_usable(which):
@@ -333,7 +290,7 @@ def get_python_bin() -> str:
         resolved = resolve_path(override)
         if os.path.exists(resolved):
             return resolved
-            
+
     return sys.executable or 'python'
 
 def get_node_bin() -> str:
@@ -348,6 +305,6 @@ def get_node_bin() -> str:
         resolved = resolve_path(override)
         if os.path.exists(resolved):
             return resolved
-            
+
     which = shutil.which('node')
     return which or 'node'
