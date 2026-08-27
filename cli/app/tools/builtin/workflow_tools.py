@@ -76,7 +76,7 @@ def _make_namespaced_stream_handler(parent_callback, namespace_prefix):
     return wrapper
 
 
-def _run_child_template(
+def run_child_template(
     template_name,
     child_inputs,
     context,
@@ -252,7 +252,7 @@ class WorkflowRun(BuiltinTool):
         current_node_id = context.current_node_id or "unknown"
         namespace_prefix = f"{parent_wf_id}/{current_node_id}"
 
-        child_result = _run_child_template(
+        child_result = run_child_template(
             template_name, child_workflow_inputs, context, namespace_prefix
         )
 

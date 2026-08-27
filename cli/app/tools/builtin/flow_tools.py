@@ -18,7 +18,7 @@ contract and a stdlib-only ``execute`` implementation:
 - ``flow.branch`` is the if/else primitive: a truthy ``condition`` runs
   ``true_template``, a falsy one runs ``false_template`` (optional; absent
   means no-op).  Branching is realized through sub-workflow composition (the
-  shared :func:`app.tools.builtin.workflow_tools._run_child_template`
+  shared :func:`app.tools.builtin.workflow_tools.run_child_template`
   helper), NOT by consuming the workflow schema's reserved ``condition``
   field — that field stays parked for a future DAG mode.
 - ``flow.compare`` produces the booleans branches consume: ``{a, b, op}`` →
@@ -36,7 +36,7 @@ from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.template.store import TemplateNotFoundError
 from app.tools.builtin.workflow_tools import (
     MAX_NESTING_DEPTH,
-    _run_child_template,
+    run_child_template,
 )
 from app.utils.task_log_writer import append_task_log
 
@@ -295,7 +295,7 @@ class FlowForeach(BuiltinTool):
             namespace_prefix = f"{parent_wf_id}/{current_node_id}/{index}"
 
             try:
-                child_result = _run_child_template(
+                child_result = run_child_template(
                     template_name,
                     child_inputs,
                     context,
@@ -376,7 +376,7 @@ class FlowBranch(BuiltinTool):
     ``false_template`` when given, otherwise the node is a successful no-op
     (``executed=False``) — which doubles as a "conditional skip".  The chosen
     template is executed inline through the shared
-    :func:`~app.tools.builtin.workflow_tools._run_child_template` helper, so
+    :func:`~app.tools.builtin.workflow_tools.run_child_template` helper, so
     recursion guards (cycle + ``MAX_NESTING_DEPTH``) and namespaced nested
     events behave exactly like ``workflow.run`` / ``flow.foreach``.
 
@@ -459,7 +459,7 @@ class FlowBranch(BuiltinTool):
         current_node_id = context.current_node_id or "unknown"
         namespace_prefix = f"{parent_wf_id}/{current_node_id}"
 
-        child_result = _run_child_template(
+        child_result = run_child_template(
             chosen, inputs.get("inputs") or {}, context, namespace_prefix
         )
 

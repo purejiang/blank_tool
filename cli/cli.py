@@ -79,7 +79,7 @@ def cmd_list_tools() -> int:
     rows: List[List[str]] = []
     tm = ToolManager.instance()
     for name, tool in tm.get_all_tools().items():
-        if tm._registry.get_kind(name) == "shipped-native":
+        if tm.get_kind(name) == "shipped-native":
             rows.append([name, "builtin", "yes", ""])
         else:
             tool_type = getattr(tool, "type", None) or type(tool).__name__
@@ -390,7 +390,7 @@ def cmd_import_pack(path: str) -> int:
     """
     from app.tools.tool_manager import ToolManager
 
-    registry = ToolManager.instance()._registry
+    registry = ToolManager.instance().get_registry()
     report = registry.import_descriptor_dir(path)
 
     if "error" in report:
@@ -609,7 +609,7 @@ def cmd_run(
     or a human-readable summary.  Returns 0 on success, 1 on failure.
     """
     from app.workflow.engine import ExecutionContext, WorkflowEngine
-    from app.workflow.runner import _record_history
+    from app.workflow.runner import record_history
     from app.workflow.streaming import WorkflowStreamHandler
     from app.utils.task_log_writer import cleanup_task_log
 
@@ -648,7 +648,7 @@ def cmd_run(
             return 1
 
         # CLI runs are top-level runs too — record them (best-effort).
-        _record_history(
+        record_history(
             definition, {"path": target}, task_id, inputs, result,
             started_at, start,
         )

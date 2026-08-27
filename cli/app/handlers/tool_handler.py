@@ -17,7 +17,7 @@ manager = ToolManager.instance()
 
 def _get_registry():
     """Return the underlying ToolRegistry (for tests to patch)."""
-    return manager._registry  # noqa: SLF001
+    return manager.get_registry()
 
 
 def _source_for(mgr: ToolManager, name: str, path: str):

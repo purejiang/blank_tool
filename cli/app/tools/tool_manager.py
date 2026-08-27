@@ -17,6 +17,7 @@ from app.env.overrides_store import OverridesStore
 from app.utils.logger import Logger
 from app.utils.env import get_output_dir
 from app.common.exceptions import ToolNotFoundError
+from app.tools.bootstrap.plugins import bootstrap_shipped_plugins
 
 
 class ToolRegistry:
@@ -650,34 +651,27 @@ class ToolManager:
         # The engine now resolves tools exclusively via get_tool(), so the
         # shipped-native builtins must live in the shared registry — load them
         # here (headless CLI + tests construct ToolManager without cli/main.py's
-        # bootstrap).  Runs once (guarded by _initialized).
-        self._load_shipped_plugins()
-
-    def _load_shipped_plugins(self) -> None:
-        """Register the shipped-native builtin plugins into the shared registry.
-
-        Deferred import avoids a top-level circular import (plugin context /
-        loader import ToolManager).  A loader bug must NOT prevent ToolManager
-        from constructing, so failures are logged, not raised.
-        """
-        try:
-            from app.plugins.context import PluginContext
-            from app.plugins.loader import (
-                load_plugins,
-                shipped_manifest_with_extensions,
-            )
-
-            load_plugins(
-                PluginContext(), manifest=shipped_manifest_with_extensions()
-            )
-        except Exception:
-            self.logger.warning(
-                "failed to load shipped-native builtin plugins", exc_info=True
-            )
+        # bootstrap).  Runs once (guarded by _initialized).  The loading logic
+        # lives in app.tools.bootstrap.plugins so plugin bootstrap is a single
+        # extension point (and the import cycle with plugin context stays
+        # deferred).
+        bootstrap_shipped_plugins()
 
     @classmethod
     def instance(cls, search_system: bool = False) -> "ToolManager":
         return cls(search_system=search_system)
+
+    def get_registry(self):
+        """Return the shared :class:`ToolRegistry` backing this manager.
+
+        Replaces the previously-private ``_registry`` attribute so callers no
+        longer reach into ToolManager internals.
+        """
+        return self._registry
+
+    def get_kind(self, name: str):
+        """Return the kind of a registered tool, or None if unknown."""
+        return self._registry.get_kind(name)
 
     def get_tool(self, tool_name: str) -> Optional[Any]:
         try:

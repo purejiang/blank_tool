@@ -136,7 +136,7 @@ def handle_list_tools(params, stream_handler):
     """
     tools = []
     tm = ToolManager.instance()
-    registry = tm._registry
+    registry = tm.get_registry()
     for name, tool in tm.get_all_tools().items():
         kind = registry.get_kind(name)
         if kind not in ("shipped-native", "native"):

@@ -72,11 +72,11 @@ def run_workflow(definition, params, stream_handler, task_id):
         "node_results": result.node_results,
         "error": result.error,
     }
-    _record_history(definition, params, task_id, inputs, result, started_at, start)
+    record_history(definition, params, task_id, inputs, result, started_at, start)
     return payload
 
 
-def _record_history(definition, params, task_id, inputs, result, started_at, start):
+def record_history(definition, params, task_id, inputs, result, started_at, start):
     """Best-effort history write — a recording failure never fails the run."""
     try:
         from app.history import store as history_store
