@@ -29,7 +29,7 @@ _ALLOWED_KINDS = ("shipped-native", "native")
 #: The CORE shipped-native builtin plugins, ALWAYS loaded at startup (before
 #: any user ``native`` plugins from config).  The minimal universal base: the
 #: four atomic tools (``file.read``/``file.write``, ``text.grep``,
-#: ``shell.exec``) plus the four orchestration primitives
+#: ``exec.shell``) plus the four orchestration primitives
 #: (``flow.assert``/``flow.log``/``flow.foreach``, ``workflow.run``).  Direct
 #: import only — no directory scanning.
 SHIPPED_MANIFEST = [
@@ -42,7 +42,7 @@ SHIPPED_MANIFEST = [
 
 #: The EXTENDED shipped-native builtin plugins — NOT loaded by default.  These
 #: are the remaining atomic tools (``file.copy/move/delete/hash``, ``dir.*``,
-#: ``archive.*``, ``text.replace``, ``net.*``, ``code.exec``), opt-in via
+#: ``archive.*``, ``text.replace``, ``net.*``, ``exec.code``), opt-in via
 #: ``server.config.json`` → ``tools.atomic_extensions`` (a list of module
 #: short names, or ``"*"`` for all).  They stay native ``BuiltinTool``
 #: instances (no subprocess, streaming/path guards intact) — distinct from

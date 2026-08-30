@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Builtin command / code execution tools (shell.exec, code.exec).
+Builtin command / code execution tools (exec.shell, exec.code).
 
-Security note (CRITICAL): ``code.exec`` never executes user code in-process.
+Security note (CRITICAL): ``exec.code`` never executes user code in-process.
 In-process ``exec``/``eval`` sandboxes are escapable via the well-known
 ``__class__.__mro__[].__subclasses__()`` chain, so they provide no real
-isolation. Instead ``code.exec`` serializes the user snippet into a wrapper
+isolation. Instead ``exec.code`` serializes the user snippet into a wrapper
 script and runs it in a *separate* subprocess via
 ``subprocess.run([get_python_bin(), '-c', wrapped], ...)``. The child only
 receives the inputs handed to it through the ``CODE_EXEC_INPUTS`` environment
 variable — it never sees the workflow engine's internal state.
 
-``shell.exec`` runs a command line in a subprocess too: with ``shell=True`` on
+``exec.shell`` runs a command line in a subprocess too: with ``shell=True`` on
 Windows (cmd.exe interprets the string) or ``shell=False`` with
 :func:`shlex.split` on Unix (no shell involved, metacharacters such as
 ``&``/``|``/``;`` are passed literally to the program — safer).
@@ -30,7 +30,7 @@ from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.env import get_python_bin
 
-# Sentinel printed by the code.exec child right before the JSON result payload.
+# Sentinel printed by the exec.code child right before the JSON result payload.
 # The parent splits stdout on this marker: everything before is user output,
 # the line after is the JSON-serialized ``result`` value.
 _EXEC_RESULT_SENTINEL = "===CODE_EXEC_RESULT==="
@@ -96,7 +96,7 @@ class ShellExec(BuiltinTool):
     invalid command) surfaces via ``stderr`` with ``returncode=-1``.
     """
 
-    name = "shell.exec"
+    name = "exec.shell"
     description = "Execute a shell command in a subprocess and capture its stdout/stderr and exit code."
 
     ports = PortSet(
@@ -214,7 +214,7 @@ class CodeExec(BuiltinTool):
     the MVP — any other value raises :class:`NotImplementedError`.
     """
 
-    name = "code.exec"
+    name = "exec.code"
     description = "Execute a code snippet in an isolated subprocess and return the JSON result variable it assigns."
 
     ports = PortSet(
@@ -281,7 +281,7 @@ class CodeExec(BuiltinTool):
 
         if language != "python":
             raise NotImplementedError(
-                f"code.exec only supports language='python', got {language!r}"
+                f"exec.code only supports language='python', got {language!r}"
             )
 
         wrapped = _build_wrapped_code(code_text)

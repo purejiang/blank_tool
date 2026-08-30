@@ -103,7 +103,7 @@ def test_workflow_list_tools_non_empty_with_builtin_and_registered():
     # The shipped-native (builtin) set is exactly the 10 core primitives.
     shipped_native = {entry["name"] for entry in tools if entry["kind"] == "shipped-native"}
     expected_builtins = {
-        "file.read", "file.write", "text.grep", "shell.exec",
+        "file.read", "file.write", "text.grep", "exec.shell",
         "flow.assert", "flow.log", "flow.foreach", "flow.branch",
         "flow.compare", "workflow.run",
     }

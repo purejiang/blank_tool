@@ -25,7 +25,7 @@ CORE_NAMES = [
     # app.plugins.builtin.text (1)
     "text.grep",
     # app.plugins.builtin.exec (1)
-    "shell.exec",
+    "exec.shell",
     # app.plugins.builtin.flow (5)
     "flow.assert", "flow.log", "flow.foreach", "flow.branch", "flow.compare",
     # app.plugins.builtin.workflow (1)
@@ -45,7 +45,7 @@ EXTENDED_NAMES = [
     # app.plugins.builtin.net (2)
     "net.download", "net.request",
     # app.plugins.builtin.exec_ext (1)
-    "code.exec",
+    "exec.code",
 ]
 
 

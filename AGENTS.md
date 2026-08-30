@@ -132,7 +132,7 @@ Python Backend (cli/main.py)
 
 ### 安全边界（Security boundary / trust model）
 
-`src/preload/index.ts` 经 contextBridge 暴露 `callBackendAPI(method, params)`，**无方法白名单**：渲染层可请求任意后端 method，主进程原样转发。任何渲染层侧失守（npm 供应链投毒、XSS）都等于任意后端命令执行；且 `cli/app/tools/builtin/exec_tools.py` 内置 `shell.exec`（:85）与 `code.exec`（:206），可直接执行任意 shell / Python，即 RCE。**这是有意的取舍**：本应用是自用桌面工具，用户信任自己的机器，行为等效于本地终端；但**不可分发给不信任的用户**。若未来要分发，硬化路径：contextBridge 加方法白名单、渲染层启用 sandbox、后端加参数校验层。
+`src/preload/index.ts` 经 contextBridge 暴露 `callBackendAPI(method, params)`，**无方法白名单**：渲染层可请求任意后端 method，主进程原样转发。任何渲染层侧失守（npm 供应链投毒、XSS）都等于任意后端命令执行；且 `cli/app/tools/builtin/exec_tools.py` 内置 `exec.shell`（:85）与 `exec.code`（:206），可直接执行任意 shell / Python，即 RCE。**这是有意的取舍**：本应用是自用桌面工具，用户信任自己的机器，行为等效于本地终端；但**不可分发给不信任的用户**。若未来要分发，硬化路径：contextBridge 加方法白名单、渲染层启用 sandbox、后端加参数校验层。
 
 
 ## 发版流程
