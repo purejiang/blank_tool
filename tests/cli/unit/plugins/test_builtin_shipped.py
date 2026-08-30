@@ -13,10 +13,10 @@ from app.plugins.context import PluginContext
 from app.plugins.loader import (
     EXTENDED_MANIFEST,
     SHIPPED_MANIFEST,
-    _selected_extended_manifest,
     load_plugins,
     shipped_manifest_with_extensions,
 )
+from app.plugins.manifest import _selected_extended_manifest
 
 #: The 10 CORE primitive names, grouped by module.
 CORE_NAMES = [
