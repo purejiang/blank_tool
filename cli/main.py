@@ -25,7 +25,8 @@ ROOT = os.path.abspath(os.path.dirname(__file__))
 
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
-from app.utils.env import get_env, get_output_dir, load_dotenv, load_server_config, resolve_path
+from app.utils.paths import resolve_path
+from app.env import get_env, get_output_dir, load_dotenv, load_server_config
 from app.protocol import ErrorCode
 from app.plugins.context import PluginContext
 from app.plugins import loader as plugin_loader

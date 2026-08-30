@@ -9,7 +9,7 @@ environment is (as data), :class:`EnvironmentRegistry` decides *where* it
 actually lives on this machine.
 
 Resolution follows the exact priority used by the legacy hardcoded
-``app.utils.env`` helpers (behaviour parity):
+``app.env`` helpers (behaviour parity):
 
 1. ``env_var_override`` from the descriptor (e.g. ``BT_JAVA_BIN``), when the
    variable is set and the path exists;
@@ -95,7 +95,7 @@ class EnvironmentRegistry:
             overlay_dir: root of the writable registry overlay directory.
                 When omitted, resolves to ``<output_dir>/registry`` at
                 :meth:`discover` time (lazy, to avoid import-time cycle
-                with ``app.utils.env``).
+                with ``app.env``).
         """
         self._descriptors: Dict[str, EnvironmentDescriptor] = {}
         self._cache: Dict[str, ResolvedEnvironment] = {}
@@ -135,7 +135,7 @@ class EnvironmentRegistry:
         else:
             # Best-effort default: use get_output_dir()/registry/environments
             try:
-                from app.utils.env import get_output_dir  # lazy import
+                from app.env import get_output_dir  # lazy import
                 overlay_env_dir = Path(get_output_dir()) / "registry" / "environments"
             except Exception:
                 overlay_env_dir = None
@@ -223,7 +223,7 @@ class EnvironmentRegistry:
         if self._overlay_dir:
             return Path(self._overlay_dir) / "environments"
         try:
-            from app.utils.env import get_output_dir  # lazy import
+            from app.env import get_output_dir  # lazy import
             return Path(get_output_dir()) / "registry" / "environments"
         except Exception:
             return None
@@ -320,7 +320,7 @@ class EnvironmentRegistry:
 # All consumers share ONE EnvironmentRegistry so descriptor CRUD from any
 # handler is visible everywhere. Initialized WITH the writable overlay
 # (``<output_dir>/registry``) — a safe superset: callers that only read
-# (tool_manager, app.utils.env) are unaffected and simply gain a writable
+# (tool_manager, app.env) are unaffected and simply gain a writable
 # overlay.
 # ------------------------------------------------------------------
 
@@ -335,7 +335,7 @@ def get_env_registry() -> "EnvironmentRegistry":
     if _default_registry is None:
         with _default_registry_lock:
             if _default_registry is None:
-                from app.utils.env import get_output_dir  # lazy import
+                from app.env import get_output_dir  # lazy import
 
                 registry = EnvironmentRegistry(
                     overlay_dir=os.path.join(get_output_dir(), "registry")

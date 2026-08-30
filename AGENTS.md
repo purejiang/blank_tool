@@ -115,7 +115,7 @@ Python Backend (cli/main.py)
 ### 配置与路径
 
 - **应用配置**：主进程用 `electron-store`（`src/main/stores/appStore.ts`），带 JSON schema 校验和版本化迁移。渲染层通过 `window.electronAPI.appConfig.get/set/getAll` 访问。
-- **后端配置**：`cli/.env`（实际只有 `APP_VERSION`、`PROJECT_NAME`）+ `cli/server.config.json`（从 `server.config.example.json` 拷贝），由 `app/utils/env.py` 加载。关键 env：`BT_RUNTIME_DIR`、`BT_CACHE_DIR`、`BT_OUTPUT_DIR`、`BT_JAVA_BIN`、`BT_LOG_LEVEL`。**`server.config.json` 里的路径是相对于 `cli/` 目录的**（如 `../cache`）。
+- **后端配置**：`cli/.env`（实际只有 `APP_VERSION`、`PROJECT_NAME`）+ `cli/server.config.json`（从 `server.config.example.json` 拷贝），由 `app/env/__init__.py`（`app.env` 包）加载；纯路径助手（`resolve_path` / `get_runtime_dir` / `ROOT`）在 `app/utils/paths.py`。关键 env：`BT_RUNTIME_DIR`、`BT_CACHE_DIR`、`BT_OUTPUT_DIR`、`BT_JAVA_BIN`、`BT_LOG_LEVEL`。**`server.config.json` 里的路径是相对于 `cli/` 目录的**（如 `../cache`）。
 - **共享路径配置**：`src/shared/config/pathConfig.ts` 定义 `PATH_CONFIG_DEFAULTS`、`APP_CONFIG_KEYS`，主进程和渲染层都用它。
 - **共享 IPC 通道名**：`src/shared/ipc/channels.ts` 集中定义所有 IPC 通道字符串。**改通道名必须同步 `tests/shared-contracts.test.mjs`**，否则契约测试会挂。
 

@@ -13,7 +13,7 @@ import os
 import shutil
 
 from app.common.task_manager import TaskManager
-from app.utils.env import get_output_dir, get_task_dir, get_tasks_root
+from app.env import get_output_dir, get_task_dir, get_tasks_root
 from app.utils.file_tail import tail_bytes
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log

@@ -28,12 +28,11 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional
 
-from app.utils.env import (
+from app.utils.paths import ROOT, resolve_path
+from app.env import (
     ENV_BT_SERVER_CONFIG,
-    ROOT,
     get_env,
     get_output_dir,
-    resolve_path,
 )
 
 logger = logging.getLogger(__name__)

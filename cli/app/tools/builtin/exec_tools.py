@@ -28,7 +28,7 @@ import subprocess
 
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
-from app.utils.env import get_python_bin
+from app.env import get_python_bin
 
 # Sentinel printed by the code.exec child right before the JSON result payload.
 # The parent splits stdout on this marker: everything before is user output,

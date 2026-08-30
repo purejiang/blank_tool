@@ -1,9 +1,9 @@
 import os
 
-# Leaf module: pure path helpers shared by ``app.utils.env`` and
+# Leaf module: pure path helpers shared by ``app.env`` and
 # ``app.env.registry``. Imports nothing from the rest of the app, so it can
 # never participate in an import cycle. Previously ``resolve_path`` and
-# ``get_runtime_dir`` were duplicated in both modules (each worked around an
+# ``get_runtime_dir`` were duplicated across modules (each worked around an
 # import cycle with a local copy and a "keep in sync" comment); they now live
 # here as the single source of truth.
 

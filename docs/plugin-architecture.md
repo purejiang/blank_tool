@@ -36,7 +36,7 @@
 | `node_script` | `[node, tool_path]` + 命令 | `node` |
 | `shell_script` | 平台 shell（Windows 用 `COMSPEC`/cmd.exe，其余 `/bin/sh`）+ `tool_path` + 命令 | 无 env_dep（shell 本身即运行器） |
 
-解释器来源（`_interpreter_for`，`descriptor_tool.py:683`）：优先取描述符 `env_deps` 里声明的、经 `EnvironmentRegistry` 解析出的二进制路径；未声明时回退 `app.utils.env` 的 `get_java_bin` / `get_python_bin` / `get_node_bin`。
+解释器来源（`_interpreter_for`，`descriptor_tool.py:683`）：优先取描述符 `env_deps` 里声明的、经 `EnvironmentRegistry` 解析出的二进制路径；未声明时回退 `app.env` 的 `get_java_bin` / `get_python_bin` / `get_node_bin`。
 
 **脚本类型有前置门禁**（`_ensure_script_env_available`，`descriptor_tool.py:602`）：`python_script` / `node_script` / `shell_script` 在拼命令之前必须确认运行器可用，否则直接抛 `ToolException`、不产生任何子进程；且解释器依赖**必须显式写在描述符的 `env_deps` 里**并解析成功，不沿用遗留 helper 兜底。`shell_script` 则要求能找到平台 shell。
 
@@ -68,7 +68,7 @@
 | task | `TaskManager`（`cli/app/common/task_manager.py:22`） | 任务取消注册表：进程级线程安全单例，跟踪 `process_holder` 与 `stop_event` | 否。内核持有，插件不可见、不可替换 |
 | exec | `BaseCommandExecutor` / `CommandExecutor`（`cli/app/common/base_executor.py`） | 子进程生命周期（spawn / 超时 / 取消，经 `ProcessExecutor` 委托）与敏感参数日志脱敏（`_SENSITIVE_PATTERNS`，`base_executor.py:132`） | 否。描述符工具的执行**委托**给它（`descriptor_tool.py:14`），但 executor 本身不可替换、不可被插件绕开 |
 | env | `EnvironmentRegistry`（`cli/app/env/registry.py:120`；进程单例 `get_env_registry` `:369`） | 把环境描述符解析为具体运行时路径（env 覆盖 → runtime/ → 系统环境变量 → PATH 四层优先级），结果缓存至 `refresh` | 只读。`PluginContext.env` 暴露同一个单例（`context.py:49`），插件只能查询解析结果，不能替换解析逻辑 |
-| config | `app.utils.env`（`cli/app/utils/env.py`） | `.env` 加载（`load_dotenv` `:51`）、`server.config.json` 加载（`load_server_config` `:86`）、`get_env` 与目录/二进制路径兜底（`get_output_dir` `:131` 起） | 否。后端配置的唯一入口 |
+| config | `app.env`（`cli/app/env/__init__.py`） | `.env` 加载（`load_dotenv`）、`server.config.json` 加载（`load_server_config`）、`get_env` 与目录/二进制路径兜底（`get_output_dir` 起） | 否。后端配置的唯一入口 |
 
 澄清：`EnvironmentRegistry` 的 overlay 描述符 CRUD（`add_descriptor` / `delete_descriptor`，`registry.py:269` / `:306`）属于内核 env 服务，与"环境插件化"是两回事（见下文）。
 

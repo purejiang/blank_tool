@@ -37,7 +37,7 @@ def test_discover_is_idempotent():
 
 def test_singleton_uses_writable_overlay(tmp_path, monkeypatch):
     """The singleton is initialized with overlay_dir=<output_dir>/registry."""
-    import app.utils.env as env_utils
+    import app.env as env_utils
 
     monkeypatch.setattr(env_utils, "get_output_dir", lambda: str(tmp_path))
     reg = get_env_registry()

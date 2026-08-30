@@ -15,7 +15,7 @@ from app.tools.descriptor_tool import DescriptorTool, load_descriptor
 from app.env.registry import get_env_registry
 from app.env.overrides_store import OverridesStore
 from app.utils.logger import Logger
-from app.utils.env import get_output_dir
+from app.env import get_output_dir
 from app.common.exceptions import ToolNotFoundError
 from app.tools.bootstrap.plugins import bootstrap_shipped_plugins
 
