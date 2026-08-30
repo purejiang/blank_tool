@@ -10,6 +10,7 @@ import {
 } from '../state';
 import { getBaseDir, resolveServerPath, resolvePythonExecutable } from './paths';
 import { createStderrCapturer } from './stderrCapture';
+import { isProcessWritable } from './processWritable';
 
 export async function startPythonService(): Promise<ChildProcessWithoutNullStreams | null> {
   if (getIsAppQuitting()) {
@@ -66,18 +67,6 @@ export async function startPythonService(): Promise<ChildProcessWithoutNullStrea
     setPythonProcess(null);
   });
   return proc;
-}
-
-export function isProcessWritable(proc: ChildProcessWithoutNullStreams | null): boolean {
-  return Boolean(
-    proc &&
-    !proc.killed &&
-    proc.exitCode === null &&
-    proc.stdin &&
-    !proc.stdin.destroyed &&
-    !proc.stdin.writableEnded &&
-    proc.stdin.writable
-  );
 }
 
 export async function ensurePythonService(): Promise<ChildProcessWithoutNullStreams | null> {

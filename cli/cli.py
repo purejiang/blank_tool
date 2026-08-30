@@ -44,6 +44,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 # Shared bootstrap (dotenv + server config + logging); import it from main
 # rather than duplicating it here.
 from main import bootstrap
+from app.tools.result_normalizer import normalize_result
 
 
 # ------------------------------------------------------------------
@@ -313,15 +314,8 @@ def cmd_tool(
                 )
                 return 1
 
-            success = result.get("success", True)
-            returncode = result.get("returncode", 0)
-            if success is False or returncode != 0:
-                detail = (
-                    result.get("stderr") or result.get("stdout") or ""
-                ).strip()
-                message = f"tool {name!r} failed (exit {returncode})"
-                if detail:
-                    message += f": {detail}"
+            ok, message = normalize_result(result, name)
+            if not ok:
                 print(f"error: {message}", file=sys.stderr)
                 return 1
         else:
