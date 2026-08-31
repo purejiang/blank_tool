@@ -108,7 +108,7 @@ def apk_analyze(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
                 output += line + "\n"
         proc.wait()
 
@@ -162,7 +162,7 @@ def apk_analyze(params, stream_handler):
         info["warnings"] = []
 
         # C1: SO file comparison across architectures
-        stream_handler({"type": "log", "line": "[SO Analysis] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[SO Analysis] Starting..."})
         try:
             so_map = enumerate_so_files(apk_path)
             info["native_so_detail"] = so_map
@@ -170,38 +170,38 @@ def apk_analyze(params, stream_handler):
         except Exception as e:
             logger.warning(f"SO analysis failed: {e}")
             info["warnings"].append(f"SO analysis failed: {e}")
-            stream_handler({"type": "log", "line": f"[SO Analysis] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[SO Analysis] Failed: {e}"})
 
         # C2: Compression analysis (assets/lib/dex)
-        stream_handler({"type": "log", "line": "[Compression Analysis] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[Compression Analysis] Starting..."})
         try:
             info["compression_analysis"] = analyze_compression(apk_path)
         except Exception as e:
             logger.warning(f"Compression analysis failed: {e}")
             info["warnings"].append(f"Compression analysis failed: {e}")
-            stream_handler({"type": "log", "line": f"[Compression Analysis] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[Compression Analysis] Failed: {e}"})
 
         # C3: 16KB page size support for 64-bit .so files
-        stream_handler({"type": "log", "line": "[16KB Page Check] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[16KB Page Check] Starting..."})
         try:
             info["page_size_16kb"] = check_16kb_page_support(apk_path)
         except Exception as e:
             logger.warning(f"16KB page check failed: {e}")
             info["warnings"].append(f"16KB page check failed: {e}")
-            stream_handler({"type": "log", "line": f"[16KB Page Check] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[16KB Page Check] Failed: {e}"})
 
         # C4: Meta-data from AndroidManifest.xml
-        stream_handler({"type": "log", "line": "[Meta-data Extraction] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[Meta-data Extraction] Starting..."})
         try:
             info["meta_data"] = _parse_manifest_meta_data(apk_path, task_id=task_id)
             _resolve_resource_refs(apk_path, info["meta_data"], task_id=task_id)
         except Exception as e:
             logger.warning(f"Meta-data extraction failed: {e}")
             info["warnings"].append(f"Meta-data extraction failed: {e}")
-            stream_handler({"type": "log", "line": f"[Meta-data Extraction] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[Meta-data Extraction] Failed: {e}"})
 
         # C5: File hash and signature certificate extraction
-        stream_handler({"type": "log", "line": "[Signature] Extracting certs..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[Signature] Extracting certs..."})
         try:
             info["file_md5"] = get_file_hash(apk_path, "md5") or "-"
         except Exception as e:
@@ -297,7 +297,7 @@ def apk_decompile(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 
@@ -373,7 +373,7 @@ def apk_recompile(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 
@@ -387,6 +387,7 @@ def apk_recompile(params, stream_handler):
             })
             return
 
+        warnings = []
         if options.get("zipalign"):
             zipalign = manager.get_tool("zipalign")
             if zipalign and zipalign.is_valid:
@@ -404,7 +405,7 @@ def apk_recompile(params, stream_handler):
                     if line:
                         if task_id:
                             append_task_log(task_id, line)
-                        stream_handler({"type": "log", "line": line})
+                        stream_handler({"type": "log", "task_id": task_id, "line": line})
 
                 zproc.wait()
 
@@ -413,6 +414,12 @@ def apk_recompile(params, stream_handler):
                     return
                 if zproc.returncode == 0:
                     output_apk = aligned_apk
+                else:
+                    msg = f"zipalign failed (exit={zproc.returncode}); using unaligned apk"
+                    logger.warning(msg)
+                    if task_id:
+                        append_task_log(task_id, f"[WARNING] {msg}")
+                    warnings.append(msg)
 
         if options.get("sign") and options.get("keystore"):
             keystore = options.get("keystore", {})
@@ -442,7 +449,7 @@ def apk_recompile(params, stream_handler):
                     if line:
                         if task_id:
                             append_task_log(task_id, line)
-                        stream_handler({"type": "log", "line": line})
+                        stream_handler({"type": "log", "task_id": task_id, "line": line})
 
                 sproc.wait()
 
@@ -458,7 +465,10 @@ def apk_recompile(params, stream_handler):
 
         if task_id:
             append_task_log(task_id, f"[RECOMPILE] output_apk: {output_apk}")
-        stream_handler({"type": "complete", "payload": {"output_apk": output_apk}})
+        payload = {"output_apk": output_apk}
+        if warnings:
+            payload["warnings"] = warnings
+        stream_handler({"type": "complete", "payload": payload})
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -763,7 +773,7 @@ def apk_sign(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 

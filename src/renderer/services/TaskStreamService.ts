@@ -36,6 +36,7 @@ export interface TaskCallbacks {
   onComplete?: (payload: any, phase: 'download' | 'operation') => void
   onError?: (message: string, phase: 'download' | 'operation') => void
   onCancelled?: () => void
+  onLog?: (line: string) => void
 }
 
 // ------------------------------------------------------------------
@@ -264,9 +265,18 @@ class TaskStreamService {
           break
         }
 
-        // 'log', 'started', 'process_finished' are routed to different
-        // IPC channels (logcat-output, logcat-started, logcat-finished)
-        // by the main process.  Ignore them here.
+        case 'log': {
+          // Backend task log line (apk/install/aab handlers). The main
+          // process forwards these verbatim on streamEvent; the backend
+          // already persisted the line, so the renderer only mirrors it
+          // into memory for live display (no disk write — see taskStore).
+          const line = data.line ?? data.payload?.line ?? ''
+          if (line) callbacks.onLog?.(line)
+          break
+        }
+
+        // 'started', 'process_finished' are still routed to the dedicated
+        // logcat IPC channels by the main process.  Ignore them here.
         default:
           break
       }

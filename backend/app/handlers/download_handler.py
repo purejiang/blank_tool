@@ -10,6 +10,7 @@ configured proxy is unreachable.
 """
 
 import os
+import re
 import socket
 import time
 from urllib.request import urlopen, Request, ProxyHandler, build_opener
@@ -59,6 +60,16 @@ def _task_input_dir(task_id):
     return dl
 
 
+def _sanitize_filename(name: str) -> str:
+    """Strip path separators and reserved chars so a malicious or garbled
+    filename cannot escape the task input directory (path traversal)."""
+    name = re.sub(r'[\\/:*?"<>|]', '_', name)
+    name = name.strip().strip('.')
+    if not name:
+        name = "download"
+    return name
+
+
 @streaming
 @logs_errors("DownloadHandler")
 def download_file(params, stream_handler):
@@ -75,6 +86,7 @@ def download_file(params, stream_handler):
 
     if not filename:
         filename = url.rsplit("/", 1)[-1].split("?")[0] or "download"
+    filename = _sanitize_filename(filename)
 
     dest_dir = _task_input_dir(params.get("task_id", ""))
     dest_path = os.path.join(dest_dir, filename)

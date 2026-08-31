@@ -553,6 +553,17 @@ async function executeTask(task: Task) {
       onCancelled: () => {
         taskStore.transition(task.id, 'cancel_ack')
       },
+      onLog: (line: string) => {
+        // Backend-mirrored task log line (apk/install/aab handlers).
+        // The Python backend already persisted it, so we only mirror it
+        // into memory for live display — batched to avoid UI jank.
+        const buf = logBuffers.get(task.id) ?? []
+        buf.push(line)
+        logBuffers.set(task.id, buf)
+        if (!logTimers.has(task.id)) {
+          logTimers.set(task.id, setTimeout(() => flushLogBuffer(task.id), 200))
+        }
+      },
     })
 
     // Note: latch pattern in TaskStreamService guarantees events arriving

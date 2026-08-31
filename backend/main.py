@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
-from app.utils.env import get_env, get_output_dir, load_dotenv, load_server_config, resolve_path
+from app.utils.env import ROOT, get_env, get_output_dir, load_dotenv, load_server_config, resolve_path
 from app.protocol import ErrorCode
 
 # Thread-safe lock for writing to stdout
@@ -102,8 +102,8 @@ def bootstrap():
             # Write sentinel so the warning fires only once
             os.makedirs(os.path.dirname(sentinel), exist_ok=True)
             Path(sentinel).touch()
-    except Exception:
-        pass
+    except Exception as e:
+        Logger.get_logger("Bootstrap").warning(f"legacy orphan check skipped: {e}")
 
 
 # ------------------------------------------------------------------

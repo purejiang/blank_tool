@@ -170,6 +170,13 @@ export interface ExportApkResult {
   output_dir: string
 }
 
+/** Return type of device.uninstall_app */
+export interface UninstallAppResult {
+  device_id: string
+  package_name: string
+  success: boolean
+}
+
 /** Return type of cache.info / cache.get_info */
 export interface CacheInfoResult {
   tasks: { path: string; size: number; files: number }
@@ -359,6 +366,8 @@ export interface ApiMethodMap {
   'device.shell': { params: { device_id: string; command: string }; result: DeviceShellResult }
   'device.reboot': { params: { device_id: string; mode?: string }; result: DeviceRebootResult }
   'device.get_installed_packages': { params: { device_id: string; type?: string }; result: string[] }
+  'device.uninstall_app': { params: { device_id: string; package_name: string }; result: UninstallAppResult }
+  'device.uninstall': { params: { device_id: string; package_name: string }; result: UninstallAppResult }
   'device.export_apk': { params: { device_id: string; package_name: string; output_dir?: string }; result: ExportApkResult }
 
   // --- apk_handler.py ---

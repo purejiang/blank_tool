@@ -303,6 +303,25 @@ def device_reboot(params, stream_handler):
 
 
 @logs_errors("AdbHandler")
+def device_uninstall_app(params, stream_handler):
+    device_id = params.get("device_id")
+    package_name = params.get("package_name")
+    if not device_id or not package_name:
+        raise ToolException("Missing device_id or package_name")
+
+    adb_tool = manager.get_tool("adb")
+    if not adb_tool or not adb_tool.is_valid:
+        raise ToolNotFoundError("adb")
+
+    ctx = CommandExecutionContext()
+    r = adb_tool.execute(["-s", device_id, "uninstall", package_name], ctx)
+    success = r.get("returncode", 1) == 0
+    if not success:
+        raise ToolException(r.get("stderr", "Uninstall failed"))
+    return {"device_id": device_id, "package_name": package_name, "success": True}
+
+
+@logs_errors("AdbHandler")
 def device_export_apk(params, stream_handler):
     device_id = params.get("device_id")
     package_name = params.get("package_name")
@@ -417,5 +436,7 @@ API_MAP = {
     "device.shell": device_shell,
     "device.reboot": device_reboot,
     "device.get_installed_packages": device_list_apps,
+    "device.uninstall_app": device_uninstall_app,
+    "device.uninstall": device_uninstall_app,
     "device.export_apk": device_export_apk,
 }

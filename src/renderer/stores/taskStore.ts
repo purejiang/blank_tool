@@ -279,24 +279,28 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  function appendLog(id: number, line: string) {
+  function appendLog(id: number, line: string, persist = true) {
     const task = tasks.value.find(t => t.id === id)
     if (task) {
       task.logs.push(line)
       if (task.logs.length > 500) task.logs.shift()
     }
-    // Persist to per-task log file (fire-and-forget, best-effort)
-    void persistLine(id, line)
+    // Persist to per-task log file (fire-and-forget, best-effort).
+    // `persist=false` is used for backend-mirrored lines: the Python
+    // backend already wrote them via append_task_log, so the renderer
+    // must not double-write. Front-end-authored lines (e.g. the
+    // "download started/failed" markers) keep persist=true.
+    if (persist) void persistLine(id, line)
   }
 
-  function appendLogBatch(id: number, lines: string[]) {
+  function appendLogBatch(id: number, lines: string[], persist = false) {
     const task = tasks.value.find(t => t.id === id)
     if (task) {
       task.logs.push(...lines)
       if (task.logs.length > 500) task.logs.splice(0, task.logs.length - 500)
     }
     // Persist lines in background (fire-and-forget, best-effort)
-    for (const line of lines) void persistLine(id, line)
+    if (persist) for (const line of lines) void persistLine(id, line)
   }
 
   function removeTask(id: number) {

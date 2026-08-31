@@ -69,7 +69,7 @@ def device_install_apk(params, stream_handler):
             line = line.rstrip('\n')
             if line:
                 append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 
@@ -156,7 +156,7 @@ def device_install_apks(params, stream_handler):
             line = line.rstrip('\n')
             if line:
                 append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 

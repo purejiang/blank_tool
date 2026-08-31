@@ -179,7 +179,7 @@ def install_aab(params, stream_handler):
 
     try:
         if stream_handler:
-            stream_handler({"type": "log", "line": "[AAB] Converting to APKS..."})
+            stream_handler({"type": "log", "task_id": task_id, "line": "[AAB] Converting to APKS..."})
         convert_result = convert_aab_to_apks(
             {
                 "aab_path": aab_path,
@@ -198,7 +198,7 @@ def install_aab(params, stream_handler):
             raise ToolException("No APKS path after conversion")
 
         if stream_handler:
-            stream_handler({"type": "log", "line": f"[AAB] APKS generated: {apks_path}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[AAB] APKS generated: {apks_path}"})
 
         bundletool = manager.get_tool("bundletool")
         if not bundletool or not bundletool.is_valid:
@@ -217,7 +217,7 @@ def install_aab(params, stream_handler):
             raise ToolException("Java runtime not found or invalid")
 
         if stream_handler:
-            stream_handler({"type": "log", "line": f"[AAB] Installing to device {device_id}..."})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[AAB] Installing to device {device_id}..."})
 
         args = [
             java, "-jar", bundletool.tool_path,
