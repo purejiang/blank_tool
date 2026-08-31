@@ -44,6 +44,9 @@
           <n-form-item :label="t('settings.autoDeleteOutput')">
             <n-switch v-model:value="general.autoDeleteOutputOnTaskRemove" @update:value="saveGeneral" />
           </n-form-item>
+          <n-form-item :label="t('settings.useProxyForDownload')">
+            <n-switch v-model:value="general.useProxyForDownload" @update:value="saveGeneral" />
+          </n-form-item>
           <n-form-item :label="t('settings.timeout')">
             <n-input-number v-model:value="general.timeout" :min="10" :max="600" :step="10" @update:value="saveGeneral" style="width: 120px">
               <template #suffix>{{ t('settings.seconds') }}</template>
@@ -306,7 +309,7 @@ const triggerSaved = () => {
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, timeout: 300 })
+const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, useProxyForDownload: false, timeout: 300 })
 const logLevel = ref('info')
 const logLevelOptions = [
   { label: 'Debug', value: 'debug' },

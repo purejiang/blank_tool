@@ -3,6 +3,7 @@ import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
+import { getConfigValue } from '../stores/appStore';
 
 interface CallbackInfo {
     resolve: (value: unknown) => void;
@@ -183,6 +184,9 @@ export function setupCommandHandlers(
             requestCallbacks.set(request.id, { resolve: wrappedResolve, reject: wrappedReject, sender: event.sender, process: pythonProcess });
 
             try {
+                if (request.method === 'download.file') {
+                    request.params = { ...(request.params ?? {}), use_proxy: getConfigValue('useProxyForDownload') === true };
+                }
                 const payload = JSON.stringify(request) + '\n';
                 const success = pythonProcess.stdin.write(payload);
                 if (!success && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {

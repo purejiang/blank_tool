@@ -370,6 +370,7 @@ export default {
     themeDark: '深色',
     autoDeleteOutput: '删除任务时清理输出文件',
     notifications: '通知',
+    useProxyForDownload: '下载使用代理',
     timeout: '请求超时',
     logging: '日志',
     loggingLevel: '日志级别',

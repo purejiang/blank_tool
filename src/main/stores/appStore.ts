@@ -9,6 +9,7 @@ const LEGACY_SETTINGS_DEFAULTS = {
     theme: 'auto',
     enableNotifications: true,
     autoDeleteOutputOnTaskRemove: false,
+    useProxyForDownload: false,
     adbPath: '',
     aaptPath: '',
     apktoolPath: '',
@@ -169,6 +170,10 @@ const schema = {
     autoDeleteOutputOnTaskRemove: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.autoDeleteOutputOnTaskRemove
+    },
+    useProxyForDownload: {
+        type: 'boolean',
+        default: LEGACY_SETTINGS_DEFAULTS.useProxyForDownload
     },
     adbPath: {
         type: 'string',

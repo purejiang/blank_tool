@@ -369,6 +369,7 @@ export default {
     themeDark: 'Dark',
     autoDeleteOutput: 'Delete output files on task removal',
     notifications: 'Notifications',
+    useProxyForDownload: 'Use proxy for downloads',
     timeout: 'Request Timeout',
     logging: 'Logging',
     loggingLevel: 'Log Level',
