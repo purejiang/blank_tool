@@ -319,6 +319,12 @@ function syncNowTimer() {
 
 onMounted(() => {
   logUtil.debug('任务管理页面已挂载')
+  // 重启后自动回读已展开的已完成任务的磁盘日志，避免日志框空白
+  for (const task of taskStore.tasks) {
+    if (!task.collapsed && isTerminal(task.status) && !taskLogCache.value.has(task.id)) {
+      loadTaskLog(task)
+    }
+  }
 })
 
 onUnmounted(() => {
