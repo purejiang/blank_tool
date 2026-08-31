@@ -300,6 +300,13 @@ export interface DeleteTaskDirResult {
   error?: string
 }
 
+/** Return type of task.export_log */
+export interface ExportLogResult {
+  success: boolean
+  file_path?: string
+  error?: string
+}
+
 /** Single task entry in task.list response */
 export interface TaskListItem {
   task_id: string
@@ -417,6 +424,7 @@ export interface ApiMethodMap {
   // --- task_handler.py ---
   'task.delete_output': { params: { paths: string[] }; result: DeleteOutputResult }
   'task.read_log': { params: { task_id: string; tail_bytes?: number }; result: TaskLogResult }
+  'task.export_log': { params: { task_id: string; file_path: string }; result: ExportLogResult }
   'task.append_log': { params: { task_id: string; line: string }; result: { written: boolean } }
   'task.delete_task_dir': { params: { task_id: string }; result: DeleteTaskDirResult }
   'task.list': { params: Record<string, never>; result: TaskListResult }

@@ -111,6 +111,35 @@ def handle_read_log(params, stream_handler):
         return {"content": "", "truncated": False, "size": 0, "error": str(e), "log_path": log_path}
 
 
+def handle_export_log(params, stream_handler):
+    """Copy ``task_exec.log`` to a user-chosen path.
+
+    ``file_path`` originates from the renderer's OS save dialog, so it is a
+    deliberate user write target (not an untrusted devtools edit). Only the
+    canonical task log is read; the destination is whatever the user picked.
+    """
+    task_id = params.get("task_id", "")
+    file_path = params.get("file_path", "")
+    if not task_id or not file_path:
+        return {"success": False, "error": "Missing task_id or file_path"}
+
+    try:
+        log_path = os.path.join(get_task_dir(task_id), "logs", "task_exec.log")
+    except ValueError as e:
+        logger.warning(f"Invalid task_id for export_log: {e}")
+        return {"success": False, "error": str(e)}
+
+    if not os.path.exists(log_path):
+        return {"success": False, "error": "Log file not found"}
+
+    try:
+        shutil.copyfile(log_path, file_path)
+        return {"success": True, "file_path": file_path}
+    except Exception as e:
+        logger.warning(f"Failed to export task log '{log_path}' -> '{file_path}': {e}")
+        return {"success": False, "error": str(e)}
+
+
 def handle_append_log(params, stream_handler):
     task_id = params.get("task_id", "")
     line = params.get("line", "")
@@ -164,6 +193,7 @@ def handle_cancel_request(params, stream_handler):
 API_MAP = {
     "task.delete_output": handle_delete_output,
     "task.read_log": handle_read_log,
+    "task.export_log": handle_export_log,
     "task.append_log": handle_append_log,
     "task.delete_task_dir": handle_delete_task_dir,
     "task.list": handle_list_tasks,

@@ -15,7 +15,7 @@ import tempfile
 
 import pytest
 
-from app.handlers.task_handler import handle_delete_output, handle_read_log, handle_append_log, handle_delete_task_dir
+from app.handlers.task_handler import handle_delete_output, handle_read_log, handle_append_log, handle_delete_task_dir, handle_export_log
 from app.utils.env import get_output_dir
 
 
@@ -271,3 +271,49 @@ def test_append_log_empty_skips():
     # Both empty
     r3 = handle_append_log({"task_id": "", "line": ""}, None)
     assert r3 == {"written": False}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# handle_export_log
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_export_log_copies_to_target():
+    """handle_export_log must copy task_exec.log to the chosen destination."""
+    from app.utils.env import get_task_dir
+    task_dir = get_task_dir("ct_export_test")
+    logs_dir = os.path.join(task_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    log_path = os.path.join(logs_dir, "task_exec.log")
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("export me\nsecond line\n")
+
+    fd, dest = tempfile.mkstemp(prefix="ct_export_", suffix=".log")
+    os.close(fd)
+
+    try:
+        result = handle_export_log({"task_id": "ct_export_test", "file_path": dest}, None)
+        assert result["success"] is True
+        assert result["file_path"] == dest
+        with open(dest, "r", encoding="utf-8") as f:
+            assert f.read() == "export me\nsecond line\n"
+    finally:
+        if os.path.exists(dest):
+            os.remove(dest)
+
+
+def test_export_log_missing_params():
+    assert handle_export_log({"task_id": "", "file_path": ""}, None)["success"] is False
+    assert handle_export_log({"task_id": "ct_export_test"}, None)["success"] is False
+
+
+def test_export_log_missing_source():
+    fd, dest = tempfile.mkstemp(prefix="ct_export_missing_", suffix=".log")
+    os.close(fd)
+    try:
+        result = handle_export_log({"task_id": "ct_export_nonexistent_zzz", "file_path": dest}, None)
+        assert result["success"] is False
+        assert "not found" in result["error"]
+    finally:
+        if os.path.exists(dest):
+            os.remove(dest)

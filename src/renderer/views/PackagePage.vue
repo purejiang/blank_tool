@@ -178,22 +178,51 @@
             <span class="task-output-path">{{ t('task.installedToDevice', { label: task.deviceLabel }) }}</span>
           </div>
           <div v-if="task.result" class="task-result" v-html="task.result" />
-          <!-- Terminal task: has file log content → show it with refresh -->
-          <div v-if="isTerminal(task.status) && taskLogCache.has(task.id) && taskLogCache.get(task.id)?.length" class="task-logs">
-            <div class="task-logs-header" style="display:flex;justify-content:flex-end;margin-bottom:4px;">
-              <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary @click.stop="loadFullTaskLog(task)" :title="t('task.expandLog')">
+          <!-- Unified task log: file log (terminal) or in-memory log (running) -->
+          <div v-if="displayLog(task).length > 0" class="task-logs">
+            <div class="task-logs-toolbar">
+              <n-input
+                :value="logSearchMap.get(task.id) || ''"
+                :placeholder="t('task.logSearch')"
+                size="tiny"
+                clearable
+                style="flex:1; min-width:0"
+                @update:value="(v: string) => logSearchMap.set(task.id, v)"
+              >
+                <template #prefix><n-icon size="13" color="var(--app-text-dim)"><Search /></n-icon></template>
+              </n-input>
+              <n-button size="tiny" quaternary :title="t('task.copyLog')" @click.stop="copyLog(task)">
+                <template #icon><n-icon size="14"><Copy /></n-icon></template>
+              </n-button>
+              <n-button size="tiny" quaternary :title="t('task.exportLog')" @click.stop="exportTaskLog(task)">
+                <template #icon><n-icon size="14"><Download /></n-icon></template>
+              </n-button>
+              <n-switch
+                :value="autoScrollMap.get(task.id) !== false"
+                size="small"
+                :title="t('task.autoScroll')"
+                @update:value="(v: boolean) => autoScrollMap.set(task.id, v)"
+              />
+            </div>
+            <div v-if="showTruncation(task)" class="task-log-trunc-hint">
+              <n-icon size="13"><AlertTriangle /></n-icon>
+              <span>{{ t('task.logTruncatedHint') }}</span>
+            </div>
+            <div v-if="isTerminal(task.status)" class="task-logs-header" style="display:flex;justify-content:flex-end;margin:4px 0;">
+              <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary :title="t('task.logFullView')" @click.stop="loadFullTaskLog(task)">
                 <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
               </n-button>
-              <n-button v-else size="tiny" quaternary @click.stop="collapseTaskLog(task)" :title="t('task.collapseLog')">
+              <n-button v-else size="tiny" quaternary :title="t('task.logTailView')" @click.stop="collapseTaskLog(task)">
                 <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
               </n-button>
-              <n-button size="tiny" quaternary @click.stop="openLogFile(task)" :title="t('task.openLogFile')">
+              <n-button size="tiny" quaternary :title="t('task.openLogFile')" @click.stop="openLogFile(task)">
                 <template #icon><n-icon size="14"><FileText /></n-icon></template>
               </n-button>
             </div>
             <n-virtual-list
+              :ref="(el: any) => onLogListRef(task.id, el)"
               :key="'log-' + task.id + '-' + (logExpandedMap.get(task.id) ? 'full' : 'tail')"
-              :items="taskLogCache.get(task.id) || []"
+              :items="displayLog(task)"
               :item-size="18"
               item-resizable
               style="max-height: 170px"
@@ -202,34 +231,6 @@
                 <div class="task-log-line">{{ item.text }}</div>
               </template>
             </n-virtual-list>
-          </div>
-          <!-- Fallback: show in-memory logs (running tasks, OR terminal tasks without file log) -->
-          <div v-else-if="task.logs.length > 0" class="task-logs">
-            <div v-if="isTerminal(task.status)" class="task-logs-header" style="display:flex;justify-content:flex-end;margin-bottom:4px;">
-              <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary @click.stop="loadFullTaskLog(task)" :title="t('task.expandLog')">
-                <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
-              </n-button>
-              <n-button v-else size="tiny" quaternary @click.stop="collapseTaskLog(task)" :title="t('task.collapseLog')">
-                <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
-              </n-button>
-              <n-button size="tiny" quaternary @click.stop="openLogFile(task)" :title="t('task.openLogFile')">
-                <template #icon><n-icon size="14"><FileText /></n-icon></template>
-              </n-button>
-            </div>
-            <n-virtual-list
-              v-if="task.logs.length > 100"
-              :items="task.logs.map((text, i) => ({ key: i, text }))"
-              :item-size="18"
-              item-resizable
-              style="max-height: 170px"
-            >
-              <template #default="{ item }">
-                <div class="task-log-line">{{ item.text }}</div>
-              </template>
-            </n-virtual-list>
-            <div v-else>
-              <div v-for="(line, i) in task.logs" :key="i" class="task-log-line">{{ line }}</div>
-            </div>
           </div>
         </div>
       </div>
@@ -239,12 +240,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NVirtualList, useDialog } from 'naive-ui'
+import { NIcon, NVirtualList, useDialog, NSwitch, NInput } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText, Smartphone
+  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText, Smartphone,
+  Search, Copy, AlertTriangle
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
@@ -262,7 +264,7 @@ const sigStore = useSignatureStore()
 const deviceStore = useDeviceStore()
 if (sigStore.configs.length === 0) sigStore.loadConfigs()
 
-const { showError, showWarning } = useNotification()
+const { showError, showWarning, showSuccess } = useNotification()
 
 const OP_TAG_MAP: Record<Task['operation'], string> = {
   analyze: 'info', install: 'success', decompile: 'warning', recompile: 'warning', resign: 'error'
@@ -278,6 +280,87 @@ let nowIv: ReturnType<typeof setInterval> | null = null
 const taskLogCache = ref<Map<number, { key: number; text: string }[]>>(new Map())
 const taskLogPathCache = ref<Map<number, string>>(new Map())
 const logExpandedMap = ref<Map<number, boolean>>(new Map())
+// Log UI enhancement (Batch 2): per-task search / auto-scroll / truncation state + virtual-list refs
+const logSearchMap = ref<Map<number, string>>(new Map())
+const autoScrollMap = ref<Map<number, boolean>>(new Map())
+const logTruncatedMap = ref<Map<number, boolean>>(new Map())
+const logListRefs = new Map<number, any>()
+
+function getLogArray(task: Task): { key: number; text: string }[] {
+  if (isTerminal(task.status) && taskLogCache.value.has(task.id) && taskLogCache.value.get(task.id)?.length) {
+    return taskLogCache.value.get(task.id)!
+  }
+  return task.logs.map((text, i) => ({ key: i, text }))
+}
+
+function displayLog(task: Task): { key: number; text: string }[] {
+  const arr = getLogArray(task)
+  const q = (logSearchMap.value.get(task.id) || '').trim().toLowerCase()
+  if (!q) return arr
+  return arr.filter((l) => l.text.toLowerCase().includes(q))
+}
+
+function showTruncation(task: Task): boolean {
+  return isTerminal(task.status) && !logExpandedMap.value.get(task.id) && logTruncatedMap.value.get(task.id) === true
+}
+
+function onLogListRef(taskId: number, el: any) {
+  if (el) logListRefs.set(taskId, el)
+  else logListRefs.delete(taskId)
+}
+
+function scrollLogToBottom(taskId: number) {
+  const task = taskStore.tasks.find((t) => t.id === taskId)
+  if (!task) return
+  const el = logListRefs.get(taskId)
+  if (!el || typeof el.scrollTo !== 'function') return
+  const len = displayLog(task).length
+  if (len > 0) {
+    try { el.scrollTo({ index: len - 1 }) } catch { /* ignore */ }
+  }
+}
+
+async function copyLog(task: Task) {
+  const lines = displayLog(task).map((l) => l.text)
+  if (lines.length === 0) return
+  const text = lines.join('\n')
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const api = window.electronAPI as any
+      if (api?.writeClipboardText) await api.writeClipboardText(text)
+    }
+    showSuccess(t('task.copyLog'), t('task.logCopied'))
+  } catch (e) {
+    showWarning(t('task.copyLog'), String(e))
+  }
+}
+
+async function exportTaskLog(task: Task) {
+  try {
+    const api = window.electronAPI as any
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    const def = `task-${task.id}-${ts}.log`
+    let filePath = ''
+    if (api?.showSaveDialog) {
+      const res = await api.showSaveDialog({ title: t('task.exportLog'), defaultPath: def, filters: [{ name: 'Log', extensions: ['log', 'txt'] }] })
+      if (!res || res.canceled) return
+      filePath = res.filePath || ''
+    }
+    if (!filePath) return
+    const result = await api.callBackendAPI('task.export_log', { task_id: String(task.id), file_path: filePath })
+    if (result?.success) {
+      showSuccess(t('task.exportLog'), result.file_path || '')
+    } else {
+      showError(t('task.exportLog'), result?.error || 'failed')
+    }
+  } catch (e) {
+    showError(t('task.exportLog'), String(e))
+  }
+}
 
 // Log buffering: batch high-volume stream events to avoid UI jank
 const logBuffers = new Map<number, string[]>()
@@ -288,6 +371,9 @@ function flushLogBuffer(taskId: number) {
   if (buf && buf.length > 0) {
     taskStore.appendLogBatch(taskId, [...buf])
     buf.length = 0
+    if (autoScrollMap.value.get(taskId) !== false) {
+      nextTick(() => scrollLogToBottom(taskId))
+    }
   }
   logTimers.delete(taskId)
 }
@@ -416,9 +502,14 @@ async function loadTaskLog(task: Task) {
     if (result.log_path) {
       taskLogPathCache.value.set(task.id, result.log_path)
     }
+    logTruncatedMap.value.set(task.id, result.truncated === true)
     const content = (result.content || '').trim()
     if (content) {
       taskLogCache.value.set(task.id, splitLogLines(content))
+    }
+    if (autoScrollMap.value.get(task.id) !== false) {
+      await nextTick()
+      scrollLogToBottom(task.id)
     }
   } catch (e) {
     taskLogCache.value.set(task.id, [{ key: 0, text: `[Error loading log: ${e}]` }])
@@ -446,14 +537,21 @@ async function loadFullTaskLog(task: Task) {
       taskLogCache.value.set(task.id, splitLogLines(content))
     }
     logExpandedMap.value.set(task.id, true)
+    if (autoScrollMap.value.get(task.id) !== false) {
+      await nextTick()
+      scrollLogToBottom(task.id)
+    }
   } catch (e) {
     // keep existing cache on error
   }
 }
 
 function collapseTaskLog(task: Task) {
-  taskLogCache.value.delete(task.id)
+  // Switch back to tail view WITHOUT dropping the cache: re-read the tail so
+  // the virtual list shows the truncated tail again, but the cache Map entry
+  // stays alive (no delete) for cheap re-expand.
   logExpandedMap.value.set(task.id, false)
+  loadTaskLog(task)
 }
 
 async function openLogFile(task: Task) {
@@ -1175,6 +1273,18 @@ function renderApkInfo(data: any) {
   line-height: 1.6;
 }
 .task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-logs-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.task-logs-toolbar .n-switch { flex: 0 0 auto; }
+.task-log-trunc-hint {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--app-warning, #d97706);
+  background: rgba(217, 119, 6, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+}
 
 .meta-table tbody tr:hover {
   background: rgba(0, 0, 0, 0.03);
