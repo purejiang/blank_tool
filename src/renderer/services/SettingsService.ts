@@ -69,7 +69,12 @@ class SettingsService {
     const appStore = await this.storeService.ensureAppConfigStore()
     const appConfigApi = this.getAppConfigApi()
     if (appConfigApi) {
-      try { await appConfigApi.setMany(updates || {}) } catch {}
+      // Surface persistence failures instead of silently keeping the
+      // renderer-only value (previously a rejected key looked like a save).
+      const res = await appConfigApi.setMany(updates || {}) as { success?: boolean; error?: string } | undefined
+      if (res && typeof res === 'object' && res.success === false) {
+        throw new Error(res.error || 'Failed to save settings')
+      }
     }
     await appStore.update(updates)
     return await this.loadSettingsModel()

@@ -163,6 +163,12 @@ const schema = {
         enum: ['auto', 'light', 'dark'],
         default: LEGACY_SETTINGS_DEFAULTS.theme
     },
+    timeout: {
+        type: 'number',
+        minimum: 10,
+        maximum: 600,
+        default: 300
+    },
     enableNotifications: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.enableNotifications

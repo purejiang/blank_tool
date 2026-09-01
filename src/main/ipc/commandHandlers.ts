@@ -30,7 +30,7 @@ export const createErrorResponse = (message: string, code: number = -32603) => (
 export function setupCommandHandlers(
     getPythonProcess: () => ChildProcessWithoutNullStreams | null,
     ensurePythonProcess?: () => Promise<ChildProcessWithoutNullStreams | null>,
-    requestTimeout = 300000
+    requestTimeout: number | (() => number) = 300000
 ): void {
     const requestCallbacks = new Map<string | number, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
@@ -215,7 +215,7 @@ export function setupCommandHandlers(
                     log.info(`[trace ${request.id}] timed out`);
                     resolve(createErrorResponse('请求超时', -32003));
                 }
-            }, requestTimeout);
+            }, typeof requestTimeout === 'function' ? requestTimeout() : requestTimeout);
         });
     });
 }
