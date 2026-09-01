@@ -1378,7 +1378,7 @@ function renderApkInfo(data: any) {
 .apk-meta th { text-align: left; color: var(--app-text-dim); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--app-card-border); padding: 4px 6px; }
 .apk-meta td { padding: 4px 6px; border-bottom: 1px solid var(--app-card-border); color: var(--app-text-secondary); vertical-align: top; word-break: break-word; }
 .apk-meta tr:last-child td { border-bottom: none; }
-.apk-parent { font-family: monospace; font-size: 11px; color: var(--app-text-dim); }
+.apk-parent { font-family: monospace; font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
 .apk-res { font-size: 11px; color: var(--app-text-muted); font-family: monospace; }
 
 .apk-muted { color: var(--app-text-dim); font-size: 12px; }
