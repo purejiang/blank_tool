@@ -37,6 +37,33 @@ class PluginContext:
                 "payload": f"[{self.plugin_name}] {message}"
             })
 
+    def complete(self, payload: dict):
+        """Emit the terminal ``complete`` event so the frontend's
+        ``waitForPhase('operation')`` latch resolves.
+
+        Must be called exactly once at the end of a plugin run (success,
+        abort, or cancel). After this, the streaming wrapper sends the
+        final ``finished: True`` envelope.
+        """
+        self._logger.info(f"[{self.plugin_name}] complete: {payload}")
+        if self._stream_handler:
+            self._stream_handler({
+                "type": "complete",
+                "payload": payload,
+            })
+
+    def is_cancelled(self) -> bool:
+        """Return True if the task was cancelled (stop_event set).
+
+        The stop_event is attached to the stream callback by
+        api_handler.stream_handler (``stream_callback.bt_stop_event``).
+        Returns False when running outside a streaming context.
+        """
+        stop_event = getattr(self._stream_handler, "bt_stop_event", None)
+        if stop_event is None:
+            return False
+        return bool(stop_event.is_set())
+
     def get_tool(self, tool_name: str) -> Any:
         """获取指定工具实例"""
         tool = self._tool_manager.get_tool(tool_name)

@@ -223,8 +223,9 @@ class TaskStreamService {
         }
 
         case 'error': {
+          const p = data.payload
           const msg =
-            data.payload?.message ||
+            (typeof p === 'string' ? p : (p && p.message)) ||
             data.message ||
             'Unknown error'
           const phase = (ps?.currentPhase || 'download') as 'download' | 'operation'
@@ -270,8 +271,15 @@ class TaskStreamService {
           // process forwards these verbatim on streamEvent; the backend
           // already persisted the line, so the renderer only mirrors it
           // into memory for live display (no disk write — see taskStore).
-          const line = data.line ?? data.payload?.line ?? ''
-          if (line) callbacks.onLog?.(line)
+          // Plugins (e.g. adb_auto) send the line as a bare string payload
+          // ("[plugin] msg"); tolerate both string and {line} payloads.
+          let line: any = data.line
+          if (line === undefined) {
+            const p = data.payload
+            if (typeof p === 'string') line = p
+            else if (p && typeof p.line === 'string') line = p.line
+          }
+          if (line) callbacks.onLog?.(String(line))
           break
         }
 

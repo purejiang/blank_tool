@@ -7,6 +7,7 @@ Plugin listing, execution, and reload handlers.
 from app.plugins.manager import PluginManager
 from app.utils.logger import Logger
 from app.common.exceptions import ToolException
+from app.common.decorators import streaming
 
 logger = Logger.get_logger("PluginHandler")
 manager = PluginManager.instance()
@@ -21,6 +22,7 @@ def list_plugins(params, stream_handler):
         raise
 
 
+@streaming
 def run_plugin(params, stream_handler):
     """Run a specified plugin."""
     plugin_name = params.get("name")
