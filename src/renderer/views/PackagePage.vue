@@ -189,7 +189,7 @@
             <n-icon size="14" color="var(--app-green)"><Smartphone /></n-icon>
             <span class="task-output-path">{{ t('task.installedToDevice', { label: task.deviceLabel }) }}</span>
           </div>
-          <div v-if="task.result" class="task-result" v-html="task.result" />
+          <div v-if="task.result" class="task-result" v-html="task.result" @click="onResultCopy" />
           <!-- Unified task log: file log (terminal) or in-memory log (running) -->
           <div v-if="displayLog(task).length > 0" class="task-logs">
             <div class="task-logs-toolbar">
@@ -368,6 +368,27 @@ async function copyLog(task: Task) {
   } catch (e) {
     showWarning(t('task.copyLog'), String(e))
   }
+}
+
+// Delegated click handler for the analysis result card (rendered via v-html).
+// The FB Hash Key row carries a `data-fb-hash` attribute; clicking the copy
+// affordance next to it copies that value to the clipboard.
+function onResultCopy(e: MouseEvent) {
+  const el = e.target as HTMLElement | null
+  const hash = el?.getAttribute?.('data-fb-hash')
+  if (!hash) return
+  const copy = async () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(hash)
+    } else {
+      const api = window.electronAPI as any
+      if (api?.writeClipboardText) await api.writeClipboardText(hash)
+      else throw new Error('clipboard unavailable')
+    }
+  }
+  copy()
+    .then(() => showSuccess(t('task.fbHashKey'), t('task.logCopied')))
+    .catch((err) => showWarning(t('task.fbHashKey'), String(err)))
 }
 
 async function exportTaskLog(task: Task) {
@@ -1010,6 +1031,10 @@ function renderApkInfo(data: any) {
     }
     if (sigSha256 && sigSha256 !== '-') {
       html += `<div><span style="color:var(--app-text-dim)">${label('sigSha256')}：</span><span style="color:var(--app-text-secondary)">${esc(sigSha256)}</span></div>`
+    }
+    const fbHashKey = data.fb_hash_key
+    if (fbHashKey && fbHashKey !== '-') {
+      html += `<div style="display:flex;align-items:center;gap:6px"><span style="color:var(--app-text-dim)">${label('fbHashKey')}：</span><span style="color:var(--app-text-secondary)">${esc(fbHashKey)}</span><span data-fb-hash="${esc(fbHashKey)}" title="${label('copyLog')}" style="cursor:pointer;color:var(--app-text-dim);text-decoration:underline;font-size:11px;user-select:none">${label('copyLog')}</span></div>`
     }
     if (sigMd5 === '-' || sigSha1 === '-' || sigSha256 === '-') {
       html += `<span style="color:var(--app-yellow,#ca8a04);font-size:11px;margin-top:4px">${label('unsignedApk')}</span>`

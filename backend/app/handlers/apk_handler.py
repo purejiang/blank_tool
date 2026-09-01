@@ -4,6 +4,7 @@
 APK analysis, decompile, recompile, and signing handlers.
 """
 
+import base64
 import os
 import re
 
@@ -216,6 +217,22 @@ def apk_analyze(params, stream_handler):
             info["sig_sha256"] = sig_info.get("sig_sha256", "-")
             if "sig_warning" in sig_info:
                 info["warnings"].append(sig_info["sig_warning"])
+            # Facebook Hash Key = base64( SHA1(cert DER) ).
+            # apksigner's reported SHA-1 digest is computed over the DER-encoded
+            # certificate, which is exactly what `keytool -exportcert | openssl
+            # sha1 -binary | base64` produces. So we reuse the already-extracted
+            # sig_sha1 (hex) and base64-encode its raw 20 bytes — no keystore
+            # password or openssl/keytool needed.
+            sha1_hex = info.get("sig_sha1", "-")
+            if sha1_hex and sha1_hex != "-":
+                try:
+                    info["fb_hash_key"] = base64.b64encode(
+                        bytes.fromhex(sha1_hex)
+                    ).decode("ascii")
+                except Exception:
+                    info["fb_hash_key"] = "-"
+            else:
+                info["fb_hash_key"] = "-"
         except Exception as e:
             logger.warning(f"Signature extraction failed: {e}")
             info["sig_md5"] = "-"
@@ -229,6 +246,8 @@ def apk_analyze(params, stream_handler):
             append_task_log(task_id, f"[ANALYZE] sdk: min={info.get('min_sdk_version', '-')} target={info.get('target_sdk_version', '-')}")
             append_task_log(task_id, f"[ANALYZE] file_md5={info.get('file_md5', '-')} size={info.get('file_size', 0)}")
             append_task_log(task_id, f"[ANALYZE] sig_sha256={info.get('sig_sha256', '-')}")
+            if info.get('fb_hash_key', '-') != '-':
+                append_task_log(task_id, f"[ANALYZE] fb_hash_key={info.get('fb_hash_key', '-')}")
             append_task_log(task_id, f"[ANALYZE] permissions={len(info.get('permissions', []))}")
             if info.get('native_libs'):
                 append_task_log(task_id, f"[ANALYZE] native_abis={info['native_libs']}")

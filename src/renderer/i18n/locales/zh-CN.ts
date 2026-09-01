@@ -337,6 +337,7 @@ export default {
     sigMd5: '签名 MD5',
     sigSha1: '签名 SHA1',
     sigSha256: '签名 SHA256',
+    fbHashKey: 'Facebook Hash Key',
     unsignedApk: '未签名或证书缺失',
   },
   // Signature Edit Modal
