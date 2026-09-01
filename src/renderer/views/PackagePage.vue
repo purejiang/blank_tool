@@ -939,43 +939,14 @@ function renderApkInfo(data: any) {
     return `<span class="apk-archchip" style="background:${color}18;color:${color};border:1px solid ${color}40">${esc(abi)}</span>`
   }).join('')
 
-  const permBadge = (p: string, danger: boolean) => {
-    const name = p.replace('android.permission.', '')
-    const cls = danger ? 'apk-badge apk-badge--danger' : 'apk-badge apk-badge--normal'
-    return `<span title="${esc(p)}" class="${cls}">${esc(name)}</span>`
-  }
+  const lv = (danger: boolean) =>
+    `<span class="apk-lv ${danger ? 'apk-lv--danger' : 'apk-lv--normal'}">${danger ? '危险' : '普通'}</span>`
 
   const soComp = data.so_comparison
   const comp = data.compression_analysis
   const page16 = data.page_size_16kb
 
-  // Compute summaries for deep analysis toggle text
-  let soCompSummary = ''
-  if (soComp && !soComp.single_arch && !soComp.no_native && soComp.arches && Object.keys(soComp.arches).length > 0) {
-    soCompSummary = `${label('soComparison')} (${Object.keys(soComp.arches).length} arches / ${soComp.baseline?.length || 0} unique .so)`
-  }
-
-  let compSummary = ''
-  if (comp && Object.keys(comp).length > 0) {
-    const compParts: string[] = []
-    for (const [cat, info] of Object.entries(comp)) {
-      const c = info as any
-      compParts.push(`${cat}: ${c.stored||0}s/${c.deflated||0}c`)
-    }
-    compSummary = `${label('compressionAnalysis')} (${compParts.join(', ')})`
-  }
-
-  let pageSummaryParts: string[] = []
-  if (page16) {
-    for (const [arch, files] of Object.entries(page16)) {
-      if (arch === 'skipped') continue
-      const entries = Object.values(files as any) as any[]
-      const total = entries.length
-      const supported = entries.filter((e: any) => e.supports_16kb).length
-      pageSummaryParts.push(`${esc(arch)}: ${supported}/${total}`)
-    }
-  }
-  const pageSummary = pageSummaryParts.join(', ')
+  // summaries computed inline per section below
 
   const metaData = data.meta_data
   const fileMd5 = data.file_md5
@@ -983,130 +954,115 @@ function renderApkInfo(data: any) {
   const sigSha1 = data.sig_sha1
   const sigSha256 = data.sig_sha256
   const hasAnyHash = (fileMd5 && fileMd5 !== '-') || (sigMd5 && sigMd5 !== '-') || (sigSha1 && sigSha1 !== '-') || (sigSha256 && sigSha256 !== '-')
+  const unsigned = sigMd5 === '-' || sigSha1 === '-' || sigSha256 === '-'
   const hasSoCompFull = soComp && !soComp.single_arch && !soComp.no_native && soComp.arches && Object.keys(soComp.arches).length > 0
   const hasComp = comp && Object.keys(comp).length > 0
   const hasPage16 = page16 && !page16.no_64bit_native && Object.keys(page16).filter(k => k !== 'skipped').length > 0
 
-  const stat = (k: string, v: string) =>
-    `<div class="apk-stat"><div class="apk-stat-k">${k}</div><div class="apk-stat-v">${v}</div></div>`
-  const hashRow = (k: string, v: string) =>
-    `<div class="apk-hashrow"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`
+  const table = (headers: string[], rows: string[]) =>
+    `<table class="apk-table"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`
+  const trow = (cells: string[]) => `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`
+  const head = (title: string, summary = '') =>
+    `<summary><span class="apk-sum-grp">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</span><span class="chev">▸</span></summary>`
+  const card = (title: string, summary: string, body: string) =>
+    `<details class="apk-card" open>${head(title, summary)}<div class="apk-card-body">${body}</div></details>`
+  const simpleCard = (title: string, summary: string, body: string) =>
+    `<div class="apk-card"><div class="apk-card-h">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</div>${body}</div>`
 
   let html = '<div class="apk-info">'
 
-  // ===== IDENTITY CARD =====
-  html += '<div class="apk-card">'
-  html += `<div class="apk-name">${esc(data.application_label)}</div>`
-  html += `<div class="apk-pkg">${esc(data.package_name)}</div>`
-  html += '<div class="apk-statgrid">'
-  html += stat(label('version'), `${esc(data.version_name)} <span style="color:var(--app-text-dim);font-weight:400">(${esc(data.version_code)})</span>`)
-  html += stat(label('fileSize'), fmtSize(data.file_size))
-  html += stat(`${label('minSdk')} / ${label('targetSdk')}`, `${esc(data.min_sdk_version)} / ${esc(data.target_sdk_version)}`)
-  if (archChips) html += stat(label('architecture'), archChips)
-  html += '</div>'
-  if (data.warnings && Array.isArray(data.warnings) && data.warnings.length > 0) {
-    html += `<div class="apk-warn"><b>${label('warnings')}</b>：${data.warnings.map((w: any) => esc(String(w))).join('；')}</div>`
+  // ===== BASIC INFO =====
+  {
+    const rows: string[] = []
+    rows.push(trow([label('version'), `${esc(data.version_name)} <span style="color:var(--app-text-dim);font-weight:400">(${esc(data.version_code)})</span>`]))
+    rows.push(trow([label('fileSize'), fmtSize(data.file_size)]))
+    rows.push(trow([`${label('minSdk')} / ${label('targetSdk')}`, `${esc(data.min_sdk_version)} / ${esc(data.target_sdk_version)}`]))
+    if (archChips) rows.push(trow([label('architecture'), archChips]))
+    let body = table(['项目', '值'], rows)
+    if (data.warnings && Array.isArray(data.warnings) && data.warnings.length > 0) {
+      body += `<div class="apk-warn"><b>${label('warnings')}</b>：${data.warnings.map((w: any) => esc(String(w))).join('；')}</div>`
+    }
+    html += `<details class="apk-card" open>${head(esc(data.application_label), esc(data.package_name))}<div class="apk-card-body">${body}</div></details>`
   }
-  html += '</div>'
 
-  // ===== SIGNATURE CARD =====
+  // ===== SIGNATURE =====
   if (hasAnyHash) {
-    html += '<details class="apk-card" open>'
-    html += `<summary>${label('signatureInfo')}<span class="chev">▸</span></summary>`
-    html += '<div class="apk-card-body">'
-    if (fileMd5 && fileMd5 !== '-') html += hashRow(label('apkMd5'), fileMd5)
-    if (sigMd5 && sigMd5 !== '-') html += hashRow(label('sigMd5'), sigMd5)
-    if (sigSha1 && sigSha1 !== '-') html += hashRow(label('sigSha1'), sigSha1)
-    if (sigSha256 && sigSha256 !== '-') html += hashRow(label('sigSha256'), sigSha256)
+    const rows: string[] = []
+    if (fileMd5 && fileMd5 !== '-') rows.push(trow(['APK MD5', `<span class="mono">${esc(fileMd5)}</span>`]))
+    if (sigMd5 && sigMd5 !== '-') rows.push(trow(['签名 MD5', `<span class="mono">${esc(sigMd5)}</span>`]))
+    if (sigSha1 && sigSha1 !== '-') rows.push(trow(['签名 SHA1', `<span class="mono">${esc(sigSha1)}</span>`]))
+    if (sigSha256 && sigSha256 !== '-') rows.push(trow(['签名 SHA256', `<span class="mono">${esc(sigSha256)}</span>`]))
     const fbHashKey = data.fb_hash_key
     if (fbHashKey && fbHashKey !== '-') {
-      html += `<div class="apk-hashrow"><span class="k">${label('fbHashKey')}</span><span class="v">${esc(fbHashKey)}</span><span class="apk-copy" data-fb-hash="${esc(fbHashKey)}" title="${label('copyLog')}">${label('copyLog')}</span></div>`
+      rows.push(trow(['Facebook Hash Key', `<span class="mono">${esc(fbHashKey)}</span><span class="apk-copy" data-fb-hash="${esc(fbHashKey)}" title="${label('copyLog')}">${label('copyLog')}</span>`]))
     }
-    if (sigMd5 === '-' || sigSha1 === '-' || sigSha256 === '-') {
-      html += `<div class="apk-warn">${label('unsignedApk')}</div>`
-    }
-    html += '</div></details>'
+    let body = table(['字段', '值'], rows)
+    if (unsigned) body += `<div class="apk-warn">${label('unsignedApk')}</div>`
+    html += card(label('signatureInfo'), unsigned ? '未签名' : '已签名', body)
   }
 
   // ===== SO COMPARISON =====
   if (hasSoCompFull) {
-    html += '<details class="apk-card" open>'
-    html += `<summary>${soCompSummary}<span class="chev">▸</span></summary>`
-    html += '<div class="apk-card-body">'
+    const rows: string[] = []
     for (const [arch, info] of Object.entries(soComp.arches)) {
       const a = info as any
       const archColor = Object.keys(archColors).find(k => arch.startsWith(k)) || '#6b7280'
       const count = a.count || a.so_files?.length || 0
       const missing = a.missing || []
-      html += '<div class="apk-so-row">'
-      html += `<span class="apk-so-arch" style="color:${archColor}">${esc(arch)}</span>`
-      html += `<span class="apk-muted">${count} .so</span>`
-      if (missing.length > 0) {
-        html += `<span class="apk-so-miss">${label('missingInArch', { arch, count: missing.length })}: `
-        html += missing.map((s: string) => `<span class="apk-mini">${esc(s)}</span>`).join('')
-        html += '</span>'
-      } else {
-        html += '<span style="color:var(--app-green)">✓</span>'
-      }
-      html += '</div>'
+      const status = missing.length > 0
+        ? `缺失 ${missing.length} 个：` + missing.map(s => `<span class="apk-mini">${esc(s)}</span>`).join('')
+        : '<span style="color:var(--app-green)">✓ 完整</span>'
+      rows.push(trow([`<span style="color:${archColor};font-weight:600">${esc(arch)}</span>`, `${count} .so`, status]))
     }
-    html += '</div></details>'
+    const sum = `${Object.keys(soComp.arches).length} ${label('architecture')} · ${soComp.baseline?.length || 0} .so`
+    html += card(label('soComparison'), sum, table(['架构', '.so 数', '状态'], rows))
   } else if (soComp && soComp.single_arch) {
-    html += `<div class="apk-card"><div class="apk-card-h">${label('soComparison')}</div><div class="apk-muted">${label('singleArch')}</div></div>`
+    html += simpleCard(label('soComparison'), label('singleArch'), `<div class="apk-muted">${label('singleArch')}</div>`)
   } else if (soComp && soComp.no_native) {
-    html += `<div class="apk-card"><div class="apk-card-h">${label('soComparison')}</div><div class="apk-muted">${label('noNativeLibs')}</div></div>`
+    html += simpleCard(label('soComparison'), label('noNativeLibs'), `<div class="apk-muted">${label('noNativeLibs')}</div>`)
   }
 
   // ===== COMPRESSION =====
   if (hasComp) {
-    html += '<details class="apk-card" open>'
-    html += `<summary>${compSummary}<span class="chev">▸</span></summary>`
-    html += '<div class="apk-card-body">'
+    const rows: string[] = []
     for (const [category, info] of Object.entries(comp)) {
       const c = info as any
       const stored = c.stored || 0
       const deflated = c.deflated || 0
       const storedSize = c.stored_size || 0
-      html += `<div class="apk-row"><span class="apk-row-k">${esc(category)}</span>`
-      html += `<span class="apk-muted">${label('stored')}：${stored}</span>`
-      html += `<span class="apk-muted">${label('compressed')}：${deflated}</span>`
-      if (storedSize > 0) html += `<span class="apk-warn-inline">${label('storedSize', { size: fmtSize(storedSize) })}</span>`
-      html += '</div>'
+      rows.push(trow([esc(category), `${stored}`, `${deflated}`, storedSize > 0 ? fmtSize(storedSize) : '-']))
     }
-    html += '</div></details>'
+    html += card(label('compressionAnalysis'), `${Object.keys(comp).length} 类别`, table(['类别', '存储', '压缩', '存储大小'], rows))
   }
 
   // ===== 16KB PAGE =====
   if (hasPage16) {
-    html += '<details class="apk-card" open>'
-    html += `<summary>${label('pageSize16kb')} (${pageSummary})<span class="chev">▸</span></summary>`
-    html += '<div class="apk-card-body">'
+    const rows: string[] = []
+    let total = 0, supported = 0
     for (const [arch, files] of Object.entries(page16)) {
       if (arch === 'skipped') continue
-      html += `<div class="apk-sub">${esc(arch)}</div>`
       for (const [file, info] of Object.entries(files as any)) {
         const fi = info as any
         const ok = fi.supports_16kb
-        html += '<div class="apk-so-row" style="padding-left:8px">'
-        html += `<span class="apk-file">${esc(file)}</span>`
-        if (ok) html += `<span class="apk-badge apk-badge--ok">${label('supports16kb')}</span>`
-        else html += `<span class="apk-badge apk-badge--danger">${label('notSupports16kb')}</span>`
-        if (fi.max_align) html += `<span class="apk-muted">0x${fi.max_align.toString(16)}</span>`
-        html += '</div>'
+        total++; if (ok) supported++
+        const st = ok
+          ? '<span class="apk-lv apk-lv--ok">支持</span>'
+          : '<span class="apk-lv apk-lv--danger">不支持</span>'
+        const align = fi.max_align ? `0x${fi.max_align.toString(16)}` : '-'
+        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>`, st, align]))
       }
     }
+    const sum = `支持 ${supported}/${total}`
+    let body = table(['架构', '文件', '状态', '对齐'], rows)
     if (page16.skipped && page16.skipped.length > 0) {
-      html += `<div class="apk-muted" style="margin-top:4px">${label('pageSizeSkipped', { count: page16.skipped.length })}</div>`
+      body += `<div class="apk-muted" style="margin-top:4px">${label('pageSizeSkipped', { count: page16.skipped.length })}</div>`
     }
-    html += '</div></details>'
+    html += card(label('pageSize16kb'), sum, body)
   }
 
   // ===== META DATA =====
   if (metaData && Array.isArray(metaData) && metaData.length > 0) {
-    html += '<details class="apk-card" open>'
-    html += `<summary>${label('metaData')} (${metaData.length})<span class="chev">▸</span></summary>`
-    html += '<div class="apk-card-body">'
-    html += '<table class="apk-meta"><thead><tr><th>Parent</th><th>Name</th><th>Value</th><th>Resource</th></tr></thead><tbody>'
+    const rows: string[] = []
     for (const item of metaData) {
       const parent = item.parent || 'unknown'
       const name = item.name || ''
@@ -1114,42 +1070,33 @@ function renderApkInfo(data: any) {
       const resValue = item.resource_value || ''
       const resContent = item.resource_content
       const resResolved = item.resource_resolved
-      html += '<tr>'
-      html += `<td><span class="apk-parent">&lt;${esc(parent)}&gt;</span></td>`
-      html += `<td>${esc(name)}</td>`
-      html += '<td>'
-      if (value && !value.startsWith('@')) html += esc(value)
-      else if (resValue) html += esc(resValue)
-      else html += '-'
-      html += '</td>'
-      html += '<td>'
+      let valCell = ''
+      if (value && !value.startsWith('@')) valCell = esc(value)
+      else if (resValue) valCell = esc(resValue)
+      else valCell = '-'
+      let resCell = ''
       if (resResolved || (resContent && resContent.length > 0)) {
-        if (resResolved) html += `<div class="apk-muted">${esc(resResolved)}</div>`
+        if (resResolved) resCell += `<div class="apk-muted">${esc(resResolved)}</div>`
         if (resContent && resContent.length > 0) {
-          for (const ci of resContent) html += `<div class="apk-res">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</div>`
+          for (const ci of resContent) resCell += `<div class="apk-res">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</div>`
         }
       }
-      html += '</td>'
-      html += '</tr>'
+      rows.push(trow([`<span class="apk-parent">&lt;${esc(parent)}&gt;</span>`, esc(name), valCell, resCell]))
     }
-    html += '</tbody></table></div></details>'
+    html += card(label('metaData'), `${metaData.length} 项`, table(['父级', '名称', '值', '资源'], rows))
   }
 
   // ===== PERMISSIONS =====
   if (perms.length > 0) {
-    html += '<div class="apk-card">'
-    html += `<div class="apk-card-h">${label('permissions')}<span class="apk-count">${perms.length}</span></div>`
-    if (dangerous.length > 0) {
-      html += `<div class="apk-badge-wrap" style="margin-bottom:6px">${dangerous.map(p => permBadge(p, true)).join('')}</div>`
-    }
+    const rows: string[] = dangerous.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(true)]))
+    let body = table(['权限', '级别'], rows)
     if (normal.length > 0) {
-      html += '<details><summary>' + label('otherPermsShow', { count: normal.length }) + '<span class="chev">▸</span></summary>'
-      html += `<div class="apk-badge-wrap">${normal.map(p => permBadge(p, false)).join('')}</div>`
-      html += '</details>'
+      const nrows = normal.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(false)]))
+      body += `<details><summary>${label('otherPermsShow', { count: normal.length })}<span class="chev">▸</span></summary><div class="apk-card-body">${table(['权限', '级别'], nrows)}</div></details>`
     }
-    html += '</div>'
+    html += card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, body)
   } else {
-    html += `<div class="apk-card"><div class="apk-card-h">${label('permissions')}</div><div class="apk-muted">${label('noPermissions')}</div></div>`
+    html += simpleCard(label('permissions'), '', `<div class="apk-muted">${label('noPermissions')}</div>`)
   }
 
   html += '</div>'
@@ -1327,61 +1274,43 @@ function renderApkInfo(data: any) {
 .apk-card { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-radius: 10px; padding: 10px 14px; }
 .apk-card > summary {
   list-style: none; cursor: pointer; user-select: none;
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   color: var(--app-text-secondary); font-size: 13px; font-weight: 600;
 }
 .apk-card > summary::-webkit-details-marker { display: none; }
 .apk-card[open] > .apk-card-body { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--app-card-border); }
-.apk-card-body { display: flex; flex-direction: column; gap: 4px; }
+.apk-card-body { display: flex; flex-direction: column; gap: 6px; }
 
-.apk-name { font-size: 16px; font-weight: 700; color: var(--app-text-primary); word-break: break-all; }
-.apk-pkg { font-family: monospace; font-size: 12px; color: var(--app-text-dim); margin-top: 2px; word-break: break-all; }
+.apk-card-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-secondary); }
+.apk-sum-grp { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.apk-sum { font-size: 11px; color: var(--app-text-dim); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.apk-statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-.apk-stat { display: flex; flex-direction: column; gap: 2px; }
-.apk-stat-k { font-size: 11px; color: var(--app-text-dim); }
-.apk-stat-v { font-size: 13px; color: var(--app-text-secondary); font-weight: 500; word-break: break-word; }
-.apk-archchip { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; margin: 1px 3px 1px 0; }
+/* uniform table for every analysis section */
+.apk-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.apk-table th { text-align: left; color: var(--app-text-dim); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--app-card-border); padding: 5px 8px; white-space: nowrap; }
+.apk-table td { padding: 5px 8px; border-bottom: 1px solid var(--app-card-border); color: var(--app-text-secondary); vertical-align: top; word-break: break-word; }
+.apk-table tr:last-child td { border-bottom: none; }
+.apk-table .mono { font-family: monospace; }
+.apk-table .nowrap { white-space: nowrap; }
 
-.apk-warn { background: rgba(217,119,6,0.1); border: 1px solid rgba(217,119,6,0.25); color: var(--app-warning, #d97706); border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
-.apk-warn-inline { color: var(--app-warning, #d97706); font-size: 12px; }
-
-.apk-hashrow { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 12px; }
-.apk-hashrow .k { color: var(--app-text-dim); flex: 0 0 auto; min-width: 64px; }
-.apk-hashrow .v { font-family: monospace; color: var(--app-text-secondary); word-break: break-all; flex: 1; }
-.apk-copy { flex: 0 0 auto; margin-left: 4px; color: var(--app-green); cursor: pointer; font-size: 11px; }
-.apk-copy:hover { text-decoration: underline; }
-
-.apk-card-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-secondary); margin-bottom: 6px; }
-.apk-count { background: rgba(128,128,128,0.14); color: var(--app-text-secondary); font-size: 11px; font-weight: 600; border-radius: 10px; padding: 1px 8px; }
-
-.apk-so-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; }
-.apk-so-arch { font-weight: 600; font-size: 12px; }
-.apk-so-miss { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--app-warning, #d97706); font-size: 12px; }
-.apk-mini { display: inline-block; font-family: monospace; font-size: 11px; background: rgba(217,119,6,0.12); color: var(--app-warning, #d97706); border-radius: 3px; padding: 0 5px; }
-
-.apk-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 3px 0; font-size: 12px; }
-.apk-row-k { font-weight: 600; color: var(--app-text-secondary); }
-
-.apk-sub { font-size: 12px; font-weight: 600; color: var(--app-text-dim); margin: 6px 0 2px; }
-.apk-file { font-family: monospace; font-size: 12px; color: var(--app-text-secondary); word-break: break-all; }
-
-.apk-badge { display: inline-block; font-size: 11px; border-radius: 4px; padding: 2px 7px; margin: 2px 4px 2px 0; line-height: 1.4; }
-.apk-badge--danger { background: rgba(239,68,68,0.12); color: var(--app-red); border: 1px solid rgba(239,68,68,0.3); }
-.apk-badge--normal { background: rgba(128,128,128,0.12); color: var(--app-text-secondary); border: 1px solid var(--app-card-border); }
-.apk-badge--ok { background: rgba(34,197,94,0.12); color: var(--app-green); border: 1px solid rgba(34,197,94,0.3); }
-/* permission badges: wrap horizontally instead of stretching full-width
-   (a flex-column container would stretch each inline-block badge to 100%) */
-.apk-badge-wrap { display: flex; flex-wrap: wrap; }
-
-.apk-meta { width: 100%; border-collapse: collapse; font-size: 12px; }
-.apk-meta th { text-align: left; color: var(--app-text-dim); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--app-card-border); padding: 4px 6px; }
-.apk-meta td { padding: 4px 6px; border-bottom: 1px solid var(--app-card-border); color: var(--app-text-secondary); vertical-align: top; word-break: break-word; }
-.apk-meta tr:last-child td { border-bottom: none; }
+/* metadata parent column stays on one line */
 .apk-parent { font-family: monospace; font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
 .apk-res { font-size: 11px; color: var(--app-text-muted); font-family: monospace; }
 
+.apk-archchip { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; margin: 1px 3px 1px 0; }
+
+.apk-lv { display: inline-block; font-size: 11px; border-radius: 4px; padding: 1px 7px; font-weight: 600; white-space: nowrap; }
+.apk-lv--danger { background: rgba(239,68,68,0.12); color: var(--app-red); }
+.apk-lv--normal { background: rgba(128,128,128,0.12); color: var(--app-text-dim); }
+.apk-lv--ok { background: rgba(34,197,94,0.12); color: var(--app-green); }
+
+.apk-mini { display: inline-block; font-family: monospace; font-size: 11px; background: rgba(217,119,6,0.12); color: var(--app-warning, #d97706); border-radius: 3px; padding: 0 5px; margin: 0 2px; }
+
+.apk-warn { background: rgba(217,119,6,0.1); border: 1px solid rgba(217,119,6,0.25); color: var(--app-warning, #d97706); border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
 .apk-muted { color: var(--app-text-dim); font-size: 12px; }
+
+.apk-copy { color: var(--app-green); cursor: pointer; font-size: 11px; margin-left: 4px; }
+.apk-copy:hover { text-decoration: underline; }
 
 .chev { color: var(--app-text-dim); transition: transform .2s; }
 details[open] > summary .chev { transform: rotate(90deg); }
