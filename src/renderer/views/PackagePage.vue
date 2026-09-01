@@ -963,8 +963,8 @@ function renderApkInfo(data: any) {
   const table = (headers: string[], rows: string[]) =>
     `<table class="apk-table"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`
   const trow = (cells: string[]) => `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`
-  const head = (title: string, summary = '') =>
-    `<summary><span class="apk-sum-grp">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</span><span class="chev">▸</span></summary>`
+  const head = (title: string, summary = '', icon = '') =>
+    `<summary><span class="apk-sum-grp">${icon}${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</span><span class="chev">▸</span></summary>`
   const card = (title: string, summary: string, body: string) =>
     `<details class="apk-card" open>${head(title, summary)}<div class="apk-card-body">${body}</div></details>`
   const simpleCard = (title: string, summary: string, body: string) =>
@@ -988,7 +988,10 @@ function renderApkInfo(data: any) {
     if (data.warnings && Array.isArray(data.warnings) && data.warnings.length > 0) {
       body += `<div class="apk-warn"><b>${label('warnings')}</b>：${data.warnings.map((w: any) => esc(String(w))).join('；')}</div>`
     }
-    html += `<details class="apk-card" open>${head(esc(data.application_label), esc(data.package_name))}<div class="apk-card-body">${body}</div></details>`
+    const appIcon = (data.app_icon && data.app_icon !== '-')
+      ? `<img class="apk-icon" src="${data.app_icon}" alt="${esc(data.application_label || 'app')}">`
+      : ''
+    html += `<details class="apk-card" open>${head(esc(data.application_label), esc(data.package_name), appIcon)}<div class="apk-card-body">${body}</div></details>`
   }
 
   // ===== SIGNATURE =====
@@ -1293,7 +1296,8 @@ function renderApkInfo(data: any) {
 .apk-card-body { display: flex; flex-direction: column; gap: 6px; }
 
 .apk-card-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-secondary); }
-.apk-sum-grp { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.apk-sum-grp { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.apk-icon { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; background: var(--app-card-border); box-shadow: 0 1px 2px rgba(0,0,0,.18); flex: 0 0 auto; }
 .apk-sum { font-size: 11px; color: var(--app-text-dim); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* uniform table for every analysis section */

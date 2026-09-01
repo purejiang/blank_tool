@@ -7,6 +7,7 @@ APK analysis, decompile, recompile, and signing handlers.
 import base64
 import os
 import re
+import zipfile
 
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
@@ -76,6 +77,44 @@ def _extract_signature_hashes(apk_path: str) -> dict:
             "sig_md5": "-", "sig_sha1": "-", "sig_sha256": "-",
             "sig_warning": f"Signature extraction failed: {e}",
         }
+
+
+def _extract_app_icon(apk_path: str, badging_output: str) -> str:
+    """Extract the launcher icon as a base64 data URI from the APK.
+
+    `aapt dump badging` reports candidate launcher icons as
+    ``application-icon-NNN:'res/...'`` (NNN = density dpi). We prefer a
+    raster asset (png/webp) at the highest density — adaptive vector XML
+    drawables (res/mipmap-anydpi-v26/*.xml) are skipped since they cannot
+    be embedded directly — then read the entry bytes straight out of the
+    zip and base64-encode them. Returns a ``data:`` URI, or ``'-'`` when
+    no suitable icon is available.
+    """
+    icon_matches = re.findall(
+        r"application-icon-(\d+):\s*'([^']+)'", badging_output
+    )
+    if not icon_matches:
+        return "-"
+    raster = [
+        (int(d), p)
+        for d, p in icon_matches
+        if p.lower().endswith((".png", ".webp"))
+    ]
+    if not raster:
+        return "-"
+    # Highest density wins (crispest on hi-dpi screens).
+    raster.sort(key=lambda x: x[0], reverse=True)
+    icon_path = raster[0][1]
+    try:
+        with zipfile.ZipFile(apk_path) as zf:
+            data = zf.read(icon_path)
+    except Exception:
+        return "-"
+    if not data:
+        return "-"
+    mime = "image/webp" if icon_path.lower().endswith(".webp") else "image/png"
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{b64}"
 
 
 @streaming
@@ -162,6 +201,13 @@ def apk_analyze(params, stream_handler):
         # --- v2.1.1: deep APK analysis ---
         info["warnings"] = []
 
+        # C0: Launcher icon as base64 data URI (shown in the result card)
+        try:
+            info["app_icon"] = _extract_app_icon(apk_path, output)
+        except Exception as e:
+            logger.warning(f"App icon extraction failed: {e}")
+            info["app_icon"] = "-"
+
         # C1: SO file comparison across architectures
         stream_handler({"type": "log", "task_id": task_id, "line": "[SO Analysis] Starting..."})
         try:
@@ -245,6 +291,7 @@ def apk_analyze(params, stream_handler):
             append_task_log(task_id, f"[ANALYZE] app_label={info.get('application_label', '-')}")
             append_task_log(task_id, f"[ANALYZE] sdk: min={info.get('min_sdk_version', '-')} target={info.get('target_sdk_version', '-')}")
             append_task_log(task_id, f"[ANALYZE] file_md5={info.get('file_md5', '-')} size={info.get('file_size', 0)}")
+            append_task_log(task_id, f"[ANALYZE] app_icon={'yes' if info.get('app_icon', '-') != '-' else 'no'}")
             append_task_log(task_id, f"[ANALYZE] sig_sha256={info.get('sig_sha256', '-')}")
             if info.get('fb_hash_key', '-') != '-':
                 append_task_log(task_id, f"[ANALYZE] fb_hash_key={info.get('fb_hash_key', '-')}")
