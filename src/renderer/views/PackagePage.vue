@@ -195,43 +195,53 @@
           <!-- Unified task log: file log (terminal) or in-memory log (running) -->
           <div v-if="displayLog(task).length > 0" class="task-logs">
             <div class="task-logs-toolbar">
+              <n-button
+                size="tiny" quaternary
+                :type="logSearchOpenMap.get(task.id) ? 'info' : 'default'"
+                :title="t('task.logSearch')"
+                @click.stop="toggleLogSearch(task)"
+              >
+                <template #icon><n-icon size="14"><Search /></n-icon></template>
+              </n-button>
               <n-input
+                v-if="logSearchOpenMap.get(task.id)"
                 :value="logSearchMap.get(task.id) || ''"
                 :placeholder="t('task.logSearch')"
                 size="tiny"
                 clearable
                 style="flex:1; min-width:0"
                 @update:value="(v: string) => logSearchMap.set(task.id, v)"
-              >
-                <template #prefix><n-icon size="13" color="var(--app-text-dim)"><Search /></n-icon></template>
-              </n-input>
+              />
+              <div v-else class="task-logs-spacer" />
               <n-button size="tiny" quaternary :title="t('task.copyLog')" @click.stop="copyLog(task)">
                 <template #icon><n-icon size="14"><Copy /></n-icon></template>
               </n-button>
               <n-button size="tiny" quaternary :title="t('task.exportLog')" @click.stop="exportTaskLog(task)">
                 <template #icon><n-icon size="14"><Download /></n-icon></template>
               </n-button>
-              <n-switch
-                :value="autoScrollMap.get(task.id) !== false"
-                size="small"
+              <n-button
+                size="tiny" quaternary
+                :type="autoScrollMap.get(task.id) !== false ? 'info' : 'default'"
                 :title="t('task.autoScroll')"
-                @update:value="(v: boolean) => autoScrollMap.set(task.id, v)"
-              />
+                @click.stop="autoScrollMap.set(task.id, autoScrollMap.get(task.id) === false)"
+              >
+                <template #icon><n-icon size="14"><ArrowDownToLine /></n-icon></template>
+              </n-button>
+              <template v-if="isTerminal(task.status)">
+                <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary :title="t('task.logFullView')" @click.stop="loadFullTaskLog(task)">
+                  <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
+                </n-button>
+                <n-button v-else size="tiny" quaternary :title="t('task.logTailView')" @click.stop="collapseTaskLog(task)">
+                  <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
+                </n-button>
+                <n-button size="tiny" quaternary :title="t('task.openLogFile')" @click.stop="openLogFile(task)">
+                  <template #icon><n-icon size="14"><FileText /></n-icon></template>
+                </n-button>
+              </template>
             </div>
             <div v-if="showTruncation(task)" class="task-log-trunc-hint">
               <n-icon size="13"><AlertTriangle /></n-icon>
               <span>{{ t('task.logTruncatedHint') }}</span>
-            </div>
-            <div v-if="isTerminal(task.status)" class="task-logs-header" style="display:flex;justify-content:flex-end;margin:4px 0;">
-              <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary :title="t('task.logFullView')" @click.stop="loadFullTaskLog(task)">
-                <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
-              </n-button>
-              <n-button v-else size="tiny" quaternary :title="t('task.logTailView')" @click.stop="collapseTaskLog(task)">
-                <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
-              </n-button>
-              <n-button size="tiny" quaternary :title="t('task.openLogFile')" @click.stop="openLogFile(task)">
-                <template #icon><n-icon size="14"><FileText /></n-icon></template>
-              </n-button>
             </div>
             <n-virtual-list
               :ref="(el: any) => onLogListRef(task.id, el)"
@@ -256,11 +266,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NVirtualList, useDialog, NSwitch, NInput } from 'naive-ui'
+import { NIcon, NVirtualList, useDialog, NInput } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
   ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText, Smartphone,
-  Search, Copy, AlertTriangle, RotateCcw
+  Search, Copy, AlertTriangle, RotateCcw, ArrowDownToLine
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
@@ -297,9 +307,17 @@ const taskLogPathCache = ref<Map<number, string>>(new Map())
 const logExpandedMap = ref<Map<number, boolean>>(new Map())
 // Log UI enhancement (Batch 2): per-task search / auto-scroll / truncation state + virtual-list refs
 const logSearchMap = ref<Map<number, string>>(new Map())
+const logSearchOpenMap = ref<Map<number, boolean>>(new Map())
 const autoScrollMap = ref<Map<number, boolean>>(new Map())
 const logTruncatedMap = ref<Map<number, boolean>>(new Map())
 const logListRefs = new Map<number, any>()
+
+/** Toggle the inline log search box; closing it clears the active filter. */
+function toggleLogSearch(task: Task) {
+  const open = !logSearchOpenMap.value.get(task.id)
+  logSearchOpenMap.value.set(task.id, open)
+  if (!open) logSearchMap.value.set(task.id, '')
+}
 
 function getLogArray(task: Task): { key: number; text: string }[] {
   if (isTerminal(task.status) && taskLogCache.value.has(task.id) && taskLogCache.value.get(task.id)?.length) {
@@ -1325,8 +1343,9 @@ function renderApkInfo(data: any) {
   line-height: 1.6;
 }
 .task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
-.task-logs-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.task-logs-toolbar .n-switch { flex: 0 0 auto; }
+.task-logs-toolbar { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.task-logs-spacer { flex: 1; }
+.task-logs-toolbar .n-button { flex: 0 0 auto; }
 .task-log-trunc-hint {
   display: flex; align-items: center; gap: 6px;
   color: var(--app-warning, #d97706);
