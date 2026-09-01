@@ -113,8 +113,6 @@
             <n-tag v-else type="default" size="tiny" :bordered="false">
               {{ t('task.queued') }}
             </n-tag>
-            <span class="task-time">{{ formatTime(task.createdAt) }}</span>
-            <span v-if="task.startedAt || task.createdAt" class="task-duration">{{ formatDuration(task) }}</span>
             <n-button
               v-if="task.status === 'running' || task.status === 'downloading'"
               size="tiny"
@@ -234,9 +232,6 @@
                 <n-button v-else size="tiny" quaternary :title="t('task.logTailView')" @click.stop="collapseTaskLog(task)">
                   <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
                 </n-button>
-                <n-button size="tiny" quaternary :title="t('task.openLogFile')" @click.stop="openLogFile(task)">
-                  <template #icon><n-icon size="14"><FileText /></n-icon></template>
-                </n-button>
               </template>
             </div>
             <div v-if="showTruncation(task)" class="task-log-trunc-hint">
@@ -257,6 +252,12 @@
             </n-virtual-list>
           </div>
         </div>
+
+        <!-- Bottom-left meta: creation time + duration -->
+        <div class="task-meta-row">
+          <span class="task-time">{{ formatTime(task.createdAt) }}</span>
+          <span v-if="task.startedAt || task.createdAt" class="task-duration">{{ formatDuration(task) }}</span>
+        </div>
       </div>
     </div>
     </div>
@@ -269,7 +270,7 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, NVirtualList, useDialog, NInput } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText, Smartphone,
+  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, Smartphone,
   Search, Copy, AlertTriangle, RotateCcw, ArrowDownToLine
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
@@ -303,7 +304,6 @@ const activeIntervals = new Set<ReturnType<typeof setInterval>>()
 const now = ref(Date.now())
 let nowIv: ReturnType<typeof setInterval> | null = null
 const taskLogCache = ref<Map<number, { key: number; text: string }[]>>(new Map())
-const taskLogPathCache = ref<Map<number, string>>(new Map())
 const logExpandedMap = ref<Map<number, boolean>>(new Map())
 // Log UI enhancement (Batch 2): per-task search / auto-scroll / truncation state + virtual-list refs
 const logSearchMap = ref<Map<number, string>>(new Map())
@@ -532,9 +532,6 @@ async function loadTaskLog(task: Task) {
   try {
     const api = window.electronAPI as any
     const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id), tail_bytes: 100 * 1024 })
-    if (result.log_path) {
-      taskLogPathCache.value.set(task.id, result.log_path)
-    }
     logTruncatedMap.value.set(task.id, result.truncated === true)
     const content = (result.content || '').trim()
     if (content) {
@@ -562,9 +559,6 @@ async function loadFullTaskLog(task: Task) {
   try {
     const api = window.electronAPI as any
     const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id) })
-    if (result.log_path) {
-      taskLogPathCache.value.set(task.id, result.log_path)
-    }
     const content = (result.content || '').trim()
     if (content) {
       taskLogCache.value.set(task.id, splitLogLines(content))
@@ -585,15 +579,6 @@ function collapseTaskLog(task: Task) {
   // stays alive (no delete) for cheap re-expand.
   logExpandedMap.value.set(task.id, false)
   loadTaskLog(task)
-}
-
-async function openLogFile(task: Task) {
-  if (!taskLogPathCache.value.has(task.id)) {
-    await loadTaskLog(task)
-  }
-  const logPath = taskLogPathCache.value.get(task.id)
-  if (!logPath) return
-  await openInExplorerChecked(logPath, t('task.openLogFile'), t('task.logFileMissing'))
 }
 
 async function pickLocalFile() {
@@ -1291,7 +1276,13 @@ function renderApkInfo(data: any) {
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .task-time { font-size: 11px; color: var(--app-text-dim); }
-.task-duration { font-size: 11px; color: var(--app-text-muted); margin-left: 6px; font-family: monospace; }
+.task-duration { font-size: 11px; color: var(--app-text-muted); font-family: monospace; }
+/* Bottom-left meta line: creation time + duration, always visible on the card */
+.task-meta-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 14px 8px;
+}
+.task-detail ~ .task-meta-row { padding-top: 4px; }
 
 .task-progress { padding: 0 14px; height: 3px; }
 /* Indeterminate progress: operations emit no real progress events, so the
