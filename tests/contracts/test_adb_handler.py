@@ -136,6 +136,57 @@ class TestDeviceScreenshot:
         assert "device_id" in result["payload"]["message"]
 
 
+class TestDeviceUiAutomation:
+    def test_tap_missing_params_returns_error(self, api_handler):
+        request = {"id": 12, "method": "device.tap", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["id"] == 12
+        assert data["result"]["type"] == "error"
+
+    def test_swipe_missing_params_returns_error(self, api_handler):
+        request = {"id": 13, "method": "device.swipe", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["result"]["type"] == "error"
+
+    def test_input_text_missing_params_returns_error(self, api_handler):
+        request = {"id": 14, "method": "device.input_text", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["result"]["type"] == "error"
+
+    def test_keyevent_missing_params_returns_error(self, api_handler):
+        request = {"id": 15, "method": "device.keyevent", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["result"]["type"] == "error"
+
+    def test_ui_dump_missing_device_id_returns_error(self, api_handler):
+        request = {"id": 16, "method": "device.ui_dump", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["result"]["type"] == "error"
+
+    def test_find_element_missing_params_returns_error(self, api_handler):
+        request = {"id": 17, "method": "device.find_element", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["result"]["type"] == "error"
+
+    def test_tap_element_missing_params_returns_error(self, api_handler):
+        request = {"id": 18, "method": "device.tap_element", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["result"]["type"] == "error"
+
+    def test_current_activity_missing_device_id_returns_error(self, api_handler):
+        request = {"id": 19, "method": "device.current_activity", "params": {}}
+        response = api_handler.handle_request(request)
+        data = json.loads(response) if isinstance(response, str) else response
+        assert data["result"]["type"] == "error"
+
+
 class TestUnknownMethod:
     def test_returns_method_not_found(self, api_handler):
         request = {"id": 99, "method": "nonexistent.method", "params": {}}

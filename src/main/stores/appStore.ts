@@ -204,6 +204,10 @@ const schema = {
     signatureConfigs: {
         type: 'array',
         default: []
+    },
+    automation: {
+        type: 'object',
+        default: { projects: [] }
     }
 };
 

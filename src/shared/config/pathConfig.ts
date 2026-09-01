@@ -43,6 +43,7 @@ export type WritableAppConfigKey =
   | 'enableNotifications'
   | 'autoDeleteOutputOnTaskRemove'
   | 'useProxyForDownload'
+  | 'automation'
   | 'adbPath'
   | 'aaptPath'
   | 'apktoolPath'
