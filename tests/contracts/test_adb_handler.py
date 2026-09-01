@@ -103,6 +103,39 @@ class TestDeviceExportApk:
         assert result["type"] == "error"
 
 
+class TestDeviceLaunchApp:
+    def test_missing_params_returns_error(self, api_handler):
+        request = {"id": 9, "method": "device.launch_app", "params": {}}
+        response = api_handler.handle_request(request)
+
+        data = json.loads(response) if isinstance(response, str) else response
+        result = data["result"]
+        assert result["type"] == "error"
+        assert "device_id" in result["payload"]["message"] or "package_name" in result["payload"]["message"]
+
+
+class TestDeviceClearAppData:
+    def test_missing_params_returns_error(self, api_handler):
+        request = {"id": 10, "method": "device.clear_app_data", "params": {}}
+        response = api_handler.handle_request(request)
+
+        data = json.loads(response) if isinstance(response, str) else response
+        result = data["result"]
+        assert result["type"] == "error"
+        assert "device_id" in result["payload"]["message"] or "package_name" in result["payload"]["message"]
+
+
+class TestDeviceScreenshot:
+    def test_missing_device_id_returns_error(self, api_handler):
+        request = {"id": 11, "method": "device.screenshot", "params": {}}
+        response = api_handler.handle_request(request)
+
+        data = json.loads(response) if isinstance(response, str) else response
+        result = data["result"]
+        assert result["type"] == "error"
+        assert "device_id" in result["payload"]["message"]
+
+
 class TestUnknownMethod:
     def test_returns_method_not_found(self, api_handler):
         request = {"id": 99, "method": "nonexistent.method", "params": {}}

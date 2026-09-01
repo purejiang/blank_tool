@@ -65,6 +65,15 @@ export default {
     stopLogcat: 'Stop Logcat',
     clearLogcat: 'Clear',
     exportLogcat: 'Export',
+    launchApp: 'Launch',
+    clearData: 'Clear Data',
+    clearDataConfirm: 'This will clear all app data of {pkg} (login state, settings, etc.) and cannot be undone. Continue?',
+    screenshot: 'Screenshot',
+    screenshotting: 'Capturing device screen...',
+    screenshotSuccess: 'Screenshot saved',
+    screenshotCancelled: 'Cancelled',
+    screenshotFailed: 'Screenshot failed',
+    uninstall: 'Uninstall',
     lines: '{count} lines',
     stopped: 'Logcat Stopped',
     stoppedDesc: '{count} lines captured',
@@ -110,6 +119,7 @@ export default {
     disabled: 'Disabled',
     appType: 'App type',
     searchPlaceholder: 'Search package name...',
+    export: 'Export APK',
   },
   // Logcat Viewer
   logcat: {

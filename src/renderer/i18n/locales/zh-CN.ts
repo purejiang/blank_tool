@@ -65,6 +65,15 @@ export default {
     stopLogcat: '停止 Logcat',
     clearLogcat: '清空',
     exportLogcat: '导出',
+    launchApp: '启动',
+    clearData: '清除数据',
+    clearDataConfirm: '将清除 {pkg} 的所有应用数据（登录状态、设置等），且无法恢复。确定继续？',
+    screenshot: '截图',
+    screenshotting: '正在截取设备屏幕...',
+    screenshotSuccess: '截图已保存',
+    screenshotCancelled: '已取消',
+    screenshotFailed: '截图失败',
+    uninstall: '卸载',
     lines: '{count} 行',
     stopped: 'Logcat 已停止',
     stoppedDesc: '已捕获 {count} 行',
@@ -110,6 +119,7 @@ export default {
     disabled: '已禁用',
     appType: '应用类型',
     searchPlaceholder: '搜索包名...',
+    export: '导出 APK',
   },
   // Logcat Viewer
   logcat: {
