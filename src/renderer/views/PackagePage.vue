@@ -371,24 +371,25 @@ async function copyLog(task: Task) {
 }
 
 // Delegated click handler for the analysis result card (rendered via v-html).
-// The FB Hash Key row carries a `data-fb-hash` attribute; clicking the copy
-// affordance next to it copies that value to the clipboard.
+// Any element carrying a `data-copy` attribute copies that value to the
+// clipboard when clicked; `data-fb-hash` is kept as a fallback.
 function onResultCopy(e: MouseEvent) {
   const el = e.target as HTMLElement | null
-  const hash = el?.getAttribute?.('data-fb-hash')
-  if (!hash) return
+  const node = el?.closest?.('[data-copy], [data-fb-hash]') as HTMLElement | null
+  const value = node?.getAttribute('data-copy') ?? node?.getAttribute('data-fb-hash')
+  if (!value) return
   const copy = async () => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(hash)
+      await navigator.clipboard.writeText(value)
     } else {
       const api = window.electronAPI as any
-      if (api?.writeClipboardText) await api.writeClipboardText(hash)
+      if (api?.writeClipboardText) await api.writeClipboardText(value)
       else throw new Error('clipboard unavailable')
     }
   }
   copy()
-    .then(() => showSuccess(t('task.fbHashKey'), t('task.logCopied')))
-    .catch((err) => showWarning(t('task.fbHashKey'), String(err)))
+    .then(() => showSuccess(t('task.copyLog'), t('task.logCopied')))
+    .catch((err) => showWarning(t('task.copyLog'), String(err)))
 }
 
 async function exportTaskLog(task: Task) {
@@ -969,15 +970,20 @@ function renderApkInfo(data: any) {
   const simpleCard = (title: string, summary: string, body: string) =>
     `<div class="apk-card"><div class="apk-card-h">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</div>${body}</div>`
 
+  // dim, subtle copy affordance appended after values for one-click copy
+  const COPY_ICO = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>'
+  const copyBtn = (value: string) =>
+    `<span class="apk-copy" data-copy="${esc(value)}" title="${label('copyLog')}">${COPY_ICO}</span>`
+
   let html = '<div class="apk-info">'
 
   // ===== BASIC INFO =====
   {
     const rows: string[] = []
-    rows.push(trow([label('version'), `${esc(data.version_name)} <span style="color:var(--app-text-dim);font-weight:400">(${esc(data.version_code)})</span>`]))
-    rows.push(trow([label('fileSize'), fmtSize(data.file_size)]))
-    rows.push(trow([`${label('minSdk')} / ${label('targetSdk')}`, `${esc(data.min_sdk_version)} / ${esc(data.target_sdk_version)}`]))
-    if (archChips) rows.push(trow([label('architecture'), archChips]))
+    rows.push(trow([label('version'), `${esc(data.version_name)} <span style="color:var(--app-text-dim);font-weight:400">(${esc(data.version_code)})</span>` + copyBtn(data.version_name)]))
+    rows.push(trow([label('fileSize'), fmtSize(data.file_size) + copyBtn(fmtSize(data.file_size))]))
+    rows.push(trow([`${label('minSdk')} / ${label('targetSdk')}`, `${esc(data.min_sdk_version)} / ${esc(data.target_sdk_version)}` + copyBtn(`${data.min_sdk_version}/${data.target_sdk_version}`)]))
+    if (archChips) rows.push(trow([label('architecture'), archChips + copyBtn(nativeLibs.join(', '))]))
     let body = table(['项目', '值'], rows)
     if (data.warnings && Array.isArray(data.warnings) && data.warnings.length > 0) {
       body += `<div class="apk-warn"><b>${label('warnings')}</b>：${data.warnings.map((w: any) => esc(String(w))).join('；')}</div>`
@@ -988,13 +994,13 @@ function renderApkInfo(data: any) {
   // ===== SIGNATURE =====
   if (hasAnyHash) {
     const rows: string[] = []
-    if (fileMd5 && fileMd5 !== '-') rows.push(trow(['APK MD5', `<span class="mono">${esc(fileMd5)}</span>`]))
-    if (sigMd5 && sigMd5 !== '-') rows.push(trow(['签名 MD5', `<span class="mono">${esc(sigMd5)}</span>`]))
-    if (sigSha1 && sigSha1 !== '-') rows.push(trow(['签名 SHA1', `<span class="mono">${esc(sigSha1)}</span>`]))
-    if (sigSha256 && sigSha256 !== '-') rows.push(trow(['签名 SHA256', `<span class="mono">${esc(sigSha256)}</span>`]))
+    if (fileMd5 && fileMd5 !== '-') rows.push(trow(['APK MD5', `<span class="mono">${esc(fileMd5)}</span>` + copyBtn(fileMd5)]))
+    if (sigMd5 && sigMd5 !== '-') rows.push(trow(['签名 MD5', `<span class="mono">${esc(sigMd5)}</span>` + copyBtn(sigMd5)]))
+    if (sigSha1 && sigSha1 !== '-') rows.push(trow(['签名 SHA1', `<span class="mono">${esc(sigSha1)}</span>` + copyBtn(sigSha1)]))
+    if (sigSha256 && sigSha256 !== '-') rows.push(trow(['签名 SHA256', `<span class="mono">${esc(sigSha256)}</span>` + copyBtn(sigSha256)]))
     const fbHashKey = data.fb_hash_key
     if (fbHashKey && fbHashKey !== '-') {
-      rows.push(trow(['Facebook Hash Key', `<span class="mono">${esc(fbHashKey)}</span><span class="apk-copy" data-fb-hash="${esc(fbHashKey)}" title="${label('copyLog')}">${label('copyLog')}</span>`]))
+      rows.push(trow(['Facebook Hash Key', `<span class="mono">${esc(fbHashKey)}</span>` + copyBtn(fbHashKey)]))
     }
     let body = table(['字段', '值'], rows)
     if (unsigned) body += `<div class="apk-warn">${label('unsignedApk')}</div>`
@@ -1012,7 +1018,7 @@ function renderApkInfo(data: any) {
       const status = missing.length > 0
         ? `缺失 ${missing.length} 个：` + missing.map(s => `<span class="apk-mini">${esc(s)}</span>`).join('')
         : '<span style="color:var(--app-green)">✓ 完整</span>'
-      rows.push(trow([`<span style="color:${archColor};font-weight:600">${esc(arch)}</span>`, `${count} .so`, status]))
+      rows.push(trow([`<span style="color:${archColor};font-weight:600">${esc(arch)}</span>` + copyBtn(arch), `${count} .so`, status]))
     }
     const sum = `${Object.keys(soComp.arches).length} ${label('architecture')} · ${soComp.baseline?.length || 0} .so`
     html += card(label('soComparison'), sum, table(['架构', '.so 数', '状态'], rows))
@@ -1030,7 +1036,7 @@ function renderApkInfo(data: any) {
       const stored = c.stored || 0
       const deflated = c.deflated || 0
       const storedSize = c.stored_size || 0
-      rows.push(trow([esc(category), `${stored}`, `${deflated}`, storedSize > 0 ? fmtSize(storedSize) : '-']))
+      rows.push(trow([esc(category) + copyBtn(category), `${stored}` + copyBtn(String(stored)), `${deflated}` + copyBtn(String(deflated)), storedSize > 0 ? fmtSize(storedSize) + copyBtn(fmtSize(storedSize)) : '-']))
     }
     html += card(label('compressionAnalysis'), `${Object.keys(comp).length} 类别`, table(['类别', '存储', '压缩', '存储大小'], rows))
   }
@@ -1049,7 +1055,7 @@ function renderApkInfo(data: any) {
           ? '<span class="apk-lv apk-lv--ok">支持</span>'
           : '<span class="apk-lv apk-lv--danger">不支持</span>'
         const align = fi.max_align ? `0x${fi.max_align.toString(16)}` : '-'
-        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>`, st, align]))
+        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>` + copyBtn(file), st, align !== '-' ? align + copyBtn(align) : '-']))
       }
     }
     const sum = `支持 ${supported}/${total}`
@@ -1081,17 +1087,22 @@ function renderApkInfo(data: any) {
           for (const ci of resContent) resCell += `<div class="apk-res">${esc(ci.element)}: ${esc(ci.name)} → ${esc(ci.value)}</div>`
         }
       }
-      rows.push(trow([`<span class="apk-parent">&lt;${esc(parent)}&gt;</span>`, esc(name), valCell, resCell]))
+      rows.push(trow([
+        `<span class="apk-parent">&lt;${esc(parent)}&gt;</span>` + copyBtn(parent),
+        esc(name) + copyBtn(name),
+        valCell + copyBtn(value || resValue),
+        resCell + (resResolved ? copyBtn(resResolved) : '')
+      ]))
     }
     html += card(label('metaData'), `${metaData.length} 项`, table(['父级', '名称', '值', '资源'], rows))
   }
 
   // ===== PERMISSIONS =====
   if (perms.length > 0) {
-    const rows: string[] = dangerous.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(true)]))
+    const rows: string[] = dangerous.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>` + copyBtn(p), lv(true)]))
     let body = table(['权限', '级别'], rows)
     if (normal.length > 0) {
-      const nrows = normal.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(false)]))
+      const nrows = normal.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>` + copyBtn(p), lv(false)]))
       body += `<details><summary>${label('otherPermsShow', { count: normal.length })}<span class="chev">▸</span></summary><div class="apk-card-body">${table(['权限', '级别'], nrows)}</div></details>`
     }
     html += card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, body)
@@ -1309,8 +1320,9 @@ function renderApkInfo(data: any) {
 .apk-warn { background: rgba(217,119,6,0.1); border: 1px solid rgba(217,119,6,0.25); color: var(--app-warning, #d97706); border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
 .apk-muted { color: var(--app-text-dim); font-size: 12px; }
 
-.apk-copy { color: var(--app-green); cursor: pointer; font-size: 11px; margin-left: 4px; }
-.apk-copy:hover { text-decoration: underline; }
+.apk-copy { color: var(--app-text-dim); opacity: 0.4; cursor: pointer; margin-left: 6px; display: inline-flex; align-items: center; vertical-align: middle; transition: opacity .15s, color .15s; }
+.apk-copy:hover { opacity: 1; color: var(--app-green); }
+.apk-copy svg { display: block; }
 
 .chev { color: var(--app-text-dim); transition: transform .2s; }
 details[open] > summary .chev { transform: rotate(90deg); }
