@@ -980,10 +980,10 @@ function renderApkInfo(data: any) {
   // ===== BASIC INFO =====
   {
     const rows: string[] = []
-    rows.push(trow([label('version'), `${esc(data.version_name)} <span style="color:var(--app-text-dim);font-weight:400">(${esc(data.version_code)})</span>` + copyBtn(data.version_name)]))
-    rows.push(trow([label('fileSize'), fmtSize(data.file_size) + copyBtn(fmtSize(data.file_size))]))
-    rows.push(trow([`${label('minSdk')} / ${label('targetSdk')}`, `${esc(data.min_sdk_version)} / ${esc(data.target_sdk_version)}` + copyBtn(`${data.min_sdk_version}/${data.target_sdk_version}`)]))
-    if (archChips) rows.push(trow([label('architecture'), archChips + copyBtn(nativeLibs.join(', '))]))
+    rows.push(trow([label('version'), `${esc(data.version_name)} <span style="color:var(--app-text-dim);font-weight:400">(${esc(data.version_code)})</span>`]))
+    rows.push(trow([label('fileSize'), fmtSize(data.file_size)]))
+    rows.push(trow([`${label('minSdk')} / ${label('targetSdk')}`, `${esc(data.min_sdk_version)} / ${esc(data.target_sdk_version)}`]))
+    if (archChips) rows.push(trow([label('architecture'), archChips]))
     let body = table(['项目', '值'], rows)
     if (data.warnings && Array.isArray(data.warnings) && data.warnings.length > 0) {
       body += `<div class="apk-warn"><b>${label('warnings')}</b>：${data.warnings.map((w: any) => esc(String(w))).join('；')}</div>`
@@ -1018,7 +1018,7 @@ function renderApkInfo(data: any) {
       const status = missing.length > 0
         ? `缺失 ${missing.length} 个：` + missing.map(s => `<span class="apk-mini">${esc(s)}</span>`).join('')
         : '<span style="color:var(--app-green)">✓ 完整</span>'
-      rows.push(trow([`<span style="color:${archColor};font-weight:600">${esc(arch)}</span>` + copyBtn(arch), `${count} .so`, status]))
+      rows.push(trow([`<span style="color:${archColor};font-weight:600">${esc(arch)}</span>`, `${count} .so`, status]))
     }
     const sum = `${Object.keys(soComp.arches).length} ${label('architecture')} · ${soComp.baseline?.length || 0} .so`
     html += card(label('soComparison'), sum, table(['架构', '.so 数', '状态'], rows))
@@ -1036,7 +1036,7 @@ function renderApkInfo(data: any) {
       const stored = c.stored || 0
       const deflated = c.deflated || 0
       const storedSize = c.stored_size || 0
-      rows.push(trow([esc(category) + copyBtn(category), `${stored}` + copyBtn(String(stored)), `${deflated}` + copyBtn(String(deflated)), storedSize > 0 ? fmtSize(storedSize) + copyBtn(fmtSize(storedSize)) : '-']))
+      rows.push(trow([esc(category), `${stored}`, `${deflated}`, storedSize > 0 ? fmtSize(storedSize) : '-']))
     }
     html += card(label('compressionAnalysis'), `${Object.keys(comp).length} 类别`, table(['类别', '存储', '压缩', '存储大小'], rows))
   }
@@ -1055,7 +1055,7 @@ function renderApkInfo(data: any) {
           ? '<span class="apk-lv apk-lv--ok">支持</span>'
           : '<span class="apk-lv apk-lv--danger">不支持</span>'
         const align = fi.max_align ? `0x${fi.max_align.toString(16)}` : '-'
-        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>` + copyBtn(file), st, align !== '-' ? align + copyBtn(align) : '-']))
+        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>`, st, align !== '-' ? align : '-']))
       }
     }
     const sum = `支持 ${supported}/${total}`
@@ -1088,10 +1088,10 @@ function renderApkInfo(data: any) {
         }
       }
       rows.push(trow([
-        `<span class="apk-parent">&lt;${esc(parent)}&gt;</span>` + copyBtn(parent),
-        esc(name) + copyBtn(name),
-        valCell + copyBtn(value || resValue),
-        resCell + (resResolved ? copyBtn(resResolved) : '')
+        `<span class="apk-parent">&lt;${esc(parent)}&gt;</span>`,
+        esc(name),
+        valCell,
+        resCell
       ]))
     }
     html += card(label('metaData'), `${metaData.length} 项`, table(['父级', '名称', '值', '资源'], rows))
@@ -1099,10 +1099,10 @@ function renderApkInfo(data: any) {
 
   // ===== PERMISSIONS =====
   if (perms.length > 0) {
-    const rows: string[] = dangerous.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>` + copyBtn(p), lv(true)]))
+    const rows: string[] = dangerous.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(true)]))
     let body = table(['权限', '级别'], rows)
     if (normal.length > 0) {
-      const nrows = normal.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>` + copyBtn(p), lv(false)]))
+      const nrows = normal.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(false)]))
       body += `<details><summary>${label('otherPermsShow', { count: normal.length })}<span class="chev">▸</span></summary><div class="apk-card-body">${table(['权限', '级别'], nrows)}</div></details>`
     }
     html += card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, body)
