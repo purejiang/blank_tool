@@ -104,7 +104,7 @@
             </n-tag>
             <n-tag v-else-if="task.status === 'running'" type="success" size="tiny" :bordered="false">
               <template #icon><n-icon size="12"><Loader /></n-icon></template>
-              {{ task.progressLabel }}
+              {{ task.progressLabel || t('task.running') }}
             </n-tag>
             <n-tag v-else-if="task.status === 'downloading'" type="info" size="tiny" :bordered="false">
               <template #icon><n-icon size="12"><Download /></n-icon></template>
@@ -129,8 +129,18 @@
               v-if="task.status === 'failed' || task.status === 'cancelled'"
               size="tiny"
               quaternary
+              type="info"
+              :title="t('task.retryStage')"
+              @click.stop="retryFailedStage(task)"
+            >
+              <template #icon><n-icon size="14"><RotateCcw /></n-icon></template>
+            </n-button>
+            <n-button
+              v-if="task.status === 'failed' || task.status === 'cancelled'"
+              size="tiny"
+              quaternary
               type="warning"
-              :title="t('app.retry')"
+              :title="t('task.rerunFromStart')"
               @click.stop="retryTask(task)"
             >
               <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
@@ -151,9 +161,13 @@
           </div>
         </div>
 
-        <!-- Progress bar -->
-        <div v-if="task.status === 'running' || task.status === 'downloading'" class="task-progress">
+        <!-- Progress bar: downloading = real %; running = indeterminate
+             (operations emit no progress events — fake progress removed) -->
+        <div v-if="task.status === 'downloading'" class="task-progress">
           <n-progress type="line" :percentage="task.progress" :height="3" color="#22C55E" :indicator-placement="'none'" />
+        </div>
+        <div v-else-if="task.status === 'running'" class="task-progress">
+          <div class="indeterminate-bar"><div class="indeterminate-fill" /></div>
         </div>
 
         <!-- Expanded detail -->
@@ -246,7 +260,7 @@ import { NIcon, NVirtualList, useDialog, NSwitch, NInput } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
   ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, FileText, Smartphone,
-  Search, Copy, AlertTriangle
+  Search, Copy, AlertTriangle, RotateCcw
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
@@ -256,6 +270,7 @@ import type { Task } from '@stores/taskStore'
 import { formatDuration as formatDurationUtil } from '@utils/formatDuration'
 import { log as logUtil } from '@utils/logger'
 import serviceManager from '@services/ServiceManager'
+import { enqueueTask } from '@services/TaskExecutionService'
 
 const { t } = useI18n()
 const dialog = useDialog()
@@ -602,11 +617,12 @@ async function startNewTask() {
   newLocalName.value = ''
   newLocalPath.value = ''
 
-  // Execute task
-  await executeTask(task)
+  // Queue the task — TaskExecutionService starts it when a slot frees up
+  // (bounded concurrency, default 3). The task stays 'queued' until then.
+  enqueueTask(task.id, () => executeTask(task))
 }
 
-async function executeTask(task: Task) {
+async function executeTask(task: Task, opts: { skipDownload?: boolean } = {}) {
   try {
     let localPath = task.filePath
     const api = window.electronAPI as any
@@ -645,8 +661,8 @@ async function executeTask(task: Task) {
           taskStore.transition(task.id, 'operation_complete', transitionPayload)
         }
       },
-      onError: (msg: string, _phase: string) => {
-        taskStore.transition(task.id, 'operation_error', { message: msg })
+      onError: (msg: string, phase: string) => {
+        taskStore.transition(task.id, 'operation_error', { message: msg, failedPhase: phase })
       },
       onCancelled: () => {
         taskStore.transition(task.id, 'cancel_ack')
@@ -668,7 +684,11 @@ async function executeTask(task: Task) {
     // before await waitForPhase() are not lost — they're stashed and resolved immediately.
 
     // --- Download phase (URL source only) ---
-    if (task.source === 'url' && task.url) {
+    // "Retry failed stage" skips a completed download and reuses the file
+    // already fetched in the previous attempt.
+    if (opts.skipDownload && task.source === 'url') {
+      log(task, t('task.reuseDownloaded'))
+    } else if (task.source === 'url' && task.url) {
       taskStore.transition(task.id, 'start_download')
       taskStream.setPhase(String(task.id), 'download')
       log(task, t('task.downloading') + ' ' + task.url)
@@ -686,10 +706,8 @@ async function executeTask(task: Task) {
     taskStream.setPhase(String(task.id), 'operation')
     log(task, t('task.running') + ' ' + task.operationLabel)
 
-    taskStream.startFakeProgress(String(task.id), 500, (p: number) => {
-      taskStore.updateTask(task.id, { progress: p, progressLabel: `${p}%` })
-    })
-
+    // No fake progress: operations emit no real progress events, so the
+    // progress bar renders as indeterminate (see template) until completion.
     await runOperation(task, localPath)
     await taskStream.waitForPhase(String(task.id), 'operation')
   } catch (e: any) {
@@ -698,7 +716,8 @@ async function executeTask(task: Task) {
       const errMsg = e.message || String(e)
       const currentTask = taskStore.tasks.find(t => t.id === task.id)
       if (currentTask && currentTask.status !== 'failed') {
-        taskStore.transition(task.id, 'operation_error', { message: errMsg })
+        const failedPhase = currentTask?.phase === 'download' ? 'download' : 'operation'
+        taskStore.transition(task.id, 'operation_error', { message: errMsg, failedPhase })
       }
       log(task, t('task.failed') + ': ' + errMsg)
       showError(task.operationLabel, errMsg)
@@ -747,12 +766,23 @@ async function cancelTask(task: Task) {
 }
 
 async function retryTask(task: Task) {
-  // Reset task state to queued, keep existing logs and append below them
-  taskStore.appendLog(task.id, `--- ${t('app.retry')} ---`)
+  // Full re-run from scratch: reset task state to queued, keep existing logs
+  // and append below them. URL tasks re-download; queued via the executor.
+  taskStore.appendLog(task.id, `--- ${t('task.rerunFromStart')} ---`)
   taskStore.transition(task.id, 'reset_for_retry')
   task.collapsed = true
-  // Re-execute the same task
-  await executeTask(task)
+  enqueueTask(task.id, () => executeTask(task))
+}
+
+async function retryFailedStage(task: Task) {
+  // Stage-level retry: if the download already succeeded in the previous
+  // attempt (or the source is local), skip straight to the operation phase
+  // and reuse the fetched file. Otherwise this equals a full re-run.
+  taskStore.appendLog(task.id, `--- ${t('task.retryStage')} ---`)
+  taskStore.transition(task.id, 'reset_for_retry')
+  task.collapsed = true
+  const skipDownload = task.source === 'url' ? !!task.filePath : false
+  enqueueTask(task.id, () => executeTask(task, { skipDownload }))
 }
 
 async function confirmClearCompleted() {
@@ -1246,6 +1276,28 @@ function renderApkInfo(data: any) {
 .task-duration { font-size: 11px; color: var(--app-text-muted); margin-left: 6px; font-family: monospace; }
 
 .task-progress { padding: 0 14px; height: 3px; }
+/* Indeterminate progress: operations emit no real progress events, so the
+   bar shows a sliding stripe instead of a meaningless percentage. */
+.indeterminate-bar {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.18);
+  overflow: hidden;
+}
+.indeterminate-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: #22C55E;
+  animation: indeterminate-slide 1.4s ease-in-out infinite;
+}
+@keyframes indeterminate-slide {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
 
 .task-detail {
   padding: 10px 14px;

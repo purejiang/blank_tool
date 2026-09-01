@@ -70,6 +70,20 @@ def _sanitize_filename(name: str) -> str:
     return name
 
 
+def _cleanup_partial(dest_path):
+    """Best-effort removal of a partial download after a terminal failure.
+
+    The cancelled paths already delete the file inline; this covers the error
+    exits (HTTPError / retries exhausted / unexpected) which previously left
+    half-written files behind in the task input dir.
+    """
+    try:
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+    except OSError as e:
+        logger.warning(f"Failed to remove partial download '{dest_path}': {e}")
+
+
 @streaming
 @logs_errors("DownloadHandler")
 def download_file(params, stream_handler):
@@ -177,6 +191,7 @@ def download_file(params, stream_handler):
 
         except HTTPError as e:
             logger.error(f"Download HTTP error: {e.code} {e.reason}")
+            _cleanup_partial(dest_path)
             stream_handler({
                 "type": "error",
                 "payload": {"task_id": task_id, "message": f"下载失败: HTTP {e.code} {e.reason}"},
@@ -188,6 +203,7 @@ def download_file(params, stream_handler):
             if attempt < _MAX_RETRIES:
                 time.sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
                 continue
+            _cleanup_partial(dest_path)
             stream_handler({
                 "type": "error",
                 "payload": {"task_id": task_id, "message": f"下载失败: {_friendly_reason(getattr(e, 'reason', e), use_proxy)}"},
@@ -195,6 +211,7 @@ def download_file(params, stream_handler):
             return
         except Exception as e:
             logger.error(f"Download error: {e}")
+            _cleanup_partial(dest_path)
             stream_handler({
                 "type": "error",
                 "payload": {"task_id": task_id, "message": str(e)},

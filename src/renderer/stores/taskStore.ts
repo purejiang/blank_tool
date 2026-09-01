@@ -12,6 +12,8 @@ export interface Task {
   operationLabel: string
   status: 'downloading' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancelling'
   phase: 'idle' | 'download' | 'operation' | 'finished'
+  /** Which phase the task failed in — drives the "retry failed stage" button. */
+  failedPhase: '' | 'download' | 'operation'
   progress: number
   progressLabel: string
   result: string
@@ -48,6 +50,7 @@ function loadTasks(): Task[] {
       const tasks: Task[] = JSON.parse(raw)
       for (const t of tasks) {
         t.startedAt ??= t.createdAt
+        t.failedPhase ??= ''
         // Backward compat: infer phase from status for pre-phase data
         if (!t.phase) {
           if (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled') {
@@ -165,8 +168,11 @@ export const useTaskStore = defineStore('task', () => {
     const task: Task = {
       id: nextId++,
       ...partial,
-      status: partial.source === 'url' ? 'downloading' : 'queued',
-      phase: partial.source === 'url' ? 'download' : 'idle',
+      // Always start queued — TaskExecutionService pulls tasks into execution
+      // respecting the global concurrency limit (default 3).
+      status: 'queued',
+      phase: 'idle',
+      failedPhase: '',
       progress: 0,
       progressLabel: '',
       result: '',
@@ -244,6 +250,10 @@ export const useTaskStore = defineStore('task', () => {
         updates.status = 'failed'
         updates.phase = 'finished'
         updates.error = payload?.message || ''
+        // Record the phase that failed so "retry failed stage" can skip a
+        // completed download. Fall back to the task's live phase.
+        updates.failedPhase = payload?.failedPhase
+          || (task.phase === 'operation' ? 'operation' : 'download')
         updates.finishedAt = Date.now()
         terminal = true
         break
@@ -263,6 +273,7 @@ export const useTaskStore = defineStore('task', () => {
         updates.result = ''
         updates.progress = 0
         updates.progressLabel = ''
+        updates.failedPhase = ''
         updates.startedAt = Date.now()
         updates.finishedAt = null
         break
