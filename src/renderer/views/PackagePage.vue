@@ -1140,11 +1140,11 @@ function renderApkInfo(data: any) {
     html += '<div class="apk-card">'
     html += `<div class="apk-card-h">${label('permissions')}<span class="apk-count">${perms.length}</span></div>`
     if (dangerous.length > 0) {
-      html += `<div style="margin-bottom:4px">${dangerous.map(p => permBadge(p, true)).join('')}</div>`
+      html += `<div class="apk-badge-wrap" style="margin-bottom:6px">${dangerous.map(p => permBadge(p, true)).join('')}</div>`
     }
     if (normal.length > 0) {
       html += '<details><summary>' + label('otherPermsShow', { count: normal.length }) + '<span class="chev">▸</span></summary>'
-      html += `<div class="apk-card-body">${normal.map(p => permBadge(p, false)).join('')}</div>`
+      html += `<div class="apk-badge-wrap">${normal.map(p => permBadge(p, false)).join('')}</div>`
       html += '</details>'
     }
     html += '</div>'
@@ -1370,6 +1370,9 @@ function renderApkInfo(data: any) {
 .apk-badge--danger { background: rgba(239,68,68,0.12); color: var(--app-red); border: 1px solid rgba(239,68,68,0.3); }
 .apk-badge--normal { background: rgba(128,128,128,0.12); color: var(--app-text-secondary); border: 1px solid var(--app-card-border); }
 .apk-badge--ok { background: rgba(34,197,94,0.12); color: var(--app-green); border: 1px solid rgba(34,197,94,0.3); }
+/* permission badges: wrap horizontally instead of stretching full-width
+   (a flex-column container would stretch each inline-block badge to 100%) */
+.apk-badge-wrap { display: flex; flex-wrap: wrap; }
 
 .apk-meta { width: 100%; border-collapse: collapse; font-size: 12px; }
 .apk-meta th { text-align: left; color: var(--app-text-dim); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--app-card-border); padding: 4px 6px; }
