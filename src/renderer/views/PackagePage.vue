@@ -408,6 +408,10 @@ function onResultClick(e: MouseEvent) {
   // App icon → lightbox zoom (handled first so it doesn't trigger copy).
   const icon = el?.closest?.('.apk-icon') as HTMLImageElement | null
   if (icon && icon.src) {
+    // The icon lives inside <summary>, so stop the click from also toggling
+    // the parent <details> open/closed when we only want the lightbox.
+    e.preventDefault()
+    e.stopPropagation()
     openIconLightbox(icon.src)
     return
   }
@@ -1007,8 +1011,8 @@ function renderApkInfo(data: any) {
     `<div class="apk-card"><div class="apk-card-h">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</div>${body}</div>`
   // Parent section that groups several related sub-analyses under one
   // collapsible card (e.g. native libraries: SO / compression / 16KB).
-  const group = (title: string, summary: string, body: string) =>
-    `<details class="apk-group" open>${head(title, summary)}<div class="apk-group-body">${body}</div></details>`
+  const group = (title: string, summary: string, body: string, icon = '') =>
+    `<details class="apk-group" open>${head(title, summary, icon)}<div class="apk-group-body">${body}</div></details>`
 
   // dim, subtle copy affordance appended after values for one-click copy
   const COPY_ICO = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>'
@@ -1032,7 +1036,10 @@ function renderApkInfo(data: any) {
     const appIcon = (data.app_icon && data.app_icon !== '-')
       ? `<img class="apk-icon" src="${data.app_icon}" alt="${esc(data.application_label || 'app')}" title="${esc(appIconTitle)}">`
       : ''
-    html += `<details class="apk-card" open>${head(esc(data.application_label), esc(data.package_name), appIcon)}<div class="apk-card-body">${body}</div></details>`
+    // Basic info becomes the first top-level group so all four sections share
+    // one collapsible-card style (icon + app name in the header, package name
+    // as the summary, the detail table inside the body).
+    html += group(esc(data.application_label), esc(data.package_name), body, appIcon)
   }
 
   // ===== SIGNATURE (accumulated into the Security group) =====
