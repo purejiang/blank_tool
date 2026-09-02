@@ -155,17 +155,21 @@
             :placeholder="t('automation.selectDevice')"
             @update:value="(v: string) => deviceStore.selectDevice(v)"
           />
-          <n-button
-            v-if="!running"
-            type="primary"
-            size="small"
-            block
-            :disabled="!selectedScriptId"
-            @click="runScript"
-          >
-            <template #icon><n-icon><Play /></n-icon></template>
-            {{ t('automation.run') }}
-          </n-button>
+          <n-tooltip v-if="!running" :disabled="canRun" placement="top">
+            <template #trigger>
+              <n-button
+                type="primary"
+                size="small"
+                block
+                :disabled="!canRun"
+                @click="runScript"
+              >
+                <template #icon><n-icon><Play /></n-icon></template>
+                {{ t('automation.run') }}
+              </n-button>
+            </template>
+            {{ !deviceStore.selectedDeviceId ? t('automation.noDevice') : t('automation.noScriptSelected') }}
+          </n-tooltip>
           <n-button v-else type="warning" size="small" block @click="stopRun">
             <template #icon><n-icon><Square /></n-icon></template>
             {{ t('automation.stop') }}
@@ -175,7 +179,7 @@
         <div class="result-block" v-if="runResult">
           <div class="result-summary">
             <n-tag :type="runResult.cancelled ? 'warning' : (runResult.success ? 'success' : 'error')" size="small">
-              {{ runResult.cancelled ? t('automation.cancelled') : (runResult.success ? t('automation.success') : t('task.failed')) }}
+              {{ runResult.cancelled ? t('automation.cancelled') : (runResult.success ? t('automation.success') : t('automation.failed')) }}
             </n-tag>
             <span class="sum-item">{{ t('automation.total') }}: {{ runResult.total ?? 0 }}</span>
             <span class="sum-item ok">{{ t('automation.passed') }}: {{ runResult.passed ?? 0 }}</span>
@@ -208,7 +212,7 @@
         </div>
         <n-empty v-else :description="t('automation.noResult')" size="small" class="col-empty" />
 
-        <div class="log-head">{{ t('task.logSearch') }}&nbsp;·&nbsp;log</div>
+        <div class="log-head">{{ t('automation.runLog') }}</div>
         <n-scrollbar class="log-scroll" ref="logScroll">
           <pre class="log-box">{{ logsText }}</pre>
         </n-scrollbar>
@@ -245,6 +249,7 @@ import {
   NScrollbar,
   NEmpty,
   NIcon,
+  NTooltip,
   NTag,
   NImage,
   NSpace,
@@ -385,6 +390,9 @@ const deviceOptions = computed(() =>
     value: d.id,
   })),
 )
+
+// Run is allowed only when both a device and a script are selected.
+const canRun = computed(() => !!deviceStore.selectedDeviceId && !!selectedScriptId.value)
 
 const selectedProject = computed(() => findProject(selectedProjectId.value))
 const selectedScript = computed(() => {
@@ -835,6 +843,14 @@ onMounted(() => {
 .three-cols {
   flex: 1; display: grid; grid-template-columns: 280px 1fr 360px;
   gap: 14px; min-height: 0;
+}
+/* Responsive fallback: shrink side columns on narrower viewports so the
+   editor column keeps usable width instead of being crushed. */
+@media (max-width: 1180px) {
+  .three-cols { grid-template-columns: 230px 1fr 300px; }
+}
+@media (max-width: 920px) {
+  .three-cols { grid-template-columns: 200px 1fr 260px; gap: 10px; }
 }
 .col {
   background: var(--app-surface, #fff); border: 1px solid var(--app-border, #eee);

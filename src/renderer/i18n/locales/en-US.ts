@@ -472,7 +472,7 @@ export default {
     // Element picker
     elements: 'Current Screen Elements',
     elementsDesc: 'Click an element to insert a tap_element step',
-    noDevice: 'Select a device first (top-right)',
+    noDevice: 'Select a device first',
     dumpFailed: 'UI dump failed: {msg}',
     noElements: 'No tappable elements detected',
     dumpLoading: 'Dumping screen...',
@@ -496,6 +496,7 @@ export default {
     cancelled: 'Cancelled',
     screenshots: 'Screenshots',
     noResult: 'Not run yet',
+    runLog: 'Run Log',
     copyHash: 'Copy',
     // Import / Export
     import: 'Import',

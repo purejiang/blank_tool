@@ -473,7 +473,7 @@ export default {
     // 元素选择器
     elements: '当前界面元素',
     elementsDesc: '点击元素可插入 tap_element 步骤',
-    noDevice: '请先在右上角选择设备',
+    noDevice: '请先选择设备',
     dumpFailed: '界面抓取失败：{msg}',
     noElements: '未检测到可点击元素',
     dumpLoading: '正在抓取界面...',
@@ -497,6 +497,7 @@ export default {
     cancelled: '已取消',
     screenshots: '截图',
     noResult: '尚未运行',
+    runLog: '运行日志',
     copyHash: '复制',
     // 导入导出
     import: '导入',
