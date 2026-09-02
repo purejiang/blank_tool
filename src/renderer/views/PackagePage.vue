@@ -189,7 +189,7 @@
             <n-icon size="14" color="var(--app-green)"><Smartphone /></n-icon>
             <span class="task-output-path">{{ t('task.installedToDevice', { label: task.deviceLabel }) }}</span>
           </div>
-          <div v-if="task.result" class="task-result" v-html="task.result" @click="onResultCopy" />
+          <div v-if="task.result" class="task-result" v-html="task.result" @click="onResultClick" />
           <!-- Unified task log: file log (terminal) or in-memory log (running) -->
           <div v-if="displayLog(task).length > 0" class="task-logs">
             <div class="task-logs-toolbar">
@@ -371,10 +371,46 @@ async function copyLog(task: Task) {
 }
 
 // Delegated click handler for the analysis result card (rendered via v-html).
-// Any element carrying a `data-copy` attribute copies that value to the
-// clipboard when clicked; `data-fb-hash` is kept as a fallback.
-function onResultCopy(e: MouseEvent) {
+// - Clicking the app icon (`.apk-icon`) opens a lightbox zoom.
+// - Clicking any element carrying `data-copy` copies that value to the
+//   clipboard; `data-fb-hash` is kept as a fallback.
+let lightboxKeyHandler: ((ev: KeyboardEvent) => void) | null = null
+
+function openIconLightbox(src: string) {
+  if (!src) return
+  let overlay = document.getElementById('apk-icon-lightbox') as HTMLElement | null
+  if (!overlay) {
+    overlay = document.createElement('div')
+    overlay.id = 'apk-icon-lightbox'
+    overlay.className = 'apk-lightbox'
+    overlay.addEventListener('click', closeIconLightbox)
+    document.body.appendChild(overlay)
+  }
+  overlay.innerHTML = `<img class="apk-lightbox-img" src="${src}" alt="app icon">`
+  overlay.style.display = 'flex'
+  lightboxKeyHandler = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') closeIconLightbox()
+  }
+  document.addEventListener('keydown', lightboxKeyHandler)
+}
+
+function closeIconLightbox() {
+  const overlay = document.getElementById('apk-icon-lightbox')
+  if (overlay) overlay.style.display = 'none'
+  if (lightboxKeyHandler) {
+    document.removeEventListener('keydown', lightboxKeyHandler)
+    lightboxKeyHandler = null
+  }
+}
+
+function onResultClick(e: MouseEvent) {
   const el = e.target as HTMLElement | null
+  // App icon → lightbox zoom (handled first so it doesn't trigger copy).
+  const icon = el?.closest?.('.apk-icon') as HTMLImageElement | null
+  if (icon && icon.src) {
+    openIconLightbox(icon.src)
+    return
+  }
   const node = el?.closest?.('[data-copy], [data-fb-hash]') as HTMLElement | null
   const value = node?.getAttribute('data-copy') ?? node?.getAttribute('data-fb-hash')
   if (!value) return
@@ -988,8 +1024,9 @@ function renderApkInfo(data: any) {
     if (data.warnings && Array.isArray(data.warnings) && data.warnings.length > 0) {
       body += `<div class="apk-warn"><b>${label('warnings')}</b>：${data.warnings.map((w: any) => esc(String(w))).join('；')}</div>`
     }
+    const appIconTitle = [data.application_label, data.package_name].filter(Boolean).join(' · ')
     const appIcon = (data.app_icon && data.app_icon !== '-')
-      ? `<img class="apk-icon" src="${data.app_icon}" alt="${esc(data.application_label || 'app')}">`
+      ? `<img class="apk-icon" src="${data.app_icon}" alt="${esc(data.application_label || 'app')}" title="${esc(appIconTitle)}">`
       : ''
     html += `<details class="apk-card" open>${head(esc(data.application_label), esc(data.package_name), appIcon)}<div class="apk-card-body">${body}</div></details>`
   }
@@ -1297,7 +1334,11 @@ function renderApkInfo(data: any) {
 
 .apk-card-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-secondary); }
 .apk-sum-grp { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.apk-icon { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; background: var(--app-card-border); box-shadow: 0 1px 2px rgba(0,0,0,.18); flex: 0 0 auto; }
+.apk-icon { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; background: var(--app-card-border); box-shadow: 0 1px 2px rgba(0,0,0,.18); flex: 0 0 auto; cursor: zoom-in; }
+
+/* click-to-zoom lightbox for the app icon (overlay lives on <body>) */
+.apk-lightbox { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.72); cursor: zoom-out; }
+.apk-lightbox-img { width: min(320px, 72vw); height: min(320px, 72vw); border-radius: 20px; box-shadow: 0 8px 40px rgba(0,0,0,.5); background: #fff; object-fit: contain; }
 .apk-sum { font-size: 11px; color: var(--app-text-dim); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* uniform table for every analysis section */
