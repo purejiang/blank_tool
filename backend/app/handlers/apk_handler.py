@@ -103,8 +103,8 @@ def _image_dimensions(data: bytes):
     return None
 
 
-def _extract_app_icon(apk_path: str, badging_output: str) -> str:
-    """Extract the launcher icon as a base64 data URI from the APK.
+def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "") -> str:
+    """Extract the launcher icon, preferring to persist it on disk.
 
     `aapt dump badging` reports candidate launcher icons as
     ``application-icon-NNN:'res/...'`` (NNN = density dpi). We prefer a
@@ -112,9 +112,17 @@ def _extract_app_icon(apk_path: str, badging_output: str) -> str:
     (res/mipmap-anydpi-v26/*.xml) are skipped since they cannot be embedded
     directly — and among raster candidates pick the one with the largest
     intrinsic pixel area (read from the PNG/WebP header), falling back to
-    density when dimensions can't be parsed. The chosen entry is read
-    straight out of the zip and base64-encoded. Returns a ``data:`` URI, or
-    ``'-'`` when no suitable icon is available.
+    density when dimensions can't be parsed.
+
+    Output:
+    * With a valid ``task_id`` the bytes are written to
+      ``<BT_TASKS_DIR>/<task_id>/icon.<ext>`` and the **absolute file path**
+      is returned. The renderer loads it via IPC, so the (potentially large)
+      icon is never embedded as base64 in the persisted result HTML /
+      localStorage.
+    * Without a task_id (or if the file cannot be written) a ``data:`` URI is
+      returned for backwards compatibility.
+    * ``'-'`` is returned when no suitable icon is available.
     """
     icon_matches = re.findall(
         r"application-icon-(\d+):\s*'([^']+)'", badging_output
@@ -152,7 +160,24 @@ def _extract_app_icon(apk_path: str, badging_output: str) -> str:
         return "-"
     icon_path = best[1]
     data = best[2]
-    mime = "image/webp" if icon_path.lower().endswith(".webp") else "image/png"
+    ext = "webp" if icon_path.lower().endswith(".webp") else "png"
+
+    # Prefer writing to the task directory: the file is cleaned up together
+    # with the task, and the (large) icon blob stays out of localStorage.
+    if task_id:
+        base = os.environ.get("BT_TASKS_DIR")
+        if base:
+            task_dir = os.path.join(base, str(task_id))
+            try:
+                os.makedirs(task_dir, exist_ok=True)
+                out_path = os.path.join(task_dir, f"icon.{ext}")
+                with open(out_path, "wb") as f:
+                    f.write(data)
+                return out_path
+            except Exception:
+                pass  # fall through to base64
+
+    mime = "image/webp" if ext == "webp" else "image/png"
     b64 = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{b64}"
 
@@ -241,9 +266,10 @@ def apk_analyze(params, stream_handler):
         # --- v2.1.1: deep APK analysis ---
         info["warnings"] = []
 
-        # C0: Launcher icon as base64 data URI (shown in the result card)
+        # C0: Launcher icon — written to the task dir (path returned) so the
+        # large image never lands in localStorage; falls back to base64.
         try:
-            info["app_icon"] = _extract_app_icon(apk_path, output)
+            info["app_icon"] = _extract_app_icon(apk_path, output, task_id)
         except Exception as e:
             logger.warning(f"App icon extraction failed: {e}")
             info["app_icon"] = "-"

@@ -74,6 +74,25 @@ export function setupElectronHandlers(): void {
       return { success: false, error: error.message }
     }
   })
+
+  // Read an image file off disk and return it as a base64 data URL. Used to
+  // render APK launcher icons whose path is persisted in task.result instead
+  // of the (large) inline base64 blob.
+  ipcMain.handle(IPC_CHANNEL_NAMES.readImageAsDataURL, async (event: IpcMainInvokeEvent, filePath: string) => {
+    try {
+      const ext = (filePath.split('.').pop() || 'png').toLowerCase()
+      const mimeMap: Record<string, string> = {
+        png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg',
+        jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml',
+      }
+      const mime = mimeMap[ext] || 'image/png'
+      const buf = await fs.readFile(filePath)
+      const b64 = buf.toString('base64')
+      return { success: true, dataUrl: `data:${mime};base64,${b64}` }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
   
   // 文件/目录打开
   ipcMain.handle(IPC_CHANNEL_NAMES.openPath, async (event: IpcMainInvokeEvent, targetPath: string) => {

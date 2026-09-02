@@ -26,6 +26,7 @@ export const IPC_CHANNELS = {
   getFileStats: { name: 'get-file-stats', direction: 'renderer-to-main', payload: 'string' },
   writeFile: { name: 'write-file', direction: 'renderer-to-main', payload: '{ path: string, content: string }' },
   readFile: { name: 'read-file', direction: 'renderer-to-main', payload: 'string' },
+  readImageAsDataURL: { name: 'read-image-as-dataurl', direction: 'renderer-to-main', payload: 'string' },
   openPath: { name: 'open-path', direction: 'renderer-to-main', payload: 'string' },
   openDevTools: { name: 'open-dev-tools', direction: 'renderer-to-main' },
   toggleDevTools: { name: 'toggle-dev-tools', direction: 'renderer-to-main' },
