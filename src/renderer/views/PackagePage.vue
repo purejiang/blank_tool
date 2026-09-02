@@ -5,36 +5,16 @@
         <h1 class="page-title">{{ t('package.title') }}</h1>
         <p class="page-subtitle">{{ t('package.subtitle') }}</p>
       </div>
-      <n-space :size="8">
-        <n-button size="tiny" quaternary @click="confirmClearCompleted" :disabled="!taskStore.hasCompleted">
-          {{ t('task.clearCompleted') }}
-        </n-button>
-        <n-button size="tiny" quaternary type="error" @click="confirmClearAll" :disabled="taskStore.tasks.length === 0">
-          {{ t('task.clearAll') }}
-        </n-button>
-      </n-space>
     </div>
 
     <!-- New Task Bar -->
     <div class="new-task-bar">
       <div class="task-bar-row">
-        <n-radio-group v-model:value="newSource" size="small">
-          <n-radio-button value="url">{{ t('task.url') }}</n-radio-button>
-          <n-radio-button value="local">{{ t('task.local') }}</n-radio-button>
-        </n-radio-group>
-
+        <!-- Single source input: http(s):// -> remote download, anything else
+             -> local path. No more radio switching. -->
         <n-input
-          v-if="newSource === 'url'"
-          v-model:value="newUrl"
-          :placeholder="t('task.urlPlaceholder')"
-          size="small"
-          clearable
-          class="task-source-input"
-        />
-        <n-input
-          v-else
-          v-model:value="newLocalPath"
-          :placeholder="t('task.localPathPlaceholder')"
+          v-model:value="newTarget"
+          :placeholder="t('task.inputPlaceholder')"
           size="small"
           clearable
           class="task-source-input"
@@ -42,7 +22,9 @@
           @drop.prevent="onPathDrop"
         >
           <template #suffix>
+            <!-- Browse only makes sense for local targets. -->
             <n-icon
+              v-if="!isUrlLike"
               class="task-pick-btn"
               :title="needsDirectory ? t('task.selectDir') : t('task.selectFile')"
               @click="pickLocalFile"
@@ -65,6 +47,11 @@
           </template>
           {{ startDisabledHint }}
         </n-tooltip>
+
+        <n-button size="small" quaternary type="error" @click="confirmClearAll" :disabled="taskStore.tasks.length === 0">
+          <template #icon><n-icon><Trash2 /></n-icon></template>
+          {{ t('task.clearAll') }}
+        </n-button>
       </div>
 
       <div class="task-bar-opts">
@@ -580,10 +567,10 @@ onUnmounted(() => {
 watch(() => taskStore.tasks, () => { syncNowTimer() }, { deep: true })
 
 // New task form
-const newSource = ref<'url' | 'local'>('local')
-const newUrl = ref('')
 const newOperation = ref<Task['operation']>('analyze')
-const newLocalPath = ref('')
+// Single merged source input: http(s):// -> remote URL, anything else -> local
+// path. Kept in one field so users can paste either without switching modes.
+const newTarget = ref('')
 const newSignId = ref('')
 const decompileResources = ref(true)
 const decompileSources = ref(true)
@@ -597,16 +584,15 @@ const operationOptions = computed(() =>
   OPERATIONS_ORDERED.map(op => ({ label: t(`task.${op}`), value: op }))
 )
 
-const canStart = computed(() =>
-  newSource.value === 'url' ? !!newUrl.value.trim() : !!newLocalPath.value.trim()
-)
+const canStart = computed(() => !!newTarget.value.trim())
+
+// http(s):// -> remote download; everything else is treated as a local path.
+const isUrlLike = computed(() => /^https?:\/\//i.test(newTarget.value.trim()))
 
 // recompile consumes a decompiled project directory; every other op a file.
 const needsDirectory = computed(() => newOperation.value === 'recompile')
 
-const startDisabledHint = computed(() =>
-  newSource.value === 'url' ? t('task.startHintUrl') : t('task.startHintLocal')
-)
+const startDisabledHint = computed(() => t('task.startHint'))
 
 /** Resolve a path's existence + type via the main process (null = not found). */
 async function statLocalPath(p: string) {
@@ -624,14 +610,16 @@ async function statLocalPath(p: string) {
 
 // Switching the operation can invalidate an already-picked path (e.g. a file
 // held while switching to recompile, which needs a directory). Drop it instead
-// of letting startNewTask run with the wrong kind of target.
+// of letting startNewTask run with the wrong kind of target. URL targets are
+// unaffected — they have no file/dir duality.
 watch(newOperation, async () => {
-  const p = newLocalPath.value.trim()
+  if (isUrlLike.value) return
+  const p = newTarget.value.trim()
   if (!p) return
   const st = await statLocalPath(p)
   if (!st) return // non-existent paths are validated on start
   if (needsDirectory.value ? !st.isDirectory : !st.isFile) {
-    newLocalPath.value = ''
+    newTarget.value = ''
     showWarning(t('task.pathTypeMismatch'), needsDirectory.value ? t('task.pathNeedDir') : t('task.pathNeedFile'))
   }
 })
@@ -745,7 +733,7 @@ async function pickLocalFile() {
       ? await svc.selectDirectory({ title: t('task.selectDir') })
       : await svc.selectFile({ title: t('task.selectFile'), filters: [{ name: 'APK/AAB', extensions: ['apk', 'aab'] }] })
     if (result && !result.canceled && result.filePaths?.length) {
-      newLocalPath.value = result.filePaths[0]
+      newTarget.value = result.filePaths[0]
     }
   } catch (e) {
     logUtil.error('pickLocalFile error:', e)
@@ -756,15 +744,17 @@ async function pickLocalFile() {
 // gives no useful default behaviour here, so we read it off the File object.
 function onPathDrop(e: DragEvent) {
   const file = e.dataTransfer?.files?.[0] as (File & { path?: string }) | undefined
-  if (file?.path) newLocalPath.value = file.path
+  if (file?.path) newTarget.value = file.path
 }
 
 async function startNewTask() {
+  const raw = newTarget.value.trim()
+  if (!raw) return
   let source: Task['source'], url: string | undefined, fp: string, fn: string
 
-  if (newSource.value === 'url') {
+  if (/^https?:\/\//i.test(raw)) {
     source = 'url'
-    url = newUrl.value.trim()
+    url = raw
     // Strip any query/hash: the backend replaces '?' with '_' when sanitizing
     // the name, which would silently destroy the extension (app.apk?x=1 ->
     // app.apk_x=1).
@@ -772,7 +762,7 @@ async function startNewTask() {
     fp = ''
   } else {
     source = 'local'
-    fp = newLocalPath.value.trim()
+    fp = raw
     // A hand-typed or stale path is validated before it reaches the backend.
     const st = await statLocalPath(fp)
     if (!st) {
@@ -794,8 +784,7 @@ async function startNewTask() {
   const task = taskStore.createTask({ source, url, filePath: fp, fileName: fn, operation: newOperation.value, operationLabel: opLabel })
 
   // Clear inputs
-  newUrl.value = ''
-  newLocalPath.value = ''
+  newTarget.value = ''
 
   // Queue the task — TaskExecutionService starts it when a slot frees up
   // (bounded concurrency, default 3). The task stays 'queued' until then.
@@ -963,17 +952,6 @@ async function retryFailedStage(task: Task) {
   task.collapsed = true
   const skipDownload = task.source === 'url' ? !!task.filePath : false
   enqueueTask(task.id, () => executeTask(task, { skipDownload }))
-}
-
-async function confirmClearCompleted() {
-  const del = await window.electronAPI?.appConfig?.get('autoDeleteOutputOnTaskRemove')
-  dialog.warning({
-    title: t('task.clearCompleted'),
-    content: del === true ? t('task.clearCompletedConfirmDelete') : t('task.clearCompletedConfirm'),
-    positiveText: t('common.confirm'),
-    negativeText: t('common.cancel'),
-    onPositiveClick: () => { taskStore.clearCompleted() }
-  })
 }
 
 async function confirmClearAll() {
