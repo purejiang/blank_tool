@@ -853,7 +853,7 @@ onMounted(() => {
   .three-cols { grid-template-columns: 200px 1fr 260px; gap: 10px; }
 }
 .col {
-  background: var(--app-surface, #fff); border: 1px solid var(--app-border, #eee);
+  background: var(--app-card-bg); border: 1px solid var(--app-card-border);
   border-radius: 10px; padding: 12px; display: flex; flex-direction: column; min-height: 0;
 }
 .col-head {
@@ -871,7 +871,7 @@ onMounted(() => {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 8px; border-radius: 8px; cursor: pointer;
 }
-.proj-row.active { background: var(--app-accent-soft, #eef3ff); }
+.proj-row.active { background: var(--app-blue-bg); }
 .proj-name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; color: var(--app-text-primary); overflow: hidden; }
 .proj-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-actions { display: flex; gap: 2px; opacity: 0; }
@@ -882,7 +882,7 @@ onMounted(() => {
   cursor: pointer; font-size: 12.5px; color: var(--app-text-secondary);
 }
 .script-row span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.script-row.active { background: var(--app-accent-soft, #eef3ff); color: var(--app-text-primary); }
+.script-row.active { background: var(--app-blue-bg); color: var(--app-text-primary); }
 .script-del { opacity: 0; }
 .script-row:hover .script-del { opacity: 1; }
 
@@ -904,8 +904,8 @@ onMounted(() => {
 .sum-item { font-size: 12px; color: var(--app-text-secondary); }
 .sum-item.ok { color: #18a058; }
 .sum-item.bad { color: #d03050; }
-.steps-result { max-height: 200px; overflow: auto; border: 1px solid var(--app-border, #eee); border-radius: 8px; padding: 6px; }
-.step-line { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 2px 0; border-bottom: 1px dashed var(--app-border, #f0f0f0); }
+.steps-result { max-height: 200px; overflow: auto; border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px; }
+.step-line { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 2px 0; border-bottom: 1px dashed var(--app-card-border); }
 .step-line.ok .step-idx { color: #18a058; }
 .step-line.bad .step-idx { color: #d03050; }
 .step-idx { font-weight: 600; }
@@ -916,14 +916,14 @@ onMounted(() => {
 .shots-title { font-size: 12px; color: var(--app-text-secondary); margin-bottom: 6px; }
 .shot-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .log-head { font-size: 12px; color: var(--app-text-muted); margin: 12px 0 4px; }
-.log-scroll { flex: 1; min-height: 120px; border: 1px solid var(--app-border, #eee); border-radius: 8px; background: #0f1115; }
+.log-scroll { flex: 1; min-height: 120px; border: 1px solid var(--app-card-border); border-radius: 8px; background: #0f1115; }
 .log-box {
   margin: 0; padding: 10px; color: #c8d0da; font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
 }
 .elem-list { max-height: 360px; overflow: auto; }
 .elem-item { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.elem-item:hover { background: var(--app-accent-soft, #eef3ff); }
+.elem-item:hover { background: var(--app-blue-bg); }
 .elem-main { display: flex; flex-direction: column; min-width: 0; }
 .elem-label { font-size: 13px; color: var(--app-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-by { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
