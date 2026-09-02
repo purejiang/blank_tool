@@ -19,7 +19,7 @@
     <div class="new-task-bar">
       <div class="task-bar-row">
         <n-radio-group v-model:value="newSource" size="small">
-          <n-radio-button value="url" :disabled="taskStore.hasRunning">{{ t('task.url') }}</n-radio-button>
+          <n-radio-button value="url">{{ t('task.url') }}</n-radio-button>
           <n-radio-button value="local">{{ t('task.local') }}</n-radio-button>
         </n-radio-group>
 
@@ -29,18 +29,42 @@
           :placeholder="t('task.urlPlaceholder')"
           size="small"
           clearable
+          class="task-source-input"
         />
-        <div v-else class="local-file-picker" @click="pickLocalFile">
-          <n-icon size="16"><FolderOpen /></n-icon>
-          <span>{{ newLocalName || t('task.selectFile') }}</span>
-        </div>
+        <n-input
+          v-else
+          v-model:value="newLocalPath"
+          :placeholder="t('task.localPathPlaceholder')"
+          size="small"
+          clearable
+          class="task-source-input"
+          @dragover.prevent
+          @drop.prevent="onPathDrop"
+        >
+          <template #suffix>
+            <n-icon
+              class="task-pick-btn"
+              :title="needsDirectory ? t('task.selectDir') : t('task.selectFile')"
+              @click="pickLocalFile"
+            >
+              <FolderOpen />
+            </n-icon>
+          </template>
+        </n-input>
 
         <n-select v-model:value="newOperation" :options="operationOptions" size="small" style="width:120px" />
 
-        <n-button type="primary" size="small" @click="startNewTask" :disabled="!canStart">
-          <template #icon><n-icon><Play /></n-icon></template>
-          {{ t('task.start') }}
-        </n-button>
+        <n-tooltip :disabled="canStart" trigger="hover">
+          <template #trigger>
+            <span class="task-start-wrap">
+              <n-button type="primary" size="small" @click="startNewTask" :disabled="!canStart">
+                <template #icon><n-icon><Play /></n-icon></template>
+                {{ t('task.start') }}
+              </n-button>
+            </span>
+          </template>
+          {{ startDisabledHint }}
+        </n-tooltip>
       </div>
 
       <div class="task-bar-opts">
@@ -560,7 +584,6 @@ const newSource = ref<'url' | 'local'>('local')
 const newUrl = ref('')
 const newOperation = ref<Task['operation']>('analyze')
 const newLocalPath = ref('')
-const newLocalName = ref('')
 const newSignId = ref('')
 const decompileResources = ref(true)
 const decompileSources = ref(true)
@@ -574,9 +597,43 @@ const operationOptions = computed(() =>
   OPERATIONS_ORDERED.map(op => ({ label: t(`task.${op}`), value: op }))
 )
 
-const canStart = computed(() => {
-  if (newSource.value === 'url') return !!newUrl.value.trim()
-  return !!newLocalPath.value
+const canStart = computed(() =>
+  newSource.value === 'url' ? !!newUrl.value.trim() : !!newLocalPath.value.trim()
+)
+
+// recompile consumes a decompiled project directory; every other op a file.
+const needsDirectory = computed(() => newOperation.value === 'recompile')
+
+const startDisabledHint = computed(() =>
+  newSource.value === 'url' ? t('task.startHintUrl') : t('task.startHintLocal')
+)
+
+/** Resolve a path's existence + type via the main process (null = not found). */
+async function statLocalPath(p: string) {
+  try {
+    const svc = await serviceManager.getService('system') as any
+    if (svc && typeof svc.getFileStats === 'function') {
+      const r = await svc.getFileStats(p)
+      if (r?.success === true) return r as { isFile: boolean; isDirectory: boolean }
+    }
+  } catch {
+    // An IPC failure is treated the same as "path not found".
+  }
+  return null
+}
+
+// Switching the operation can invalidate an already-picked path (e.g. a file
+// held while switching to recompile, which needs a directory). Drop it instead
+// of letting startNewTask run with the wrong kind of target.
+watch(newOperation, async () => {
+  const p = newLocalPath.value.trim()
+  if (!p) return
+  const st = await statLocalPath(p)
+  if (!st) return // non-existent paths are validated on start
+  if (needsDirectory.value ? !st.isDirectory : !st.isFile) {
+    newLocalPath.value = ''
+    showWarning(t('task.pathTypeMismatch'), needsDirectory.value ? t('task.pathNeedDir') : t('task.pathNeedFile'))
+  }
 })
 
 function opTagType(op: string) {
@@ -684,18 +741,22 @@ function collapseTaskLog(task: Task) {
 async function pickLocalFile() {
   try {
     const svc = await serviceManager.getService('system') as any
-    const isDir = newOperation.value === 'recompile'
-    const result = isDir
+    const result = needsDirectory.value
       ? await svc.selectDirectory({ title: t('task.selectDir') })
       : await svc.selectFile({ title: t('task.selectFile'), filters: [{ name: 'APK/AAB', extensions: ['apk', 'aab'] }] })
     if (result && !result.canceled && result.filePaths?.length) {
-      const fp = result.filePaths[0]
-      newLocalPath.value = fp
-      newLocalName.value = fp.split(/[/\\]/).pop() || 'file'
+      newLocalPath.value = result.filePaths[0]
     }
   } catch (e) {
     logUtil.error('pickLocalFile error:', e)
   }
+}
+
+// Dropping a file onto the path input fills in its absolute path. Chromium
+// gives no useful default behaviour here, so we read it off the File object.
+function onPathDrop(e: DragEvent) {
+  const file = e.dataTransfer?.files?.[0] as (File & { path?: string }) | undefined
+  if (file?.path) newLocalPath.value = file.path
 }
 
 async function startNewTask() {
@@ -704,12 +765,29 @@ async function startNewTask() {
   if (newSource.value === 'url') {
     source = 'url'
     url = newUrl.value.trim()
-    fn = url.split('/').pop() || 'app.apk'
+    // Strip any query/hash: the backend replaces '?' with '_' when sanitizing
+    // the name, which would silently destroy the extension (app.apk?x=1 ->
+    // app.apk_x=1).
+    fn = (url.split('/').pop() || 'app.apk').split('?')[0].split('#')[0] || 'app.apk'
     fp = ''
   } else {
     source = 'local'
-    fp = newLocalPath.value
-    fn = newLocalName.value || fp.split(/[/\\]/).pop() || 'file'
+    fp = newLocalPath.value.trim()
+    // A hand-typed or stale path is validated before it reaches the backend.
+    const st = await statLocalPath(fp)
+    if (!st) {
+      showWarning(t('task.pathNotExist'), fp)
+      return
+    }
+    if (needsDirectory.value && !st.isDirectory) {
+      showWarning(t('task.pathNeedDir'), fp)
+      return
+    }
+    if (!needsDirectory.value && !st.isFile) {
+      showWarning(t('task.pathNeedFile'), fp)
+      return
+    }
+    fn = fp.split(/[/\\]/).pop() || 'file'
   }
 
   const opLabel = operationOptions.value.find(o => o.value === newOperation.value)?.label || newOperation.value
@@ -717,7 +795,6 @@ async function startNewTask() {
 
   // Clear inputs
   newUrl.value = ''
-  newLocalName.value = ''
   newLocalPath.value = ''
 
   // Queue the task — TaskExecutionService starts it when a slot frees up
@@ -1253,12 +1330,19 @@ function renderApkInfo(data: any) {
 .task-bar-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
-.task-bar-row > :nth-child(2) { flex: 1; min-width: 0; }
+/* Bound by class, not position: inserting an element before the input used to
+   silently steal this flex from it via :nth-child(2). */
+.task-source-input { flex: 1 1 240px; min-width: 0; }
+.task-pick-btn { cursor: pointer; color: var(--app-text-dim); transition: color .2s; }
+.task-pick-btn:hover { color: var(--app-green); }
+.task-start-wrap { display: inline-flex; }
 .task-bar-opts {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 10px;
   padding-top: 10px;
@@ -1267,23 +1351,6 @@ function renderApkInfo(data: any) {
 .op-desc { font-size: 12px; color: var(--app-text-dim); }
 .op-label { font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
 
-.local-file-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  background: var(--app-input-bg);
-  border: 1px solid var(--app-card-border);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--app-text-dim);
-  overflow: hidden;
-  transition: border-color .2s;
-}
-.local-file-picker span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.local-file-picker:hover { border-color: var(--app-green); }
-.local-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hidden-input { display: none; }
 
 /* Empty */
