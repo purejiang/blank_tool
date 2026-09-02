@@ -79,16 +79,42 @@ def _extract_signature_hashes(apk_path: str) -> dict:
         }
 
 
+def _image_dimensions(data: bytes):
+    """Best-effort intrinsic pixel size of a PNG/WebP, or None.
+
+    Parsed straight from the file header (no external deps) so we can pick
+    the genuinely largest launcher icon instead of trusting the density label.
+    """
+    if len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n":
+        w = int.from_bytes(data[16:20], "big")
+        h = int.from_bytes(data[20:24], "big")
+        return w, h
+    if len(data) >= 30 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        fmt = data[12:16]
+        if fmt == b"VP8 ":
+            w = int.from_bytes(data[26:28], "little") & 0x3FFF
+            h = int.from_bytes(data[28:30], "little") & 0x3FFF
+            return w, h
+        if fmt == b"VP8X":
+            w = int.from_bytes(data[24:27], "little") + 1
+            h = int.from_bytes(data[27:30], "little") + 1
+            return w, h
+        # VP8L (lossless) is bit-packed; skip precise parse and fall back to density.
+    return None
+
+
 def _extract_app_icon(apk_path: str, badging_output: str) -> str:
     """Extract the launcher icon as a base64 data URI from the APK.
 
     `aapt dump badging` reports candidate launcher icons as
     ``application-icon-NNN:'res/...'`` (NNN = density dpi). We prefer a
-    raster asset (png/webp) at the highest density — adaptive vector XML
-    drawables (res/mipmap-anydpi-v26/*.xml) are skipped since they cannot
-    be embedded directly — then read the entry bytes straight out of the
-    zip and base64-encode them. Returns a ``data:`` URI, or ``'-'`` when
-    no suitable icon is available.
+    raster asset (png/webp) — adaptive vector XML drawables
+    (res/mipmap-anydpi-v26/*.xml) are skipped since they cannot be embedded
+    directly — and among raster candidates pick the one with the largest
+    intrinsic pixel area (read from the PNG/WebP header), falling back to
+    density when dimensions can't be parsed. The chosen entry is read
+    straight out of the zip and base64-encoded. Returns a ``data:`` URI, or
+    ``'-'`` when no suitable icon is available.
     """
     icon_matches = re.findall(
         r"application-icon-(\d+):\s*'([^']+)'", badging_output
@@ -102,16 +128,30 @@ def _extract_app_icon(apk_path: str, badging_output: str) -> str:
     ]
     if not raster:
         return "-"
-    # Highest density wins (crispest on hi-dpi screens).
-    raster.sort(key=lambda x: x[0], reverse=True)
-    icon_path = raster[0][1]
+    # Pick the genuinely largest raster by intrinsic pixel area so the UI never
+    # upscales a low-res asset. Reading every candidate is cheap (icons are
+    # tiny) and beats trusting the density label (a lower-density PNG can be
+    # physically larger than a higher-density one).
+    best = None  # (score, path, data)
     try:
         with zipfile.ZipFile(apk_path) as zf:
-            data = zf.read(icon_path)
+            for d, p in raster:
+                try:
+                    data = zf.read(p)
+                except Exception:
+                    continue
+                if not data:
+                    continue
+                dims = _image_dimensions(data)
+                score = (dims[0] * dims[1]) if dims else int(d) * 1000
+                if best is None or score > best[0]:
+                    best = (score, p, data)
     except Exception:
         return "-"
-    if not data:
+    if best is None:
         return "-"
+    icon_path = best[1]
+    data = best[2]
     mime = "image/webp" if icon_path.lower().endswith(".webp") else "image/png"
     b64 = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{b64}"

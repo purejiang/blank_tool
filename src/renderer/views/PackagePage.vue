@@ -1338,7 +1338,10 @@ function renderApkInfo(data: any) {
 
 /* click-to-zoom lightbox for the app icon (overlay lives on <body>) */
 .apk-lightbox { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.72); cursor: zoom-out; }
-.apk-lightbox-img { width: min(320px, 72vw); height: min(320px, 72vw); border-radius: 20px; box-shadow: 0 8px 40px rgba(0,0,0,.5); background: #fff; object-fit: contain; }
+/* Show at the icon's NATURAL size and only shrink if it exceeds the cap —
+   width/height:auto (not a fixed box) prevents object-fit from upscaling a
+   small source and turning it blurry. */
+.apk-lightbox-img { width: auto; height: auto; max-width: min(420px, 80vw); max-height: min(420px, 80vh); border-radius: 20px; box-shadow: 0 8px 40px rgba(0,0,0,.5); background: #fff; }
 .apk-sum { font-size: 11px; color: var(--app-text-dim); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* uniform table for every analysis section */
