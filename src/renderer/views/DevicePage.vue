@@ -555,7 +555,7 @@ const takeScreenshot = async () => {
 
 <style scoped>
 .device-page {
-  max-width: 1300px;
+  max-width: var(--page-max-width);
   margin: 0 auto;
 }
 

@@ -825,7 +825,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.auto-page { height: 100%; display: flex; flex-direction: column; }
+.auto-page { max-width: var(--page-max-width); margin: 0 auto; height: 100%; display: flex; flex-direction: column; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
 .page-title {
   font-family: Inter, sans-serif; font-size: 22px; font-weight: 700;

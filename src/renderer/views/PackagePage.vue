@@ -1291,7 +1291,7 @@ function renderApkInfo(data: any) {
 </script>
 
 <style scoped>
-.package-page { max-width: 960px; margin: 0 auto; height: calc(100vh - 48px); display: flex; flex-direction: column; }
+.package-page { max-width: var(--page-max-width); margin: 0 auto; height: calc(100vh - 48px); display: flex; flex-direction: column; }
 .task-list-area { flex: 1; overflow-y: auto; min-height: 0; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
