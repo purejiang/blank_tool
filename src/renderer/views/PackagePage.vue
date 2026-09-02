@@ -1047,6 +1047,7 @@ function renderApkInfo(data: any) {
   // can be folded into the same Security group right here, next to signing.
   let securityBody = ''
   let signStatus = ''
+  let signPill = ''
   if (hasAnyHash) {
     const rows: string[] = []
     if (fileMd5 && fileMd5 !== '-') rows.push(trow(['APK MD5', `<span class="mono">${esc(fileMd5)}</span>` + copyBtn(fileMd5)]))
@@ -1060,7 +1061,13 @@ function renderApkInfo(data: any) {
     let body = table(['字段', '值'], rows)
     if (unsigned) body += `<div class="apk-warn">${label('unsignedApk')}</div>`
     signStatus = unsigned ? '未签名' : '已签名'
-    securityBody += card(label('signatureInfo'), signStatus, body)
+    // Signing status as a status pill (same language as 16KB / permission
+    // levels) so the security posture reads at a glance instead of as plain text.
+    const signPillLocal = unsigned
+      ? '<span class="apk-lv apk-lv--danger">未签名</span>'
+      : '<span class="apk-lv apk-lv--ok">已签名</span>'
+    signPill = signPillLocal
+    securityBody += card(label('signatureInfo'), signPill, body)
   }
   // Permissions folded into the Security group (dangerous first, then normal).
   {
@@ -1075,7 +1082,7 @@ function renderApkInfo(data: any) {
       ? card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, table(['权限', '级别'], prows))
       : simpleCard(label('permissions'), '', `<div class="apk-muted">${label('noPermissions')}</div>`)
     const secSummary = signStatus
-      ? `${signStatus} · ${perms.length} 项权限（${dangerous.length} 危险）`
+      ? `${signPill} · ${perms.length} 项权限（${dangerous.length} 危险）`
       : `${perms.length} 项权限（${dangerous.length} 危险）`
     html += group(label('signingSecurity'), secSummary, securityBody + permCard, '', '#22c55e')
   }
