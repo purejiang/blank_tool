@@ -1395,6 +1395,8 @@ function renderApkInfo(data: any) {
 .apk-table th { text-align: left; color: var(--app-text-dim); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--app-card-border); padding: 5px 8px; white-space: nowrap; }
 .apk-table td { padding: 5px 8px; border-bottom: 1px solid var(--app-card-border); color: var(--app-text-secondary); vertical-align: top; word-break: break-word; }
 .apk-table tr:last-child td { border-bottom: none; }
+/* hover affordance so long tables (permissions / metadata) stay scannable */
+.apk-table tbody tr:hover { background: rgba(128,128,128,0.07); }
 .apk-table .mono { font-family: monospace; }
 .apk-table .nowrap { white-space: nowrap; }
 
