@@ -247,6 +247,7 @@ export default {
     logSearch: '搜索日志',
     copyLog: '复制',
     exportLog: '导出',
+    logTruncatedHint: '日志已截断（仅显示末尾 100KB），点击右侧下载按钮导出完整日志',
     logCopied: '已复制',
     outputMissing: '输出文件不存在或已被删除',
     clearCompleted: '清除已完成',

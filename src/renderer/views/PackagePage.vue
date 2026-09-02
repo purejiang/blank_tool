@@ -229,6 +229,9 @@
                 <template #icon><n-icon size="14"><Download /></n-icon></template>
               </n-button>
             </div>
+            <div v-if="logTruncatedMap.get(task.id)" class="task-log-trunc-hint">
+              {{ t('task.logTruncatedHint') }}
+            </div>
             <n-virtual-list
               :ref="(el: any) => onLogListRef(task.id, el)"
               :key="'log-' + task.id"
@@ -298,6 +301,8 @@ const taskLogCache = ref<Map<number, { key: number; text: string }[]>>(new Map()
 // Per-task inline log search state + virtual-list refs
 const logSearchMap = ref<Map<number, string>>(new Map())
 const logSearchOpenMap = ref<Map<number, boolean>>(new Map())
+// Per-task flag: log panel default-truncates (tail 100KB); export yields the full file.
+const logTruncatedMap = ref<Map<number, boolean>>(new Map())
 const logListRefs = new Map<number, any>()
 
 /** Toggle the inline log search box; closing it clears the active filter. */
@@ -647,16 +652,21 @@ function toggleTask(task: Task) {
 async function loadTaskLog(task: Task) {
   try {
     const api = window.electronAPI as any
-    // Always load the full log (no tail truncation): the log panel shows the
-    // complete output and auto-scrolls to the bottom by default.
-    const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id) })
+    // Default to a truncated tail (100KB) so the panel stays light; the export
+    // button calls task.export_log which copies the *full* file to disk.
+    const result = await api.callBackendAPI('task.read_log', {
+      task_id: String(task.id),
+      tail_bytes: 100 * 1024,
+    })
     const content = (result.content || '').trim()
+    logTruncatedMap.value.set(task.id, !!result.truncated)
     if (content) {
       taskLogCache.value.set(task.id, splitLogLines(content))
     }
     await nextTick()
     scrollLogToBottom(task.id)
   } catch (e) {
+    logTruncatedMap.value.set(task.id, false)
     taskLogCache.value.set(task.id, [{ key: 0, text: `[Error loading log: ${e}]` }])
   }
 }
@@ -918,10 +928,11 @@ async function confirmRemoveTask(task: Task) {
       content: t('task.removeConfirmDelete'),
       positiveText: t('common.confirm'),
       negativeText: t('common.cancel'),
-      onPositiveClick: () => { taskLogCache.value.delete(task.id); taskStore.removeTask(task.id) }
+      onPositiveClick: () => { taskLogCache.value.delete(task.id); logTruncatedMap.value.delete(task.id); taskStore.removeTask(task.id) }
     })
   } else {
     taskLogCache.value.delete(task.id)
+    logTruncatedMap.value.delete(task.id)
     taskStore.removeTask(task.id)
   }
 }
@@ -1369,6 +1380,13 @@ function renderApkInfo(data: any) {
 .task-logs-toolbar { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
 .task-logs-spacer { flex: 1; }
 .task-logs-toolbar .n-button { flex: 0 0 auto; }
+.task-log-trunc-hint {
+  margin: 0 0 6px;
+  font-family: var(--app-font, system-ui);
+  font-size: 11px;
+  color: var(--app-text-tertiary, #888);
+  line-height: 1.5;
+}
 
 </style>
 

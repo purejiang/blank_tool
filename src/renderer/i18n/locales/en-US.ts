@@ -247,6 +247,7 @@ export default {
     logSearch: 'Search log',
     copyLog: 'Copy',
     exportLog: 'Export',
+    logTruncatedHint: 'Log truncated (last 100KB shown only). Click the download button to export the full log',
     logCopied: 'Copied',
     outputMissing: 'Output file does not exist or has been deleted',
     clearCompleted: 'Clear Done',
