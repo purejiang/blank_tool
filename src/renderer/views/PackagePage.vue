@@ -1035,7 +1035,11 @@ function renderApkInfo(data: any) {
     html += `<details class="apk-card" open>${head(esc(data.application_label), esc(data.package_name), appIcon)}<div class="apk-card-body">${body}</div></details>`
   }
 
-  // ===== SIGNATURE =====
+  // ===== SIGNATURE (accumulated into the Security group) =====
+  // perms/dangerous/normal are classified at function scope, so permissions
+  // can be folded into the same Security group right here, next to signing.
+  let securityBody = ''
+  let signStatus = ''
   if (hasAnyHash) {
     const rows: string[] = []
     if (fileMd5 && fileMd5 !== '-') rows.push(trow(['APK MD5', `<span class="mono">${esc(fileMd5)}</span>` + copyBtn(fileMd5)]))
@@ -1048,7 +1052,25 @@ function renderApkInfo(data: any) {
     }
     let body = table(['字段', '值'], rows)
     if (unsigned) body += `<div class="apk-warn">${label('unsignedApk')}</div>`
-    html += card(label('signatureInfo'), unsigned ? '未签名' : '已签名', body)
+    signStatus = unsigned ? '未签名' : '已签名'
+    securityBody += card(label('signatureInfo'), signStatus, body)
+  }
+  // Permissions folded into the Security group (dangerous first, then normal).
+  {
+    const prows: string[] = []
+    for (const p of dangerous) {
+      prows.push(trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(true)]))
+    }
+    for (const p of normal) {
+      prows.push(trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(false)]))
+    }
+    const permCard = perms.length > 0
+      ? card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, table(['权限', '级别'], prows))
+      : simpleCard(label('permissions'), '', `<div class="apk-muted">${label('noPermissions')}</div>`)
+    const secSummary = signStatus
+      ? `${signStatus} · ${perms.length} 项权限（${dangerous.length} 危险）`
+      : `${perms.length} 项权限（${dangerous.length} 危险）`
+    html += group(label('signingSecurity'), secSummary, securityBody + permCard)
   }
 
   // ===== NATIVE LIBRARIES (SO comparison + compression + 16KB page) =====
@@ -1145,23 +1167,8 @@ function renderApkInfo(data: any) {
         resCell
       ]))
     }
-    html += card(label('metaData'), `${metaData.length} 项`, table(['父级', '名称', '值', '资源'], rows))
-  }
-
-  // ===== PERMISSIONS =====
-  // All permissions (dangerous first, then normal) in one flat table; the
-  // 级别 column already distinguishes 危险/普通, so no separate collapse.
-  if (perms.length > 0) {
-    const rows: string[] = []
-    for (const p of dangerous) {
-      rows.push(trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(true)]))
-    }
-    for (const p of normal) {
-      rows.push(trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(false)]))
-    }
-    html += card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, table(['权限', '级别'], rows))
-  } else {
-    html += simpleCard(label('permissions'), '', `<div class="apk-muted">${label('noPermissions')}</div>`)
+    const metaCard = card(label('metaData'), `${metaData.length} 项`, table(['父级', '名称', '值', '资源'], rows))
+    html += group(label('manifestResources'), `${metaData.length} 项`, metaCard)
   }
 
   html += '</div>'

@@ -307,6 +307,12 @@ export default {
     // v2.1.1 APK analysis: native libraries group (SO / compression / 16KB)
     nativeAnalysis: 'Native Libraries',
     nativeAnalysisDesc: 'SO comparison / compression / 16KB page alignment',
+    // v2.1.1 APK analysis: security group (signing + permissions)
+    signingSecurity: 'Signing & Security',
+    signingSecurityDesc: 'Signature + permissions',
+    // v2.1.1 APK analysis: manifest & resources group
+    manifestResources: 'Manifest & Resources',
+    manifestResourcesDesc: 'AndroidManifest meta-data',
     // v2.1.1 APK analysis: SO comparison
     soComparison: 'SO File Comparison',
     soComparisonDesc: 'Native lib consistency across architectures',

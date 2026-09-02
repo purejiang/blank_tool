@@ -307,6 +307,12 @@ export default {
     // v2.1.1 APK analysis: native libraries group (SO / compression / 16KB)
     nativeAnalysis: '原生库分析',
     nativeAnalysisDesc: 'SO 文件对比 / 压缩状态 / 16KB 页面对齐',
+    // v2.1.1 APK analysis: security group (signing + permissions)
+    signingSecurity: '签名与安全',
+    signingSecurityDesc: '签名信息 + 权限',
+    // v2.1.1 APK analysis: manifest & resources group
+    manifestResources: '清单与资源',
+    manifestResourcesDesc: 'AndroidManifest 元数据',
     // v2.1.1 APK analysis: SO comparison
     soComparison: 'SO 文件对比',
     soComparisonDesc: '不同架构 SO 文件一致性',
