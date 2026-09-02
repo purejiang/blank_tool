@@ -228,30 +228,10 @@
               <n-button size="tiny" quaternary :title="t('task.exportLog')" @click.stop="exportTaskLog(task)">
                 <template #icon><n-icon size="14"><Download /></n-icon></template>
               </n-button>
-              <n-button
-                size="tiny" quaternary
-                :type="autoScrollMap.get(task.id) !== false ? 'info' : 'default'"
-                :title="t('task.autoScroll')"
-                @click.stop="autoScrollMap.set(task.id, autoScrollMap.get(task.id) === false)"
-              >
-                <template #icon><n-icon size="14"><ArrowDownToLine /></n-icon></template>
-              </n-button>
-              <template v-if="isTerminal(task.status)">
-                <n-button v-if="!logExpandedMap.get(task.id)" size="tiny" quaternary :title="t('task.logFullView')" @click.stop="loadFullTaskLog(task)">
-                  <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
-                </n-button>
-                <n-button v-else size="tiny" quaternary :title="t('task.logTailView')" @click.stop="collapseTaskLog(task)">
-                  <template #icon><n-icon size="14"><ChevronUp /></n-icon></template>
-                </n-button>
-              </template>
-            </div>
-            <div v-if="showTruncation(task)" class="task-log-trunc-hint">
-              <n-icon size="13"><AlertTriangle /></n-icon>
-              <span>{{ t('task.logTruncatedHint') }}</span>
             </div>
             <n-virtual-list
               :ref="(el: any) => onLogListRef(task.id, el)"
-              :key="'log-' + task.id + '-' + (logExpandedMap.get(task.id) ? 'full' : 'tail')"
+              :key="'log-' + task.id"
               :items="displayLog(task)"
               :item-size="18"
               item-resizable
@@ -281,8 +261,8 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, NVirtualList, useDialog, NInput } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
-  ChevronDown, ChevronRight, ChevronUp, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, Smartphone,
-  Search, Copy, AlertTriangle, RotateCcw, ArrowDownToLine
+  ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, Smartphone,
+  Search, Copy, RotateCcw
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
@@ -315,12 +295,9 @@ const activeIntervals = new Set<ReturnType<typeof setInterval>>()
 const now = ref(Date.now())
 let nowIv: ReturnType<typeof setInterval> | null = null
 const taskLogCache = ref<Map<number, { key: number; text: string }[]>>(new Map())
-const logExpandedMap = ref<Map<number, boolean>>(new Map())
-// Log UI enhancement (Batch 2): per-task search / auto-scroll / truncation state + virtual-list refs
+// Per-task inline log search state + virtual-list refs
 const logSearchMap = ref<Map<number, string>>(new Map())
 const logSearchOpenMap = ref<Map<number, boolean>>(new Map())
-const autoScrollMap = ref<Map<number, boolean>>(new Map())
-const logTruncatedMap = ref<Map<number, boolean>>(new Map())
 const logListRefs = new Map<number, any>()
 
 /** Toggle the inline log search box; closing it clears the active filter. */
@@ -342,10 +319,6 @@ function displayLog(task: Task): { key: number; text: string }[] {
   const q = (logSearchMap.value.get(task.id) || '').trim().toLowerCase()
   if (!q) return arr
   return arr.filter((l) => l.text.toLowerCase().includes(q))
-}
-
-function showTruncation(task: Task): boolean {
-  return isTerminal(task.status) && !logExpandedMap.value.get(task.id) && logTruncatedMap.value.get(task.id) === true
 }
 
 function onLogListRef(taskId: number, el: any) {
@@ -515,9 +488,7 @@ function flushLogBuffer(taskId: number) {
   if (buf && buf.length > 0) {
     taskStore.appendLogBatch(taskId, [...buf])
     buf.length = 0
-    if (autoScrollMap.value.get(taskId) !== false) {
-      nextTick(() => scrollLogToBottom(taskId))
-    }
+    nextTick(() => scrollLogToBottom(taskId))
   }
   logTimers.delete(taskId)
 }
@@ -676,16 +647,15 @@ function toggleTask(task: Task) {
 async function loadTaskLog(task: Task) {
   try {
     const api = window.electronAPI as any
-    const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id), tail_bytes: 100 * 1024 })
-    logTruncatedMap.value.set(task.id, result.truncated === true)
+    // Always load the full log (no tail truncation): the log panel shows the
+    // complete output and auto-scrolls to the bottom by default.
+    const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id) })
     const content = (result.content || '').trim()
     if (content) {
       taskLogCache.value.set(task.id, splitLogLines(content))
     }
-    if (autoScrollMap.value.get(task.id) !== false) {
-      await nextTick()
-      scrollLogToBottom(task.id)
-    }
+    await nextTick()
+    scrollLogToBottom(task.id)
   } catch (e) {
     taskLogCache.value.set(task.id, [{ key: 0, text: `[Error loading log: ${e}]` }])
   }
@@ -698,32 +668,6 @@ function splitLogLines(content: string): { key: number; text: string }[] {
 async function refreshTaskLog(task: Task) {
   taskLogCache.value.delete(task.id)
   await loadTaskLog(task)
-}
-
-async function loadFullTaskLog(task: Task) {
-  try {
-    const api = window.electronAPI as any
-    const result = await api.callBackendAPI('task.read_log', { task_id: String(task.id) })
-    const content = (result.content || '').trim()
-    if (content) {
-      taskLogCache.value.set(task.id, splitLogLines(content))
-    }
-    logExpandedMap.value.set(task.id, true)
-    if (autoScrollMap.value.get(task.id) !== false) {
-      await nextTick()
-      scrollLogToBottom(task.id)
-    }
-  } catch (e) {
-    // keep existing cache on error
-  }
-}
-
-function collapseTaskLog(task: Task) {
-  // Switch back to tail view WITHOUT dropping the cache: re-read the tail so
-  // the virtual list shows the truncated tail again, but the cache Map entry
-  // stays alive (no delete) for cheap re-expand.
-  logExpandedMap.value.set(task.id, false)
-  loadTaskLog(task)
 }
 
 async function pickLocalFile() {
@@ -1417,8 +1361,6 @@ function renderApkInfo(data: any) {
   background: var(--app-code-bg);
   border-radius: 6px;
   padding: 8px 10px;
-  max-height: 200px;
-  overflow-y: auto;
   font-family: 'Fira Code', monospace;
   font-size: 11px;
   line-height: 1.6;
@@ -1427,16 +1369,6 @@ function renderApkInfo(data: any) {
 .task-logs-toolbar { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
 .task-logs-spacer { flex: 1; }
 .task-logs-toolbar .n-button { flex: 0 0 auto; }
-.task-log-trunc-hint {
-  display: flex; align-items: center; gap: 6px;
-  color: var(--app-warning, #d97706);
-  background: rgba(217, 119, 6, 0.1);
-  border-radius: 4px;
-  padding: 4px 8px;
-  margin-bottom: 6px;
-  font-size: 11px;
-  line-height: 1.5;
-}
 
 </style>
 
