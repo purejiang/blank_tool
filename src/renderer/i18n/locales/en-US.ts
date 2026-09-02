@@ -332,8 +332,6 @@ export default {
     pluginDev: 'Feature in Development',
     pluginDevDesc: 'Plugin feature is under development, stay tuned',
     dangerousPerms: 'Dangerous Permissions',
-    otherPermsShow: 'Show {count} permissions',
-    otherPermsHide: 'Hide',
     // Signature info
     signatureInfo: 'Signature',
     apkMd5: 'APK MD5',

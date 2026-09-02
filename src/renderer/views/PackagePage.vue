@@ -1149,14 +1149,17 @@ function renderApkInfo(data: any) {
   }
 
   // ===== PERMISSIONS =====
+  // All permissions (dangerous first, then normal) in one flat table; the
+  // 级别 column already distinguishes 危险/普通, so no separate collapse.
   if (perms.length > 0) {
-    const rows: string[] = dangerous.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(true)]))
-    let body = table(['权限', '级别'], rows)
-    if (normal.length > 0) {
-      const nrows = normal.map(p => trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(false)]))
-      body += `<details><summary>${label('otherPermsShow', { count: normal.length })}<span class="chev">▸</span></summary><div class="apk-card-body">${table(['权限', '级别'], nrows)}</div></details>`
+    const rows: string[] = []
+    for (const p of dangerous) {
+      rows.push(trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(true)]))
     }
-    html += card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, body)
+    for (const p of normal) {
+      rows.push(trow([`<span class="mono" title="${esc(p)}">${esc(p.replace('android.permission.', ''))}</span>`, lv(false)]))
+    }
+    html += card(label('permissions'), `${perms.length} 项（${dangerous.length} 危险）`, table(['权限', '级别'], rows))
   } else {
     html += simpleCard(label('permissions'), '', `<div class="apk-muted">${label('noPermissions')}</div>`)
   }

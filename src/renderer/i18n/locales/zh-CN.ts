@@ -332,8 +332,6 @@ export default {
     pluginDev: '功能开发中',
     pluginDevDesc: '插件功能正在开发中，敬请期待',
     dangerousPerms: '危险权限',
-    otherPermsShow: '显示全部 {count} 项权限',
-    otherPermsHide: '隐藏',
     // Signature info
     signatureInfo: '签名信息',
     apkMd5: 'APK MD5',
