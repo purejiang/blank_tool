@@ -1011,8 +1011,8 @@ function renderApkInfo(data: any) {
     `<div class="apk-card"><div class="apk-card-h">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</div>${body}</div>`
   // Parent section that groups several related sub-analyses under one
   // collapsible card (e.g. native libraries: SO / compression / 16KB).
-  const group = (title: string, summary: string, body: string, icon = '') =>
-    `<details class="apk-group" open>${head(title, summary, icon)}<div class="apk-group-body">${body}</div></details>`
+  const group = (title: string, summary: string, body: string, icon = '', accent = '') =>
+    `<details class="apk-group" open${accent ? ` style="--apk-accent:${accent}"` : ''}>${head(title, summary, icon)}<div class="apk-group-body">${body}</div></details>`
 
   // dim, subtle copy affordance appended after values for one-click copy
   const COPY_ICO = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>'
@@ -1039,7 +1039,7 @@ function renderApkInfo(data: any) {
     // Basic info becomes the first top-level group so all four sections share
     // one collapsible-card style (icon + app name in the header, package name
     // as the summary, the detail table inside the body).
-    html += group(esc(data.application_label), esc(data.package_name), body, appIcon)
+    html += group(esc(data.application_label), esc(data.package_name), body, appIcon, '#3b82f6')
   }
 
   // ===== SIGNATURE (accumulated into the Security group) =====
@@ -1077,7 +1077,7 @@ function renderApkInfo(data: any) {
     const secSummary = signStatus
       ? `${signStatus} · ${perms.length} 项权限（${dangerous.length} 危险）`
       : `${perms.length} 项权限（${dangerous.length} 危险）`
-    html += group(label('signingSecurity'), secSummary, securityBody + permCard)
+    html += group(label('signingSecurity'), secSummary, securityBody + permCard, '', '#22c55e')
   }
 
   // ===== NATIVE LIBRARIES (SO comparison + compression + 16KB page) =====
@@ -1144,7 +1144,7 @@ function renderApkInfo(data: any) {
     nativeBody += card(label('pageSize16kb'), sum, body)
     nativeSum.push(sum)
   }
-  if (nativeBody) html += group(label('nativeAnalysis'), nativeSum.join(' · '), nativeBody)
+  if (nativeBody) html += group(label('nativeAnalysis'), nativeSum.join(' · '), nativeBody, '', '#8b5cf6')
 
   // ===== META DATA =====
   if (metaData && Array.isArray(metaData) && metaData.length > 0) {
@@ -1175,7 +1175,7 @@ function renderApkInfo(data: any) {
       ]))
     }
     const metaCard = card(label('metaData'), `${metaData.length} 项`, table(['父级', '名称', '值', '资源'], rows))
-    html += group(label('manifestResources'), `${metaData.length} 项`, metaCard)
+    html += group(label('manifestResources'), `${metaData.length} 项`, metaCard, '', '#f59e0b')
   }
 
   html += '</div>'
@@ -1363,8 +1363,10 @@ function renderApkInfo(data: any) {
 .apk-card-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-secondary); }
 .apk-sum-grp { display: flex; align-items: center; gap: 8px; min-width: 0; }
 
-/* parent section grouping several related sub-analyses (e.g. native libs) */
-.apk-group { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-radius: 10px; padding: 10px 14px; }
+/* parent section grouping several related sub-analyses (e.g. native libs).
+   --apk-accent (set per section via group()'s 5th arg) paints a left stripe
+   so the four top-level blocks are scannable at a glance. */
+.apk-group { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-left: 3px solid var(--apk-accent, var(--app-card-border)); border-radius: 10px; padding: 10px 14px; }
 .apk-group > summary { list-style: none; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--app-text-secondary); font-size: 13px; font-weight: 700; }
 .apk-group > summary::-webkit-details-marker { display: none; }
 .apk-group[open] > .apk-group-body { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--app-card-border); display: flex; flex-direction: column; gap: 10px; }
