@@ -1005,6 +1005,10 @@ function renderApkInfo(data: any) {
     `<details class="apk-card" open>${head(title, summary)}<div class="apk-card-body">${body}</div></details>`
   const simpleCard = (title: string, summary: string, body: string) =>
     `<div class="apk-card"><div class="apk-card-h">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</div>${body}</div>`
+  // Parent section that groups several related sub-analyses under one
+  // collapsible card (e.g. native libraries: SO / compression / 16KB).
+  const group = (title: string, summary: string, body: string) =>
+    `<details class="apk-group" open>${head(title, summary)}<div class="apk-group-body">${body}</div></details>`
 
   // dim, subtle copy affordance appended after values for one-click copy
   const COPY_ICO = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>'
@@ -1047,7 +1051,11 @@ function renderApkInfo(data: any) {
     html += card(label('signatureInfo'), unsigned ? '未签名' : '已签名', body)
   }
 
-  // ===== SO COMPARISON =====
+  // ===== NATIVE LIBRARIES (SO comparison + compression + 16KB page) =====
+  // Grouped under one collapsible parent so the three related binary analyses
+  // read as a single section instead of three separate cards.
+  let nativeBody = ''
+  const nativeSum: string[] = []
   if (hasSoCompFull) {
     const rows: string[] = []
     for (const [arch, info] of Object.entries(soComp.arches)) {
@@ -1061,14 +1069,15 @@ function renderApkInfo(data: any) {
       rows.push(trow([`<span style="color:${archColor};font-weight:600">${esc(arch)}</span>`, `${count} .so`, status]))
     }
     const sum = `${Object.keys(soComp.arches).length} ${label('architecture')} · ${soComp.baseline?.length || 0} .so`
-    html += card(label('soComparison'), sum, table(['架构', '.so 数', '状态'], rows))
+    nativeBody += card(label('soComparison'), sum, table(['架构', '.so 数', '状态'], rows))
+    nativeSum.push(sum)
   } else if (soComp && soComp.single_arch) {
-    html += simpleCard(label('soComparison'), label('singleArch'), `<div class="apk-muted">${label('singleArch')}</div>`)
+    nativeBody += simpleCard(label('soComparison'), label('singleArch'), `<div class="apk-muted">${label('singleArch')}</div>`)
+    nativeSum.push(label('singleArch'))
   } else if (soComp && soComp.no_native) {
-    html += simpleCard(label('soComparison'), label('noNativeLibs'), `<div class="apk-muted">${label('noNativeLibs')}</div>`)
+    nativeBody += simpleCard(label('soComparison'), label('noNativeLibs'), `<div class="apk-muted">${label('noNativeLibs')}</div>`)
+    nativeSum.push(label('noNativeLibs'))
   }
-
-  // ===== COMPRESSION =====
   if (hasComp) {
     const rows: string[] = []
     for (const [category, info] of Object.entries(comp)) {
@@ -1078,10 +1087,10 @@ function renderApkInfo(data: any) {
       const storedSize = c.stored_size || 0
       rows.push(trow([esc(category), `${stored}`, `${deflated}`, storedSize > 0 ? fmtSize(storedSize) : '-']))
     }
-    html += card(label('compressionAnalysis'), `${Object.keys(comp).length} 类别`, table(['类别', '存储', '压缩', '存储大小'], rows))
+    const sum = `${Object.keys(comp).length} 类别`
+    nativeBody += card(label('compressionAnalysis'), sum, table(['类别', '存储', '压缩', '存储大小'], rows))
+    nativeSum.push(sum)
   }
-
-  // ===== 16KB PAGE =====
   if (hasPage16) {
     const rows: string[] = []
     let total = 0, supported = 0
@@ -1098,13 +1107,15 @@ function renderApkInfo(data: any) {
         rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>`, st, align !== '-' ? align : '-']))
       }
     }
-    const sum = `支持 ${supported}/${total}`
     let body = table(['架构', '文件', '状态', '对齐'], rows)
     if (page16.skipped && page16.skipped.length > 0) {
       body += `<div class="apk-muted" style="margin-top:4px">${label('pageSizeSkipped', { count: page16.skipped.length })}</div>`
     }
-    html += card(label('pageSize16kb'), sum, body)
+    const sum = `16KB 支持 ${supported}/${total}`
+    nativeBody += card(label('pageSize16kb'), sum, body)
+    nativeSum.push(sum)
   }
+  if (nativeBody) html += group(label('nativeAnalysis'), nativeSum.join(' · '), nativeBody)
 
   // ===== META DATA =====
   if (metaData && Array.isArray(metaData) && metaData.length > 0) {
@@ -1334,6 +1345,15 @@ function renderApkInfo(data: any) {
 
 .apk-card-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-secondary); }
 .apk-sum-grp { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* parent section grouping several related sub-analyses (e.g. native libs) */
+.apk-group { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-radius: 10px; padding: 10px 14px; }
+.apk-group > summary { list-style: none; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--app-text-secondary); font-size: 13px; font-weight: 700; }
+.apk-group > summary::-webkit-details-marker { display: none; }
+.apk-group[open] > .apk-group-body { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--app-card-border); display: flex; flex-direction: column; gap: 10px; }
+/* nested sub-cards lose their own box so the group is the single container */
+.apk-group-body .apk-card { background: transparent; border: none; border-radius: 0; padding: 0; }
+.apk-group-body .apk-card[open] > .apk-card-body { margin-top: 6px; padding-top: 6px; }
 .apk-icon { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; background: var(--app-card-border); box-shadow: 0 1px 2px rgba(0,0,0,.18); flex: 0 0 auto; cursor: zoom-in; }
 
 /* click-to-zoom lightbox for the app icon (overlay lives on <body>) */

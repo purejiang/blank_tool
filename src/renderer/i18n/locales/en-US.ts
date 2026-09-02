@@ -304,6 +304,9 @@ export default {
     noPermissions: 'None',
     fileSize: 'File Size',
     architecture: 'Architecture',
+    // v2.1.1 APK analysis: native libraries group (SO / compression / 16KB)
+    nativeAnalysis: 'Native Libraries',
+    nativeAnalysisDesc: 'SO comparison / compression / 16KB page alignment',
     // v2.1.1 APK analysis: SO comparison
     soComparison: 'SO File Comparison',
     soComparisonDesc: 'Native lib consistency across architectures',

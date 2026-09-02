@@ -304,6 +304,9 @@ export default {
     noPermissions: '无',
     fileSize: '文件大小',
     architecture: '架构',
+    // v2.1.1 APK analysis: native libraries group (SO / compression / 16KB)
+    nativeAnalysis: '原生库分析',
+    nativeAnalysisDesc: 'SO 文件对比 / 压缩状态 / 16KB 页面对齐',
     // v2.1.1 APK analysis: SO comparison
     soComparison: 'SO 文件对比',
     soComparisonDesc: '不同架构 SO 文件一致性',
