@@ -103,16 +103,107 @@ def _image_dimensions(data: bytes):
     return None
 
 
-def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "") -> str:
+def _adaptive_icon_raster(apk_path: str, badging_output: str, aapt, context) -> str:
+    """Resolve a real raster for adaptive-icon-only APKs, or return "".
+
+    `aapt dump badging` only reports the icon *entry point* — for
+    adaptive-icon APKs that entry is an XML (res/mipmap-anydpi-v26/...),
+    which the png/webp filter in _extract_app_icon rejects. The actual
+    bitmaps sit one reference deeper: <adaptive-icon> points at
+    foreground/background drawables that are usually per-density PNGs.
+    Two aapt queries recover them:
+
+      1. `aapt dump xmltree --file <icon.xml> <apk>`
+         → `A: android:drawable = @0x7fxxxxxx` under `E: foreground` /
+         `E: background`.
+      2. `aapt dump resources <apk>`
+         → the resource block for that ID lists `(file) res/XX.png` per
+         density. Resource *entry* names survive AndResGuard obfuscation
+         even though file paths are shortened to res/XX, so this is the
+         only reliable ID→path mapping (name-based fallback is impossible
+         on obfuscated builds — there is no `*app_icon*` file to find).
+
+    Prefers the highest-density foreground raster (background as fallback).
+    Returns "" when aapt is unavailable, any step fails, or the referenced
+    drawables are still XML (vector drawables would need rasterization,
+    which the backend does not do).
+    """
+    if aapt is None:
+        return ""
+
+    xmls: list = []
+    for _d, p in re.findall(r"application-icon-(\d+):\s*'([^']+)'", badging_output):
+        if p.lower().endswith(".xml") and p not in xmls:
+            xmls.append(p)
+    if not xmls:
+        return ""
+
+    def _run(args: list) -> str:
+        try:
+            proc = aapt.execute(args, context)
+            out = ""
+            for line in iter(proc.stdout.readline, ""):
+                out += line
+            proc.wait()
+            return out if proc.returncode == 0 else ""
+        except Exception:
+            return ""
+
+    # Step 1: adaptive-icon XML tree → foreground/background resource IDs.
+    ref_ids: list = []  # preference-ordered (foreground first when present)
+    for xml_path in xmls:
+        # aapt2 syntax is `--file <name> <apk>`; classic aapt wants positional
+        # `<apk> <file>` — try both so either binary works.
+        tree = _run(["dump", "xmltree", "--file", xml_path, apk_path]) \
+            or _run(["dump", "xmltree", apk_path, xml_path])
+        if not tree:
+            continue
+        elem = ""
+        for line in tree.splitlines():
+            m = re.match(r"\s*E: (\S+)", line)
+            if m:
+                elem = m.group(1)
+                continue
+            m = re.search(r"drawable[^=]*=@(0x[0-9a-fA-F]+)", line)
+            if m and elem in ("foreground", "background") and m.group(1) not in ref_ids:
+                ref_ids.append(m.group(1))
+        if ref_ids:
+            break
+    if not ref_ids:
+        return ""
+
+    # Step 2: resource table → physical file path per density.
+    dump = _run(["dump", "resources", apk_path])
+    if not dump:
+        return ""
+    rank = {"mdpi": 1, "hdpi": 2, "xhdpi": 3, "xxhdpi": 4, "xxxhdpi": 5}
+    best = None  # (density_rank, path)
+    current = None
+    for line in dump.splitlines():
+        m = re.match(r"\s*resource (0x[0-9a-fA-F]+) ", line)
+        if m:
+            current = m.group(1)
+            continue
+        if current in ref_ids:
+            m = re.search(r"\(([^)]+)\)\s+\(file\)\s+(\S+)", line)
+            if m and m.group(2).lower().endswith((".png", ".webp")):
+                score = rank.get(m.group(1), 0)
+                if best is None or score > best[0]:
+                    best = (score, m.group(2))
+    return best[1] if best else ""
+
+
+def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "", aapt=None, context=None) -> str:
     """Extract the launcher icon, preferring to persist it on disk.
 
     `aapt dump badging` reports candidate launcher icons as
     ``application-icon-NNN:'res/...'`` (NNN = density dpi). We prefer a
-    raster asset (png/webp) — adaptive vector XML drawables
-    (res/mipmap-anydpi-v26/*.xml) are skipped since they cannot be embedded
-    directly — and among raster candidates pick the one with the largest
-    intrinsic pixel area (read from the PNG/WebP header), falling back to
-    density when dimensions can't be parsed.
+    raster asset (png/webp) — when every candidate is an XML drawable
+    (adaptive icon, e.g. res/mipmap-anydpi-v26/*.xml) the real raster is
+    recovered via _adaptive_icon_raster() — and among raster candidates
+    pick the one with the largest intrinsic pixel area (read from the
+    PNG/WebP header), falling back to density when dimensions can't be
+    parsed.
 
     Output:
     * With a valid ``task_id`` the bytes are written to
@@ -135,7 +226,15 @@ def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "") -> 
         if p.lower().endswith((".png", ".webp"))
     ]
     if not raster:
-        return "-"
+        # Every application-icon candidate is an XML drawable — usually an
+        # <adaptive-icon> entry whose foreground/background rasters sit one
+        # reference deeper. Resolve them through the resource table; on
+        # AndResGuard-obfuscated builds this is the only way (file names are
+        # shortened to res/XX, so nothing can be matched by name).
+        resolved = _adaptive_icon_raster(apk_path, badging_output, aapt, context)
+        if not resolved:
+            return "-"
+        raster = [(999, resolved)]
     # Pick the genuinely largest raster by intrinsic pixel area so the UI never
     # upscales a low-res asset. Reading every candidate is cheap (icons are
     # tiny) and beats trusting the density label (a lower-density PNG can be
@@ -269,7 +368,7 @@ def apk_analyze(params, stream_handler):
         # C0: Launcher icon — written to the task dir (path returned) so the
         # large image never lands in localStorage; falls back to base64.
         try:
-            info["app_icon"] = _extract_app_icon(apk_path, output, task_id)
+            info["app_icon"] = _extract_app_icon(apk_path, output, task_id, aapt, context)
         except Exception as e:
             logger.warning(f"App icon extraction failed: {e}")
             info["app_icon"] = "-"
