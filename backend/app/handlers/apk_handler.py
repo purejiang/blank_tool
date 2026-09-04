@@ -150,7 +150,12 @@ def _adaptive_icon_raster(apk_path: str, badging_output: str, aapt, context) -> 
             return ""
 
     # Step 1: adaptive-icon XML tree → foreground/background resource IDs.
-    ref_ids: list = []  # preference-ordered (foreground first when present)
+    # NOTE: in the XML the background element comes FIRST, so ids must be
+    # collected per-element — a document-order list would put the background
+    # id in front and (see step 2) make the icon show the background plate
+    # instead of the foreground artwork.
+    fg_id = ""
+    bg_id = ""
     for xml_path in xmls:
         # aapt2 syntax is `--file <name> <apk>`; classic aapt wants positional
         # `<apk> <file>` — try both so either binary works.
@@ -165,32 +170,45 @@ def _adaptive_icon_raster(apk_path: str, badging_output: str, aapt, context) -> 
                 elem = m.group(1)
                 continue
             m = re.search(r"drawable[^=]*=@(0x[0-9a-fA-F]+)", line)
-            if m and elem in ("foreground", "background") and m.group(1) not in ref_ids:
-                ref_ids.append(m.group(1))
-        if ref_ids:
+            if not m:
+                continue
+            if elem == "foreground" and not fg_id:
+                fg_id = m.group(1)
+            elif elem == "background" and not bg_id:
+                bg_id = m.group(1)
+        if fg_id:
             break
+    # Foreground = the artwork the launcher shows; background is only the
+    # plate behind it. Fall back to background solely when there is no
+    # foreground reference at all.
+    ref_ids: list = [i for i in (fg_id, bg_id) if i]
     if not ref_ids:
         return ""
 
-    # Step 2: resource table → physical file path per density.
+    # Step 2: resource table → physical file path per density. Tries the
+    # preferred drawable first; equal-density entries of the other drawable
+    # must not win, hence per-id scanning instead of one merged pass.
     dump = _run(["dump", "resources", apk_path])
     if not dump:
         return ""
     rank = {"mdpi": 1, "hdpi": 2, "xhdpi": 3, "xxhdpi": 4, "xxxhdpi": 5}
-    best = None  # (density_rank, path)
-    current = None
-    for line in dump.splitlines():
-        m = re.match(r"\s*resource (0x[0-9a-fA-F]+) ", line)
-        if m:
-            current = m.group(1)
-            continue
-        if current in ref_ids:
-            m = re.search(r"\(([^)]+)\)\s+\(file\)\s+(\S+)", line)
-            if m and m.group(2).lower().endswith((".png", ".webp")):
-                score = rank.get(m.group(1), 0)
-                if best is None or score > best[0]:
-                    best = (score, m.group(2))
-    return best[1] if best else ""
+    for rid in ref_ids:
+        best = None  # (density_rank, path)
+        current = None
+        for line in dump.splitlines():
+            m = re.match(r"\s*resource (0x[0-9a-fA-F]+) ", line)
+            if m:
+                current = m.group(1)
+                continue
+            if current == rid:
+                m = re.search(r"\(([^)]+)\)\s+\(file\)\s+(\S+)", line)
+                if m and m.group(2).lower().endswith((".png", ".webp")):
+                    score = rank.get(m.group(1), 0)
+                    if best is None or score > best[0]:
+                        best = (score, m.group(2))
+        if best:
+            return best[1]
+    return ""
 
 
 def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "", aapt=None, context=None) -> str:
