@@ -218,6 +218,7 @@ export default {
     pathTypeMismatch: 'Path type does not match the operation; cleared',
     startHint: 'Enter an APK download URL or a local path',
     selectDevice: 'Select device',
+    targetDevice: 'Target device',
     noDeviceSelected: 'Install requires a target device',
     start: 'Start',
     analyze: 'Analyze',

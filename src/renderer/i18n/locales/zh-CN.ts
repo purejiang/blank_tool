@@ -218,6 +218,7 @@ export default {
     pathTypeMismatch: '路径类型与当前操作不匹配，已清除',
     startHint: '请输入 APK 下载链接或本地路径',
     selectDevice: '选择设备',
+    targetDevice: '目标设备',
     noDeviceSelected: '安装操作需要先选择目标设备',
     start: '开始',
     analyze: '分析',

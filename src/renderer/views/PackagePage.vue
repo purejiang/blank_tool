@@ -36,17 +36,6 @@
 
         <n-select v-model:value="newOperation" :options="operationOptions" size="small" style="width:120px" />
 
-        <n-select
-          v-if="newOperation === 'install'"
-          v-model:value="installDeviceId"
-          :options="deviceOptions"
-          size="small"
-          style="width:240px"
-          :placeholder="t('task.selectDevice')"
-          filterable
-          @update:value="installDeviceTouched = true"
-        />
-
         <n-tooltip :disabled="canStart" trigger="hover">
           <template #trigger>
             <span class="task-start-wrap">
@@ -73,6 +62,19 @@
 
       <div class="task-bar-opts">
         <span class="op-desc">{{ t('task.' + newOperation + 'Desc') }}</span>
+
+        <template v-if="newOperation === 'install'">
+          <span class="op-label">{{ t('task.targetDevice') }}</span>
+          <n-select
+            v-model:value="installDeviceId"
+            :options="deviceOptions"
+            size="tiny"
+            style="width:220px"
+            :placeholder="t('task.selectDevice')"
+            filterable
+            @update:value="installDeviceTouched = true"
+          />
+        </template>
 
         <template v-if="newOperation === 'resign' || newOperation === 'recompile'">
           <span class="op-label">{{ t('task.signConfig') }}</span>
