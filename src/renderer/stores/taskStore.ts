@@ -183,6 +183,15 @@ export const useTaskStore = defineStore('task', () => {
   const runningCount = computed(() => tasks.value.filter(t => t.status === 'running').length)
   const hasRunning = computed(() => runningCount.value > 0)
   const hasCompleted = computed(() => tasks.value.some(t => t.status === 'completed' || t.status === 'failed'))
+  // True while any task is queued/downloading/running/cancelling (not yet in a
+  // terminal state). Drives the "clear all" guard — clearing while tasks are
+  // still in flight would orphan them: their entries vanish from the UI but
+  // the executor/backend keeps working with no way to see or cancel them.
+  const hasActive = computed(
+    () => tasks.value.some(
+      t => t.status === 'queued' || t.status === 'downloading' || t.status === 'running' || t.status === 'cancelling',
+    ),
+  )
 
   function createTask(partial: Pick<Task, 'source' | 'url' | 'filePath' | 'fileName' | 'operation' | 'operationLabel'>): Task {
     const task: Task = {
@@ -369,5 +378,5 @@ export const useTaskStore = defineStore('task', () => {
     persist()
   }
 
-  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, transition, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll, persist }
+  return { tasks, runningCount, hasRunning, hasActive, hasCompleted, maxTasks, createTask, updateTask, transition, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll, persist }
 })

@@ -48,10 +48,16 @@
           {{ startDisabledHint }}
         </n-tooltip>
 
-        <n-button size="small" quaternary type="error" @click="confirmClearAll" :disabled="taskStore.tasks.length === 0">
-          <template #icon><n-icon><Trash2 /></n-icon></template>
-          {{ t('task.clearAll') }}
-        </n-button>
+        <n-tooltip :disabled="!taskStore.hasActive" trigger="hover">
+          <template #trigger>
+            <n-button size="small" quaternary type="error" @click="confirmClearAll"
+              :disabled="taskStore.tasks.length === 0 || taskStore.hasActive">
+              <template #icon><n-icon><Trash2 /></n-icon></template>
+              {{ t('task.clearAll') }}
+            </n-button>
+          </template>
+          {{ t('task.clearAllDisabledHint') }}
+        </n-tooltip>
       </div>
 
       <div class="task-bar-opts">
