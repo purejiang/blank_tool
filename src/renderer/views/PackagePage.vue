@@ -1331,9 +1331,11 @@ function renderApkInfo(data: any) {
     html += group(label('signingSecurity'), secSummary, securityBody + permCard, '', '#22c55e', false)
   }
 
-  // ===== NATIVE LIBRARIES (SO comparison + compression + 16KB page) =====
-  // Grouped under one collapsible parent so the three related binary analyses
-  // read as a single section instead of three separate cards.
+  // ===== NATIVE LIBRARIES (SO comparison + 16KB page) =====
+  // Grouped under one collapsible parent so the related binary analyses read as
+  // a single section. Compression is deliberately NOT here: only its `lib`
+  // category is native — assets/dex are whole-package concerns, so it gets its
+  // own top-level group further down.
   let nativeBody = ''
   const nativeSum: string[] = []
   if (hasSoCompFull) {
@@ -1358,6 +1360,36 @@ function renderApkInfo(data: any) {
     nativeBody += simpleCard(label('soComparison'), label('noNativeLibs'), `<div class="apk-muted">${label('noNativeLibs')}</div>`)
     nativeSum.push(label('noNativeLibs'))
   }
+  if (hasPage16) {
+    const rows: string[] = []
+    let total = 0, supported = 0
+    for (const [arch, files] of Object.entries(page16)) {
+      if (arch === 'skipped') continue
+      for (const [file, info] of Object.entries(files as any)) {
+        const fi = info as any
+        const ok = fi.supports_16kb
+        total++; if (ok) supported++
+        const st = ok
+          ? '<span class="apk-lv apk-lv--ok">' + label('supported') + '</span>'
+          : '<span class="apk-lv apk-lv--danger">' + label('notSupported') + '</span>'
+        const align = fi.max_align ? `0x${fi.max_align.toString(16)}` : '-'
+        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>`, st, align !== '-' ? align : '-']))
+      }
+    }
+    let body = table([label('architecture'), label('colFile'), label('colStatus'), label('colAlignment')], rows)
+    if (page16.skipped && page16.skipped.length > 0) {
+      body += `<div class="apk-muted" style="margin-top:4px">${label('pageSizeSkipped', { count: page16.skipped.length })}</div>`
+    }
+    const sum = label('page16Supported', { supported, total })
+    nativeBody += card(label('pageSize16kb'), sum, body)
+    nativeSum.push(sum)
+  }
+  if (nativeBody) html += group(label('nativeAnalysis'), nativeSum.join(' · '), nativeBody, '', '#8b5cf6', false)
+
+  // ===== COMPRESSION (whole-package: assets / dex / lib) =====
+  // Own top-level group, not nested under native libraries: only the `lib`
+  // category is a native-library concern, while assets/dex describe the whole
+  // APK — sharing the native parent misrepresented their scope.
   if (hasComp) {
     const rows: string[] = []
     let totUnc = 0
@@ -1394,42 +1426,19 @@ function renderApkInfo(data: any) {
       `<b>${totStored}</b>`,
       `<b>${totDeflated}</b>`,
     ]))
-    const sum = label('catCount', { count: Object.keys(comp).length })
-    nativeBody += card(
+    const compSum = `${label('catCount', { count: Object.keys(comp).length })} · ${label('compressionDesc')}`
+    html += group(
       label('compressionAnalysis'),
-      sum,
+      compSum,
       table(
         [label('colCategory'), label('colUncompressed'), label('colCompressed'), label('colSaved'), label('colStoredCount'), label('colDeflatedCount')],
         rows,
       ),
+      '',
+      '#0ea5e9',
+      false,
     )
-    nativeSum.push(sum)
   }
-  if (hasPage16) {
-    const rows: string[] = []
-    let total = 0, supported = 0
-    for (const [arch, files] of Object.entries(page16)) {
-      if (arch === 'skipped') continue
-      for (const [file, info] of Object.entries(files as any)) {
-        const fi = info as any
-        const ok = fi.supports_16kb
-        total++; if (ok) supported++
-        const st = ok
-          ? '<span class="apk-lv apk-lv--ok">' + label('supported') + '</span>'
-          : '<span class="apk-lv apk-lv--danger">' + label('notSupported') + '</span>'
-        const align = fi.max_align ? `0x${fi.max_align.toString(16)}` : '-'
-        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>`, st, align !== '-' ? align : '-']))
-      }
-    }
-    let body = table([label('architecture'), label('colFile'), label('colStatus'), label('colAlignment')], rows)
-    if (page16.skipped && page16.skipped.length > 0) {
-      body += `<div class="apk-muted" style="margin-top:4px">${label('pageSizeSkipped', { count: page16.skipped.length })}</div>`
-    }
-    const sum = label('page16Supported', { supported, total })
-    nativeBody += card(label('pageSize16kb'), sum, body)
-    nativeSum.push(sum)
-  }
-  if (nativeBody) html += group(label('nativeAnalysis'), nativeSum.join(' · '), nativeBody, '', '#8b5cf6', false)
 
   // ===== META DATA =====
   if (metaData && Array.isArray(metaData) && metaData.length > 0) {

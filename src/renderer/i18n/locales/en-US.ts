@@ -304,9 +304,9 @@ export default {
     noPermissions: 'None',
     fileSize: 'File Size',
     architecture: 'Architecture',
-    // v2.1.1 APK analysis: native libraries group (SO / compression / 16KB)
-    nativeAnalysis: 'Native Libraries',
-    nativeAnalysisDesc: 'SO comparison / compression / 16KB page alignment',
+  // v2.1.1 APK analysis: native libraries group (SO / 16KB); compression moved to its own group
+  nativeAnalysis: 'Native Libraries',
+  nativeAnalysisDesc: 'SO comparison / 16KB page alignment',
     // v2.1.1 APK analysis: security group (signing + permissions)
     signingSecurity: 'Signing & Security',
     signingSecurityDesc: 'Signature + permissions',
