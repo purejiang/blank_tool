@@ -51,6 +51,20 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
   const isMonitoring = ref(false)
   const monitoringInterval = ref<ReturnType<typeof setInterval> | null>(null)
 
+  // 自定义 ADB 连接（手动添加的常用地址，如 127.0.0.1:5555），随 store 持久化
+  const savedAddresses = ref<string[]>([])
+  const addSavedAddress = (addr: string) => {
+    const a = (addr || '').trim()
+    if (!a) return
+    if (!savedAddresses.value.includes(a)) {
+      // keep the newest entries, cap the list so it can't grow unbounded
+      savedAddresses.value = [...savedAddresses.value, a].slice(-12)
+    }
+  }
+  const removeSavedAddress = (addr: string) => {
+    savedAddresses.value = savedAddresses.value.filter(a => a !== addr)
+  }
+
   const shellOutput = ref('')
 
   // 计算属性
@@ -153,7 +167,10 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     updateDevices,
     updateDeviceInfo,
     stopDeviceMonitoring,
-    clearLogcat
+    clearLogcat,
+    savedAddresses,
+    addSavedAddress,
+    removeSavedAddress
   }
 }, { persist: true })
 

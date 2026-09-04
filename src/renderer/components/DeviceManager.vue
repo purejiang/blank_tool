@@ -56,19 +56,52 @@
         <n-button size="tiny" type="primary" secondary @click="handleConnect" :loading="isConnecting">
           {{ t('device.connect') }}
         </n-button>
+        <n-button
+          size="tiny"
+          secondary
+          :title="t('device.saveAddress')"
+          :disabled="!remoteAddress.trim()"
+          @click="handleSaveAddress"
+        >
+          <template #icon><n-icon size="14"><Plus /></n-icon></template>
+        </n-button>
         <n-button size="tiny" secondary @click="handleDisconnect" :loading="isDisconnecting">
           {{ t('device.disconnect') }}
         </n-button>
+      </div>
+      <div v-if="deviceStore.savedAddresses.length" class="dm-saved">
+        <span class="dm-saved-label">{{ t('device.savedAddresses') }}</span>
+        <div class="dm-saved-chips">
+          <div
+            v-for="addr in deviceStore.savedAddresses"
+            :key="addr"
+            class="dm-chip"
+            :class="{ connected: isConnected(addr) }"
+          >
+            <button
+              class="dm-chip-connect"
+              :title="t('device.connect')"
+              @click="handleQuickConnect(addr)"
+            >{{ addr }}</button>
+            <button
+              class="dm-chip-remove"
+              :title="t('device.removeAddress')"
+              @click.stop="handleRemoveSaved(addr)"
+            >
+              <n-icon size="11"><X /></n-icon>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </n-card>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
-import { Smartphone, RefreshCw } from 'lucide-vue-next'
+import { Smartphone, RefreshCw, Plus, X } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'
@@ -86,20 +119,48 @@ const isDisconnecting = ref(false)
 
 const emit = defineEmits<{ refreshDevices: [] }>()
 
-const handleConnect = async () => {
-  const addr = remoteAddress.value.trim()
-  if (!addr) return
+// 该地址当前已处于 adb 连接中（设备列表里存在同 id 且在线）——芯片高亮用
+const isConnected = (addr: string) =>
+  devices.value.some(d => d.id === addr && d.status === 'device')
+
+const connectAddress = async (addr: string): Promise<boolean> => {
   isConnecting.value = true
   try {
     const api = window.electronAPI as any
     const result = await api.adbConnect(addr)
     if (result?.success) {
-      remoteAddress.value = ''
+      if (remoteAddress.value === addr) remoteAddress.value = ''
       emit('refreshDevices')
+      return true
     }
+    return false
   } catch (e: any) {
     log.error('ADB connect failed:', e)
+    return false
   } finally { isConnecting.value = false }
+}
+
+const handleConnect = () => {
+  const addr = remoteAddress.value.trim()
+  if (addr) void connectAddress(addr)
+}
+
+// 一键连接常用地址（重复 add 是无害的 —— store 内部去重）
+const handleQuickConnect = (addr: string) => {
+  if (isConnecting.value) return
+  deviceStore.addSavedAddress(addr)
+  void connectAddress(addr)
+}
+
+const handleSaveAddress = () => {
+  const addr = remoteAddress.value.trim()
+  if (!addr) return
+  deviceStore.addSavedAddress(addr)
+  remoteAddress.value = ''
+}
+
+const handleRemoveSaved = (addr: string) => {
+  deviceStore.removeSavedAddress(addr)
 }
 
 const handleDisconnect = async () => {
@@ -180,6 +241,60 @@ const handleDeviceSelection = async (id: string) => {
 }
 .dm-remote-input {
   flex: 1;
+}
+.dm-saved {
+  margin-top: 10px;
+}
+.dm-saved-label {
+  font-size: 12px;
+  color: var(--app-text-dim);
+  margin-bottom: 6px;
+}
+.dm-saved-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dm-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--app-card-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: transparent;
+  transition: border-color 0.15s;
+}
+.dm-chip:hover {
+  border-color: var(--app-green);
+}
+.dm-chip.connected {
+  border-color: var(--app-green);
+  background: color-mix(in srgb, var(--app-green) 12%, transparent);
+}
+.dm-chip-connect {
+  border: none;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  padding: 4px 6px 4px 10px;
+  cursor: pointer;
+}
+.dm-chip.connected .dm-chip-connect {
+  color: var(--app-green);
+  font-weight: 600;
+}
+.dm-chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--app-text-dim);
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 4px 4px;
+  cursor: pointer;
+}
+.dm-chip-remove:hover {
+  color: var(--app-red);
 }
 .dm-title {
   font-family: Inter, sans-serif;
