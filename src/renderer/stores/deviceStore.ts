@@ -65,11 +65,30 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     savedAddresses.value = savedAddresses.value.filter(a => a !== addr)
   }
 
+  // 置顶设备（按设备 id 记录，随 store 持久化；断开重连后仍在列表顶部）
+  const pinnedDeviceIds = ref<string[]>([])
+  const isPinned = (id: string) => pinnedDeviceIds.value.includes(id)
+  const togglePinDevice = (id: string) => {
+    if (!id) return
+    pinnedDeviceIds.value = isPinned(id)
+      ? pinnedDeviceIds.value.filter(p => p !== id)
+      : [...pinnedDeviceIds.value, id]
+  }
+
   const shellOutput = ref('')
 
   // 计算属性
   const deviceCount = computed(() => devices.value.length)
   const selectedDevice = computed(() => devices.value.find(d => d.id === selectedDeviceId.value) || null)
+  // 置顶设备排在前面（其余保持原顺序），设备列表与安装设备下拉共用
+  const sortedDevices = computed(() => {
+    const pinned = devices.value.filter(d => isPinned(d.id))
+    const rest = devices.value.filter(d => !isPinned(d.id))
+    return [...pinned, ...rest]
+  })
+  // 第一个在线设备（安装下拉的默认值兜底）
+  const firstOnlineDeviceId = computed(() =>
+    devices.value.find(d => d.status === 'device')?.id || devices.value[0]?.id || '')
   const connectionStatus = computed(() => ({
     connected: deviceCount.value > 0,
     text: deviceCount.value > 0 ? i18n.global.t('device.connected', { count: deviceCount.value }) : i18n.global.t('device.noDevices')
@@ -150,6 +169,8 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
   return {
     // 状态
     devices,
+    sortedDevices,
+    firstOnlineDeviceId,
     selectedDeviceId,
     selectedDevice,
     deviceInfo,
@@ -170,7 +191,10 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     clearLogcat,
     savedAddresses,
     addSavedAddress,
-    removeSavedAddress
+    removeSavedAddress,
+    pinnedDeviceIds,
+    isPinned,
+    togglePinDevice
   }
 }, { persist: true })
 

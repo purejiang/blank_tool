@@ -36,6 +36,17 @@
 
         <n-select v-model:value="newOperation" :options="operationOptions" size="small" style="width:120px" />
 
+        <n-select
+          v-if="newOperation === 'install'"
+          v-model:value="installDeviceId"
+          :options="deviceOptions"
+          size="small"
+          style="width:240px"
+          :placeholder="t('task.selectDevice')"
+          filterable
+          @update:value="installDeviceTouched = true"
+        />
+
         <n-tooltip :disabled="canStart" trigger="hover">
           <template #trigger>
             <span class="task-start-wrap">
@@ -763,7 +774,29 @@ const operationOptions = computed(() =>
   OPERATIONS_ORDERED.map(op => ({ label: t(`task.${op}`), value: op }))
 )
 
-const canStart = computed(() => !!newTarget.value.trim())
+// 安装目标设备下拉：置顶设备排前面，默认选中设备列表当前选中项（或第一个在线设备）
+const installDeviceId = ref('')
+// 用户在下拉里显式选过设备后就不再自动跟随设备列表的选中变化
+const installDeviceTouched = ref(false)
+const deviceOptions = computed(() =>
+  deviceStore.sortedDevices.map(d => ({
+    label: `${d.name || d.id} (${d.id})${d.status === 'device' ? '' : ` · ${t('device.offline')}`}`,
+    value: d.id,
+    disabled: d.status !== 'device'
+  }))
+)
+// 设备列表变化（插拔/连接）时校正下拉默认值：仅当当前值失效才改，不覆盖用户显式选择
+watch(() => deviceStore.firstOnlineDeviceId, (first) => {
+  const valid = deviceStore.devices.some(d => d.id === installDeviceId.value)
+  if (!valid) installDeviceId.value = deviceStore.selectedDeviceId || first || ''
+}, { immediate: true })
+// 用户在设备列表切换选中设备时，下拉未手动选过则跟随
+watch(() => deviceStore.selectedDeviceId, (id) => {
+  if (!installDeviceTouched.value && id) installDeviceId.value = id
+})
+
+const canStart = computed(() =>
+  !!newTarget.value.trim() && (newOperation.value !== 'install' || !!installDeviceId.value))
 
 // http(s):// -> remote download; everything else is treated as a local path.
 const isUrlLike = computed(() => /^https?:\/\//i.test(newTarget.value.trim()))
@@ -771,7 +804,10 @@ const isUrlLike = computed(() => /^https?:\/\//i.test(newTarget.value.trim()))
 // recompile consumes a decompiled project directory; every other op a file.
 const needsDirectory = computed(() => newOperation.value === 'recompile')
 
-const startDisabledHint = computed(() => t('task.startHint'))
+const startDisabledHint = computed(() =>
+  newOperation.value === 'install' && !installDeviceId.value
+    ? t('task.noDeviceSelected')
+    : t('task.startHint'))
 
 /** Resolve a path's existence + type via the main process (null = not found). */
 async function statLocalPath(p: string) {
@@ -983,9 +1019,9 @@ async function executeTask(task: Task, opts: { skipDownload?: boolean } = {}) {
           }
           // install: attach device label (model + serial) for notification & display
           if (task.operation === 'install' && payload?.device_id) {
-            const dev = deviceStore.selectedDevice
-            const model = deviceStore.deviceInfo.model || dev?.name || dev?.id || payload.device_id
-            const serial = deviceStore.deviceInfo.serial || payload.device_id
+            const dev = deviceStore.devices.find(d => d.id === payload.device_id)
+            const model = dev?.name || payload.device_id
+            const serial = payload.device_id
             transitionPayload.deviceLabel = `${model} (${serial})`
             taskStore.appendLog(task.id, `[${new Date().toLocaleTimeString()}] ${t('task.installedToDevice', { label: transitionPayload.deviceLabel })}`)
           }
@@ -1187,7 +1223,7 @@ async function runOperation(task: Task, localPath: string) {
     opts = { path: cfg.path, alias: cfg.alias, storepass: cfg.storepass, keypass: cfg.keypass, task_id: String(task.id) }
     logExtra = ` (${cfg.name})`
   } else if (op === 'install') {
-    opts = { task_id: String(task.id) }
+    opts = { task_id: String(task.id), device_id: installDeviceId.value }
   }
 
   log(task, ingLabel + logExtra)

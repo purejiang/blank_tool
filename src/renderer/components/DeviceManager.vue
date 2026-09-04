@@ -20,7 +20,7 @@
       </div>
       <n-list v-else hoverable clickable class="device-list">
         <n-list-item
-          v-for="device in devices"
+          v-for="device in deviceStore.sortedDevices"
           :key="device.id"
           :class="{ selected: selectedDeviceId === device.id }"
           @click="handleDeviceSelection(device.id)"
@@ -33,11 +33,36 @@
             </div>
           </template>
           <div class="device-info">
-            <span class="device-model">{{ device.name || t('device.unknownDevice') }}</span>
+            <span class="device-model">
+              {{ device.name || t('device.unknownDevice') }}
+              <n-icon v-if="deviceStore.isPinned(device.id)" size="12" class="device-pin-flag"><Pin /></n-icon>
+            </span>
             <span class="device-serial">{{ device.id }}</span>
           </div>
           <template #suffix>
-            <div class="device-dot" :class="device.status === 'device' ? 'online' : 'warning'"></div>
+            <div class="device-actions">
+              <n-button
+                quaternary circle size="tiny"
+                :title="deviceStore.isPinned(device.id) ? t('device.unpin') : t('device.pin')"
+                @click.stop="handleTogglePin(device.id)"
+              >
+                <template #icon>
+                  <n-icon size="14" :color="deviceStore.isPinned(device.id) ? '#22C55E' : undefined">
+                    <component :is="deviceStore.isPinned(device.id) ? PinOff : Pin" />
+                  </n-icon>
+                </template>
+              </n-button>
+              <n-button
+                v-if="isNetworkDevice(device.id)"
+                quaternary circle size="tiny"
+                :title="t('device.disconnect')"
+                :loading="disconnectingId === device.id"
+                @click.stop="handleDisconnectDevice(device.id)"
+              >
+                <template #icon><n-icon size="14"><Unplug /></n-icon></template>
+              </n-button>
+              <div class="device-dot" :class="device.status === 'device' ? 'online' : 'warning'"></div>
+            </div>
           </template>
         </n-list-item>
       </n-list>
@@ -64,9 +89,6 @@
           @click="handleSaveAddress"
         >
           <template #icon><n-icon size="14"><Plus /></n-icon></template>
-        </n-button>
-        <n-button size="tiny" secondary @click="handleDisconnect" :loading="isDisconnecting">
-          {{ t('device.disconnect') }}
         </n-button>
       </div>
       <div v-if="deviceStore.savedAddresses.length" class="dm-saved">
@@ -101,7 +123,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
-import { Smartphone, RefreshCw, Plus, X } from 'lucide-vue-next'
+import { Smartphone, RefreshCw, Plus, X, Pin, PinOff, Unplug } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'
@@ -115,7 +137,7 @@ const { devices, selectedDeviceId } = storeToRefs(deviceStore)
 const loading = ref(false)
 const remoteAddress = ref('')
 const isConnecting = ref(false)
-const isDisconnecting = ref(false)
+const disconnectingId = ref('')
 
 const emit = defineEmits<{ refreshDevices: [] }>()
 
@@ -163,17 +185,23 @@ const handleRemoveSaved = (addr: string) => {
   deviceStore.removeSavedAddress(addr)
 }
 
-const handleDisconnect = async () => {
-  isDisconnecting.value = true
+// 网络设备（host:port，如 127.0.0.1:5555）才显示断开按钮——USB 设备无 adb disconnect 语义
+const isNetworkDevice = (id: string) => /^[^:]+:\d+$/.test(id)
+
+const handleTogglePin = (id: string) => {
+  deviceStore.togglePinDevice(id)
+}
+
+const handleDisconnectDevice = async (id: string) => {
+  if (disconnectingId.value) return
+  disconnectingId.value = id
   try {
     const api = window.electronAPI as any
-    const addr = remoteAddress.value.trim()
-    await api.adbDisconnect(addr || undefined)
-    if (addr) remoteAddress.value = ''
+    await api.adbDisconnect(id)
     emit('refreshDevices')
   } catch (e: any) {
     log.error('ADB disconnect failed:', e)
-  } finally { isDisconnecting.value = false }
+  } finally { disconnectingId.value = '' }
 }
 
 const handleDeviceSelection = async (id: string) => {
@@ -318,7 +346,9 @@ const handleDeviceSelection = async (id: string) => {
 .device-list { margin: -4px 0; }
 .device-icon-wrap { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .device-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.device-model { font-size: 14px; font-weight: 600; color: var(--app-text-primary); }
+.device-model { font-size: 14px; font-weight: 600; color: var(--app-text-primary); display: inline-flex; align-items: center; gap: 4px; }
+.device-pin-flag { color: var(--app-green); flex-shrink: 0; }
+.device-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .device-serial { font-family: 'Fira Code', monospace; font-size: 11px; color: var(--app-text-dim); }
 .device-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--app-red); }
 .device-dot.online { background: var(--app-green); }

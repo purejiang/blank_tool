@@ -437,7 +437,11 @@ class DeviceService {
   async installApp(apkPath: string, options: Record<string, unknown> = {}) {
     if (!apkPath) return { success: false, error: 'No install file selected' }
     const store = getDeviceStore()
-    const dev = store.selectedDevice
+    // 任务侧可显式指定目标设备（PackagePage 安装下拉）；未指定时回退到设备列表当前选中项
+    const overrideId = typeof options.device_id === 'string' ? options.device_id : ''
+    const dev: DeviceLike | null = overrideId
+      ? { id: overrideId }
+      : (store.selectedDevice as DeviceLike | null)
     if (!dev || !dev.id) return { success: false, error: 'No device selected' }
     const api = unifiedApi.getAPI()
     const isAab = /\.aab$/i.test(apkPath)
