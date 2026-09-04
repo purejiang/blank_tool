@@ -151,7 +151,7 @@
               <template #icon><n-icon size="14"><RotateCcw /></n-icon></template>
             </n-button>
             <n-button
-              v-if="task.status === 'failed' || task.status === 'cancelled'"
+              v-if="task.status === 'failed' || task.status === 'cancelled' || task.status === 'completed'"
               size="tiny"
               quaternary
               type="warning"
