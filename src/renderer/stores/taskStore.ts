@@ -265,6 +265,10 @@ export const useTaskStore = defineStore('task', () => {
         updates.phase = 'operation'
         updates.status = 'running'
         updates.progress = 0
+        // Drop the stale download percentage (last download_progress event,
+        // e.g. "99%") — the running tag renders `progressLabel || running`,
+        // so without this the install/analyze phase shows a frozen "99%".
+        updates.progressLabel = ''
         // Same as start_download: for local-file tasks (no download phase)
         // this is the first transition out of the queue.
         if (task.status === 'queued') updates.startedAt = Date.now()
