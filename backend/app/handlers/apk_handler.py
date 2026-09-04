@@ -7,7 +7,9 @@ APK analysis, decompile, recompile, and signing handlers.
 import base64
 import os
 import re
+import struct
 import zipfile
+import zlib
 
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
@@ -103,6 +105,164 @@ def _image_dimensions(data: bytes):
     return None
 
 
+def _png_decode_rgba(data: bytes):
+    """Minimal PNG decoder for adaptive-icon compositing.
+
+    The backend is stdlib-only (no PIL), so icon layer compositing needs a
+    small codec of its own. Supports what launcher icons use in practice:
+    8-bit depth, non-interlaced, color type 2 (RGB) / 3 (palette) / 6
+    (RGBA). Returns (width, height, pixels) with `pixels` a flat RGBA
+    bytearray, or None when the format is unsupported or malformed.
+    """
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    w = h = depth = ctype = interlace = None
+    idat = bytearray()
+    palette = None
+    trns = None
+    pos = 8
+    while pos + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[pos:pos + 4])
+        chunk = data[pos + 4:pos + 8]
+        body = data[pos + 8:pos + 8 + length]
+        if chunk == b"IHDR":
+            w, h, depth, ctype, _comp, _filt, interlace = struct.unpack(">IIBBBBB", body)
+        elif chunk == b"PLTE":
+            palette = body
+        elif chunk == b"tRNS":
+            trns = body
+        elif chunk == b"IDAT":
+            idat += body
+        elif chunk == b"IEND":
+            break
+        pos += 12 + length
+    if not w or not h or depth != 8 or interlace != 0 or ctype not in (2, 3, 6):
+        return None
+    bpp = {2: 3, 3: 1, 6: 4}[ctype]
+    stride = w * bpp
+    try:
+        raw = zlib.decompress(bytes(idat))
+    except Exception:
+        return None
+    if len(raw) < (stride + 1) * h:
+        return None
+
+    def _paeth(a: int, b: int, c: int) -> int:
+        p = a + b - c
+        pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+        if pa <= pb and pa <= pc:
+            return a
+        if pb <= pc:
+            return b
+        return c
+
+    rows = []
+    prev = bytearray(stride)
+    for y in range(h):
+        off = y * (stride + 1)
+        ftype = raw[off]
+        line = bytearray(raw[off + 1:off + 1 + stride])
+        if ftype == 1:  # Sub
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 0xFF
+        elif ftype == 2:  # Up
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 0xFF
+        elif ftype == 3:  # Average
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 0xFF
+        elif ftype == 4:  # Paeth
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                upleft = prev[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + _paeth(left, prev[i], upleft)) & 0xFF
+        rows.append(bytes(line))
+        prev = line
+
+    rgba = bytearray(w * h * 4)
+    for y in range(h):
+        row = rows[y]
+        base = y * w * 4
+        if ctype == 6:
+            rgba[base:base + w * 4] = row
+        elif ctype == 2:
+            for x in range(w):
+                s = x * 3
+                d = base + x * 4
+                rgba[d] = row[s]
+                rgba[d + 1] = row[s + 1]
+                rgba[d + 2] = row[s + 2]
+                rgba[d + 3] = 255
+        else:  # palette
+            for x in range(w):
+                idx = row[x]
+                d = base + x * 4
+                rgba[d] = palette[idx * 3]
+                rgba[d + 1] = palette[idx * 3 + 1]
+                rgba[d + 2] = palette[idx * 3 + 2]
+                rgba[d + 3] = trns[idx] if (trns and idx < len(trns)) else 255
+    return w, h, rgba
+
+
+def _png_encode_rgba(w: int, h: int, rgba: bytearray) -> bytes:
+    """Encode an 8-bit RGBA pixel buffer as a filter-0 PNG (stdlib only)."""
+    stride = w * 4
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)  # filter: None
+        raw += rgba[y * stride:(y + 1) * stride]
+    comp = zlib.compress(bytes(raw), 6)
+
+    def _chunk(tag: bytes, body: bytes) -> bytes:
+        return (struct.pack(">I", len(body)) + tag + body
+                + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF))
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", ihdr)
+            + _chunk(b"IDAT", comp) + _chunk(b"IEND", b""))
+
+
+def _composite_icon_pngs(bg: bytes, fg: bytes):
+    """Source-over composite the adaptive-icon layers: fg artwork on top of
+    the bg plate. The launcher composites both layers before masking, so an
+    icon built from the bare foreground leaves transparent hollows wherever
+    the artwork doesn't cover the canvas. Both layers must decode to the
+    same-size PNG (adaptive-icon layers are authored at one canvas per
+    density); returns PNG bytes or None (e.g. WebP/vector layer, size
+    mismatch) so the caller can fall back to the bare foreground.
+    """
+    b = _png_decode_rgba(bg)
+    f = _png_decode_rgba(fg)
+    if not b or not f or b[0] != f[0] or b[1] != f[1]:
+        return None
+    w, h = b[0], b[1]
+    bp, fp = b[2], f[2]
+    out = bytearray(bp)
+    for i in range(0, len(out), 4):
+        fa = fp[i + 3]
+        if fa == 0:
+            continue
+        if fa == 255:
+            out[i] = fp[i]
+            out[i + 1] = fp[i + 1]
+            out[i + 2] = fp[i + 2]
+            out[i + 3] = 255
+        else:
+            ba = bp[i + 3]
+            oa = fa + ba * (255 - fa) // 255
+            if oa == 0:
+                out[i:i + 4] = b"\x00\x00\x00\x00"
+                continue
+            for k in range(3):
+                # un-premultiplied source-over:
+                # co = (fg*af + bg*ab*(1-af)/255); c = co/ao*255
+                out[i + k] = min(255, (fp[i + k] * fa * 255
+                                       + bp[i + k] * ba * (255 - fa)) // (oa * 255))
+            out[i + 3] = oa
+    return _png_encode_rgba(w, h, out)
+
+
 def _adaptive_icon_raster(apk_path: str, badging_output: str, aapt, context) -> str:
     """Resolve a real raster for adaptive-icon-only APKs, or return "".
 
@@ -123,10 +283,12 @@ def _adaptive_icon_raster(apk_path: str, badging_output: str, aapt, context) -> 
          only reliable ID→path mapping (name-based fallback is impossible
          on obfuscated builds — there is no `*app_icon*` file to find).
 
-    Prefers the highest-density foreground raster (background as fallback).
-    Returns "" when aapt is unavailable, any step fails, or the referenced
-    drawables are still XML (vector drawables would need rasterization,
-    which the backend does not do).
+    Prefers the highest-density foreground raster (background only as
+    fallback when no foreground exists). Returns ``(fg_path, bg_path)`` —
+    ``bg_path`` is "" when the background layer isn't a raster file (color /
+    vector resource). Returns ("", "") when aapt is unavailable, any step
+    fails, or the referenced drawables are still XML (vector drawables would
+    need rasterization, which the backend does not do).
     """
     if aapt is None:
         return ""
@@ -192,7 +354,8 @@ def _adaptive_icon_raster(apk_path: str, badging_output: str, aapt, context) -> 
     if not dump:
         return ""
     rank = {"mdpi": 1, "hdpi": 2, "xhdpi": 3, "xxhdpi": 4, "xxxhdpi": 5}
-    for rid in ref_ids:
+
+    def _best_raster(rid: str) -> str:
         best = None  # (density_rank, path)
         current = None
         for line in dump.splitlines():
@@ -206,9 +369,17 @@ def _adaptive_icon_raster(apk_path: str, badging_output: str, aapt, context) -> 
                     score = rank.get(m.group(1), 0)
                     if best is None or score > best[0]:
                         best = (score, m.group(2))
-        if best:
-            return best[1]
-    return ""
+        return best[1] if best else ""
+
+    fg = _best_raster(fg_id) if fg_id else ""
+    if fg:
+        # Background layer (may be "" when it's a color/vector resource) is
+        # reported alongside so the caller can composite the full icon.
+        return fg, _best_raster(bg_id) if bg_id else ""
+    bg = _best_raster(bg_id) if bg_id else ""
+    if bg:
+        return bg, ""
+    return "", ""
 
 
 def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "", aapt=None, context=None) -> str:
@@ -243,16 +414,18 @@ def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "", aap
         for d, p in icon_matches
         if p.lower().endswith((".png", ".webp"))
     ]
+    adaptive_bg_path = ""
     if not raster:
         # Every application-icon candidate is an XML drawable — usually an
         # <adaptive-icon> entry whose foreground/background rasters sit one
         # reference deeper. Resolve them through the resource table; on
         # AndResGuard-obfuscated builds this is the only way (file names are
         # shortened to res/XX, so nothing can be matched by name).
-        resolved = _adaptive_icon_raster(apk_path, badging_output, aapt, context)
-        if not resolved:
+        fg_path, adaptive_bg_path = _adaptive_icon_raster(
+            apk_path, badging_output, aapt, context)
+        if not fg_path:
             return "-"
-        raster = [(999, resolved)]
+        raster = [(999, fg_path)]
     # Pick the genuinely largest raster by intrinsic pixel area so the UI never
     # upscales a low-res asset. Reading every candidate is cheap (icons are
     # tiny) and beats trusting the density label (a lower-density PNG can be
@@ -277,6 +450,19 @@ def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "", aap
         return "-"
     icon_path = best[1]
     data = best[2]
+    if adaptive_bg_path:
+        # Adaptive icon = background plate + foreground artwork; the launcher
+        # composites both layers before masking. The bare foreground leaves
+        # transparent hollows wherever the artwork doesn't cover the canvas,
+        # so blend the two same-size PNG layers here (stdlib PNG codec).
+        # Any mismatch (webp/vector layer, differing canvas sizes) silently
+        # keeps the bare foreground.
+        try:
+            with zipfile.ZipFile(apk_path) as zf:
+                bg_data = zf.read(adaptive_bg_path)
+            data = _composite_icon_pngs(bg_data, data) or data
+        except Exception:
+            pass
     ext = "webp" if icon_path.lower().endswith(".webp") else "png"
 
     # Prefer writing to the task directory: the file is cleaned up together
