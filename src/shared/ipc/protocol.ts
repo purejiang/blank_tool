@@ -170,6 +170,22 @@ export interface ExportApkResult {
   output_dir: string
 }
 
+/** Return type of device.uninstall_app */
+export interface UninstallAppResult {
+  device_id: string
+  package_name: string
+  success: boolean
+}
+
+/** Return type of device.launch_app / device.clear_app_data */
+export type DeviceAppOpResult = UninstallAppResult
+
+/** Return type of device.screenshot */
+export interface ScreenshotResult {
+  success: boolean
+  file_path: string
+}
+
 /** Return type of cache.info / cache.get_info */
 export interface CacheInfoResult {
   tasks: { path: string; size: number; files: number }
@@ -293,6 +309,13 @@ export interface DeleteTaskDirResult {
   error?: string
 }
 
+/** Return type of task.export_log */
+export interface ExportLogResult {
+  success: boolean
+  file_path?: string
+  error?: string
+}
+
 /** Single task entry in task.list response */
 export interface TaskListItem {
   task_id: string
@@ -359,7 +382,20 @@ export interface ApiMethodMap {
   'device.shell': { params: { device_id: string; command: string }; result: DeviceShellResult }
   'device.reboot': { params: { device_id: string; mode?: string }; result: DeviceRebootResult }
   'device.get_installed_packages': { params: { device_id: string; type?: string }; result: string[] }
+  'device.uninstall_app': { params: { device_id: string; package_name: string }; result: UninstallAppResult }
+  'device.uninstall': { params: { device_id: string; package_name: string }; result: UninstallAppResult }
+  'device.launch_app': { params: { device_id: string; package_name: string }; result: DeviceAppOpResult }
+  'device.clear_app_data': { params: { device_id: string; package_name: string }; result: DeviceAppOpResult }
+  'device.screenshot': { params: { device_id: string; file_path?: string }; result: ScreenshotResult }
   'device.export_apk': { params: { device_id: string; package_name: string; output_dir?: string }; result: ExportApkResult }
+  'device.tap': { params: { device_id: string; x: number; y: number }; result: { success: boolean } }
+  'device.swipe': { params: { device_id: string; x1: number; y1: number; x2: number; y2: number; duration_ms?: number }; result: { success: boolean } }
+  'device.input_text': { params: { device_id: string; text: string }; result: { success: boolean } }
+  'device.keyevent': { params: { device_id: string; key: string }; result: { success: boolean } }
+  'device.ui_dump': { params: { device_id: string; timeout_ms?: number }; result: { success: boolean; xml: string; error: string } }
+  'device.find_element': { params: { device_id: string; by: string; value: string; timeout_ms?: number }; result: { found: boolean; node: Record<string, unknown> | null; error: string } }
+  'device.tap_element': { params: { device_id: string; by: string; value: string; timeout_ms?: number }; result: { success: boolean; node: Record<string, unknown> | null; error: string } }
+  'device.current_activity': { params: { device_id: string; timeout_ms?: number }; result: { success: boolean; activity: string; error: string } }
 
   // --- apk_handler.py ---
   'apk.analyze': { params: { apk_path: string; task_id?: string }; result: void }
@@ -408,6 +444,7 @@ export interface ApiMethodMap {
   // --- task_handler.py ---
   'task.delete_output': { params: { paths: string[] }; result: DeleteOutputResult }
   'task.read_log': { params: { task_id: string; tail_bytes?: number }; result: TaskLogResult }
+  'task.export_log': { params: { task_id: string; file_path: string }; result: ExportLogResult }
   'task.append_log': { params: { task_id: string; line: string }; result: { written: boolean } }
   'task.delete_task_dir': { params: { task_id: string }; result: DeleteTaskDirResult }
   'task.list': { params: Record<string, never>; result: TaskListResult }
@@ -418,6 +455,12 @@ export interface ApiMethodMap {
 
   // --- plugin_handler.py ---
   'plugin.list': { params: Record<string, never>; result: Record<string, unknown>[] }
-  'plugin.run': { params: { name: string; params?: Record<string, unknown> }; result: Record<string, unknown> }
+  'plugin.run': { params: { name: string; params?: Record<string, unknown>; task_id?: string }; result: Record<string, unknown> }
   'plugin.reload': { params: Record<string, never>; result: Record<string, unknown>[] }
+
+  // --- automation_record_handler.py ---
+  // record_start is a @streaming handler: the envelope init resolves to
+  // undefined on the renderer side, hence result: void.
+  'automation.record_start': { params: { device_id: string; task_id: string }; result: void }
+  'automation.record_stop': { params: { device_id: string }; result: { steps: Array<Record<string, unknown>>; record_device: { serial: string; screen_w: number; screen_h: number } } }
 }

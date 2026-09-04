@@ -12,6 +12,7 @@ import StoreService from './StoreService'
 import SettingsService from './SettingsService'
 import UpdateService from './UpdateService'
 import TaskStreamService from './TaskStreamService'
+import RecordingService from './RecordingService'
 
 export function registerServices(sm: typeof serviceManager = serviceManager): void {
   sm.register('config', ConfigService)
@@ -27,4 +28,5 @@ export function registerServices(sm: typeof serviceManager = serviceManager): vo
   sm.register('settings', SettingsService, ['store'])
   sm.register('update', UpdateService)
   sm.register('taskStream', TaskStreamService)
+  sm.register('recording', RecordingService)
 }

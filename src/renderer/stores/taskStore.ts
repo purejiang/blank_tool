@@ -12,6 +12,8 @@ export interface Task {
   operationLabel: string
   status: 'downloading' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancelling'
   phase: 'idle' | 'download' | 'operation' | 'finished'
+  /** Which phase the task failed in — drives the "retry failed stage" button. */
+  failedPhase: '' | 'download' | 'operation'
   progress: number
   progressLabel: string
   result: string
@@ -48,6 +50,7 @@ function loadTasks(): Task[] {
       const tasks: Task[] = JSON.parse(raw)
       for (const t of tasks) {
         t.startedAt ??= t.createdAt
+        t.failedPhase ??= ''
         // Backward compat: infer phase from status for pre-phase data
         if (!t.phase) {
           if (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled') {
@@ -68,7 +71,7 @@ function saveTasks(tasks: Task[]) {
     const toSave = tasks
       .filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
       .slice(0, 100)
-      .map(t => ({ ...t, logs: [] }))
+      .map(t => ({ ...t, logs: t.logs.slice(-100) }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   } catch {}
 }
@@ -165,8 +168,11 @@ export const useTaskStore = defineStore('task', () => {
     const task: Task = {
       id: nextId++,
       ...partial,
-      status: partial.source === 'url' ? 'downloading' : 'queued',
-      phase: partial.source === 'url' ? 'download' : 'idle',
+      // Always start queued — TaskExecutionService pulls tasks into execution
+      // respecting the global concurrency limit (default 3).
+      status: 'queued',
+      phase: 'idle',
+      failedPhase: '',
       progress: 0,
       progressLabel: '',
       result: '',
@@ -233,6 +239,9 @@ export const useTaskStore = defineStore('task', () => {
         updates.phase = 'finished'
         updates.progress = 100
         updates.finishedAt = Date.now()
+        // Clear any stale error left over from a previous attempt/retry so a
+        // successful run never shows an outdated error block.
+        updates.error = ''
         // Accept any of the backend's payload shapes (output_dir / output_apk / apk_path)
         updates.outputPath = payload?.output_dir || payload?.output_apk || payload?.apk_path || ''
         // For analyze, PackagePage already converted payload → HTML via renderApkInfo
@@ -244,6 +253,10 @@ export const useTaskStore = defineStore('task', () => {
         updates.status = 'failed'
         updates.phase = 'finished'
         updates.error = payload?.message || ''
+        // Record the phase that failed so "retry failed stage" can skip a
+        // completed download. Fall back to the task's live phase.
+        updates.failedPhase = payload?.failedPhase
+          || (task.phase === 'operation' ? 'operation' : 'download')
         updates.finishedAt = Date.now()
         terminal = true
         break
@@ -263,6 +276,7 @@ export const useTaskStore = defineStore('task', () => {
         updates.result = ''
         updates.progress = 0
         updates.progressLabel = ''
+        updates.failedPhase = ''
         updates.startedAt = Date.now()
         updates.finishedAt = null
         break
@@ -279,24 +293,28 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  function appendLog(id: number, line: string) {
+  function appendLog(id: number, line: string, persist = true) {
     const task = tasks.value.find(t => t.id === id)
     if (task) {
       task.logs.push(line)
       if (task.logs.length > 500) task.logs.shift()
     }
-    // Persist to per-task log file (fire-and-forget, best-effort)
-    void persistLine(id, line)
+    // Persist to per-task log file (fire-and-forget, best-effort).
+    // `persist=false` is used for backend-mirrored lines: the Python
+    // backend already wrote them via append_task_log, so the renderer
+    // must not double-write. Front-end-authored lines (e.g. the
+    // "download started/failed" markers) keep persist=true.
+    if (persist) void persistLine(id, line)
   }
 
-  function appendLogBatch(id: number, lines: string[]) {
+  function appendLogBatch(id: number, lines: string[], persist = false) {
     const task = tasks.value.find(t => t.id === id)
     if (task) {
       task.logs.push(...lines)
       if (task.logs.length > 500) task.logs.splice(0, task.logs.length - 500)
     }
     // Persist lines in background (fire-and-forget, best-effort)
-    for (const line of lines) void persistLine(id, line)
+    if (persist) for (const line of lines) void persistLine(id, line)
   }
 
   function removeTask(id: number) {

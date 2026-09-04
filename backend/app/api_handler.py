@@ -170,6 +170,10 @@ class ApiHandler:
                 }
                 self.send_response(response)
 
+            # Expose the cancellation event on the callback object so plugins
+            # (e.g. adb_auto) can poll it via PluginContext.is_cancelled().
+            stream_callback.bt_stop_event = stop_event
+
             def stream_worker(
                 stop_event: threading.Event,
                 stream_callback: Callable[[dict], None],

@@ -2,12 +2,6 @@
 
 本文件为 OpenCode / Claude Code 会话提供本仓库的工作指引。仅记录容易踩坑、文件名看不出来、与默认约定不同的高信号信息。
 
-## 分支纪律（最高优先级）
-
-- **所有开发必须在 `dev` 分支上进行**，禁止在 `main` 上直接写代码。
-- `main` 只用于发版（`dev → main` merge + tag），始终保持可发布状态。
-- 进入会话后第一件事：`git branch --show-current`，如果不是 `dev` 立即 `git checkout dev`。
-
 ## 常用命令
 
 ```bash
@@ -19,6 +13,7 @@ npm run test:watch   # vitest 监听模式
 npm run test:coverage
 npm run check        # lint && typecheck && test（提交前一键三连）
 npm run build:win    # node scripts/build.mjs --win（mac/linux 同理）
+npm run release     # 一键发版（流程见下方"发版流程"）
 ```
 
 Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。Vite 的 `root` 是 `src/`，不是项目根。
@@ -95,10 +90,11 @@ Python Backend (backend/main.py)
 
 ## 发版流程
 
-发版流程分两层规范：
+发版流程分两层规范，配合三份独立文档：
 
-- **通用规范**（分支策略、版本号、质量门禁、GitHub Release、存储治理、检查清单）：见 `.agents/rules/RELEASE_GENERAL.md`
-- **本项目 Electron 特有部分**（版本注入、electron-builder 构建、产物上传）：见 `.agents/rules/RELEASE_GUIDE.md`
+- **分支策略与分支纪律**（dev/main 模型、合并规则、会话起步检查）：见 `.agents/rules/BRANCHING.md`
+- **通用发版规范**（版本号与 tag 规则、质量门禁、GitHub Release、存储治理、检查清单模板）：见 `.agents/rules/RELEASE_GENERAL.md`
+- **本项目 Electron 特有部分**（npm run release 用法与前置条件、版本号与产物事实、失败恢复地图、手动兜底发布）：见 `.agents/rules/RELEASE_GUIDE.md`
 
 ## 其他约定
 

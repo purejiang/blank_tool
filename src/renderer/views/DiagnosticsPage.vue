@@ -311,7 +311,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.diagnostics-page { max-width: 900px; margin: 0 auto; }
+.diagnostics-page { max-width: var(--page-max-width); margin: 0 auto; }
 .page-header { margin-bottom: 20px; text-align: left; display: block; }
 .page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }

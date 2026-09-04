@@ -21,6 +21,12 @@ Blank Tool 是一个基于 Electron + Vue 3 + Python 构建的现代化 Android 
 - **反编译/重编译**: 集成 Apktool，支持资源/源码选择性反编译
 - **签名工具**: 支持自定义签名配置管理，V2 签名方案
 
+### 自动化测试
+- **原子操作**: 点击 / 滑动 / 文本输入 / 截图等单步设备操作
+- **脚本编排回放**: 15 种步骤动作自由编排，失败自动截图，支持随时取消
+- **操作录制**: 真机操作实时捕获为脚本步骤，停止录制后自动填入步骤编辑器
+- **工程与脚本管理**: 多工程多脚本组织，支持 JSON 导入导出
+
 ### 主题系统
 - **三模式切换**: 浅色 / 深色 / 自动（跟随系统）
 - **CSS 变量驱动**: 全局统一配色，无缝切换
@@ -30,7 +36,7 @@ Blank Tool 是一个基于 Electron + Vue 3 + Python 构建的现代化 Android 
 - **前端**: Vue 3, Vite, Pinia, Vue Router, Naive UI
 - **桌面框架**: Electron
 - **后端**: Python 3 (JSON-RPC over stdin/stdout)
-- **构建**: electron-builder + git-tag 版本自动同步
+- **构建**: electron-builder（版本号由 package.json 驱动，发版脚本统一维护）
 
 ## 快速开始
 
@@ -57,14 +63,16 @@ npm run build:mac    # macOS (.dmg)
 npm run build:linux  # Linux (AppImage)
 ```
 
-版本号自动从 `git describe --tags` 读取，打包时注入 `package.json`，完成后还原。
+版本号直接读取 package.json.version；发版时由 `npm run release` 自动 bump。
 
-### 打 Tag 发布
+### 发布
 
 ```bash
-git tag -a v2.0.0 -m "Release v2.0.0"
-git push origin v2.0.0
+npm run release                # 一键发布：质量门禁 + bump + tag + 构建 + GitHub Release
+npm run release -- --dry-run   # 仅预览版本号与 release notes，不做修改
 ```
+
+详细用法与失败恢复方法见 `.agents/rules/RELEASE_GUIDE.md`。
 
 ## 项目结构
 

@@ -9,6 +9,7 @@ const LEGACY_SETTINGS_DEFAULTS = {
     theme: 'auto',
     enableNotifications: true,
     autoDeleteOutputOnTaskRemove: false,
+    useProxyForDownload: false,
     adbPath: '',
     aaptPath: '',
     apktoolPath: '',
@@ -162,6 +163,12 @@ const schema = {
         enum: ['auto', 'light', 'dark'],
         default: LEGACY_SETTINGS_DEFAULTS.theme
     },
+    timeout: {
+        type: 'number',
+        minimum: 10,
+        maximum: 600,
+        default: 300
+    },
     enableNotifications: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.enableNotifications
@@ -169,6 +176,10 @@ const schema = {
     autoDeleteOutputOnTaskRemove: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.autoDeleteOutputOnTaskRemove
+    },
+    useProxyForDownload: {
+        type: 'boolean',
+        default: LEGACY_SETTINGS_DEFAULTS.useProxyForDownload
     },
     adbPath: {
         type: 'string',
@@ -193,6 +204,10 @@ const schema = {
     signatureConfigs: {
         type: 'array',
         default: []
+    },
+    automation: {
+        type: 'object',
+        default: { projects: [] }
     }
 };
 

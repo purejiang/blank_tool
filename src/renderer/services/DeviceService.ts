@@ -379,6 +379,61 @@ class DeviceService {
     throw new Error('uninstallApp API not implemented')
   }
 
+  async launchApp(pkg: string) {
+    const store = getDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id || !pkg) return false
+    const api = unifiedApi.getAPI()
+    if (api && typeof api.launchApp === 'function') {
+      const resp = await api.launchApp(pkg, dev.id)
+      return !!resp
+    }
+    throw new Error('launchApp API not implemented')
+  }
+
+  async clearAppData(pkg: string) {
+    const store = getDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id || !pkg) return false
+    const api = unifiedApi.getAPI()
+    if (api && typeof api.clearAppData === 'function') {
+      const resp = await api.clearAppData(pkg, dev.id)
+      return !!resp
+    }
+    throw new Error('clearAppData API not implemented')
+  }
+
+  /**
+   * Capture device screenshot. Returns the saved file path, or false when
+   * no device selected / user canceled the save dialog.
+   */
+  async screenshotDevice(): Promise<string | false> {
+    const store = getDeviceStore()
+    const dev = store.selectedDevice
+    if (!dev || !dev.id) return false
+    const api = unifiedApi.getAPI()
+
+    let filePath = ''
+    if (api && typeof api.showSaveDialog === 'function') {
+      const now = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+      const res = await api.showSaveDialog({
+        title: 'Screenshot',
+        defaultPath: `screenshot-${ts}.png`,
+        filters: [{ name: 'PNG', extensions: ['png'] }],
+      })
+      if (!res || res.canceled) return false
+      filePath = res.filePath || ''
+    }
+
+    if (api && typeof api.screenshot === 'function') {
+      const resp = (await api.screenshot(dev.id, filePath || undefined)) as { file_path?: string } | null
+      return resp?.file_path || filePath || false
+    }
+    throw new Error('screenshot API not implemented')
+  }
+
   async installApp(apkPath: string, options: Record<string, unknown> = {}) {
     if (!apkPath) return { success: false, error: 'No install file selected' }
     const store = getDeviceStore()

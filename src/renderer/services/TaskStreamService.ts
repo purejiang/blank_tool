@@ -36,6 +36,7 @@ export interface TaskCallbacks {
   onComplete?: (payload: any, phase: 'download' | 'operation') => void
   onError?: (message: string, phase: 'download' | 'operation') => void
   onCancelled?: () => void
+  onLog?: (line: string) => void
 }
 
 // ------------------------------------------------------------------
@@ -222,10 +223,16 @@ class TaskStreamService {
         }
 
         case 'error': {
-          const msg =
-            data.payload?.message ||
+          const p = data.payload
+          let msg =
+            (typeof p === 'string' ? p : (p && p.message)) ||
             data.message ||
-            'Unknown error'
+            ''
+          // Never surface a literal "null"/"None"/empty error — fall back to a
+          // meaningful default so the UI never renders the raw string "null".
+          if (!msg || msg === 'null' || msg === 'None') {
+            msg = 'Unknown error'
+          }
           const phase = (ps?.currentPhase || 'download') as 'download' | 'operation'
 
           // Reject both non-settled phase slots (task terminates on error)
@@ -264,9 +271,25 @@ class TaskStreamService {
           break
         }
 
-        // 'log', 'started', 'process_finished' are routed to different
-        // IPC channels (logcat-output, logcat-started, logcat-finished)
-        // by the main process.  Ignore them here.
+        case 'log': {
+          // Backend task log line (apk/install/aab handlers). The main
+          // process forwards these verbatim on streamEvent; the backend
+          // already persisted the line, so the renderer only mirrors it
+          // into memory for live display (no disk write — see taskStore).
+          // Plugins (e.g. adb_auto) send the line as a bare string payload
+          // ("[plugin] msg"); tolerate both string and {line} payloads.
+          let line: any = data.line
+          if (line === undefined) {
+            const p = data.payload
+            if (typeof p === 'string') line = p
+            else if (p && typeof p.line === 'string') line = p.line
+          }
+          if (line) callbacks.onLog?.(String(line))
+          break
+        }
+
+        // 'started', 'process_finished' are still routed to the dedicated
+        // logcat IPC channels by the main process.  Ignore them here.
         default:
           break
       }

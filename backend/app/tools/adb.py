@@ -144,8 +144,8 @@ class Adb(BinaryTool):
                     break
                 stream_callback({"type": "log", "payload": {"process_id": process_id, "line": line.strip()}})
                 # self._logger.info(f"adb logcat log: {line.strip()}")
-        except Exception:
-            pass
+        except Exception as e:
+            self._logger.warning(f"logcat stream read error: {e}")
         finally:
             try:
                 if process.stdout:

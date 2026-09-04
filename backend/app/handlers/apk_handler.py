@@ -4,8 +4,10 @@
 APK analysis, decompile, recompile, and signing handlers.
 """
 
+import base64
 import os
 import re
+import zipfile
 
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
@@ -77,6 +79,109 @@ def _extract_signature_hashes(apk_path: str) -> dict:
         }
 
 
+def _image_dimensions(data: bytes):
+    """Best-effort intrinsic pixel size of a PNG/WebP, or None.
+
+    Parsed straight from the file header (no external deps) so we can pick
+    the genuinely largest launcher icon instead of trusting the density label.
+    """
+    if len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n":
+        w = int.from_bytes(data[16:20], "big")
+        h = int.from_bytes(data[20:24], "big")
+        return w, h
+    if len(data) >= 30 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        fmt = data[12:16]
+        if fmt == b"VP8 ":
+            w = int.from_bytes(data[26:28], "little") & 0x3FFF
+            h = int.from_bytes(data[28:30], "little") & 0x3FFF
+            return w, h
+        if fmt == b"VP8X":
+            w = int.from_bytes(data[24:27], "little") + 1
+            h = int.from_bytes(data[27:30], "little") + 1
+            return w, h
+        # VP8L (lossless) is bit-packed; skip precise parse and fall back to density.
+    return None
+
+
+def _extract_app_icon(apk_path: str, badging_output: str, task_id: str = "") -> str:
+    """Extract the launcher icon, preferring to persist it on disk.
+
+    `aapt dump badging` reports candidate launcher icons as
+    ``application-icon-NNN:'res/...'`` (NNN = density dpi). We prefer a
+    raster asset (png/webp) — adaptive vector XML drawables
+    (res/mipmap-anydpi-v26/*.xml) are skipped since they cannot be embedded
+    directly — and among raster candidates pick the one with the largest
+    intrinsic pixel area (read from the PNG/WebP header), falling back to
+    density when dimensions can't be parsed.
+
+    Output:
+    * With a valid ``task_id`` the bytes are written to
+      ``<BT_TASKS_DIR>/<task_id>/icon.<ext>`` and the **absolute file path**
+      is returned. The renderer loads it via IPC, so the (potentially large)
+      icon is never embedded as base64 in the persisted result HTML /
+      localStorage.
+    * Without a task_id (or if the file cannot be written) a ``data:`` URI is
+      returned for backwards compatibility.
+    * ``'-'`` is returned when no suitable icon is available.
+    """
+    icon_matches = re.findall(
+        r"application-icon-(\d+):\s*'([^']+)'", badging_output
+    )
+    if not icon_matches:
+        return "-"
+    raster = [
+        (int(d), p)
+        for d, p in icon_matches
+        if p.lower().endswith((".png", ".webp"))
+    ]
+    if not raster:
+        return "-"
+    # Pick the genuinely largest raster by intrinsic pixel area so the UI never
+    # upscales a low-res asset. Reading every candidate is cheap (icons are
+    # tiny) and beats trusting the density label (a lower-density PNG can be
+    # physically larger than a higher-density one).
+    best = None  # (score, path, data)
+    try:
+        with zipfile.ZipFile(apk_path) as zf:
+            for d, p in raster:
+                try:
+                    data = zf.read(p)
+                except Exception:
+                    continue
+                if not data:
+                    continue
+                dims = _image_dimensions(data)
+                score = (dims[0] * dims[1]) if dims else int(d) * 1000
+                if best is None or score > best[0]:
+                    best = (score, p, data)
+    except Exception:
+        return "-"
+    if best is None:
+        return "-"
+    icon_path = best[1]
+    data = best[2]
+    ext = "webp" if icon_path.lower().endswith(".webp") else "png"
+
+    # Prefer writing to the task directory: the file is cleaned up together
+    # with the task, and the (large) icon blob stays out of localStorage.
+    if task_id:
+        base = os.environ.get("BT_TASKS_DIR")
+        if base:
+            task_dir = os.path.join(base, str(task_id))
+            try:
+                os.makedirs(task_dir, exist_ok=True)
+                out_path = os.path.join(task_dir, f"icon.{ext}")
+                with open(out_path, "wb") as f:
+                    f.write(data)
+                return out_path
+            except Exception:
+                pass  # fall through to base64
+
+    mime = "image/webp" if ext == "webp" else "image/png"
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+
 @streaming
 @logs_errors("ApkHandler")
 def apk_analyze(params, stream_handler):
@@ -108,7 +213,7 @@ def apk_analyze(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
                 output += line + "\n"
         proc.wait()
 
@@ -161,8 +266,16 @@ def apk_analyze(params, stream_handler):
         # --- v2.1.1: deep APK analysis ---
         info["warnings"] = []
 
+        # C0: Launcher icon — written to the task dir (path returned) so the
+        # large image never lands in localStorage; falls back to base64.
+        try:
+            info["app_icon"] = _extract_app_icon(apk_path, output, task_id)
+        except Exception as e:
+            logger.warning(f"App icon extraction failed: {e}")
+            info["app_icon"] = "-"
+
         # C1: SO file comparison across architectures
-        stream_handler({"type": "log", "line": "[SO Analysis] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[SO Analysis] Starting..."})
         try:
             so_map = enumerate_so_files(apk_path)
             info["native_so_detail"] = so_map
@@ -170,38 +283,38 @@ def apk_analyze(params, stream_handler):
         except Exception as e:
             logger.warning(f"SO analysis failed: {e}")
             info["warnings"].append(f"SO analysis failed: {e}")
-            stream_handler({"type": "log", "line": f"[SO Analysis] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[SO Analysis] Failed: {e}"})
 
         # C2: Compression analysis (assets/lib/dex)
-        stream_handler({"type": "log", "line": "[Compression Analysis] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[Compression Analysis] Starting..."})
         try:
             info["compression_analysis"] = analyze_compression(apk_path)
         except Exception as e:
             logger.warning(f"Compression analysis failed: {e}")
             info["warnings"].append(f"Compression analysis failed: {e}")
-            stream_handler({"type": "log", "line": f"[Compression Analysis] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[Compression Analysis] Failed: {e}"})
 
         # C3: 16KB page size support for 64-bit .so files
-        stream_handler({"type": "log", "line": "[16KB Page Check] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[16KB Page Check] Starting..."})
         try:
             info["page_size_16kb"] = check_16kb_page_support(apk_path)
         except Exception as e:
             logger.warning(f"16KB page check failed: {e}")
             info["warnings"].append(f"16KB page check failed: {e}")
-            stream_handler({"type": "log", "line": f"[16KB Page Check] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[16KB Page Check] Failed: {e}"})
 
         # C4: Meta-data from AndroidManifest.xml
-        stream_handler({"type": "log", "line": "[Meta-data Extraction] Starting..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[Meta-data Extraction] Starting..."})
         try:
             info["meta_data"] = _parse_manifest_meta_data(apk_path, task_id=task_id)
             _resolve_resource_refs(apk_path, info["meta_data"], task_id=task_id)
         except Exception as e:
             logger.warning(f"Meta-data extraction failed: {e}")
             info["warnings"].append(f"Meta-data extraction failed: {e}")
-            stream_handler({"type": "log", "line": f"[Meta-data Extraction] Failed: {e}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[Meta-data Extraction] Failed: {e}"})
 
         # C5: File hash and signature certificate extraction
-        stream_handler({"type": "log", "line": "[Signature] Extracting certs..."})
+        stream_handler({"type": "log", "task_id": task_id, "line": "[Signature] Extracting certs..."})
         try:
             info["file_md5"] = get_file_hash(apk_path, "md5") or "-"
         except Exception as e:
@@ -216,6 +329,22 @@ def apk_analyze(params, stream_handler):
             info["sig_sha256"] = sig_info.get("sig_sha256", "-")
             if "sig_warning" in sig_info:
                 info["warnings"].append(sig_info["sig_warning"])
+            # Facebook Hash Key = base64( SHA1(cert DER) ).
+            # apksigner's reported SHA-1 digest is computed over the DER-encoded
+            # certificate, which is exactly what `keytool -exportcert | openssl
+            # sha1 -binary | base64` produces. So we reuse the already-extracted
+            # sig_sha1 (hex) and base64-encode its raw 20 bytes — no keystore
+            # password or openssl/keytool needed.
+            sha1_hex = info.get("sig_sha1", "-")
+            if sha1_hex and sha1_hex != "-":
+                try:
+                    info["fb_hash_key"] = base64.b64encode(
+                        bytes.fromhex(sha1_hex)
+                    ).decode("ascii")
+                except Exception:
+                    info["fb_hash_key"] = "-"
+            else:
+                info["fb_hash_key"] = "-"
         except Exception as e:
             logger.warning(f"Signature extraction failed: {e}")
             info["sig_md5"] = "-"
@@ -228,7 +357,10 @@ def apk_analyze(params, stream_handler):
             append_task_log(task_id, f"[ANALYZE] app_label={info.get('application_label', '-')}")
             append_task_log(task_id, f"[ANALYZE] sdk: min={info.get('min_sdk_version', '-')} target={info.get('target_sdk_version', '-')}")
             append_task_log(task_id, f"[ANALYZE] file_md5={info.get('file_md5', '-')} size={info.get('file_size', 0)}")
+            append_task_log(task_id, f"[ANALYZE] app_icon={'yes' if info.get('app_icon', '-') != '-' else 'no'}")
             append_task_log(task_id, f"[ANALYZE] sig_sha256={info.get('sig_sha256', '-')}")
+            if info.get('fb_hash_key', '-') != '-':
+                append_task_log(task_id, f"[ANALYZE] fb_hash_key={info.get('fb_hash_key', '-')}")
             append_task_log(task_id, f"[ANALYZE] permissions={len(info.get('permissions', []))}")
             if info.get('native_libs'):
                 append_task_log(task_id, f"[ANALYZE] native_abis={info['native_libs']}")
@@ -297,7 +429,7 @@ def apk_decompile(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 
@@ -373,7 +505,7 @@ def apk_recompile(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 
@@ -387,6 +519,7 @@ def apk_recompile(params, stream_handler):
             })
             return
 
+        warnings = []
         if options.get("zipalign"):
             zipalign = manager.get_tool("zipalign")
             if zipalign and zipalign.is_valid:
@@ -404,7 +537,7 @@ def apk_recompile(params, stream_handler):
                     if line:
                         if task_id:
                             append_task_log(task_id, line)
-                        stream_handler({"type": "log", "line": line})
+                        stream_handler({"type": "log", "task_id": task_id, "line": line})
 
                 zproc.wait()
 
@@ -413,6 +546,12 @@ def apk_recompile(params, stream_handler):
                     return
                 if zproc.returncode == 0:
                     output_apk = aligned_apk
+                else:
+                    msg = f"zipalign failed (exit={zproc.returncode}); using unaligned apk"
+                    logger.warning(msg)
+                    if task_id:
+                        append_task_log(task_id, f"[WARNING] {msg}")
+                    warnings.append(msg)
 
         if options.get("sign") and options.get("keystore"):
             keystore = options.get("keystore", {})
@@ -442,7 +581,7 @@ def apk_recompile(params, stream_handler):
                     if line:
                         if task_id:
                             append_task_log(task_id, line)
-                        stream_handler({"type": "log", "line": line})
+                        stream_handler({"type": "log", "task_id": task_id, "line": line})
 
                 sproc.wait()
 
@@ -458,7 +597,10 @@ def apk_recompile(params, stream_handler):
 
         if task_id:
             append_task_log(task_id, f"[RECOMPILE] output_apk: {output_apk}")
-        stream_handler({"type": "complete", "payload": {"output_apk": output_apk}})
+        payload = {"output_apk": output_apk}
+        if warnings:
+            payload["warnings"] = warnings
+        stream_handler({"type": "complete", "payload": payload})
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -763,7 +905,7 @@ def apk_sign(params, stream_handler):
             if line:
                 if task_id:
                     append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 

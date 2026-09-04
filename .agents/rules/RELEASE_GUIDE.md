@@ -1,133 +1,98 @@
 # Electron 应用发布指南（本项目）
 
-通用发布流程（分支策略、版本号管理、发布前质量门禁、GitHub Release 创建、Release Notes 规范、旧版本清理、发布后步骤、通用检查清单）见 [通用发版规范](./RELEASE_GENERAL.md)。本文档仅记录与 Electron / electron-builder 相关的特有步骤。
+日常发版只用一条命令 `npm run release`（`scripts/release.mjs`）。脚本自带交互确认、结构化错误提示（phase / hint / nextAction / recoverable）与安全重跑。本文档只记录脚本不告诉你的事。
 
----
+通用发版规范（版本号与 tag、质量门禁、Release Notes、旧版本清理、通用检查清单）见 [通用发版规范](./RELEASE_GENERAL.md)；分支策略见 [通用分支策略](./BRANCHING.md)。
 
-## 1. 版本号注入
-
-版本号完全由 git tag 决定（详见 [第 2 节 版本号管理](./RELEASE_GENERAL.md#2-版本号管理)）。本项目的构建脚本 `scripts/build.mjs` 在打包前自动执行版本注入：
-
-```javascript
-// 核心逻辑：git describe → 注入 package.json → 构建 → 恢复
-const version = execSync('git describe --tags --abbrev=0').toString().trim().replace(/^v/, '');
-
-// 备份原始 package.json
-copyFileSync('package.json', 'package.json.bak');
-
-// 注入版本
-const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-pkg.version = version;
-writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-
-try {
-  execSync('npx vite build', { stdio: 'inherit' });
-  execSync('npx electron-builder --win', { stdio: 'inherit' });
-} finally {
-  // 恢复原始 package.json
-  copyFileSync('package.json.bak', 'package.json');
-  unlinkSync('package.json.bak');
-}
-```
-
-> ⚠️ 如果 `package.json.bak` 残留（上次构建崩溃），会覆盖当前备份。CI 中途 kill 进程可能留下脏状态——`finally` 块确保恢复。
-
----
-
-## 2. 构建
-
-### 环境准备
-
-- Node.js 18+
-- 所有依赖已安装（`npm install`）
-
-构建前请确保通用质量门禁通过（详见 [第 3 节 发布前质量门禁](./RELEASE_GENERAL.md#3-发布前质量门禁)）。
-
-### 构建命令
+## 1. 用法速查
 
 ```bash
-npm run build:win    # Windows（输出 Setup.exe + blockmap + latest.yml）
-npm run build:mac    # macOS
-npm run build:linux  # Linux
+npm run release                            # 默认 patch bump
+npm run release -- --minor                 # minor bump
+npm run release -- --major                 # major bump
+npm run release -- --version=2.5.0         # 指定版本号
+npm run release -- --dry-run               # 仅预览：计算版本号并生成 notes，在质量门禁之前退出，不做任何修改
 ```
 
-### 构建产物
+前置条件（脚本 preflight 自动检查，不满足即阻断）：
+- 在 dev 分支
+- 工作区干净
+- 无 package.json.bak 残留
+- gh CLI 已认证
+- dev 与 origin/dev 一致
+
+## 2. 版本号与构建产物
+
+版本号双源：git tag 与 package.json（详见 [通用发版规范](./RELEASE_GENERAL.md#1-版本号管理)）。发版时 `npm run release` 先 bump package.json 并提交，再打 annotated tag，两个来源在发布时保持一致。
+
+`scripts/build.mjs` 直接读取 package.json.version，无注入、无 .bak：
+
+```javascript
+// build.mjs — 直接读 package.json.version（行号为撰写时快照）
+const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+console.log(`[build] Version: ${pkg.version}`);
+```
+
+旧版曾用 git describe 注入并产生 package.json.bak——若工作目录残留手动删除即可，preflight 会检查该残留并阻断。
+
+产物命名由 package.json 的 `build.artifactName = "Blank-Tool-Setup-${version}.${ext}"` 决定，输出到 `build/`：
 
 | 文件 | 用途 | 是否上传 |
 |---|---|---|
-| `Setup X.Y.Z.exe` | 安装包 | ✅ |
-| `Setup X.Y.Z.exe.blockmap` | 增量更新块映射 | ✅ |
-| `latest.yml` | 自动更新清单 | ✅ |
+| `Blank-Tool-Setup-X.Y.Z.exe` | 安装包 | ✅ 上传 |
+| `Blank-Tool-Setup-X.Y.Z.exe.blockmap` | 增量更新块映射 | ✅ 上传 |
+| `latest.yml` | 自动更新清单 | ✅ 上传 |
 
-### latest.yml 文件名校验
+**latest.yml 与自动更新**：electron-updater 按 latest.yml 的 path/url 下载资产，文件名不一致会 404。`npm run release` 已在构建阶段自动校验（path 与 exe 名比对）。手动发布时用 PowerShell 比对：
 
-> ⚠️ `latest.yml` 中的 `url` / `path` 字段必须与 GitHub Release 上实际资产的文件名**完全一致**，否则自动更新会 404。electron-builder 默认用连字符命名产物（`Blank-Tool-Setup-X.Y.Z.exe`）。
+```powershell
+Select-String -Pattern '^\s*(path|url):' build/latest.yml
+Get-ChildItem build/*.exe
+```
 
-上传前校验 `latest.yml` 里的文件名与 `build/` 下实际 exe 文件名一致：
+保持连字符命名，不要改成点号或空格。
+
+构建命令：`npm run build:win` / `build:mac` / `build:linux`。**一键发布当前只构建 Windows（脚本固定执行 build:win）**，macOS/Linux 需手动构建。
+
+## 3. 失败恢复地图
+
+任一阶段失败时脚本输出结构化 JSON（phase / hint / nextAction / recoverable），按提示修复后重跑即可，重跑是安全的（同版本 draft 残留自动清理重建）。无论成功失败，脚本最终自动切回 dev 分支。重跑前可对照下表确认"已经做到了哪一步"。
+
+| 阶段 | 做什么 | 失败时的状态与恢复 |
+|---|---|---|
+| 1. preflight 环境检查 | 检查分支、工作区干净、gh 认证、dev 同步 | 无副作用。直接重跑。 |
+| 2. 版本计算 + notes 生成 | 计算新版本号，从 git log 生成 Release Notes | 无副作用。tag 已存在则换版本号（`--version=`）重跑。`--dry-run` 到此为止。 |
+| 3. 质量门禁 npm run check | 运行 lint + typecheck + test | 无副作用。修复 lint/typecheck/test 后重跑。 |
+| 4. 交互确认 | 展示版本号与 Release Notes，等待 y/n 确认 | 无副作用。输 n 取消无任何变更。 |
+| 5. bump package.json + commit | 更新 version 字段并提交到 dev | 失败自动回滚 package.json。直接重跑。 |
+| 6. merge + tag + push | 合并 dev→main，打 annotated tag，推送 dev/main/tag 到远程 | merge 冲突时脚本已自动 abort——在 dev 解决冲突并推送后重跑。push main/tag 失败按 nextAction 手动推送（`git push origin main && git push origin vX.Y.Z`）或重跑。 |
+| 7. 构建 build:win + 产物校验 | 执行 npm run build:win，校验 exe/blockmap/latest.yml 完整性 | commit 与 tag 已完成。修复构建错误后重跑，脚本从构建阶段继续。 |
+| 8. 发布 draft → 上传 → publish | 创建 draft Release，上传 exe/blockmap/latest.yml，发布（移除 draft 状态） | draft 可能已创建、部分资产可能已上传。直接重跑：同版本 draft 自动删除重建；上传自动重试 3 次（间隔 5 秒）。 |
+| 9. 清理旧版本资产 | 保留最新 2 个版本，清理更旧版本的 .exe / .blockmap 资产 | 本次发布已完成。清理失败不影响发布结果，手动 `gh release delete-asset` 处理。 |
+
+## 4. 手动发布（备选）
+
+一键发布完全不可用、需要分步执行时使用：
 
 ```bash
-# 检查 latest.yml 里的文件名
-grep -E '^\s*(url|path):' build/latest.yml
-
-# 检查 build/ 下实际产物名
-ls build/*.exe
-
-# 两者必须完全一致；如不一致，修正 latest.yml（保持连字符）
+git checkout dev && git push origin dev
+git checkout main && git merge dev
+npm run check
+# 手动更新 package.json 的 version 并提交
+git add package.json && git commit -m "chore(release): bump version to X.Y.Z"
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin main vX.Y.Z
+npm run build:win
+gh release create vX.Y.Z "build/Blank-Tool-Setup-X.Y.Z.exe" "build/Blank-Tool-Setup-X.Y.Z.exe.blockmap" "build/latest.yml" --title "vX.Y.Z" --notes "..."
 ```
 
-### 上传产物
+随后按 [通用发版规范](./RELEASE_GENERAL.md#5-旧版本清理) 清理旧版本资产。
 
-构建完成后，使用 `gh release create` 上传产物。命令格式见 [第 5 节 创建 GitHub Release](./RELEASE_GENERAL.md#5-创建-github-release)，上传文件为上述三个构建产物。
+## 5. 检查清单（Electron 特有）
 
----
+通用项见 [通用发版规范](./RELEASE_GENERAL.md#7-发布检查清单)。推荐 `npm run release` 一键完成，手动验证仅在一键发布失败或分步执行时使用。
 
-## 3. 一键发布脚本参考
-
-以下脚本整合了版本注入、构建、latest.yml 修正、旧版本清理和 Release 创建，可作为自动化发布的参考实现：
-
-```javascript
-const version = execSync('git describe --tags --abbrev=0').toString().trim();
-const platform = process.argv[2] || 'win';
-
-// 1. 版本注入 + 构建
-const pkgPath = 'package.json';
-copyFileSync(pkgPath, pkgPath + '.bak');
-const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-pkg.version = version.replace(/^v/, '');
-writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-
-try {
-  execSync('npx vite build', { stdio: 'inherit' });
-  execSync(`npx electron-builder --${platform}`, { stdio: 'inherit' });
-} finally {
-  copyFileSync(pkgPath + '.bak', pkgPath);
-  unlinkSync(pkgPath + '.bak');
-}
-
-// 2. 校验 latest.yml 文件名与实际产物一致（electron-builder 默认连字符命名）
-const latestYml = 'build/latest.yml';
-if (existsSync(latestYml)) {
-  // 无需替换；仅确认 latest.yml 里的文件名与 build/ 下 exe 一致
-}
-
-// 3. 删除旧版本 exe
-const prevVersion = execSync('git tag --sort=-creatordate | sed -n "2p"').toString().trim();
-if (prevVersion) {
-  execSync(`gh release delete-asset ${prevVersion} "Setup.${prevVersion.replace(/^v/, '')}.exe" --yes`, { stdio: 'inherit' });
-}
-
-// 4. 创建 Release
-const setupExe = `build/Setup ${version.replace(/^v/, '')}.exe`;
-execSync(`gh release create ${version} "${setupExe}" "${setupExe}.blockmap" "${latestYml}" --title "${version}" --notes "See commits for details."`, { stdio: 'inherit' });
-```
-
----
-
-## 4. 检查清单（Electron 特有）
-
-通用检查清单项见 [第 8 节 检查清单](./RELEASE_GENERAL.md#8-检查清单发布前逐项确认)，以下仅为本项目 Electron 特有项：
-
-- [ ] `npm run build:win` — 构建成功
-- [ ] `latest.yml` 文件名与 Release 实际资产名一致（保持连字符）
-- [ ] `gh release create` — 三个文件全部上传（exe + blockmap + latest.yml）
-- [ ] 旧版本 exe 已清理（`gh release delete-asset`）
+- [ ] `npm run build:win` 构建成功
+- [ ] `latest.yml` path 与实际 exe 文件名一致（连字符命名）
+- [ ] Release 已上传三个文件（exe + blockmap + latest.yml）
+- [ ] 旧版本 exe/blockmap 资产已清理

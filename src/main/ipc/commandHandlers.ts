@@ -3,12 +3,14 @@ import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
+import { getConfigValue } from '../stores/appStore';
 
 interface CallbackInfo {
     resolve: (value: unknown) => void;
     reject: (reason?: any) => void;
     sender: WebContents;
     process: ChildProcessWithoutNullStreams;
+    method: string;
     resolved?: boolean;
 }
 
@@ -28,7 +30,7 @@ export const createErrorResponse = (message: string, code: number = -32603) => (
 export function setupCommandHandlers(
     getPythonProcess: () => ChildProcessWithoutNullStreams | null,
     ensurePythonProcess?: () => Promise<ChildProcessWithoutNullStreams | null>,
-    requestTimeout = 300000
+    requestTimeout: number | (() => number) = 300000
 ): void {
     const requestCallbacks = new Map<string | number, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
@@ -89,23 +91,33 @@ export function setupCommandHandlers(
                                 const result = (response.result || {}) as JsonObject;
                                 const resultType = typeof result.type === 'string' ? result.type : '';
                                 if (resultType && sender && !sender.isDestroyed()) {
-                                    const channelMap: Record<string, string> = {
-                                        'log': IPC_CHANNEL_NAMES.logcatOutput,
-                                        'started': IPC_CHANNEL_NAMES.logcatStarted,
-                                        'process_finished': IPC_CHANNEL_NAMES.logcatFinished
-                                    };
-
-                                    const channel = channelMap[resultType];
-
-                                    if (channel) {
-                                        const resultPayload = typeof result.payload === 'object' && result.payload !== null
-                                            ? result.payload as JsonObject
-                                            : {};
-                                        const payload = {
-                                            stream_id: response.stream_id,
-                                            ...resultPayload
+                                    // logcat streams (adb.logcat) keep their dedicated channels;
+                                    // every other streaming request (download/apk/install/aab)
+                                    // is forwarded verbatim to streamEvent so task log lines
+                                    // (type:'log', carrying line + task_id) reach the renderer.
+                                    const isLogcat = requestCallbacks.get(response.id)?.method === 'adb.logcat';
+                                    if (isLogcat) {
+                                        const channelMap: Record<string, string> = {
+                                            'log': IPC_CHANNEL_NAMES.logcatOutput,
+                                            'started': IPC_CHANNEL_NAMES.logcatStarted,
+                                            'process_finished': IPC_CHANNEL_NAMES.logcatFinished
                                         };
-                                        sender.send(channel, payload);
+                                        const channel = channelMap[resultType];
+                                        if (channel) {
+                                            const resultPayload = typeof result.payload === 'object' && result.payload !== null
+                                                ? result.payload as JsonObject
+                                                : {};
+                                            const payload = {
+                                                stream_id: response.stream_id,
+                                                ...resultPayload
+                                            };
+                                            sender.send(channel, payload);
+                                        } else {
+                                            sender.send(IPC_CHANNEL_NAMES.streamEvent, {
+                                                stream_id: response.stream_id,
+                                                data: result
+                                            });
+                                        }
                                     } else {
                                         sender.send(IPC_CHANNEL_NAMES.streamEvent, {
                                             stream_id: response.stream_id,
@@ -180,9 +192,12 @@ export function setupCommandHandlers(
                 log.info(`[trace ${request.id}] rejected: ${message}`);
                 reject(reason);
             };
-            requestCallbacks.set(request.id, { resolve: wrappedResolve, reject: wrappedReject, sender: event.sender, process: pythonProcess });
+            requestCallbacks.set(request.id, { resolve: wrappedResolve, reject: wrappedReject, sender: event.sender, process: pythonProcess, method: request.method });
 
             try {
+                if (request.method === 'download.file') {
+                    request.params = { ...(request.params ?? {}), use_proxy: getConfigValue('useProxyForDownload') === true };
+                }
                 const payload = JSON.stringify(request) + '\n';
                 const success = pythonProcess.stdin.write(payload);
                 if (!success && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {
@@ -200,7 +215,7 @@ export function setupCommandHandlers(
                     log.info(`[trace ${request.id}] timed out`);
                     resolve(createErrorResponse('请求超时', -32003));
                 }
-            }, requestTimeout);
+            }, typeof requestTimeout === 'function' ? requestTimeout() : requestTimeout);
         });
     });
 }

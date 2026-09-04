@@ -6,6 +6,7 @@ ADB & device handlers.
 
 import os
 import re
+import time
 
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
@@ -13,6 +14,16 @@ from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 from app.tools.adb import Adb
 from app.utils.env import get_output_dir
+from app.utils.adb_auto_core import (
+    tap,
+    swipe,
+    input_text,
+    keyevent,
+    ui_dump,
+    find_element,
+    tap_element,
+    current_activity,
+)
 from app.common.decorators import streaming, logs_errors
 
 logger = Logger.get_logger("AdbHandler")
@@ -303,6 +314,25 @@ def device_reboot(params, stream_handler):
 
 
 @logs_errors("AdbHandler")
+def device_uninstall_app(params, stream_handler):
+    device_id = params.get("device_id")
+    package_name = params.get("package_name")
+    if not device_id or not package_name:
+        raise ToolException("Missing device_id or package_name")
+
+    adb_tool = manager.get_tool("adb")
+    if not adb_tool or not adb_tool.is_valid:
+        raise ToolNotFoundError("adb")
+
+    ctx = CommandExecutionContext()
+    r = adb_tool.execute(["-s", device_id, "uninstall", package_name], ctx)
+    success = r.get("returncode", 1) == 0
+    if not success:
+        raise ToolException(r.get("stderr", "Uninstall failed"))
+    return {"device_id": device_id, "package_name": package_name, "success": True}
+
+
+@logs_errors("AdbHandler")
 def device_export_apk(params, stream_handler):
     device_id = params.get("device_id")
     package_name = params.get("package_name")
@@ -367,6 +397,190 @@ def device_export_apk(params, stream_handler):
 
 
 @logs_errors("AdbHandler")
+def device_launch_app(params, stream_handler):
+    """Launch an installed app via monkey (no activity name required)."""
+    device_id = params.get("device_id")
+    package_name = params.get("package_name")
+    if not device_id or not package_name:
+        raise ToolException("Missing device_id or package_name")
+
+    adb_tool = manager.get_tool("adb")
+    if not adb_tool or not adb_tool.is_valid:
+        raise ToolNotFoundError("adb")
+
+    ctx = CommandExecutionContext()
+    r = adb_tool.execute(
+        [
+            "-s", device_id, "shell", "monkey", "-p", package_name,
+            "-c", "android.intent.category.LAUNCHER", "1",
+        ],
+        ctx,
+    )
+    success = r.get("returncode", 1) == 0
+    if not success:
+        raise ToolException(r.get("stderr", "Launch failed"))
+    return {"device_id": device_id, "package_name": package_name, "success": True}
+
+
+@logs_errors("AdbHandler")
+def device_clear_app_data(params, stream_handler):
+    """Clear all app data via ``pm clear`` (destructive, frontend confirms first)."""
+    device_id = params.get("device_id")
+    package_name = params.get("package_name")
+    if not device_id or not package_name:
+        raise ToolException("Missing device_id or package_name")
+
+    adb_tool = manager.get_tool("adb")
+    if not adb_tool or not adb_tool.is_valid:
+        raise ToolNotFoundError("adb")
+
+    ctx = CommandExecutionContext()
+    r = adb_tool.execute(
+        ["-s", device_id, "shell", "pm", "clear", package_name], ctx
+    )
+    stdout = (r.get("stdout", "") or "").strip()
+    success = r.get("returncode", 1) == 0 and "Success" in stdout
+    if not success:
+        raise ToolException(stdout or r.get("stderr", "Clear data failed"))
+    return {"device_id": device_id, "package_name": package_name, "success": True}
+
+
+@logs_errors("AdbHandler")
+def device_screenshot(params, stream_handler):
+    """Capture device screen to a local PNG.
+
+    Screencap writes to a device-side temp file first (avoids the stdout
+    ``\\r\\n`` corruption of ``screencap -p`` on old devices), then pulls to
+    the user-chosen path (or the default screenshots output dir).
+    """
+    device_id = params.get("device_id")
+    if not device_id:
+        raise ToolException("Missing device_id")
+
+    file_path = params.get("file_path")
+    if not file_path:
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        screenshots_dir = os.path.join(get_output_dir(), "screenshots")
+        os.makedirs(screenshots_dir, exist_ok=True)
+        file_path = os.path.join(screenshots_dir, f"screenshot-{ts}.png")
+
+    adb_tool = manager.get_tool("adb")
+    if not adb_tool or not adb_tool.is_valid:
+        raise ToolNotFoundError("adb")
+
+    ctx = CommandExecutionContext()
+    remote = "/sdcard/blank_tool_screenshot.png"
+
+    cap = adb_tool.execute(["-s", device_id, "shell", "screencap", "-p", remote], ctx)
+    if cap.get("returncode", 1) != 0:
+        raise ToolException(cap.get("stderr", "Screencap failed"))
+
+    pull = adb_tool.execute(["-s", device_id, "pull", remote, file_path], ctx)
+    # Best-effort cleanup of the device-side temp file regardless of pull result.
+    adb_tool.execute(
+        ["-s", device_id, "shell", "rm", "-f", remote],
+        CommandExecutionContext(capture_output=True, log_output=False),
+    )
+    if pull.get("returncode", 1) != 0:
+        raise ToolException(pull.get("stderr", "Pull screenshot failed"))
+
+    return {"success": True, "file_path": file_path}
+
+
+# ----------------------------------------------------------------------
+# ADB UI automation atomic handlers (batch 1)
+# Thin wrappers over app.utils.adb_auto_core, exposed as backend APIs so the
+# frontend "pick element from current screen" can call them directly, and the
+# adb_auto plugin orchestrates them.
+# ----------------------------------------------------------------------
+
+@logs_errors("AdbHandler")
+def device_tap(params, stream_handler):
+    device_id = params.get("device_id")
+    x = params.get("x")
+    y = params.get("y")
+    if not device_id or x is None or y is None:
+        raise ToolException("Missing device_id or x/y")
+    return tap(device_id, int(x), int(y))
+
+
+@logs_errors("AdbHandler")
+def device_swipe(params, stream_handler):
+    device_id = params.get("device_id")
+    x1 = params.get("x1")
+    y1 = params.get("y1")
+    x2 = params.get("x2")
+    y2 = params.get("y2")
+    if not device_id or None in (x1, y1, x2, y2):
+        raise ToolException("Missing device_id or swipe coords")
+    duration = params.get("duration_ms", 300)
+    return swipe(device_id, int(x1), int(y1), int(x2), int(y2), int(duration))
+
+
+@logs_errors("AdbHandler")
+def device_input_text(params, stream_handler):
+    device_id = params.get("device_id")
+    text = params.get("text")
+    if not device_id or text is None:
+        raise ToolException("Missing device_id or text")
+    return input_text(device_id, str(text))
+
+
+@logs_errors("AdbHandler")
+def device_keyevent(params, stream_handler):
+    device_id = params.get("device_id")
+    key = params.get("key")
+    if not device_id or not key:
+        raise ToolException("Missing device_id or key")
+    return keyevent(device_id, str(key))
+
+
+@logs_errors("AdbHandler")
+def device_ui_dump(params, stream_handler):
+    device_id = params.get("device_id")
+    if not device_id:
+        raise ToolException("Missing device_id")
+    ok, xml = ui_dump(device_id, timeout_ms=int(params.get("timeout_ms", 8000)))
+    if not ok:
+        return {"success": False, "xml": "", "error": xml}
+    return {"success": True, "xml": xml, "error": ""}
+
+
+@logs_errors("AdbHandler")
+def device_find_element(params, stream_handler):
+    device_id = params.get("device_id")
+    by = params.get("by")
+    value = params.get("value")
+    if not device_id or not by or value is None:
+        raise ToolException("Missing device_id/by/value")
+    return find_element(
+        device_id, by, value, timeout_ms=int(params.get("timeout_ms", 10000))
+    )
+
+
+@logs_errors("AdbHandler")
+def device_tap_element(params, stream_handler):
+    device_id = params.get("device_id")
+    by = params.get("by")
+    value = params.get("value")
+    if not device_id or not by or value is None:
+        raise ToolException("Missing device_id/by/value")
+    return tap_element(
+        device_id, by, value, timeout_ms=int(params.get("timeout_ms", 10000))
+    )
+
+
+@logs_errors("AdbHandler")
+def device_current_activity(params, stream_handler):
+    device_id = params.get("device_id")
+    if not device_id:
+        raise ToolException("Missing device_id")
+    return current_activity(
+        device_id, timeout_ms=int(params.get("timeout_ms", 3000))
+    )
+
+
+@logs_errors("AdbHandler")
 def adb_connect(params, stream_handler):
     """Connect to a remote ADB device via TCP/IP."""
     address = params.get("address", "")
@@ -417,5 +631,18 @@ API_MAP = {
     "device.shell": device_shell,
     "device.reboot": device_reboot,
     "device.get_installed_packages": device_list_apps,
+    "device.uninstall_app": device_uninstall_app,
+    "device.uninstall": device_uninstall_app,
+    "device.launch_app": device_launch_app,
+    "device.clear_app_data": device_clear_app_data,
+    "device.screenshot": device_screenshot,
     "device.export_apk": device_export_apk,
+    "device.tap": device_tap,
+    "device.swipe": device_swipe,
+    "device.input_text": device_input_text,
+    "device.keyevent": device_keyevent,
+    "device.ui_dump": device_ui_dump,
+    "device.find_element": device_find_element,
+    "device.tap_element": device_tap_element,
+    "device.current_activity": device_current_activity,
 }

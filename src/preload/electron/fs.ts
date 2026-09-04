@@ -6,5 +6,6 @@ export const fsApi = {
   getFileStats: (filePath: string) => ipcInvoke(IPC_CHANNEL_NAMES.getFileStats, filePath),
   writeFile: (filePath: string, content: string) => ipcInvoke(IPC_CHANNEL_NAMES.writeFile, filePath, content),
   readFile: (filePath: string) => ipcInvoke(IPC_CHANNEL_NAMES.readFile, filePath),
+  readImageAsDataURL: (filePath: string) => ipcInvoke(IPC_CHANNEL_NAMES.readImageAsDataURL, filePath),
   openPath: (filePath: string) => ipcInvoke(IPC_CHANNEL_NAMES.openPath, filePath),
 };

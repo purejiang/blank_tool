@@ -88,6 +88,21 @@
 
                 <n-divider style="margin: 14px 0" />
 
+                <!-- Screenshot -->
+                <div class="actions-section">
+                  <n-tag :bordered="false" type="info" size="small" class="section-label">
+                    {{ t('device.screenshot') }}
+                  </n-tag>
+                  <n-space :size="8">
+                    <n-button size="small" secondary type="success" @click="takeScreenshot">
+                      <template #icon><n-icon><Camera /></n-icon></template>
+                      {{ t('device.screenshot') }}
+                    </n-button>
+                  </n-space>
+                </div>
+
+                <n-divider style="margin: 14px 0" />
+
                 <!-- Shell Command -->
                 <div class="actions-section">
                   <n-tag :bordered="false" type="info" size="small" class="section-label">
@@ -187,8 +202,18 @@
                             <n-button
                               size="tiny"
                               secondary
+                              type="info"
+                              :title="t('device.launchApp')"
+                              @click="launchApp(app.packageName)"
+                            >
+                              <template #icon><n-icon><Play /></n-icon></template>
+                            </n-button>
+                            <n-button
+                              size="tiny"
+                              secondary
                               type="success"
                               :loading="isExportingPkg(app.packageName)"
+                              :title="t('appManager.export')"
                               @click="exportApp(app.packageName)"
                             >
                               <template #icon><n-icon><Download /></n-icon></template>
@@ -196,7 +221,17 @@
                             <n-button
                               size="tiny"
                               secondary
+                              type="warning"
+                              :title="t('device.clearData')"
+                              @click="clearAppData(app.packageName)"
+                            >
+                              <template #icon><n-icon><Eraser /></n-icon></template>
+                            </n-button>
+                            <n-button
+                              size="tiny"
+                              secondary
                               type="error"
+                              :title="t('device.uninstall')"
                               @click="uninstallApp(app.packageName)"
                             >
                               <template #icon><n-icon><Trash2 /></n-icon></template>
@@ -277,12 +312,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
+import { NIcon, useDialog } from 'naive-ui'
 import {
   Smartphone, RefreshCw, Activity, Link, Link2Off, Circle,
   Terminal, RotateCw, Wrench, Zap,
   Play, PauseCircle, Trash2, FileDown, Eye, Search, Inbox,
-  Box, Download, Settings2
+  Box, Download, Settings2, Eraser, Camera
 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
@@ -293,6 +328,7 @@ import DeviceManager from '@components/DeviceManager.vue'
 
 const { t } = useI18n()
 const { showSuccess, showError, showLoading, completeLoading, failLoading } = useNotification()
+const dialog = useDialog()
 
 const deviceStore = useDeviceStore()
 const {
@@ -468,11 +504,58 @@ const uninstallApp = async (packageName: string) => {
   deviceSvcRef.value = svc
   await svc.uninstallApp(packageName)
 }
+
+const launchApp = async (packageName: string) => {
+  const svc = deviceSvcRef.value || await serviceManager.getService('device')
+  deviceSvcRef.value = svc
+  try {
+    await svc.launchApp(packageName)
+    showSuccess(t('device.launchApp'), packageName)
+  } catch (error: any) {
+    showError(t('device.launchApp'), error.message || t('actions.unknownError'))
+  }
+}
+
+const clearAppData = (packageName: string) => {
+  dialog.warning({
+    title: t('device.clearData'),
+    content: t('device.clearDataConfirm', { pkg: packageName }),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      const svc = deviceSvcRef.value || await serviceManager.getService('device')
+      deviceSvcRef.value = svc
+      try {
+        await svc.clearAppData(packageName)
+        showSuccess(t('device.clearData'), packageName)
+      } catch (error: any) {
+        showError(t('device.clearData'), error.message || t('actions.unknownError'))
+      }
+    },
+  })
+}
+
+const takeScreenshot = async () => {
+  const svc = deviceSvcRef.value || await serviceManager.getService('device')
+  deviceSvcRef.value = svc
+  const loadingId = showLoading(t('device.screenshot'), t('device.screenshotting'))
+  try {
+    const savedPath = await svc.screenshotDevice()
+    if (savedPath) {
+      completeLoading(loadingId, t('device.screenshotSuccess'), savedPath)
+    } else {
+      // User canceled the save dialog — close the loading toast quietly.
+      completeLoading(loadingId, t('device.screenshot'), t('device.screenshotCancelled'))
+    }
+  } catch (error: any) {
+    failLoading(loadingId, t('device.screenshotFailed'), error.message || t('actions.unknownError'))
+  }
+}
 </script>
 
 <style scoped>
 .device-page {
-  max-width: 1300px;
+  max-width: var(--page-max-width);
   margin: 0 auto;
 }
 

@@ -13,7 +13,7 @@ import os
 import shutil
 
 from app.common.task_manager import TaskManager
-from app.utils.env import get_output_dir, get_task_dir, get_tasks_root
+from app.utils.env import get_output_dir, get_task_dir, get_task_subdir, get_tasks_root
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
 
@@ -111,6 +111,74 @@ def handle_read_log(params, stream_handler):
         return {"content": "", "truncated": False, "size": 0, "error": str(e), "log_path": log_path}
 
 
+def handle_export_log(params, stream_handler):
+    """Copy ``task_exec.log`` to a user-chosen path.
+
+    ``file_path`` originates from the renderer's OS save dialog, so it is a
+    deliberate user write target (not an untrusted devtools edit). Only the
+    canonical task log is read; the destination is whatever the user picked.
+    """
+    task_id = params.get("task_id", "")
+    file_path = params.get("file_path", "")
+    if not task_id or not file_path:
+        return {"success": False, "error": "Missing task_id or file_path"}
+
+    try:
+        log_path = os.path.join(get_task_dir(task_id), "logs", "task_exec.log")
+    except ValueError as e:
+        logger.warning(f"Invalid task_id for export_log: {e}")
+        return {"success": False, "error": str(e)}
+
+    if not os.path.exists(log_path):
+        return {"success": False, "error": "Log file not found"}
+
+    try:
+        shutil.copyfile(log_path, file_path)
+        return {"success": True, "file_path": file_path}
+    except Exception as e:
+        logger.warning(f"Failed to export task log '{log_path}' -> '{file_path}': {e}")
+        return {"success": False, "error": str(e)}
+
+
+def handle_save_report(params, stream_handler):
+    """Persist a standalone report document for a task.
+
+    The renderer builds the report as a self-contained HTML document (inline
+    CSS + base64 icons) after an analyze completes. ``html`` is written to
+    ``<tasks>/<task_id>/output/report.html`` by default — the task's ``output/``
+    subdir is the per-task home for analysis artifacts (decompile/recompile
+    outputs already live there), so the report survives renderer localStorage
+    pruning (the 100-task cap) as a durable copy next to ``logs/`` and ``icon``.
+
+    ``target`` is an optional user-chosen destination (from the OS save
+    dialog, same trust model as ``task.export_log``); when present the file is
+    written there instead, which powers the "export report" action.
+    """
+    task_id = params.get("task_id", "")
+    html = params.get("html", "")
+    target = params.get("target", "") or ""
+    if not task_id or not html:
+        return {"success": False, "error": "Missing task_id or html"}
+
+    try:
+        if target:
+            dest = target
+        else:
+            dest = os.path.join(get_task_subdir(task_id, "output"), "report.html")
+    except ValueError as e:
+        logger.warning(f"Invalid task_id for save_report: {e}")
+        return {"success": False, "error": str(e)}
+
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write(html)
+        return {"success": True, "file_path": dest}
+    except Exception as e:
+        logger.warning(f"Failed to save report to '{dest}': {e}")
+        return {"success": False, "error": str(e)}
+
+
 def handle_append_log(params, stream_handler):
     task_id = params.get("task_id", "")
     line = params.get("line", "")
@@ -164,7 +232,9 @@ def handle_cancel_request(params, stream_handler):
 API_MAP = {
     "task.delete_output": handle_delete_output,
     "task.read_log": handle_read_log,
+    "task.export_log": handle_export_log,
     "task.append_log": handle_append_log,
+    "task.save_report": handle_save_report,
     "task.delete_task_dir": handle_delete_task_dir,
     "task.list": handle_list_tasks,
     "request.cancel": handle_cancel_request,
