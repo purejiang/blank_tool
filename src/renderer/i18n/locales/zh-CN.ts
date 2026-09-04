@@ -344,7 +344,9 @@ export default {
     sigMd5: '签名 MD5',
     sigSha1: '签名 SHA1',
     sigSha256: '签名 SHA256',
-    fbHashKey: 'Facebook Hash Key',
+    fbHashKey: 'Facebook 哈希密钥',
+    reportTitle: 'APK 报告',
+    report: '报告',
     unsignedApk: '未签名或证书缺失',
     // v2.1.1 APK analysis report: table headers & status labels (i18n)
     colItem: '项目',

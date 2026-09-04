@@ -345,6 +345,8 @@ export default {
     sigSha1: 'Sig SHA1',
     sigSha256: 'Sig SHA256',
     fbHashKey: 'Facebook Hash Key',
+    reportTitle: 'APK Report',
+    report: 'Report',
     unsignedApk: 'Unsigned or cert missing',
     // v2.1.1 APK analysis report: table headers & status labels (i18n)
     colItem: 'Item',

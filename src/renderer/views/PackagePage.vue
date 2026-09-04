@@ -289,7 +289,7 @@ import { log as logUtil } from '@utils/logger'
 import serviceManager from '@services/ServiceManager'
 import { enqueueTask } from '@services/TaskExecutionService'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const dialog = useDialog()
 const taskStore = useTaskStore()
 const sigStore = useSignatureStore()
@@ -479,6 +479,23 @@ function hydrateResultIcons() {
 // while it runs, but tasks restored from the persisted store default to
 // collapsed — their result <img> only enters the DOM once the detail panel is
 // shown, so we must also react to `collapsed` flips, not just `result` changes.
+// Re-render persisted analysis reports when the UI language changes.
+// `task.result` is a static HTML snapshot produced by renderApkInfo() at
+// analysis time, so it is frozen in whatever language was active then — the
+// v-html binding cannot react to locale on its own. Tasks that still carry the
+// raw payload are re-rendered here; ones whose payload was shed for storage
+// quota keep showing their original snapshot.
+watch(locale, () => {
+  let changed = false
+  for (const task of taskStore.tasks) {
+    if (task.operation !== 'analyze' || !task.resultData) continue
+    taskStore.updateTask(task.id, { result: renderApkInfo(task.resultData) })
+    changed = true
+  }
+  // updateTask only persists on terminal-state changes, so flush explicitly.
+  if (changed) taskStore.persist()
+})
+
 watch(
   () => taskStore.tasks.flatMap((t) => [t?.id, t?.collapsed, t?.result]),
   async () => {
@@ -615,7 +632,7 @@ async function buildReportDocument(resultHtml: string, docTitle = ''): Promise<s
     }
   }
   const body = dom.body.innerHTML
-  const title = escDoc(docTitle || 'APK Report')
+  const title = escDoc(docTitle || t('task.reportTitle'))
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${title}</title>\n<style>\n${REPORT_DOC_CSS}\n</style>\n</head>\n<body>\n${body}\n</body>\n</html>\n`
 }
 
@@ -625,7 +642,7 @@ async function persistReportFile(task: Task, resultHtml: string): Promise<void> 
   try {
     const api = window.electronAPI as any
     if (!resultHtml || !api?.callBackendAPI) return
-    const doc = await buildReportDocument(resultHtml, `${task.fileName || task.id} · Report`)
+    const doc = await buildReportDocument(resultHtml, `${task.fileName || task.id} · ${t('task.report')}`)
     const res = await api.callBackendAPI('task.save_report', { task_id: String(task.id), html: doc })
     if (!res?.success) logUtil.warn('[report] persist report.html failed', res?.error || 'unknown')
   } catch (e) {
@@ -652,7 +669,7 @@ async function exportReport(task: Task) {
       filePath = res.filePath || ''
     }
     if (!filePath) return
-    const doc = await buildReportDocument(task.result, `${base} · Report`)
+    const doc = await buildReportDocument(task.result, `${base} · ${t('task.report')}`)
     const result = await api.callBackendAPI('task.save_report', { task_id: String(task.id), html: doc, target: filePath })
     if (result?.success) {
       showSuccess(t('task.exportReport'), result.file_path || filePath)
@@ -951,8 +968,13 @@ async function executeTask(task: Task, opts: { skipDownload?: boolean } = {}) {
           if (payload?.output_dir) transitionPayload.output_dir = payload.output_dir
           if (payload?.output_apk) transitionPayload.output_apk = payload.output_apk
           if (payload?.apk_path) transitionPayload.apk_path = payload.apk_path
-          // analyze: render the rich analysis card HTML via renderApkInfo
-          if (payload?.package_name) transitionPayload.result = renderApkInfo(payload)
+          // analyze: render the rich analysis card HTML via renderApkInfo. The
+          // raw payload is kept too — `result` is a frozen HTML snapshot, so
+          // switching the UI language re-renders from the source data.
+          if (payload?.package_name) {
+            transitionPayload.result = renderApkInfo(payload)
+            transitionPayload.resultData = payload
+          }
           // install: attach device label (model + serial) for notification & display
           if (task.operation === 'install' && payload?.device_id) {
             const dev = deviceStore.selectedDevice
@@ -1300,7 +1322,7 @@ function renderApkInfo(data: any) {
     if (sigSha256 && sigSha256 !== '-') rows.push(trow([label('sigSha256'), `<span class="mono">${esc(sigSha256)}</span>` + copyBtn(sigSha256)]))
     const fbHashKey = data.fb_hash_key
     if (fbHashKey && fbHashKey !== '-') {
-      rows.push(trow(['Facebook Hash Key', `<span class="mono">${esc(fbHashKey)}</span>` + copyBtn(fbHashKey)]))
+      rows.push(trow([label('fbHashKey'), `<span class="mono">${esc(fbHashKey)}</span>` + copyBtn(fbHashKey)]))
     }
     let body = table([label('colField'), label('colValue')], rows)
     if (unsigned) body += `<div class="apk-warn">${label('unsignedApk')}</div>`

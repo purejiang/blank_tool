@@ -17,6 +17,13 @@ export interface Task {
   progress: number
   progressLabel: string
   result: string
+  /**
+   * Raw analyze payload (analyze tasks only). `result` is a *rendered HTML
+   * snapshot* — it is frozen in whatever language was active when the analysis
+   * finished. Keeping the source data lets the report be re-rendered when the
+   * UI language changes (see PackagePage's locale watcher).
+   */
+  resultData?: any
   outputPath: string
   logs: string[]
   error: string
@@ -66,14 +73,27 @@ function loadTasks(): Task[] {
   return []
 }
 
-function saveTasks(tasks: Task[]) {
+function writeTasks(toSave: unknown[]): boolean {
   try {
-    const toSave = tasks
-      .filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
-      .slice(0, 100)
-      .map(t => ({ ...t, logs: t.logs.slice(-100) }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
-  } catch {}
+    return true
+  } catch {
+    return false
+  }
+}
+
+function saveTasks(tasks: Task[]) {
+  const toSave = tasks
+    .filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
+    .slice(0, 100)
+    .map(t => ({ ...t, logs: t.logs.slice(-100) }))
+  if (writeTasks(toSave)) return
+  // Quota exceeded: shed the bulky raw analyze payloads oldest-first (the list
+  // is stored newest-first). Those tasks keep their rendered HTML and simply
+  // stop following locale switches — better than losing the whole history.
+  for (let keep = toSave.length - 1; keep >= 0; keep--) {
+    if (writeTasks(toSave.map((t, i) => (i < keep ? t : { ...t, resultData: undefined })))) return
+  }
 }
 
 // Collect deletable task IDs from terminal tasks (completed/failed/cancelled).
@@ -246,6 +266,9 @@ export const useTaskStore = defineStore('task', () => {
         updates.outputPath = payload?.output_dir || payload?.output_apk || payload?.apk_path || ''
         // For analyze, PackagePage already converted payload → HTML via renderApkInfo
         updates.result = payload?.result ?? ''
+        // Keep the raw analyze payload alongside the HTML so the report can be
+        // re-rendered in another language later.
+        if (payload?.resultData) updates.resultData = payload.resultData
         if (payload?.deviceLabel) updates.deviceLabel = payload.deviceLabel
         terminal = true
         break
@@ -340,5 +363,5 @@ export const useTaskStore = defineStore('task', () => {
     persist()
   }
 
-  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, transition, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll }
+  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, transition, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll, persist }
 })
