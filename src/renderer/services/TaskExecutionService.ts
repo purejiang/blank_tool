@@ -13,6 +13,20 @@
 
 export const MAX_CONCURRENT = 3
 
+// Configurable cap (defaults to MAX_CONCURRENT). Set from the Settings page
+// ("Max concurrent tasks"); if unset or invalid it stays at MAX_CONCURRENT.
+let maxConcurrent = MAX_CONCURRENT
+
+/**
+ * Update the bound concurrency limit at runtime (e.g. when the user changes
+ * the setting). Clamped to a sane [1, 64] range.
+ */
+export function setMaxConcurrent(value: number): void {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return
+  maxConcurrent = Math.min(64, Math.max(1, Math.floor(n)))
+}
+
 type Runner = () => Promise<void>
 
 interface QueueEntry {
@@ -24,7 +38,7 @@ const waiting: QueueEntry[] = []
 let active = 0
 
 function pump(): void {
-  while (active < MAX_CONCURRENT && waiting.length > 0) {
+  while (active < maxConcurrent && waiting.length > 0) {
     const next = waiting.shift()!
     active++
     void next

@@ -52,6 +52,11 @@
               <template #suffix>{{ t('settings.seconds') }}</template>
             </n-input-number>
           </n-form-item>
+          <n-form-item :label="t('settings.maxConcurrentTasks')">
+            <n-input-number v-model:value="general.maxConcurrentTasks" :min="1" :max="16" :step="1" @update:value="saveGeneral" style="width: 120px">
+              <template #suffix>{{ t('settings.tasksUnit') }}</template>
+            </n-input-number>
+          </n-form-item>
         </n-form>
       </n-card>
 
@@ -247,6 +252,7 @@ import { useSystemStore, useToolStore } from '@stores/index'
 import { storeToRefs } from 'pinia'
 import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
+import { setMaxConcurrent } from '@services/TaskExecutionService'
 
 const { t } = useI18n()
 const { showSuccess, showError } = useNotification()
@@ -309,7 +315,7 @@ const triggerSaved = () => {
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, useProxyForDownload: false, timeout: 300 })
+const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, useProxyForDownload: false, timeout: 300, maxConcurrentTasks: 3 })
 const logLevel = ref('info')
 const logLevelOptions = [
   { label: 'Debug', value: 'debug' },
@@ -400,6 +406,9 @@ const saveGeneral = async () => {
   try {
     const svc = await serviceManager.getService('settings')
     await svc.saveSettings({ ...general })
+    // Apply the concurrency cap immediately (frontend queue). The backend
+    // pool picks it up on the next app start via the BT_MAX_WORKERS env var.
+    setMaxConcurrent(general.maxConcurrentTasks)
     triggerSaved()
     } catch (e) { showError(t('settings.saveFailed'), (e as Error).message) }
 }

@@ -10,6 +10,7 @@ const LEGACY_SETTINGS_DEFAULTS = {
     enableNotifications: true,
     autoDeleteOutputOnTaskRemove: false,
     useProxyForDownload: false,
+    maxConcurrentTasks: 3,
     adbPath: '',
     aaptPath: '',
     apktoolPath: '',
@@ -180,6 +181,12 @@ const schema = {
     useProxyForDownload: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.useProxyForDownload
+    },
+    maxConcurrentTasks: {
+        type: 'number',
+        minimum: 1,
+        maximum: 16,
+        default: LEGACY_SETTINGS_DEFAULTS.maxConcurrentTasks
     },
     adbPath: {
         type: 'string',

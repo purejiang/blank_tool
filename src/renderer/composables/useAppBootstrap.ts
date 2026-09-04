@@ -8,6 +8,7 @@ import { useAppConfigStore, useSystemStore, useToolStore } from '@stores/index'
 import unifiedApi from '../api/unifiedApi'
 import { log, setLogLevel, _setRingPusher } from '@utils/logger'
 import { useRendererLogStore } from '@stores/rendererLogStore'
+import { setMaxConcurrent } from '@services/TaskExecutionService'
 
 export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
   const { t, locale: i18nLocale } = useI18n()
@@ -74,6 +75,11 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
     const level = logsConfig?.level
     if (level) {
       setLogLevel(level as 'debug' | 'info' | 'warn' | 'error')
+    }
+    // Apply saved task concurrency cap (Settings → "Max concurrent tasks").
+    const mct = appConfigStore.get('maxConcurrentTasks')
+    if (typeof mct === 'number' && mct >= 1) {
+      setMaxConcurrent(mct)
     }
   }
 
