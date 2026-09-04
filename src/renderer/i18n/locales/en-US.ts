@@ -361,7 +361,7 @@ export default {
     colStoredSize: 'Stored Size',
     colUncompressed: 'Raw size',
     colCompressed: 'On-disk size',
-    colSaved: 'Saved',
+    colRate: 'Compression Rate',
     colStoredCount: 'Stored entries',
     colDeflatedCount: 'Deflated entries',
     total: 'Total',

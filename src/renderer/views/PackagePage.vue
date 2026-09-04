@@ -1418,8 +1418,11 @@ function renderApkInfo(data: any) {
     let totCmp = 0
     let totStored = 0
     let totDeflated = 0
-    const savedPct = (unc: number, cmp: number) =>
-      unc > 0 ? ((1 - cmp / unc) * 100).toFixed(1) + '%' : '-'
+    // Compression rate = compressed / uncompressed (e.g. 70% means the
+    // on-disk payload is 70% of the raw size). Distinct from "saved" which is
+    // (1 - rate). The UI shows the rate per the user's preference.
+    const ratePct = (unc: number, cmp: number) =>
+      unc > 0 ? ((cmp / unc) * 100).toFixed(1) + '%' : '-'
     for (const [category, info] of Object.entries(comp)) {
       const c = info as any
       const uncompressed = c.uncompressed || 0
@@ -1434,7 +1437,7 @@ function renderApkInfo(data: any) {
         esc(category),
         uncompressed > 0 ? fmtSize(uncompressed) : '-',
         compressed > 0 ? fmtSize(compressed) : '-',
-        savedPct(uncompressed, compressed),
+        ratePct(uncompressed, compressed),
         `${stored}`,
         `${deflated}`,
       ]))
@@ -1444,7 +1447,7 @@ function renderApkInfo(data: any) {
       `<b>${esc(label('total'))}</b>`,
       `<b>${totUnc > 0 ? fmtSize(totUnc) : '-'}</b>`,
       `<b>${totCmp > 0 ? fmtSize(totCmp) : '-'}</b>`,
-      `<b>${savedPct(totUnc, totCmp)}</b>`,
+      `<b>${ratePct(totUnc, totCmp)}</b>`,
       `<b>${totStored}</b>`,
       `<b>${totDeflated}</b>`,
     ]))
@@ -1453,7 +1456,7 @@ function renderApkInfo(data: any) {
       label('compressionAnalysis'),
       compSum,
       table(
-        [label('colCategory'), label('colUncompressed'), label('colCompressed'), label('colSaved'), label('colStoredCount'), label('colDeflatedCount')],
+        [label('colCategory'), label('colUncompressed'), label('colCompressed'), label('colRate'), label('colStoredCount'), label('colDeflatedCount')],
         rows,
       ),
       '',

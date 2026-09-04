@@ -361,7 +361,7 @@ export default {
     colStoredSize: '存储大小',
     colUncompressed: '原始大小',
     colCompressed: '压缩后大小',
-    colSaved: '节省',
+    colRate: '压缩率',
     colStoredCount: '未压缩条目',
     colDeflatedCount: '压缩条目',
     total: '合计',
