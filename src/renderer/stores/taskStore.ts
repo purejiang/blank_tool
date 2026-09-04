@@ -240,6 +240,9 @@ export const useTaskStore = defineStore('task', () => {
         updates.phase = 'download'
         updates.status = 'downloading'
         updates.progress = 0
+        // Duration measures execution only, not queue wait: start the clock
+        // when the task first leaves the queue (queued → downloading).
+        if (task.status === 'queued') updates.startedAt = Date.now()
         break
       case 'download_progress':
         updates.progress = payload?.progress ?? 0
@@ -253,6 +256,9 @@ export const useTaskStore = defineStore('task', () => {
         updates.phase = 'operation'
         updates.status = 'running'
         updates.progress = 0
+        // Same as start_download: for local-file tasks (no download phase)
+        // this is the first transition out of the queue.
+        if (task.status === 'queued') updates.startedAt = Date.now()
         break
       case 'operation_complete':
         updates.status = 'completed'
