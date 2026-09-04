@@ -389,7 +389,15 @@ watch(() => logcatOutput.value.length, () => {
 onMounted(async () => {
   log.debug('设备管理页面已挂载')
   try {
-    deviceSvcRef.value = await serviceManager.getService('device')
+    const svc = await serviceManager.getService('device')
+    deviceSvcRef.value = svc
+    // Initial load without requiring the manual refresh button, then keep
+    // the list (and the selected device's info) fresh: startMonitoring
+    // polls adb devices every 5s, so plugging/unplugging a phone shows up
+    // without user action. Stopped on unmount so the polling doesn't run
+    // while the page is hidden.
+    await svc.refreshDevices()
+    void svc.startMonitoring()
   } catch {}
 })
 
@@ -397,6 +405,7 @@ onUnmounted(() => {
   if (isLogcatRunning.value) {
     serviceManager.getService('device').then(svc => svc.toggleLogcat()).catch(() => {})
   }
+  void deviceSvcRef.value?.stopMonitoring()
 })
 
 // --- Logcat ---
