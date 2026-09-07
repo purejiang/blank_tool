@@ -66,6 +66,19 @@ function loadTasks(): Task[] {
             t.phase = 'idle'
           }
         }
+        // Zombie guard: a non-terminal status can only survive a restart from
+        // older app versions (current saveTasks filters terminal-only) or a
+        // mid-write anomaly. The executors/backend job is gone after restart,
+        // so leave it failed — otherwise hasActive stays true forever and the
+        // "clear all" button is permanently disabled.
+        if (t.status === 'queued' || t.status === 'downloading' || t.status === 'running' || t.status === 'cancelling') {
+          t.failedPhase = t.phase === 'operation' ? 'operation' : 'download'
+          t.status = 'failed'
+          t.phase = 'finished'
+          t.finishedAt = t.finishedAt ?? Date.now()
+          t.progressLabel = ''
+          t.error ||= 'Task interrupted by app restart'
+        }
       }
       return tasks
     }
