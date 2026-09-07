@@ -11,7 +11,8 @@ consumer schema of the ``adb_auto`` plugin:
   * ``parse_screen_size``  — read the (possibly overridden) ``wm size`` output.
   * ``GeteventStatefulParser`` — feed ``getevent -lt`` lines, pop completed
     tap/swipe steps (tap: ``x``/``y``; swipe: ``x1``/``y1``/``x2``/``y2``/
-    ``duration_ms``).
+    ``duration_ms``; every step carries ``ts`` — device-time seconds of the
+    touch END marker, used by the frontend to synthesize ``wait`` gaps).
 
 Strings in, data out. Unparseable lines are silently skipped and never raise;
 incomplete touches (no UP before the stream ends) are never emitted.
@@ -159,6 +160,8 @@ class GeteventStatefulParser:
       * conversion at touch end: screen = round(raw * screen_dim / axis_max).
       * classification: screen-space displacement <= 10 px and duration
         < 300 ms -> tap (first point); otherwise swipe (first -> last).
+      * every emitted step carries ``ts`` (float, device-time seconds of the
+        touch END marker) so consumers can synthesize inter-step waits.
       * garbage lines are skipped silently; a touch that never ends is
         discarded (never emitted, never raised).
     """
@@ -273,12 +276,13 @@ class GeteventStatefulParser:
         if (abs(lx - fx) <= _TAP_MAX_DISPLACEMENT_PX
                 and abs(ly - fy) <= _TAP_MAX_DISPLACEMENT_PX
                 and duration_ms < _TAP_MAX_DURATION_MS):
-            self._completed.append({"action": "tap", "x": fx, "y": fy})
+            self._completed.append({"action": "tap", "x": fx, "y": fy, "ts": ts})
         else:
             self._completed.append({
                 "action": "swipe",
                 "x1": fx, "y1": fy, "x2": lx, "y2": ly,
                 "duration_ms": max(1, round(duration_ms)),
+                "ts": ts,
             })
 
     def _convert(self, raw_x: int, raw_y: int) -> Tuple[int, int]:

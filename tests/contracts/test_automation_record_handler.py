@@ -259,7 +259,7 @@ class TestAutomationRecordStop:
         arh._SESSIONS["devC"] = {
             "process_id": "9999",
             "parser": None,
-            "steps": [{"action": "tap", "x": 232, "y": 136}],
+            "steps": [{"action": "tap", "x": 232, "y": 136, "ts": 123.45}],
             "screen": (1080, 600),
             "device_path": "/dev/input/event2",
         }
@@ -272,7 +272,7 @@ class TestAutomationRecordStop:
         assert response["finished"] is True
         result = response["result"]
         assert result["type"] == "success"
-        assert result["payload"]["steps"] == [{"action": "tap", "x": 232, "y": 136}]
+        assert result["payload"]["steps"] == [{"action": "tap", "x": 232, "y": 136, "ts": 123.45}]
         assert result["payload"]["record_device"] == {
             "serial": "devC", "screen_w": 1080, "screen_h": 600,
         }

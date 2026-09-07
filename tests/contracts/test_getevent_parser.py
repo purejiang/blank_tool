@@ -123,7 +123,7 @@ class TestTap:
             _ev(100.081000, "SYN", "SYN_REPORT", "00000000"),
         ]:
             p.feed(line)
-        assert p.pop_completed_steps() == [{"action": "tap", "x": 1057, "y": 300}]
+        assert p.pop_completed_steps() == [{"action": "tap", "x": 1057, "y": 300, "ts": 100.08}]
 
     def test_tap_hex_down_up_non_divisible_conversion(self):
         # raw X = 2605 (0xa2d), max_x = 3974, screen_w = 1080 -> 707.85 -> 708
@@ -141,9 +141,9 @@ class TestTap:
         ]:
             p.feed(line)
         steps = p.pop_completed_steps()
-        assert steps == [{"action": "tap", "x": 708, "y": 600}]
+        assert steps == [{"action": "tap", "x": 708, "y": 600, "ts": 300.12}]
         # tap step must carry exactly the consumer schema: no duration, no x2
-        assert set(steps[0].keys()) == {"action", "x", "y"}
+        assert set(steps[0].keys()) == {"action", "x", "y", "ts"}
 
 
 class TestSwipe:
@@ -167,7 +167,7 @@ class TestSwipe:
         assert p.pop_completed_steps() == [{
             "action": "swipe",
             "x1": 232, "y1": 246, "x2": 842, "y2": 175,
-            "duration_ms": 350,
+            "duration_ms": 350, "ts": 200.35,
         }]
 
     def test_fast_swipe_short_duration_still_swipe(self):
@@ -188,7 +188,7 @@ class TestSwipe:
         assert p.pop_completed_steps() == [{
             "action": "swipe",
             "x1": 1080, "y1": 600, "x2": 0, "y2": 0,
-            "duration_ms": 100,
+            "duration_ms": 100, "ts": 400.1,
         }]
 
 
@@ -213,8 +213,8 @@ class TestSequences:
         ]:
             p.feed(line)
         assert p.pop_completed_steps() == [
-            {"action": "tap", "x": 232, "y": 136},
-            {"action": "tap", "x": 652, "y": 218},
+            {"action": "tap", "x": 232, "y": 136, "ts": 600.05},
+            {"action": "tap", "x": 652, "y": 218, "ts": 601.06},
         ]
         # pop drains
         assert p.pop_completed_steps() == []
@@ -242,7 +242,7 @@ class TestSequences:
         steps = p.pop_completed_steps()
         assert len(steps) == 1
         # (1000,1000) -> x=round(1000*1080/3974)=272, y=round(1000*600/2198)=273
-        assert steps[0] == {"action": "tap", "x": 272, "y": 273}
+        assert steps[0] == {"action": "tap", "x": 272, "y": 273, "ts": 500.15}
 
 
 class TestSingleDeviceNoPrefix:
@@ -264,7 +264,7 @@ class TestSingleDeviceNoPrefix:
             _ev_solo(315.898308, "SYN", "SYN_REPORT", "ffffffff"),
         ]:
             p.feed(line)
-        assert p.pop_completed_steps() == [{"action": "tap", "x": 761, "y": 856}]
+        assert p.pop_completed_steps() == [{"action": "tap", "x": 761, "y": 856, "ts": 315.898308}]
 
     def test_swipe_without_device_prefix(self):
         p = GeteventStatefulParser(900, 1600, 900, 1600)
@@ -285,7 +285,7 @@ class TestSingleDeviceNoPrefix:
         assert p.pop_completed_steps() == [{
             "action": "swipe",
             "x1": 761, "y1": 856, "x2": 300, "y2": 800,
-            "duration_ms": 200,
+            "duration_ms": 200, "ts": 400.2,
         }]
 
     def test_prefixed_and_prefixless_lines_mixed(self):
@@ -301,7 +301,7 @@ class TestSingleDeviceNoPrefix:
             _ev_solo(500.050000, "KEY", "BTN_TOUCH", "UP"),
         ]:
             p.feed(line)
-        assert p.pop_completed_steps() == [{"action": "tap", "x": 761, "y": 856}]
+        assert p.pop_completed_steps() == [{"action": "tap", "x": 761, "y": 856, "ts": 500.05}]
 
 
 class TestRobustness:
@@ -346,4 +346,4 @@ class TestRobustness:
             "trailing junk after UP",
         ]:
             p.feed(line)
-        assert p.pop_completed_steps() == [{"action": "tap", "x": 232, "y": 136}]
+        assert p.pop_completed_steps() == [{"action": "tap", "x": 232, "y": 136, "ts": 800.09}]

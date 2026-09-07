@@ -22,8 +22,9 @@ class PluginManager:
         if getattr(self, "_initialized", False):
             return
         
-        # 插件目录位于 backend/plugins
-        self.plugins_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "plugins"))
+        # 插件与 manager 同目录（backend/app/plugins/）。
+        # 曾错指向 backend/plugins/（空目录），导致 adb_auto 等插件从未被加载。
+        self.plugins_dir = os.path.dirname(os.path.abspath(__file__))
         self.plugins: Dict[str, Any] = {}
         self.logger = Logger.get_logger("PluginManager")
         self._ensure_plugins_dir()
@@ -52,9 +53,13 @@ class PluginManager:
             return
 
         for filename in os.listdir(self.plugins_dir):
-            if filename.endswith(".py") and not filename.startswith("__"):
-                plugin_name = filename[:-3]
-                self.load_plugin(plugin_name)
+            if not filename.endswith(".py") or filename.startswith("__"):
+                continue
+            # 跳过插件框架自身（无 run 函数，加载只会产生告警噪音）
+            if filename in ("manager.py", "context.py"):
+                continue
+            plugin_name = filename[:-3]
+            self.load_plugin(plugin_name)
         
         self.logger.info(f"插件加载完成，共加载 {len(self.plugins)} 个插件")
 
