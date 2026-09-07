@@ -1028,20 +1028,24 @@ onMounted(() => {
 }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .three-cols {
-  flex: 1; display: grid; grid-template-columns: 280px 1fr 360px;
+  flex: 1; display: grid;
+  /* 中栏必须 minmax(0,1fr)：1fr 的 min-width 是 auto，内容（JSON 域/按钮行）
+     会把轨道顶开压到相邻列上——这就是窄窗口下排版重叠的根因 */
+  grid-template-columns: minmax(210px, 280px) minmax(0, 1fr) minmax(290px, 360px);
   gap: 14px; min-height: 0;
 }
 /* Responsive fallback: shrink side columns on narrower viewports so the
    editor column keeps usable width instead of being crushed. */
 @media (max-width: 1180px) {
-  .three-cols { grid-template-columns: 230px 1fr 300px; }
+  .three-cols { grid-template-columns: minmax(190px, 230px) minmax(0, 1fr) minmax(270px, 300px); }
 }
 @media (max-width: 920px) {
-  .three-cols { grid-template-columns: 200px 1fr 260px; gap: 10px; }
+  .three-cols { grid-template-columns: minmax(170px, 200px) minmax(0, 1fr) minmax(250px, 260px); gap: 10px; }
 }
 .col {
   background: var(--app-card-bg); border: 1px solid var(--app-card-border);
   border-radius: 10px; padding: 12px; display: flex; flex-direction: column; min-height: 0;
+  min-width: 0;
 }
 .col-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -1131,12 +1135,12 @@ onMounted(() => {
 .editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; color: var(--app-text-muted); }
-.steps-field { flex: 1; min-height: 0; }
-.steps-head { display: flex; justify-content: space-between; align-items: center; }
-.steps-editor { flex: 1; min-height: 0; }
+.steps-field { flex: 1; min-height: 0; min-width: 0; }
+.steps-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.steps-editor { flex: 1; min-height: 0; min-width: 0; }
 
 /* right run */
-.run-bar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.run-bar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; min-width: 0; }
 .result-block { flex: 0 0 auto; }
 .result-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
 .sum-item { font-size: 12px; color: var(--app-text-secondary); }

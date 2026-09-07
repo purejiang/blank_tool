@@ -169,11 +169,12 @@ function onSave(i: number, step: Step) {
 .sl-count { font-size: 12px; color: var(--text-tertiary, #999); }
 .sl-empty { margin: 18px 0; }
 .sl-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
   overflow-y: auto;
-  min-height: 0;
 }
 .step-item {
   border: 1px solid var(--border-color, #2c2c32);

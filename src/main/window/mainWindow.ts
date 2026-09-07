@@ -43,6 +43,9 @@ export function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
+    // 三栏布局（minmax 栅格）的最小可用宽度；低于该值列会互相挤压
+    minWidth: 960,
+    minHeight: 640,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
