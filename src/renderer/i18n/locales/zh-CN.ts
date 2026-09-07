@@ -566,6 +566,29 @@ export default {
     recordFailed: '录制失败',
     recordStopped: '录制已结束',
     noDeviceRecord: '请先选择设备',
+    // 步骤编辑器
+    addStep: '添加步骤',
+    stepUp: '上移',
+    stepDown: '下移',
+    stepEdit: '编辑',
+    stepDelete: '删除',
+    noStepsHint: '暂无步骤——录制或点击「添加步骤」',
+    autoWaitInserted: '录制完成，已按间隔自动插入等待步骤',
+    waitThreshold: '生成等待的间隔阈值',
+    waitThresholdTip: '相邻操作间隔超过该值（毫秒）时自动插入等待步骤',
+    waitMaxCap: '等待上限',
+    autoWaitEnabled: '自动插入等待',
+    // 步骤参数字段
+    f: {
+      required: '请填写 {field}',
+      x: 'X 坐标', y: 'Y 坐标',
+      x1: '起点 X', y1: '起点 Y', x2: '终点 X', y2: '终点 Y',
+      durationMs: '滑动时长 (ms)', ms: '等待时长 (ms)',
+      text: '文本内容', key: '按键', package: '包名',
+      command: '命令', by: '定位方式', value: '匹配值',
+      timeoutMs: '超时 (ms)', expect: '期望', activity: '界面 Activity',
+      name: '截图名称',
+    },
     // 步骤动作中文名
     act: {
       launch_app: '启动应用',

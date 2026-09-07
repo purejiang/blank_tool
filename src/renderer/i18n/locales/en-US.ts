@@ -563,6 +563,29 @@ export default {
     recordFailed: 'Recording failed',
     recordStopped: 'Recording stopped',
     noDeviceRecord: 'Select a device first',
+    // Step list editor
+    addStep: 'Add Step',
+    stepUp: 'Move Up',
+    stepDown: 'Move Down',
+    stepEdit: 'Edit',
+    stepDelete: 'Delete',
+    noStepsHint: 'No steps yet — record or click "Add Step"',
+    autoWaitInserted: 'Recording finished — wait steps auto-inserted from gaps',
+    waitThreshold: 'Wait gap threshold',
+    waitThresholdTip: 'Insert a wait step when the gap between two actions exceeds this (ms)',
+    waitMaxCap: 'Wait cap',
+    autoWaitEnabled: 'Auto-insert waits',
+    // Step parameter fields
+    f: {
+      required: 'Please fill in {field}',
+      x: 'X', y: 'Y',
+      x1: 'Start X', y1: 'Start Y', x2: 'End X', y2: 'End Y',
+      durationMs: 'Duration (ms)', ms: 'Wait (ms)',
+      text: 'Text', key: 'Key', package: 'Package',
+      command: 'Command', by: 'Locator', value: 'Value',
+      timeoutMs: 'Timeout (ms)', expect: 'Expect', activity: 'Activity',
+      name: 'Screenshot name',
+    },
     // Step action labels
     act: {
       launch_app: 'Launch App',
