@@ -42,8 +42,8 @@ export interface ElectronApi {
   settings: SettingsApi
   onDeviceChange: (callback: (devices: unknown[]) => void) => () => void
   onLogcatOutput: (callback: (output: string) => void) => () => void
-  onLogcatStarted: (callback: () => void) => () => void
-  onLogcatFinished: (callback: () => void) => () => void
+  onLogcatStarted: (callback: (payload: unknown) => void) => () => void
+  onLogcatFinished: (callback: (payload?: unknown) => void) => () => void
   removeLogcatListener: () => void
   getBackendHealth?: () => Promise<{ healthy: boolean; uptime_s?: number }>
   logsTail?: (lines?: number) => Promise<{ lines: string[]; truncated?: boolean }>

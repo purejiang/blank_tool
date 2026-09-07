@@ -56,12 +56,22 @@ class DeviceService {
   async initialize() {
     try {
       const deviceStore = getDeviceStore()
+      // Transient logcat state must not survive an app restart: the backend
+      // logcat process is gone, but the persisted store may still carry the
+      // old PID and "running" flag — the stale PID then blocks capturing the
+      // new one and "stop" kills nothing while logs keep streaming.
+      deviceStore.logcatProcessId = ''
+      deviceStore.isLogcatRunning = false
       const api = unifiedApi.getAPI()
       if (api && typeof api.onLogcatOutput === 'function') {
         this.attachLogcatOutputListener(deviceStore, api)
       }
       if (api && typeof api.onLogcatStarted === 'function') {
-        api.onLogcatStarted(() => {
+        api.onLogcatStarted((payload: unknown) => {
+          // The 'started' event carries the real backend process_id — capture
+          // it here instead of waiting for the first log line.
+          const p = toLogcatPayload(payload)
+          if (p.process_id) deviceStore.logcatProcessId = String(p.process_id)
           deviceStore.isLogcatRunning = true
         })
       }
@@ -212,6 +222,10 @@ class DeviceService {
     const api = unifiedApi.getAPI()
 
     store.logcatOutput = []
+    // Drop any stale PID (e.g. persisted from a previous session) so the new
+    // process_id from the 'started'/first log event is always captured —
+    // otherwise "stop" targets a dead PID and the real stream keeps running.
+    store.logcatProcessId = ''
     if (api && typeof api.onLogcatOutput === 'function') {
       this.attachLogcatOutputListener(store, api)
     }
