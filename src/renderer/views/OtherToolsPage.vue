@@ -124,18 +124,7 @@
                   </n-button>
                 </n-space>
               </div>
-              <n-input
-                v-model:value="editor.stepsText"
-                type="textarea"
-                :autosize="{ minRows: 14, maxRows: 26 }"
-                :disabled="running"
-                class="steps-input"
-                @update:value="onStepsInput"
-              />
-              <div class="json-status" :class="jsonError ? 'bad' : 'ok'">
-                <template v-if="jsonError">{{ t('automation.validateError', { msg: jsonError }) }}</template>
-                <template v-else>{{ t('automation.validateOk') }} · {{ stepCount }} steps</template>
-              </div>
+              <StepListEditor v-model="editor.steps" :disabled="running" class="steps-editor" />
             </div>
           </div>
         </template>
@@ -182,10 +171,7 @@
             <template #icon><n-icon><Square /></n-icon></template>
             {{ t('automation.stop') }}
           </n-button>
-          <n-button v-else type="error" size="small" block @click="recordPanelRef?.stop()">
-            <template #icon><n-icon><Square /></n-icon></template>
-            {{ t('automation.recordStop') }}
-          </n-button>
+          <!-- recording stop lives in RecordPanel only (single entry) -->
         </div>
 
         <div class="result-block" v-if="runResult">
@@ -286,6 +272,9 @@ import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { ConfigService } from '@services/ConfigService'
 import RecordPanel from '@components/automation/RecordPanel.vue'
+import StepListEditor from '@components/automation/StepListEditor.vue'
+import type { Step } from '@components/automation/stepTypes'
+import { stepActionLabel } from '@components/automation/stepMeta'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -294,10 +283,6 @@ const deviceStore = useDeviceStore()
 const config = new ConfigService()
 
 // ---------------- types ----------------
-interface Step {
-  action: string
-  [k: string]: unknown
-}
 interface Script {
   id: string
   name: string
@@ -329,10 +314,8 @@ const editor = ref({
   projectName: '',
   packageName: '',
   scriptName: '',
-  stepsText: '[]',
+  steps: [] as Step[],
 })
-const jsonError = ref('')
-const stepCount = ref(0)
 
 const running = ref(false)
 const recording = ref(false)
@@ -364,9 +347,7 @@ function findScript(pid: string, sid: string): Script | undefined {
 }
 
 function actLabel(action: string): string {
-  const key = 'automation.act.' + action
-  const v = t(key)
-  return v === key ? action : (v as string)
+  return stepActionLabel(action, t)
 }
 
 function fileUrl(p: string): string {
@@ -375,26 +356,33 @@ function fileUrl(p: string): string {
   return 'file:///' + p.replace(/\\/g, '/')
 }
 
-function parseSteps(text: string): { ok: boolean; data: Step[]; error: string } {
-  if (!text || !text.trim()) return { ok: true, data: [], error: '' }
-  try {
-    const data = JSON.parse(text)
-    if (!Array.isArray(data)) return { ok: false, data: [], error: 'not an array' }
-    for (const s of data) {
-      if (typeof s !== 'object' || s === null || typeof s.action !== 'string') {
-        return { ok: false, data: [], error: 'step missing "action"' }
+/**
+ * Insert `{action:'wait', ms}` steps between recorded steps whose gap
+ * exceeds the configured threshold. Uses each step's `ts` (device-time
+ * seconds of the touch END marker); a step's own duration (swipe) is
+ * subtracted so the wait measures true idle time. Gap is capped at maxMs.
+ */
+function withWaits(
+  steps: Step[],
+  gap: { enabled: boolean; thresholdMs: number; maxMs: number },
+): Step[] {
+  if (!gap?.enabled || steps.length < 2) return steps
+  const out: Step[] = []
+  for (let i = 0; i < steps.length; i++) {
+    const cur = steps[i]
+    if (i > 0) {
+      const prev = steps[i - 1]
+      if (typeof prev?.ts === 'number' && typeof cur?.ts === 'number') {
+        const startOfCur = cur.ts - (Number(cur.duration_ms) || 0) / 1000
+        const gapMs = Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
+        if (gapMs > gap.thresholdMs) {
+          out.push({ action: 'wait', ms: Math.min(gapMs, gap.maxMs) })
+        }
       }
     }
-    return { ok: true, data, error: '' }
-  } catch (e: any) {
-    return { ok: false, data: [], error: e?.message || String(e) }
+    out.push(cur)
   }
-}
-
-function refreshJsonStatus() {
-  const r = parseSteps(editor.value.stepsText)
-  jsonError.value = r.ok ? '' : r.error
-  stepCount.value = r.ok ? r.data.length : 0
+  return out
 }
 
 const logsText = computed(() => logs.value.join('\n'))
@@ -441,36 +429,35 @@ function loadEditorFromSelection() {
   const p = selectedProject.value
   const s = selectedScript.value
   if (!p || !s) {
-    editor.value = { projectName: '', packageName: '', scriptName: '', stepsText: '[]' }
+    editor.value = { projectName: '', packageName: '', scriptName: '', steps: [] }
     return
   }
   editor.value.projectName = p.name
   editor.value.packageName = p.package_name || ''
   editor.value.scriptName = s.name
-  editor.value.stepsText = JSON.stringify(s.steps || [], null, 2)
-  refreshJsonStatus()
+  // legacy guard: very old builds may have stored steps as a JSON string
+  const raw = s.steps as unknown
+  if (typeof raw === 'string') {
+    try {
+      s.steps = JSON.parse(raw)
+    } catch {
+      s.steps = []
+    }
+  }
+  editor.value.steps = JSON.parse(JSON.stringify(s.steps || []))
 }
 
-/** Commit editor back into projects[]. Returns false if JSON invalid (abort switch). */
+/** Commit editor back into projects[]. Steps are cloned (never the live ref). */
 function commitEditor(): boolean {
   const p = selectedProject.value
   const s = selectedScript.value
   if (!p || !s) return true
-  const r = parseSteps(editor.value.stepsText)
-  if (!r.ok) {
-    message.error(t('automation.validateError', { msg: r.error }))
-    return false
-  }
   p.name = editor.value.projectName.trim() || p.name
   p.package_name = editor.value.packageName.trim() || undefined
   s.name = editor.value.scriptName.trim() || s.name
-  s.steps = r.data
+  s.steps = JSON.parse(JSON.stringify(editor.value.steps))
   s.updated_at = new Date().toISOString()
   return true
-}
-
-function onStepsInput() {
-  refreshJsonStatus()
 }
 
 function selectProject(id: string) {
@@ -505,7 +492,7 @@ function newProject() {
   projects.value.push(proj)
   selectedProjectId.value = proj.id
   selectedScriptId.value = ''
-  editor.value = { projectName: proj.name, packageName: '', scriptName: '', stepsText: '[]' }
+  editor.value = { projectName: proj.name, packageName: '', scriptName: '', steps: [] }
   persist()
 }
 
@@ -523,7 +510,7 @@ function newScript(pid: string) {
   p.scripts.push(scr)
   selectedProjectId.value = pid
   selectedScriptId.value = scr.id
-  editor.value = { projectName: p.name, packageName: p.package_name || '', scriptName: scr.name, stepsText: '[]' }
+  editor.value = { projectName: p.name, packageName: p.package_name || '', scriptName: scr.name, steps: [] }
   persist()
 }
 
@@ -597,8 +584,7 @@ function loadTemplate() {
     { action: 'assert_activity', activity: '.LoginActivity' },
     { action: 'back' },
   ]
-  editor.value.stepsText = JSON.stringify(tpl, null, 2)
-  refreshJsonStatus()
+  editor.value.steps = tpl
 }
 
 // ---------------- element picker ----------------
@@ -663,11 +649,7 @@ async function getElements() {
 
 function insertElement(el: UiNode) {
   const step: Step = { action: 'tap_element', by: el.by, value: el.value, timeout_ms: 10000 }
-  const r = parseSteps(editor.value.stepsText)
-  const arr = r.ok ? r.data : []
-  arr.push(step)
-  editor.value.stepsText = JSON.stringify(arr, null, 2)
-  refreshJsonStatus()
+  editor.value.steps = [...editor.value.steps, step]
   showElements.value = false
   message.success(el.label)
 }
@@ -722,7 +704,10 @@ async function runScript() {
 
   const api = window.electronAPI as any
   try {
-    const init = await api.callBackendAPI('plugin.run', {
+    // plugin.run is @streaming: the init response resolves to undefined after
+    // unwrapBackendResponse (no `type` field) — NEVER test it for stream_id.
+    // Real failures arrive as stream error events / the waitForPhase latch.
+    await api.callBackendAPI('plugin.run', {
       name: 'adb_auto',
       params: {
         device_id: deviceStore.selectedDeviceId,
@@ -732,7 +717,6 @@ async function runScript() {
       },
       task_id: id,
     })
-    if (!init || !init.stream_id) throw new Error('no stream_id')
     await taskStream.waitForPhase(id, 'operation')
   } catch (e: any) {
     const m = e?.message
@@ -767,13 +751,16 @@ function onRecEnd() {
   running.value = false
 }
 
-function onRecorded(steps: unknown[]) {
+function onRecorded(payload: { steps: any[]; gap: { enabled: boolean; thresholdMs: number; maxMs: number } }) {
   if (!selectedScript.value) {
     message.warning(t('automation.noScriptSelected'))
   }
-  editor.value.stepsText = JSON.stringify(steps, null, 2)
-  refreshJsonStatus()
-  message.success(t('automation.recordApplied'))
+  const raw = Array.isArray(payload?.steps) ? payload.steps : []
+  const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 5000 }
+  editor.value.steps = withWaits(raw as Step[], gap)
+  message.success(
+    gap.enabled ? t('automation.autoWaitInserted') : t('automation.recordApplied'),
+  )
 }
 
 // ---------------- import / export ----------------
@@ -927,10 +914,7 @@ onMounted(() => {
 .field label { font-size: 12px; color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; }
 .steps-head { display: flex; justify-content: space-between; align-items: center; }
-.steps-input { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
-.json-status { font-size: 11.5px; margin-top: 4px; }
-.json-status.ok { color: #18a058; }
-.json-status.bad { color: #d03050; }
+.steps-editor { flex: 1; min-height: 0; }
 
 /* right run */
 .run-bar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }

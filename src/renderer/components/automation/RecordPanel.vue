@@ -23,29 +23,73 @@
     </div>
 
     <n-scrollbar v-if="liveSteps.length" class="record-list">
-      <div v-for="(step, i) in liveSteps" :key="i" class="step-line">
-        <span class="step-idx">#{{ i + 1 }}</span>
-        <span class="step-act">{{ actLabel(step.action) }}</span>
-        <span class="step-pos">{{ posSummary(step) }}</span>
-      </div>
+      <template v-for="(step, i) in liveSteps" :key="i">
+        <div v-if="gapMs(i) > gap.thresholdMs" class="gap-line">
+          + {{ Math.min(gapMs(i), gap.maxMs) }}ms
+        </div>
+        <div class="step-line">
+          <span class="step-idx">#{{ i + 1 }}</span>
+          <span class="step-act">{{ actLabel(step.action) }}</span>
+          <span class="step-pos">{{ posSummary(step) }}</span>
+        </div>
+      </template>
     </n-scrollbar>
     <div v-else class="record-empty">{{ t('automation.recordEmpty') }}</div>
+
+    <div class="gap-settings">
+      <n-checkbox v-model:checked="gap.enabled" size="small">
+        <span class="gap-label">{{ t('automation.autoWaitEnabled') }}</span>
+      </n-checkbox>
+      <n-tooltip trigger="hover" placement="top">
+        <template #trigger>
+          <span class="gap-field">
+            <span class="gap-label">{{ t('automation.waitThreshold') }}</span>
+            <n-input-number
+              v-model:value="gap.thresholdMs"
+              size="tiny"
+              :min="0"
+              :step="100"
+              class="gap-num"
+            />
+          </span>
+        </template>
+        {{ t('automation.waitThresholdTip') }}
+      </n-tooltip>
+      <span class="gap-field">
+        <span class="gap-label">{{ t('automation.waitMaxCap') }}</span>
+        <n-input-number
+          v-model:value="gap.maxMs"
+          size="tiny"
+          :min="gap.thresholdMs"
+          :step="500"
+          class="gap-num"
+        />
+      </span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NScrollbar, NTag, useMessage } from 'naive-ui'
+import {
+  NButton, NCheckbox, NInputNumber, NScrollbar, NTag, NTooltip, useMessage,
+} from 'naive-ui'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 
 // automation.record* i18n keys (zh-CN/en-US) landed in 4198cc3.
 const props = defineProps<{ disabled: boolean }>()
 
+export interface RecordedGap {
+  enabled: boolean
+  thresholdMs: number
+  maxMs: number
+}
+
 const emit = defineEmits<{
   (e: 'recording-start'): void
-  (e: 'recorded', steps: any[]): void
+  (e: 'recorded', payload: { steps: any[]; gap: RecordedGap }): void
   (e: 'recording-end'): void
 }>()
 
@@ -58,6 +102,23 @@ const liveSteps = ref<any[]>([])
 const recId = ref('')
 const ended = ref(false)
 let svc: any = null
+
+/** auto-wait synthesis settings; threshold/cap editable while recording */
+const gap = reactive<RecordedGap>({
+  enabled: true,
+  thresholdMs: 500,
+  maxMs: 5000,
+})
+
+/** gap (ms) between the end of step i-1 and the START of step i. */
+function gapMs(i: number): number {
+  if (i <= 0) return 0
+  const prev = liveSteps.value[i - 1]
+  const cur = liveSteps.value[i]
+  if (typeof prev?.ts !== 'number' || typeof cur?.ts !== 'number') return 0
+  const startOfCur = cur.ts - (Number(cur.duration_ms) || 0) / 1000
+  return Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
+}
 
 const startDisabled = computed(
   () => props.disabled || recording.value || !deviceStore.selectedDeviceId
@@ -124,7 +185,10 @@ async function stop(): Promise<void> {
   if (!recording.value || !recId.value) return
   try {
     const res = await svc.stopRecording(deviceStore.selectedDeviceId)
-    emit('recorded', Array.isArray(res?.steps) ? res.steps : [])
+    emit('recorded', {
+      steps: Array.isArray(res?.steps) ? res.steps : [],
+      gap: { enabled: gap.enabled, thresholdMs: gap.thresholdMs, maxMs: gap.maxMs },
+    })
   } catch (err: any) {
     // A rejected record_stop must reset the UI, not leak an unhandled
     // rejection into the page's click handler.
@@ -210,4 +274,20 @@ onBeforeUnmount(() => {
   border: 1px dashed var(--app-card-border);
   border-radius: 8px;
 }
+.gap-line {
+  font-size: 11px;
+  color: var(--app-text-muted);
+  text-align: center;
+  padding: 1px 0;
+  font-variant-numeric: tabular-nums;
+}
+.gap-settings {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.gap-label { font-size: 11px; color: var(--app-text-muted); margin-right: 4px; }
+.gap-field { display: inline-flex; align-items: center; }
+.gap-num { width: 84px; }
 </style>
