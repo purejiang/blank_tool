@@ -316,6 +316,13 @@ export interface ExportLogResult {
   error?: string
 }
 
+/** Return type of task.save_report (mirrors handle_save_report) */
+export interface SaveReportResult {
+  success: boolean
+  file_path?: string
+  error?: string
+}
+
 /** Single task entry in task.list response */
 export interface TaskListItem {
   task_id: string
@@ -446,6 +453,7 @@ export interface ApiMethodMap {
   'task.read_log': { params: { task_id: string; tail_bytes?: number }; result: TaskLogResult }
   'task.export_log': { params: { task_id: string; file_path: string }; result: ExportLogResult }
   'task.append_log': { params: { task_id: string; line: string }; result: { written: boolean } }
+  'task.save_report': { params: { task_id: string; html: string; target?: string }; result: SaveReportResult }
   'task.delete_task_dir': { params: { task_id: string }; result: DeleteTaskDirResult }
   'task.list': { params: Record<string, never>; result: TaskListResult }
   'request.cancel': { params: { request_id?: string; task_id?: string }; result: CancelRequestResult }
