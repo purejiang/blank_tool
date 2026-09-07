@@ -516,8 +516,6 @@ export default {
     steps: '步骤（JSON）',
     loadTemplate: '载入模板',
     getElements: '从当前界面取元素',
-    validateOk: 'JSON 校验通过',
-    validateError: 'JSON 格式错误：{msg}',
     save: '保存',
     saved: '已保存',
     noSelection: '请选择左侧的项目与脚本',

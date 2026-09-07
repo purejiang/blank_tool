@@ -513,8 +513,6 @@ export default {
     steps: 'Steps (JSON)',
     loadTemplate: 'Load Template',
     getElements: 'Pick Elements From Screen',
-    validateOk: 'JSON is valid',
-    validateError: 'Invalid JSON: {msg}',
     save: 'Save',
     saved: 'Saved',
     noSelection: 'Select a project and script on the left',
