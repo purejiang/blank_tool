@@ -188,7 +188,7 @@ describe('RecordPanel', () => {
     expect(mockRecordingService.finish).toHaveBeenCalledWith('rec-test-id')
     expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
 
-    // 点击「应用到脚本」才把 { steps, gap } 交给页面
+    // 点击「插入到脚本」才把 { steps, gap, insertAt } 交给页面
     const applyBtn = findButton(wrapper, 'automation.applySteps')
     expect(applyBtn).toBeTruthy()
     await applyBtn.trigger('click')
@@ -197,6 +197,7 @@ describe('RecordPanel', () => {
     expect(recorded![0][0]).toEqual({
       steps,
       gap: { enabled: true, thresholdMs: 500, maxMs: 5000 },
+      insertAt: 'end',
     })
   })
 

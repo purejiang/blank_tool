@@ -36,8 +36,14 @@
     </n-scrollbar>
     <div v-else class="record-empty">{{ t('automation.recordEmpty') }}</div>
 
-    <!-- 停止后仅展示；用户显式点击才写入脚本步骤 -->
+    <!-- 停止后仅展示；用户显式选择插入位置后才写入脚本步骤 -->
     <div v-if="lastRecord && !recording" class="record-actions">
+      <n-select
+        v-model:value="insertAt"
+        size="small"
+        class="insert-pos"
+        :options="insertOptions"
+      />
       <n-button
         size="small"
         type="primary"
@@ -94,7 +100,13 @@ import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 
 // automation.record* i18n keys (zh-CN/en-US) landed in 4198cc3.
-const props = defineProps<{ disabled: boolean }>()
+const props = defineProps<{
+  disabled: boolean
+  /** 步骤编辑器里是否有选中行（决定"插入到选中步骤之后"是否可选） */
+  hasSelection?: boolean
+}>()
+
+export type InsertAt = 'end' | 'start' | 'after'
 
 export interface RecordedGap {
   enabled: boolean
@@ -104,7 +116,7 @@ export interface RecordedGap {
 
 const emit = defineEmits<{
   (e: 'recording-start'): void
-  (e: 'recorded', payload: { steps: any[]; gap: RecordedGap }): void
+  (e: 'recorded', payload: { steps: any[]; gap: RecordedGap; insertAt: InsertAt }): void
   (e: 'recording-end'): void
 }>()
 
@@ -135,8 +147,20 @@ function gapMs(i: number): number {
   return Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
 }
 
-/** 停止后暂存的录制结果；点击「应用到脚本」才交给页面写入步骤 */
+/** 停止后暂存的录制结果；点击「插入到脚本」才交给页面按位置写入 */
 const lastRecord = ref<{ steps: any[]; gap: RecordedGap } | null>(null)
+
+/** 插入位置；"选中步骤之后"在编辑器无选中时禁用 */
+const insertAt = ref<InsertAt>('end')
+const insertOptions = computed(() => [
+  { value: 'end', label: t('automation.insertEnd') },
+  { value: 'start', label: t('automation.insertStart') },
+  {
+    value: 'after',
+    label: t('automation.insertAfter'),
+    disabled: !props.hasSelection,
+  },
+])
 
 const startDisabled = computed(
   () => props.disabled || recording.value || !deviceStore.selectedDeviceId
@@ -220,7 +244,10 @@ async function stop(): Promise<void> {
 
 function applyRecorded(): void {
   if (!lastRecord.value || recording.value) return
-  emit('recorded', lastRecord.value)
+  // 无选中行时"选中之后"回落到追加末尾
+  const at: InsertAt =
+    insertAt.value === 'after' && !props.hasSelection ? 'end' : insertAt.value
+  emit('recorded', { ...lastRecord.value, insertAt: at })
 }
 
 function clearRecorded(): void {
@@ -311,6 +338,12 @@ onBeforeUnmount(() => {
   padding: 1px 0;
   font-variant-numeric: tabular-nums;
 }
+.record-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.insert-pos { flex: 1; min-width: 0; }
 .gap-settings {
   display: flex;
   align-items: center;

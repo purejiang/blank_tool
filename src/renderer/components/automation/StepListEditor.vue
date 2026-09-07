@@ -27,7 +27,8 @@
         v-for="(step, i) in modelValue"
         :key="i"
         class="step-item"
-        :class="{ editing: i === editingIndex }"
+        :class="{ editing: i === editingIndex, selected: i === selectedIndex }"
+        @click="toggleSelect(i)"
       >
         <div class="step-row">
           <span class="step-idx">{{ i + 1 }}</span>
@@ -36,32 +37,32 @@
           </n-tag>
           <span class="step-sum" :title="stepSummary(step)">{{ stepSummary(step) }}</span>
 
-          <div class="step-ops">
+          <div class="step-ops" @click.stop>
             <n-button
               size="tiny" text :disabled="disabled || i === 0"
               :title="t('automation.stepUp')"
-              @click="move(i, -1)"
+              @click.stop="move(i, -1)"
             >
               <n-icon size="14"><ChevronUp /></n-icon>
             </n-button>
             <n-button
               size="tiny" text :disabled="disabled || i === modelValue.length - 1"
               :title="t('automation.stepDown')"
-              @click="move(i, 1)"
+              @click.stop="move(i, 1)"
             >
               <n-icon size="14"><ChevronDown /></n-icon>
             </n-button>
             <n-button
               size="tiny" text type="primary" :disabled="disabled"
               :title="t('automation.stepEdit')"
-              @click="toggleEdit(i)"
+              @click.stop="toggleEdit(i)"
             >
               <n-icon size="14"><Pencil /></n-icon>
             </n-button>
             <n-button
               size="tiny" text type="error" :disabled="disabled"
               :title="t('automation.stepDelete')"
-              @click="remove(i)"
+              @click.stop="remove(i)"
             >
               <n-icon size="14"><Trash2 /></n-icon>
             </n-button>
@@ -71,6 +72,7 @@
         <StepEditForm
           v-if="i === editingIndex"
           :step="step"
+          @click.stop
           @save="onSave(i, $event)"
           @cancel="editingIndex = -1"
         />
@@ -97,22 +99,40 @@ import { stepActionLabel, stepSummary } from './stepMeta'
 const props = defineProps<{
   modelValue: Step[]
   disabled?: boolean
+  /** 当前选中的行（-1 = 无），父级持有以支持"插入到选中步骤之后" */
+  selectedIndex?: number
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', steps: Step[]): void
+  (e: 'update:selectedIndex', index: number): void
+  (e: 'record-request'): void
 }>()
 
 const { t } = useI18n()
 
 const editingIndex = ref(-1)
 
-const addOptions = computed(() =>
-  ADDABLE_ACTIONS.map(a => ({
+const RECORD_KEY = '__record__'
+
+const addOptions = computed(() => [
+  {
+    key: RECORD_KEY,
+    label: t('automation.recordSegment'),
+  },
+  { type: 'divider' as const, key: 'd1' },
+  ...ADDABLE_ACTIONS.map(a => ({
     key: a,
     label: stepActionLabel(a, t),
   })),
-)
+])
+
+/** 行选中：再点一次取消；按钮区已 stop 冒泡 */
+function toggleSelect(i: number) {
+  if (props.disabled) return
+  const cur = props.selectedIndex ?? -1
+  emit('update:selectedIndex', cur === i ? -1 : i)
+}
 
 /** emit a fresh (cloned) array — never mutate the prop in place */
 function emitList(steps: Step[]) {
@@ -120,9 +140,28 @@ function emitList(steps: Step[]) {
 }
 
 function onAdd(action: string) {
+  if (action === RECORD_KEY) {
+    emit('record-request')
+    return
+  }
   const list = [...props.modelValue, defaultStep(action as StepAction)]
   emitList(list)
   editingIndex.value = list.length - 1
+}
+
+/** 增删移动后修正父级持有的选中下标 */
+function adjustedIndexAfterRemove(i: number): number {
+  const cur = props.selectedIndex ?? -1
+  if (cur === i) return -1
+  if (cur > i) return cur - 1
+  return cur
+}
+
+function adjustedIndexAfterMove(i: number, delta: number): number {
+  const cur = props.selectedIndex ?? -1
+  if (cur === i) return i + delta
+  if (cur === i + delta) return i
+  return cur
 }
 
 function move(i: number, delta: number) {
@@ -131,12 +170,14 @@ function move(i: number, delta: number) {
   if (j < 0 || j >= list.length) return
   ;[list[i], list[j]] = [list[j], list[i]]
   emitList(list)
+  emit('update:selectedIndex', adjustedIndexAfterMove(i, delta))
   if (editingIndex.value === i) editingIndex.value = j
 }
 
 function remove(i: number) {
   const list = props.modelValue.filter((_, k) => k !== i)
   emitList(list)
+  emit('update:selectedIndex', adjustedIndexAfterRemove(i))
   if (editingIndex.value === i) editingIndex.value = -1
   else if (editingIndex.value > i) editingIndex.value -= 1
 }
@@ -180,9 +221,14 @@ function onSave(i: number, step: Step) {
   border: 1px solid var(--border-color, #2c2c32);
   border-radius: 6px;
   background: var(--card-color, transparent);
+  cursor: pointer;
 }
 .step-item.editing {
   border-color: var(--primary-color, #4a90d9);
+}
+.step-item.selected {
+  border-color: var(--primary-color, #4a90d9);
+  background: var(--app-blue-bg, rgba(74, 144, 217, 0.12));
 }
 .step-row {
   display: flex;

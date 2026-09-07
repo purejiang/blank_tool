@@ -141,8 +141,10 @@
               <StepListEditor
                 v-if="stepsView === 'ui'"
                 v-model="editor.steps"
+                v-model:selected-index="selectedStepIndex"
                 :disabled="running"
                 class="steps-editor"
+                @record-request="onRecordRequest"
               />
               <template v-else>
                 <n-input
@@ -212,6 +214,7 @@
           v-show="rightMode === 'record'"
           ref="recordPanelRef"
           :disabled="running && !recording"
+          :has-selection="selectedStepIndex >= 0"
           @recording-start="onRecStart"
           @recorded="onRecorded"
           @recording-end="onRecEnd"
@@ -406,6 +409,8 @@ const screenshots = ref<string[]>([])
 
 /** 右栏二选一模式：录制 / 运行（步骤展示与运行日志共用这一块区域） */
 const rightMode = ref<'record' | 'run'>('record')
+/** 步骤编辑器当前选中行（-1 无），录制片段可插入到它之后 */
+const selectedStepIndex = ref(-1)
 
 function onSwitchMode(v: string) {
   if (v === rightMode.value) return
@@ -419,6 +424,16 @@ function onSwitchMode(v: string) {
     return
   }
   rightMode.value = v as 'record' | 'run'
+}
+
+/** 「添加步骤 → 录制片段…」：切到右栏录制模式采集 */
+function onRecordRequest() {
+  if (running.value && !recording.value) {
+    message.warning(t('automation.runStopFirst'))
+    return
+  }
+  rightMode.value = 'record'
+  message.info(t('automation.recordSegmentHint'))
 }
 
 const dumping = ref(false)
@@ -540,6 +555,7 @@ function loadEditorFromSelection() {
     }
   }
   editor.value.steps = JSON.parse(JSON.stringify(s.steps || []))
+  selectedStepIndex.value = -1
   _syncJsonText()
 }
 
@@ -944,13 +960,42 @@ function onRecEnd() {
   running.value = false
 }
 
-function onRecorded(payload: { steps: any[]; gap: { enabled: boolean; thresholdMs: number; maxMs: number } }) {
+function onRecorded(payload: {
+  steps: any[]
+  gap: { enabled: boolean; thresholdMs: number; maxMs: number }
+  insertAt: 'end' | 'start' | 'after'
+}) {
+  // 无脚本选中时拒绝写入（片段仍暂存在录制面板，可先建脚本再应用）
   if (!selectedScript.value) {
     message.warning(t('automation.noScriptSelected'))
+    return
   }
+  // JSON 视图下的缓冲先校验落库，避免用旧数组插入
+  if (stepsView.value === 'json') {
+    const r = _parseStepsText(stepsText.value)
+    if (!r.ok) {
+      message.error(t('automation.jsonInvalid', { msg: r.error }))
+      return
+    }
+    editor.value.steps = r.data
+  }
+
   const raw = Array.isArray(payload?.steps) ? payload.steps : []
   const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 5000 }
-  editor.value.steps = withWaits(raw as Step[], gap)
+  const add = withWaits(raw as Step[], gap)
+
+  const old = editor.value.steps
+  const at = payload?.insertAt || 'end'
+  if (at === 'start') {
+    editor.value.steps = [...add, ...old]
+  } else if (at === 'after' && selectedStepIndex.value >= 0 && selectedStepIndex.value < old.length) {
+    const next = [...old]
+    next.splice(selectedStepIndex.value + 1, 0, ...add)
+    editor.value.steps = next
+    selectedStepIndex.value = selectedStepIndex.value + add.length
+  } else {
+    editor.value.steps = [...old, ...add]
+  }
   if (stepsView.value === 'json') _syncJsonText()
   message.success(
     gap.enabled ? t('automation.autoWaitInserted') : t('automation.recordApplied'),
