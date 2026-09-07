@@ -39,6 +39,7 @@ export default {
     removeAddress: '移除',
     pin: '置顶',
     unpin: '取消置顶',
+    reconnect: '重连',
     disconnect: '断开',
     noDeviceSelected: '未选择设备',
     noDeviceSelectedDesc: '从列表中选择一个设备以查看详情',

@@ -39,6 +39,7 @@ export default {
     removeAddress: 'Remove',
     pin: 'Pin to top',
     unpin: 'Unpin',
+    reconnect: 'Reconnect',
     disconnect: 'Disconnect',
     noDeviceSelected: 'No Device Selected',
     noDeviceSelectedDesc: 'Select a device from the list to view its details',
