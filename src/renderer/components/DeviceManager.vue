@@ -70,7 +70,6 @@
               >
                 <template #icon><n-icon size="14"><Unplug /></n-icon></template>
               </n-button>
-              <div class="device-dot" :class="device.status === 'device' ? 'online' : 'warning'"></div>
             </div>
           </template>
         </n-list-item>
@@ -376,9 +375,6 @@ const handleDeviceSelection = async (id: string) => {
 .device-pin-flag { color: var(--app-green); flex-shrink: 0; }
 .device-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .device-serial { font-family: 'Fira Code', monospace; font-size: 11px; color: var(--app-text-dim); }
-.device-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--app-red); }
-.device-dot.online { background: var(--app-green); }
-.device-dot.warning { background: var(--app-yellow); }
 :deep(.device-list .n-list-item) { background: transparent !important; }
 :deep(.device-list .n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
 :deep(.device-list .n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }
