@@ -18,10 +18,12 @@
         <p class="empty-title">{{ t('device.noDevices') }}</p>
         <p class="empty-desc">{{ t('device.noDevicesDesc') }}</p>
       </div>
-      <n-list v-else hoverable class="device-list">
+      <n-list v-else hoverable clickable class="device-list">
         <n-list-item
           v-for="device in deviceStore.sortedDevices"
           :key="device.id"
+          :class="{ selected: selectedDeviceId === device.id }"
+          @click="handleDeviceSelection(device.id)"
         >
           <template #prefix>
             <div class="device-icon-wrap">
@@ -42,7 +44,7 @@
               <n-button
                 quaternary circle size="tiny"
                 :title="deviceStore.isPinned(device.id) ? t('device.unpin') : t('device.pin')"
-                @click="handleTogglePin(device.id)"
+                @click.stop="handleTogglePin(device.id)"
               >
                 <template #icon>
                   <n-icon size="14" :color="deviceStore.isPinned(device.id) ? '#22C55E' : undefined">
@@ -55,7 +57,7 @@
                 quaternary circle size="tiny"
                 :title="t('device.reconnect')"
                 :loading="reconnectingId === device.id"
-                @click="handleReconnectDevice(device.id)"
+                @click.stop="handleReconnectDevice(device.id)"
               >
                 <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
               </n-button>
@@ -64,7 +66,7 @@
                 quaternary circle size="tiny"
                 :title="t('device.disconnect')"
                 :loading="disconnectingId === device.id"
-                @click="handleDisconnectDevice(device.id)"
+                @click.stop="handleDisconnectDevice(device.id)"
               >
                 <template #icon><n-icon size="14"><Unplug /></n-icon></template>
               </n-button>
@@ -132,13 +134,14 @@ import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { Smartphone, RefreshCw, Plus, X, Pin, PinOff, Unplug } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
+import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'
 import { storeToRefs } from 'pinia'
 
 const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
-const { devices } = storeToRefs(deviceStore)
+const { devices, selectedDeviceId } = storeToRefs(deviceStore)
 
 const loading = ref(false)
 const remoteAddress = ref('')
@@ -221,6 +224,20 @@ const handleReconnectDevice = async (id: string) => {
   } catch (e: any) {
     log.error('ADB reconnect failed:', e)
   } finally { reconnectingId.value = '' }
+}
+
+// 点击列表项：仅选中设备并刷新右侧详情面板（置顶/重连/断开等操作全走按钮）
+const handleDeviceSelection = async (id: string) => {
+  if (loading.value) return
+  loading.value = true
+  deviceStore.selectDevice(id)
+  if (id) {
+    try {
+      const svc = await serviceManager.getService('device')
+      await svc.getDeviceInfo(id)
+    } catch {}
+  }
+  loading.value = false
 }
 </script>
 
@@ -361,4 +378,5 @@ const handleReconnectDevice = async (id: string) => {
 .device-dot.warning { background: var(--app-yellow); }
 :deep(.device-list .n-list-item) { background: transparent !important; }
 :deep(.device-list .n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
+:deep(.device-list .n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }
 </style>
