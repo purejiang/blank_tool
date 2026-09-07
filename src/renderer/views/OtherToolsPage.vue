@@ -1068,10 +1068,7 @@ onMounted(() => {
   display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px;
   cursor: pointer; font-size: 12.5px; color: var(--app-text-secondary);
 }
-.script-row span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .script-row.active { background: var(--app-blue-bg); color: var(--app-text-primary); }
-.script-del { opacity: 0; }
-.script-row:hover .script-del { opacity: 1; }
 
 /* left tree */
 .row-desc {
