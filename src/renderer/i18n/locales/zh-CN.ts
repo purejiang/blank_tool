@@ -513,7 +513,13 @@ export default {
     // 编辑器
     editor: '脚本编辑',
     scriptName: '脚本名称',
-    steps: '步骤（JSON）',
+    steps: '步骤',
+    viewSteps: '步骤',
+    viewJson: 'JSON',
+    jsonInvalid: 'JSON 格式错误：{msg}',
+    jsonOk: '{n} 个步骤',
+    editInfo: '编辑信息',
+    description: '描述',
     loadTemplate: '载入模板',
     getElements: '从当前界面取元素',
     save: '保存',
@@ -534,7 +540,7 @@ export default {
     selectDevice: '选择设备',
     noDeviceSelectedRun: '请先选择设备再运行',
     noSteps: '步骤为空，无法运行',
-    jsonInvalid: '步骤 JSON 无效，请先修正后再运行',
+    runJsonInvalid: '步骤 JSON 无效，请先修正后再运行',
     noScriptSelected: '请选择一个脚本',
     // 结果
     result: '运行结果',

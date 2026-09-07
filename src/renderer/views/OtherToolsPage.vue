@@ -38,10 +38,10 @@
             <div class="proj-row" :class="{ active: p.id === selectedProjectId }">
               <div class="proj-name" @click="selectProject(p.id)">
                 <n-icon size="14"><Box /></n-icon>
-                <span :title="p.name">{{ p.name }}</span>
+                <span class="name-line" :title="p.description ? `${p.name} · ${p.description}` : p.name">{{ p.name }}</span>
               </div>
               <div class="row-actions">
-                <n-button size="tiny" text type="primary" :disabled="running" @click.stop="renameProject(p)">
+                <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.editInfo')" @click.stop="openProjectMeta(p)">
                   <template #icon><n-icon><Pencil /></n-icon></template>
                 </n-button>
                 <n-button size="tiny" text type="error" :disabled="running" @click.stop="deleteProject(p)">
@@ -49,6 +49,7 @@
                 </n-button>
               </div>
             </div>
+            <div v-if="p.description" class="row-desc" :title="p.description">{{ p.description }}</div>
 
             <div v-if="p.id === selectedProjectId" class="scripts">
               <div
@@ -59,12 +60,26 @@
                 @click="selectScript(p.id, s.id)"
               >
                 <n-icon size="13"><FileText /></n-icon>
-                <span :title="s.name">{{ s.name }}</span>
+                <div class="script-name-wrap" :title="s.description ? `${s.name} · ${s.description}` : s.name">
+                  <span class="name-line">{{ s.name }}</span>
+                  <span v-if="s.description" class="script-desc">{{ s.description }}</span>
+                </div>
+                <n-button
+                  size="tiny"
+                  text
+                  type="primary"
+                  class="script-ops"
+                  :disabled="running"
+                  :title="t('automation.editInfo')"
+                  @click.stop="openScriptMeta(p.id, s)"
+                >
+                  <template #icon><n-icon><Pencil /></n-icon></template>
+                </n-button>
                 <n-button
                   size="tiny"
                   text
                   type="error"
-                  class="script-del"
+                  class="script-ops"
                   :disabled="running"
                   @click.stop="deleteScript(p.id, s.id)"
                 >
@@ -92,7 +107,10 @@
 
         <template v-else>
           <div class="col-head">
-            <span>{{ t('automation.editor') }}</span>
+            <span class="editor-title">
+              <span class="editor-name">{{ selectedScript?.name }}</span>
+              <span v-if="selectedScript?.description" class="editor-desc">{{ selectedScript.description }}</span>
+            </span>
             <n-button size="small" type="primary" :disabled="running" @click="saveScript">
               <template #icon><n-icon><Save /></n-icon></template>
               {{ t('automation.save') }}
@@ -100,22 +118,17 @@
           </div>
 
           <div class="editor-body">
-            <div class="field">
-              <label>{{ t('automation.projectName') }}</label>
-              <n-input v-model:value="editor.projectName" size="small" :disabled="running" />
-            </div>
-            <div class="field">
-              <label>{{ t('automation.packageName') }}</label>
-              <n-input v-model:value="editor.packageName" size="small" :disabled="running" placeholder="com.example.app" />
-            </div>
-            <div class="field">
-              <label>{{ t('automation.scriptName') }}</label>
-              <n-input v-model:value="editor.scriptName" size="small" :disabled="running" />
-            </div>
-
             <div class="field steps-field">
               <div class="steps-head">
-                <label>{{ t('automation.steps') }}</label>
+                <n-radio-group
+                  size="small"
+                  :value="stepsView"
+                  :disabled="running"
+                  @update:value="onSwitchView"
+                >
+                  <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
+                  <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
+                </n-radio-group>
                 <n-space size="small">
                   <n-button size="tiny" @click="loadTemplate">{{ t('automation.loadTemplate') }}</n-button>
                   <n-button size="tiny" @click="getElements" :loading="dumping">
@@ -124,7 +137,27 @@
                   </n-button>
                 </n-space>
               </div>
-              <StepListEditor v-model="editor.steps" :disabled="running" class="steps-editor" />
+
+              <StepListEditor
+                v-if="stepsView === 'ui'"
+                v-model="editor.steps"
+                :disabled="running"
+                class="steps-editor"
+              />
+              <template v-else>
+                <n-input
+                  v-model:value="stepsText"
+                  type="textarea"
+                  :autosize="{ minRows: 14, maxRows: 26 }"
+                  :disabled="running"
+                  class="steps-json"
+                  @update:value="refreshJsonStatus"
+                />
+                <div class="json-status" :class="jsonError ? 'bad' : 'ok'">
+                  <template v-if="jsonError">{{ t('automation.jsonInvalid', { msg: jsonError }) }}</template>
+                  <template v-else>{{ t('automation.jsonOk', { n: stepCount }) }}</template>
+                </div>
+              </template>
             </div>
           </div>
         </template>
@@ -231,11 +264,38 @@
         </n-list-item>
       </n-list>
     </n-modal>
+
+    <!-- ============ Project / script meta editor modal ============ -->
+    <n-modal v-model:show="showMeta" :title="t('automation.editInfo')" preset="card" style="width: 440px">
+      <div class="field">
+        <label>{{ metaForm.kind === 'project' ? t('automation.projectName') : t('automation.scriptName') }}</label>
+        <n-input v-model:value="metaForm.name" size="small" />
+      </div>
+      <div v-if="metaForm.kind === 'project'" class="field">
+        <label>{{ t('automation.packageName') }}</label>
+        <n-input v-model:value="metaForm.packageName" size="small" placeholder="com.example.app" />
+      </div>
+      <div class="field">
+        <label>{{ t('automation.description') }}</label>
+        <n-input
+          v-model:value="metaForm.description"
+          type="textarea"
+          size="small"
+          :autosize="{ minRows: 2, maxRows: 4 }"
+        />
+      </div>
+      <template #footer>
+        <n-space justify="end">
+          <n-button size="small" @click="showMeta = false">{{ t('common.cancel') }}</n-button>
+          <n-button size="small" type="primary" @click="saveMeta">{{ t('common.confirm') }}</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   NButton,
@@ -251,6 +311,8 @@ import {
   NTag,
   NImage,
   NSpace,
+  NRadioButton,
+  NRadioGroup,
   useMessage,
   useDialog,
 } from 'naive-ui'
@@ -286,12 +348,14 @@ const config = new ConfigService()
 interface Script {
   id: string
   name: string
+  description?: string
   updated_at: string
   steps: Step[]
 }
 interface Project {
   id: string
   name: string
+  description?: string
   package_name?: string
   scripts: Script[]
 }
@@ -310,12 +374,16 @@ interface UiNode {
 const projects = ref<Project[]>([])
 const selectedProjectId = ref('')
 const selectedScriptId = ref('')
+/** step editing model — the single source the UI list binds to */
 const editor = ref({
-  projectName: '',
-  packageName: '',
-  scriptName: '',
   steps: [] as Step[],
 })
+
+/** center column view: visual list vs raw JSON */
+const stepsView = ref<'ui' | 'json'>('ui')
+const stepsText = ref('[]')
+const jsonError = ref('')
+const stepCount = ref(0)
 
 const running = ref(false)
 const recording = ref(false)
@@ -429,12 +497,10 @@ function loadEditorFromSelection() {
   const p = selectedProject.value
   const s = selectedScript.value
   if (!p || !s) {
-    editor.value = { projectName: '', packageName: '', scriptName: '', steps: [] }
+    editor.value = { steps: [] }
+    _syncJsonText()
     return
   }
-  editor.value.projectName = p.name
-  editor.value.packageName = p.package_name || ''
-  editor.value.scriptName = s.name
   // legacy guard: very old builds may have stored steps as a JSON string
   const raw = s.steps as unknown
   if (typeof raw === 'string') {
@@ -445,17 +511,70 @@ function loadEditorFromSelection() {
     }
   }
   editor.value.steps = JSON.parse(JSON.stringify(s.steps || []))
+  _syncJsonText()
 }
 
-/** Commit editor back into projects[]. Steps are cloned (never the live ref). */
+/** re-serialize editor.steps into the JSON view buffer */
+function _syncJsonText() {
+  stepsText.value = JSON.stringify(editor.value.steps || [], null, 2)
+  refreshJsonStatus()
+}
+
+function refreshJsonStatus() {
+  const r = _parseStepsText(stepsText.value)
+  jsonError.value = r.ok ? '' : r.error
+  stepCount.value = r.ok ? r.data.length : 0
+}
+
+function _parseStepsText(text: string): { ok: boolean; data: Step[]; error: string } {
+  if (!text || !text.trim()) return { ok: true, data: [], error: '' }
+  try {
+    const data = JSON.parse(text)
+    if (!Array.isArray(data)) return { ok: false, data: [], error: 'not an array' }
+    for (const s of data) {
+      if (typeof s !== 'object' || s === null || typeof s.action !== 'string') {
+        return { ok: false, data: [], error: 'step missing "action"' }
+      }
+    }
+    return { ok: true, data, error: '' }
+  } catch (e: any) {
+    return { ok: false, data: [], error: e?.message || String(e) }
+  }
+}
+
+/** view switch: UI -> JSON serializes; JSON -> UI validates (stay on error) */
+function onSwitchView(v: string) {
+  if (v === stepsView.value) return
+  if (v === 'json') {
+    _syncJsonText()
+    stepsView.value = 'json'
+    return
+  }
+  const r = _parseStepsText(stepsText.value)
+  if (!r.ok) {
+    jsonError.value = r.error
+    message.error(t('automation.jsonInvalid', { msg: r.error }))
+    return // stay in JSON view until fixed
+  }
+  editor.value.steps = r.data
+  stepsView.value = 'ui'
+}
+
+/** Commit editor steps into projects[]. Returns false when JSON invalid. */
 function commitEditor(): boolean {
   const p = selectedProject.value
   const s = selectedScript.value
   if (!p || !s) return true
-  p.name = editor.value.projectName.trim() || p.name
-  p.package_name = editor.value.packageName.trim() || undefined
-  s.name = editor.value.scriptName.trim() || s.name
-  s.steps = JSON.parse(JSON.stringify(editor.value.steps))
+  if (stepsView.value === 'json') {
+    const r = _parseStepsText(stepsText.value)
+    if (!r.ok) {
+      message.error(t('automation.jsonInvalid', { msg: r.error }))
+      return false
+    }
+    s.steps = r.data
+  } else {
+    s.steps = JSON.parse(JSON.stringify(editor.value.steps))
+  }
   s.updated_at = new Date().toISOString()
   return true
 }
@@ -488,11 +607,12 @@ function selectScript(pid: string, sid: string) {
 function newProject() {
   if (running.value) return
   if (selectedProjectId.value && !commitEditor()) return
-  const proj: Project = { id: genId(), name: t('automation.newProject'), package_name: '', scripts: [] }
+  const proj: Project = { id: genId(), name: t('automation.newProject'), scripts: [] }
   projects.value.push(proj)
   selectedProjectId.value = proj.id
   selectedScriptId.value = ''
-  editor.value = { projectName: proj.name, packageName: '', scriptName: '', steps: [] }
+  editor.value = { steps: [] }
+  _syncJsonText()
   persist()
 }
 
@@ -510,7 +630,8 @@ function newScript(pid: string) {
   p.scripts.push(scr)
   selectedProjectId.value = pid
   selectedScriptId.value = scr.id
-  editor.value = { projectName: p.name, packageName: p.package_name || '', scriptName: scr.name, steps: [] }
+  editor.value = { steps: [] }
+  _syncJsonText()
   persist()
 }
 
@@ -554,14 +675,55 @@ function deleteScript(pid: string, sid: string) {
   })
 }
 
-function renameProject(p: Project) {
+// ---------------- project / script meta dialog ----------------
+const showMeta = ref(false)
+const metaForm = reactive({
+  kind: 'project' as 'project' | 'script',
+  targetId: '',
+  name: '',
+  packageName: '',
+  description: '',
+})
+
+function openProjectMeta(p: Project) {
   if (running.value) return
-  const value = window.prompt(t('automation.rename'), p.name)
-  if (value && value.trim()) {
-    p.name = value.trim()
-    if (selectedProjectId.value === p.id) editor.value.projectName = p.name
-    persist()
+  metaForm.kind = 'project'
+  metaForm.targetId = p.id
+  metaForm.name = p.name
+  metaForm.packageName = p.package_name || ''
+  metaForm.description = p.description || ''
+  showMeta.value = true
+}
+
+function openScriptMeta(pid: string, s: Script) {
+  if (running.value) return
+  metaForm.kind = 'script'
+  metaForm.targetId = `${pid}::${s.id}`
+  metaForm.name = s.name
+  metaForm.packageName = ''
+  metaForm.description = s.description || ''
+  showMeta.value = true
+}
+
+function saveMeta() {
+  const name = metaForm.name.trim()
+  if (!name) return
+  if (metaForm.kind === 'project') {
+    const p = findProject(metaForm.targetId)
+    if (!p) return
+    p.name = name
+    p.package_name = metaForm.packageName.trim() || undefined
+    p.description = metaForm.description.trim() || undefined
+  } else {
+    const [pid, sid] = metaForm.targetId.split('::')
+    const s = findScript(pid, sid)
+    if (!s) return
+    s.name = name
+    s.description = metaForm.description.trim() || undefined
+    s.updated_at = new Date().toISOString()
   }
+  persist()
+  showMeta.value = false
 }
 
 function saveScript() {
@@ -572,7 +734,7 @@ function saveScript() {
 }
 
 function loadTemplate() {
-  const pkg = editor.value.packageName.trim() || 'com.example.app'
+  const pkg = selectedProject.value?.package_name || 'com.example.app'
   const tpl: Step[] = [
     { action: 'launch_app', package: pkg },
     { action: 'wait', ms: 2000 },
@@ -585,6 +747,7 @@ function loadTemplate() {
     { action: 'back' },
   ]
   editor.value.steps = tpl
+  if (stepsView.value === 'json') _syncJsonText()
 }
 
 // ---------------- element picker ----------------
@@ -650,6 +813,7 @@ async function getElements() {
 function insertElement(el: UiNode) {
   const step: Step = { action: 'tap_element', by: el.by, value: el.value, timeout_ms: 10000 }
   editor.value.steps = [...editor.value.steps, step]
+  if (stepsView.value === 'json') _syncJsonText()
   showElements.value = false
   message.success(el.label)
 }
@@ -758,6 +922,7 @@ function onRecorded(payload: { steps: any[]; gap: { enabled: boolean; thresholdM
   const raw = Array.isArray(payload?.steps) ? payload.steps : []
   const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 5000 }
   editor.value.steps = withWaits(raw as Step[], gap)
+  if (stepsView.value === 'json') _syncJsonText()
   message.success(
     gap.enabled ? t('automation.autoWaitInserted') : t('automation.recordApplied'),
   )
@@ -908,7 +1073,64 @@ onMounted(() => {
 .script-del { opacity: 0; }
 .script-row:hover .script-del { opacity: 1; }
 
+/* left tree */
+.row-desc {
+  font-size: 11px;
+  color: var(--app-text-muted);
+  padding: 0 10px 2px 30px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.script-name-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.script-row .name-line,
+.proj-name .name-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.script-desc {
+  font-size: 10.5px;
+  color: var(--app-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.script-ops { opacity: 0; }
+.script-row:hover .script-ops { opacity: 1; }
+
 /* center editor */
+.editor-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.editor-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.editor-desc {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--app-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.steps-json { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
+.json-status { font-size: 11.5px; margin-top: 4px; }
+.json-status.ok { color: #18a058; }
+.json-status.bad { color: #d03050; }
 .editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; color: var(--app-text-muted); }

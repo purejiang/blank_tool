@@ -510,7 +510,13 @@ export default {
     // Editor
     editor: 'Script Editor',
     scriptName: 'Script name',
-    steps: 'Steps (JSON)',
+    steps: 'Steps',
+    viewSteps: 'Steps',
+    viewJson: 'JSON',
+    jsonInvalid: 'Invalid JSON: {msg}',
+    jsonOk: '{n} step(s)',
+    editInfo: 'Edit Info',
+    description: 'Description',
     loadTemplate: 'Load Template',
     getElements: 'Pick Elements From Screen',
     save: 'Save',
@@ -531,7 +537,7 @@ export default {
     selectDevice: 'Select device',
     noDeviceSelectedRun: 'Select a device before running',
     noSteps: 'No steps to run',
-    jsonInvalid: 'Steps JSON is invalid; fix it before running',
+    runJsonInvalid: 'Steps JSON is invalid; fix it before running',
     noScriptSelected: 'Select a script',
     // Result
     result: 'Run Result',
