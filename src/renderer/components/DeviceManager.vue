@@ -195,8 +195,11 @@ const handleRemoveSaved = (addr: string) => {
   deviceStore.removeSavedAddress(addr)
 }
 
-// 网络设备（host:port，如 127.0.0.1:5555）才显示断开按钮——USB 设备无 adb disconnect 语义
-const isNetworkDevice = (id: string) => /^[^:]+:\d+$/.test(id)
+// 网络设备才显示重连/断开按钮（USB 序列号设备无 adb connect/disconnect 语义）：
+// 1) 传统 TCP 连接 id：host:port（如 127.0.0.1:5555、192.168.1.5:5555）
+// 2) 无线调试 mDNS id：adb-<serial>-<token>._adb-tls-connect._tcp.（Android 11+ 无线调试，
+//    小米/安卓 11+ 机型开启「无线调试」后 adb devices -l 即此形态），同样支持 adb connect/disconnect
+const isNetworkDevice = (id: string) => /^[^:]+:\d+$/.test(id) || id.includes('_adb-tls-connect')
 
 const handleTogglePin = (id: string) => {
   deviceStore.togglePinDevice(id)
