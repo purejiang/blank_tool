@@ -25,8 +25,13 @@ from typing import Dict, List, Optional, Tuple
 # ----------------------------------------------------------------------
 
 # [  3428.167047] /dev/input/event2: EV_KEY       BTN_TOUCH            DOWN
+# When getevent monitors a SINGLE device (getevent -lt /dev/input/eventN)
+# the device prefix is OMITTED entirely:
+# [     315.693233] EV_KEY       BTN_TOUCH            UP
+# The device token is therefore optional; a line without it belongs to the
+# one device the stream was started with.
 _EVENT_RE = re.compile(
-    r"^\[\s*(\d+(?:\.\d+)?)\]\s+(\S+):\s+EV_(\w+)\s+(\S+)\s+(\S+)\s*$"
+    r"^\[\s*(\d+(?:\.\d+)?)\](?:\s+(\S+):)?\s+EV_(\w+)\s+(\S+)\s+(\S+)\s*$"
 )
 _AXIS_MAX_RE = re.compile(r"ABS_MT_POSITION_([XY])\s*:.*?\bmax\s+(\d+)")
 _OVERRIDE_SIZE_RE = re.compile(r"Override size:\s*(\d+)x(\d+)")
@@ -182,7 +187,6 @@ class GeteventStatefulParser:
         etype = m.group(3)
         code = m.group(4)
         value = m.group(5)
-
         if etype == "KEY" and code == "BTN_TOUCH":
             self._on_btn_touch(ts, value)
         elif etype == "ABS" and code == "ABS_MT_TRACKING_ID":
