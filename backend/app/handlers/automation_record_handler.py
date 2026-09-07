@@ -79,8 +79,14 @@ def record_start(params, stream_handler):
     }
 
     context = CommandExecutionContext(stream=True)
+    # "-tt" forces a remote PTY. Launched from Popen, adb's stdin is a pipe,
+    # so plain `adb shell getevent` runs without a PTY and the device-side
+    # getevent writes to a FULLY-BUFFERED (4KB) stdout — taps never reach us
+    # until the buffer fills (or the process dies), so the UI shows nothing.
+    # With a PTY, stdout is line-buffered and events stream in real time.
+    # The PTY adds \r line endings, which the parser's `\s*$` regex absorbs.
     process = adb_tool.execute(
-        ["-s", device_id, "shell", "getevent", "-lt", device_path], context
+        ["-s", device_id, "shell", "-tt", "getevent", "-lt", device_path], context
     )
     process_id = f"{process.pid}"
     session["process_id"] = process_id
