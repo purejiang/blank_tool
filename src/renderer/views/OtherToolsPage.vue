@@ -163,19 +163,18 @@
         </template>
       </section>
 
-      <!-- ============ RIGHT: run / log / result ============ -->
+      <!-- ============ RIGHT: record / run (mutually exclusive modes) ============ -->
       <section class="col col-right">
         <div class="col-head">
-          <span>{{ t('automation.run') }}</span>
+          <n-radio-group
+            size="small"
+            :value="rightMode"
+            @update:value="onSwitchMode"
+          >
+            <n-radio-button value="record">{{ t('automation.record') }}</n-radio-button>
+            <n-radio-button value="run">{{ t('automation.run') }}</n-radio-button>
+          </n-radio-group>
         </div>
-
-        <RecordPanel
-          ref="recordPanelRef"
-          :disabled="running && !recording"
-          @recording-start="onRecStart"
-          @recorded="onRecorded"
-          @recording-end="onRecEnd"
-        />
 
         <div class="run-bar">
           <n-select
@@ -185,28 +184,40 @@
             :placeholder="t('automation.selectDevice')"
             @update:value="(v: string) => deviceStore.selectDevice(v)"
           />
-          <n-tooltip v-if="!running" :disabled="canRun" placement="top">
-            <template #trigger>
-              <n-button
-                type="primary"
-                size="small"
-                block
-                :disabled="!canRun"
-                @click="runScript"
-              >
-                <template #icon><n-icon><Play /></n-icon></template>
-                {{ t('automation.run') }}
-              </n-button>
-            </template>
-            {{ !deviceStore.selectedDeviceId ? t('automation.noDevice') : t('automation.noScriptSelected') }}
-          </n-tooltip>
-          <n-button v-else-if="!recording" type="warning" size="small" block @click="stopRun">
-            <template #icon><n-icon><Square /></n-icon></template>
-            {{ t('automation.stop') }}
-          </n-button>
-          <!-- recording stop lives in RecordPanel only (single entry) -->
+          <!-- 运行模式的操作按钮（录制模式的开始/停止在 RecordPanel 内，同一位置随模式切换） -->
+          <template v-if="rightMode === 'run'">
+            <n-tooltip v-if="!running" :disabled="canRun" placement="top">
+              <template #trigger>
+                <n-button
+                  type="primary"
+                  size="small"
+                  block
+                  :disabled="!canRun"
+                  @click="runScript"
+                >
+                  <template #icon><n-icon><Play /></n-icon></template>
+                  {{ t('automation.run') }}
+                </n-button>
+              </template>
+              {{ !deviceStore.selectedDeviceId ? t('automation.noDevice') : t('automation.noScriptSelected') }}
+            </n-tooltip>
+            <n-button v-else type="warning" size="small" block @click="stopRun">
+              <template #icon><n-icon><Square /></n-icon></template>
+              {{ t('automation.stop') }}
+            </n-button>
+          </template>
         </div>
 
+        <RecordPanel
+          v-show="rightMode === 'record'"
+          ref="recordPanelRef"
+          :disabled="running && !recording"
+          @recording-start="onRecStart"
+          @recorded="onRecorded"
+          @recording-end="onRecEnd"
+        />
+
+        <template v-if="rightMode === 'run'">
         <div class="result-block" v-if="runResult">
           <div class="result-summary">
             <n-tag :type="runResult.cancelled ? 'warning' : (runResult.success ? 'success' : 'error')" size="small">
@@ -247,6 +258,7 @@
         <n-scrollbar class="log-scroll" ref="logScroll">
           <pre class="log-box">{{ logsText }}</pre>
         </n-scrollbar>
+        </template>
       </section>
     </div>
 
@@ -391,6 +403,23 @@ const taskId = ref('')
 const logs = ref<string[]>([])
 const runResult = ref<any>(null)
 const screenshots = ref<string[]>([])
+
+/** 右栏二选一模式：录制 / 运行（步骤展示与运行日志共用这一块区域） */
+const rightMode = ref<'record' | 'run'>('record')
+
+function onSwitchMode(v: string) {
+  if (v === rightMode.value) return
+  // 互斥：录制中不能切运行；脚本执行中不能切录制
+  if (v === 'run' && recording.value) {
+    message.warning(t('automation.recordStopFirst'))
+    return
+  }
+  if (v === 'record' && running.value) {
+    message.warning(t('automation.runStopFirst'))
+    return
+  }
+  rightMode.value = v as 'record' | 'run'
+}
 
 const dumping = ref(false)
 const showElements = ref(false)

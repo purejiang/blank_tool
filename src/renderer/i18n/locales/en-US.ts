@@ -565,6 +565,10 @@ export default {
     recordEmpty: 'After you start recording, taps and swipes on the phone appear here in real time',
     recordApplied: 'Recording finished — steps filled into the editor (coordinates are pixels on the recorded device; re-record if the resolution differs)',
     recordFailed: 'Recording failed',
+    recordStopFirst: 'Recording — cannot switch to Run',
+    runStopFirst: 'A script is running — cannot switch to Record',
+    applySteps: 'Apply to Script',
+    clearRecorded: 'Clear',
     recordStopped: 'Recording stopped',
     noDeviceRecord: 'Select a device first',
     // Step list editor

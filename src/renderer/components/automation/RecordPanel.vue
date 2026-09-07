@@ -36,6 +36,21 @@
     </n-scrollbar>
     <div v-else class="record-empty">{{ t('automation.recordEmpty') }}</div>
 
+    <!-- 停止后仅展示；用户显式点击才写入脚本步骤 -->
+    <div v-if="lastRecord && !recording" class="record-actions">
+      <n-button
+        size="small"
+        type="primary"
+        :disabled="!lastRecord.steps.length"
+        @click="applyRecorded"
+      >
+        {{ t('automation.applySteps') }}
+      </n-button>
+      <n-button size="small" quaternary @click="clearRecorded">
+        {{ t('automation.clearRecorded') }}
+      </n-button>
+    </div>
+
     <div class="gap-settings">
       <n-checkbox v-model:checked="gap.enabled" size="small">
         <span class="gap-label">{{ t('automation.autoWaitEnabled') }}</span>
@@ -120,6 +135,9 @@ function gapMs(i: number): number {
   return Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
 }
 
+/** 停止后暂存的录制结果；点击「应用到脚本」才交给页面写入步骤 */
+const lastRecord = ref<{ steps: any[]; gap: RecordedGap } | null>(null)
+
 const startDisabled = computed(
   () => props.disabled || recording.value || !deviceStore.selectedDeviceId
 )
@@ -145,6 +163,7 @@ async function startRecording(): Promise<void> {
   // record_start; the catch below rolls both flags back via _reset.
   ended.value = false
   liveSteps.value = []
+  lastRecord.value = null
   recording.value = true
   emit('recording-start')
   try {
@@ -185,10 +204,11 @@ async function stop(): Promise<void> {
   if (!recording.value || !recId.value) return
   try {
     const res = await svc.stopRecording(deviceStore.selectedDeviceId)
-    emit('recorded', {
+    // 只暂存展示，不自动写入脚本 —— 写入由「应用到脚本」按钮显式触发
+    lastRecord.value = {
       steps: Array.isArray(res?.steps) ? res.steps : [],
       gap: { enabled: gap.enabled, thresholdMs: gap.thresholdMs, maxMs: gap.maxMs },
-    })
+    }
   } catch (err: any) {
     // A rejected record_stop must reset the UI, not leak an unhandled
     // rejection into the page's click handler.
@@ -196,6 +216,16 @@ async function stop(): Promise<void> {
   } finally {
     _reset()
   }
+}
+
+function applyRecorded(): void {
+  if (!lastRecord.value || recording.value) return
+  emit('recorded', lastRecord.value)
+}
+
+function clearRecorded(): void {
+  lastRecord.value = null
+  liveSteps.value = []
 }
 
 /**

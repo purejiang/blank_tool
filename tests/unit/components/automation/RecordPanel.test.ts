@@ -167,7 +167,7 @@ describe('RecordPanel', () => {
     expect(wrapper.text()).not.toContain('automation.recordEmpty')
   })
 
-  it('stop via button: emits recorded with the stopRecording steps, resets, emits recording-end once', async () => {
+  it('stop via button: stages steps locally (no auto-emit); apply button emits recorded; reset + recording-end once', async () => {
     const { wrapper, store } = mountPanel()
     await selectDevice(store)
     await startRecording(wrapper)
@@ -182,16 +182,22 @@ describe('RecordPanel', () => {
     await flushPromises()
 
     expect(mockRecordingService.stopRecording).toHaveBeenCalledWith('dev-1')
+    // 停止只暂存展示，不自动导入脚本
+    expect(wrapper.emitted('recorded')).toBeUndefined()
+    expect(wrapper.emitted('recording-end')).toHaveLength(1)
+    expect(mockRecordingService.finish).toHaveBeenCalledWith('rec-test-id')
+    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
+
+    // 点击「应用到脚本」才把 { steps, gap } 交给页面
+    const applyBtn = findButton(wrapper, 'automation.applySteps')
+    expect(applyBtn).toBeTruthy()
+    await applyBtn.trigger('click')
     const recorded = wrapper.emitted('recorded')
     expect(recorded).toHaveLength(1)
-    // payload is now { steps, gap } — gap carries the auto-wait settings
     expect(recorded![0][0]).toEqual({
       steps,
       gap: { enabled: true, thresholdMs: 500, maxMs: 5000 },
     })
-    expect(wrapper.emitted('recording-end')).toHaveLength(1)
-    expect(mockRecordingService.finish).toHaveBeenCalledWith('rec-test-id')
-    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
   })
 
   it('startRecording rejection: error toast, recording-end emitted, start re-enabled', async () => {

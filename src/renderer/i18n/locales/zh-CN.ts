@@ -568,6 +568,10 @@ export default {
     recordEmpty: '开始录制后，在手机上的点击与滑动会实时出现在这里',
     recordApplied: '录制完成，已填入步骤编辑器（坐标为录制设备像素，换设备分辨率需重录）',
     recordFailed: '录制失败',
+    recordStopFirst: '录制中，无法切换到运行',
+    runStopFirst: '脚本运行中，无法切换到录制',
+    applySteps: '应用到脚本',
+    clearRecorded: '清除记录',
     recordStopped: '录制已结束',
     noDeviceRecord: '请先选择设备',
     // 步骤编辑器
