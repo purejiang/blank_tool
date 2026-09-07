@@ -409,12 +409,27 @@ onUnmounted(() => {
 })
 
 // --- Logcat ---
+// Level detection for the two formats adb actually emits:
+//  - threadtime (our startLogcat uses -v threadtime): "... PID TID E Tag: msg"
+//    → the level is a single letter surrounded by spaces right before "TAG:"
+//  - brief (plain logcat / old exports): "E/Tag(pid): msg" → level letter before '/'
+// The old code only looked for " E/" which never matches threadtime lines,
+// so almost every line rendered with the default color.
+const THREADTIME_LEVEL_RE = /\s([VDIWEF])\s[A-Za-z0-9_.$-]+:/
+const BRIEF_LEVEL_RE = /(?:^|\s)([VDIWEF])\//
+
 function getLogLevel(line: string): string {
-  if (line.includes(' E/') || line.includes('ERROR')) return 'level-error'
-  if (line.includes(' W/') || line.includes('WARN')) return 'level-warn'
-  if (line.includes(' I/') || line.includes('INFO')) return 'level-info'
-  if (line.includes(' D/') || line.includes('DEBUG')) return 'level-debug'
-  return ''
+  const m = THREADTIME_LEVEL_RE.exec(line) || BRIEF_LEVEL_RE.exec(line)
+  if (!m) return ''
+  switch (m[1]) {
+    case 'E':
+    case 'F': return 'level-error'
+    case 'W': return 'level-warn'
+    case 'I': return 'level-info'
+    case 'D': return 'level-debug'
+    case 'V': return 'level-verbose'
+    default: return ''
+  }
 }
 
 const refreshDevices = async () => {
@@ -759,12 +774,14 @@ const takeScreenshot = async () => {
   font-size: 11px;
   line-height: 1.5;
 }
-.logcat-line { display: flex; gap: 10px; white-space: pre-wrap; word-break: break-all; color: var(--app-text-secondary); }
+.logcat-line { display: flex; gap: 10px; white-space: pre-wrap; word-break: break-all; color: var(--app-text-secondary); padding: 0 6px; border-radius: 3px; }
 .log-line-num { color: var(--app-text-dim); min-width: 36px; text-align: right; user-select: none; flex-shrink: 0; }
-.level-error { color: var(--app-red); }
-.level-warn { color: var(--app-yellow); }
+.level-error { color: var(--app-red); background: color-mix(in srgb, var(--app-red) 10%, transparent); }
+.level-error .log-line-num { color: var(--app-red); opacity: 0.7; }
+.level-warn { color: var(--app-yellow); background: color-mix(in srgb, var(--app-yellow) 8%, transparent); }
 .level-info { color: var(--app-blue); }
 .level-debug { color: var(--app-text-dim); }
+.level-verbose { color: var(--app-text-dim); opacity: 0.65; }
 
 /* Empty States (small variant) */
 .empty-state {
