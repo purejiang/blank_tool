@@ -916,12 +916,16 @@ async function runScript() {
     // plugin.run is @streaming: the init response resolves to undefined after
     // unwrapBackendResponse (no `type` field) — NEVER test it for stream_id.
     // Real failures arrive as stream error events / the waitForPhase latch.
+    // Deep-clone before IPC: steps come straight from reactive Pinia state and
+    // Vue proxies are not structured-cloneable (preload also normalizes, but
+    // this keeps the page safe even on a stale preload).
+    const plainSteps = JSON.parse(JSON.stringify(s.steps)) as Step[]
     await api.callBackendAPI('plugin.run', {
       name: 'adb_auto',
       params: {
         device_id: deviceStore.selectedDeviceId,
         package_name: selectedProject.value?.package_name || '',
-        steps: s.steps,
+        steps: plainSteps,
         continue_on_error: false,
       },
       task_id: id,
