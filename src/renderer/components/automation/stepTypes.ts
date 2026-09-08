@@ -83,6 +83,10 @@ function ELEMENT_FIELDS(visibleWhen?: { key: string; equals: Array<string | numb
       key: 'timeout_ms', labelKey: 'timeoutMs', type: 'number', default: 10000,
       visibleWhen,
     },
+    {
+      key: 'instance', labelKey: 'instance', type: 'number', default: 0,
+      visibleWhen: { key: 'by', equals: ['class'] },
+    },
   ]
 }
 

@@ -267,8 +267,11 @@
       <n-list v-else bordered class="elem-list">
         <n-list-item v-for="(el, i) in elements" :key="i" @click="applyElement(el)" class="elem-item">
           <div class="elem-main">
-            <span class="elem-label">{{ el.label }}</span>
-            <span v-if="el.clickable" class="elem-click">{{ t('automation.clickable') }}</span>
+            <div class="elem-label-row">
+              <span class="elem-label">{{ el.label }}</span>
+              <span v-if="el.clickable" class="elem-click">{{ t('automation.clickable') }}</span>
+              <span v-if="el.matchCount > 1" class="elem-multi">{{ t('automation.multiMatch', { n: el.matchCount }) }}</span>
+            </div>
             <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
           </div>
           <span class="elem-bounds">{{ el.bounds }}</span>
@@ -378,6 +381,7 @@ interface UiNode {
   by: string
   value: string
   clickable: boolean
+  matchCount: number
   label: string
 }
 
@@ -807,6 +811,25 @@ function shortClass(cls: string): string {
 function parseUiDump(xml: string): UiNode[] {
   if (!xml) return []
   const openTags = xml.match(/<node[^>]*>/g) || []
+  // First pass: extract the identifying attrs of every node in the dump,
+  // so match counts reflect the full tree (not just the kept subset).
+  const all = openTags.map((tag) => ({
+    text: attr(tag, 'text'),
+    rid: attr(tag, 'resource-id'),
+    desc: attr(tag, 'content-desc'),
+    cls: attr(tag, 'class'),
+  }))
+  // Mirrors the backend matcher: substring match on the same attribute.
+  const countMatches = (by: string, value: string): number => {
+    if (!value) return 0
+    let n = 0
+    for (const t of all) {
+      const v =
+        by === 'text' ? t.text : by === 'resource_id' ? t.rid : by === 'content_desc' ? t.desc : t.cls
+      if (v && v.includes(value)) n++
+    }
+    return n
+  }
   const nodes: UiNode[] = []
   for (const tag of openTags) {
     const text = attr(tag, 'text')
@@ -842,6 +865,7 @@ function parseUiDump(xml: string): UiNode[] {
       by,
       value,
       clickable,
+      matchCount: countMatches(by, value),
       label: text || rid || desc || shortClass(cls),
     })
   }
@@ -921,7 +945,11 @@ function applyElement(el: UiNode) {
   if (stepsView.value === 'json') _syncJsonText()
   pickTarget.value = null
   showElements.value = false
-  message.success(el.label)
+  if (el.matchCount > 1) {
+    message.warning(t('automation.matchWarning', { n: el.matchCount }))
+  } else {
+    message.success(el.label)
+  }
 }
 
 // ---------------- run / stop ----------------
@@ -1338,6 +1366,7 @@ onMounted(() => {
 .elem-label-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .elem-label { font-size: 13px; color: var(--app-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-click { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-green); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.elem-multi { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-warning, #d97706); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .elem-by { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-bounds { font-size: 10.5px; color: var(--app-text-muted); flex: 0 0 auto; }
 </style>

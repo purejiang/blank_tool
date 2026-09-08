@@ -277,12 +277,15 @@ def ui_dump(
 
 
 def find_element(
-    device_id: str, by: str, value: str, timeout_ms: int = 10000
+    device_id: str, by: str, value: str, timeout_ms: int = 10000, instance: int = 0
 ) -> Dict[str, Any]:
-    """Poll the UI hierarchy until ``by=value`` matches (substring) or timeout.
+    """Poll the UI hierarchy until the ``instance``-th ``by=value`` match
+    (substring, document order) appears, or timeout.
 
-    Returns ``{"found": bool, "node": {...} | None, "error": str}``. Never
-    raises on "not found" — the caller decides abort vs continue.
+    ``instance`` picks among multiple same-selector matches (0-based,
+    default 0 = first, which preserves the legacy behaviour). Returns
+    ``{"found": bool, "node": {...} | None, "error": str}``. Never raises
+    on "not found" — the caller decides abort vs continue.
     """
     attr = _BY_ATTR.get(by)
     if not attr:
@@ -297,23 +300,27 @@ def find_element(
         if ok:
             try:
                 root = ET.fromstring(xml_text)
+                matches = []
                 for node in root.iter("node"):
                     v = node.get(attr)
                     if v and value in v:
-                        b = _parse_bounds(node)
-                        if b:
-                            return {
-                                "found": True,
-                                "node": {
-                                    "bounds": node.get("bounds"),
-                                    "text": node.get("text"),
-                                    "resource_id": node.get("resource-id"),
-                                    "content_desc": node.get("content-desc"),
-                                    "class": node.get("class"),
-                                    "center": list(_center(b)),
-                                },
-                                "error": "",
-                            }
+                        if _parse_bounds(node):
+                            matches.append(node)
+                if len(matches) > instance:
+                    node = matches[instance]
+                    b = _parse_bounds(node)
+                    return {
+                        "found": True,
+                        "node": {
+                            "bounds": node.get("bounds"),
+                            "text": node.get("text"),
+                            "resource_id": node.get("resource-id"),
+                            "content_desc": node.get("content-desc"),
+                            "class": node.get("class"),
+                            "center": list(_center(b)),
+                        },
+                        "error": "",
+                    }
             except ET.ParseError as e:
                 last_err = f"ui xml parse error: {e}"
         if time.time() > deadline:
@@ -323,10 +330,10 @@ def find_element(
 
 
 def tap_element(
-    device_id: str, by: str, value: str, timeout_ms: int = 10000
+    device_id: str, by: str, value: str, timeout_ms: int = 10000, instance: int = 0
 ) -> Dict[str, Any]:
     """Find an element then tap its center. Returns success + node."""
-    res = find_element(device_id, by, value, timeout_ms=timeout_ms)
+    res = find_element(device_id, by, value, timeout_ms=timeout_ms, instance=instance)
     if not res.get("found"):
         return {"success": False, "node": None,
                 "error": res.get("error") or "element not found"}

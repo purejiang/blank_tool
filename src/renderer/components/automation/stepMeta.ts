@@ -29,7 +29,11 @@ function isElementTarget(step: Step): boolean {
 }
 
 function elementSummary(step: Step): string {
-  return `${str(step.by)}: ${str(step.value) || '—'} · ${num(step.timeout_ms, 10000)}ms`
+  // `instance` selects the N-th same-selector match (class locators);
+  // 0 = first (default) and stays hidden in the summary.
+  const inst = num(step.instance, 0)
+  const instPart = inst > 0 ? ` · #${inst}` : ''
+  return `${str(step.by)}: ${str(step.value) || '—'} · ${num(step.timeout_ms, 10000)}ms${instPart}`
 }
 
 /** One-line human-readable parameter summary (numbers verbatim, no i18n). */

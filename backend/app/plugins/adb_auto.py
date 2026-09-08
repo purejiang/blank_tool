@@ -187,6 +187,13 @@ def _exec_step(
     def has_element_target() -> bool:
         return bool(str(step.get("by", "")) and str(step.get("value", "")))
 
+    def elem_instance() -> int:
+        """0-based match index among same-selector nodes (default first)."""
+        try:
+            return max(0, int(step.get("instance", 0)))
+        except (TypeError, ValueError):
+            return 0
+
     try:
         if action == "launch_app":
             pkg = step.get("package") or package_name
@@ -198,6 +205,7 @@ def _exec_step(
                 r = tap_element(
                     device_id, step.get("by", ""), step.get("value", ""),
                     timeout_ms=int(step.get("timeout_ms", 10000)),
+                    instance=elem_instance(),
                 )
                 ok = r.get("success", False)
                 return ok, "" if ok else (r.get("error") or "element tap failed"), None
@@ -244,6 +252,7 @@ def _exec_step(
                 r = find_element(
                     device_id, step.get("by", ""), step.get("value", ""),
                     timeout_ms=int(step.get("timeout_ms", 10000)),
+                    instance=elem_instance(),
                 )
                 ok = r.get("found", False)
                 return ok, "" if ok else (r.get("error") or "element not found (wait)"), None
@@ -262,6 +271,7 @@ def _exec_step(
             r = tap_element(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),
+                instance=elem_instance(),
             )
             ok = r.get("success", False)
             return ok, "" if ok else (r.get("error") or "element not found"), None
@@ -270,6 +280,7 @@ def _exec_step(
             r = find_element(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),
+                instance=elem_instance(),
             )
             ok = r.get("found", False)
             return ok, "" if ok else (r.get("error") or "element not found (wait)"), None
@@ -278,6 +289,7 @@ def _exec_step(
             r = find_element(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),
+                instance=elem_instance(),
             )
             found = r.get("found", False)
             expect = step.get("expect", "exists")
