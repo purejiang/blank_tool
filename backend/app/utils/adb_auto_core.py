@@ -147,7 +147,8 @@ def input_text(device_id: str, text: str) -> Dict[str, Any]:
         b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
         r = run_adb(
             device_id,
-            ["shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "text", b64],
+            # ADBKeyboard v2.0 reads the base64 payload from the "msg" extra
+            ["shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "msg", b64],
         )
         if r.get("returncode", 1) != 0:
             return {"success": False, "error": "ADBKeyboard broadcast failed"}
