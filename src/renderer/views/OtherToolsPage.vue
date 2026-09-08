@@ -129,13 +129,6 @@
                   <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
                   <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
                 </n-radio-group>
-                <n-space size="small">
-                  <n-button size="tiny" @click="loadTemplate">{{ t('automation.loadTemplate') }}</n-button>
-                  <n-button size="tiny" @click="getElements" :loading="dumping">
-                    <template #icon><n-icon><MousePointerClick /></n-icon></template>
-                    {{ t('automation.getElements') }}
-                  </n-button>
-                </n-space>
               </div>
 
               <StepListEditor
@@ -352,7 +345,6 @@ import {
   Pencil,
   Save,
   Box,
-  MousePointerClick,
 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
@@ -804,23 +796,6 @@ function saveScript() {
   if (!commitEditor()) return
   persist()
   message.success(t('automation.saved'))
-}
-
-function loadTemplate() {
-  const pkg = selectedProject.value?.package_name || 'com.example.app'
-  const tpl: Step[] = [
-    { action: 'launch_app', package: pkg },
-    { action: 'wait', ms: 2000 },
-    { action: 'tap_element', by: 'text', value: '登录', timeout_ms: 10000 },
-    { action: 'wait_element', by: 'resource_id', value: 'com.example.app:id/et_account', timeout_ms: 8000 },
-    { action: 'input', text: 'user@example.com' },
-    { action: 'keyevent', key: 'KEYCODE_TAB' },
-    { action: 'screenshot', name: 'login-form' },
-    { action: 'assert_activity', activity: '.LoginActivity' },
-    { action: 'back' },
-  ]
-  editor.value.steps = tpl
-  if (stepsView.value === 'json') _syncJsonText()
 }
 
 // ---------------- element picker ----------------

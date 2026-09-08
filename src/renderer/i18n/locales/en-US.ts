@@ -517,8 +517,6 @@ export default {
     jsonOk: '{n} step(s)',
     editInfo: 'Edit Info',
     description: 'Description',
-    loadTemplate: 'Load Template',
-    getElements: 'Pick Elements From Screen',
     save: 'Save',
     saved: 'Saved',
     noSelection: 'Select a project and script on the left',

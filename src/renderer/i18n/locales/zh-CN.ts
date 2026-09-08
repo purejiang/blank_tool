@@ -520,8 +520,6 @@ export default {
     jsonOk: '{n} 个步骤',
     editInfo: '编辑信息',
     description: '描述',
-    loadTemplate: '载入模板',
-    getElements: '从当前界面取元素',
     save: '保存',
     saved: '已保存',
     noSelection: '请选择左侧的项目与脚本',

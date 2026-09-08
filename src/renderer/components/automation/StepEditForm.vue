@@ -44,13 +44,16 @@
     <div v-if="error" class="form-error">{{ error }}</div>
 
     <div class="form-actions">
+      <n-button size="tiny" @click="$emit('cancel')">{{ t('common.cancel') }}</n-button>
+      <n-button size="tiny" type="primary" @click="save">{{ t('common.confirm') }}</n-button>
       <n-button
         v-if="pickable"
         size="tiny"
+        type="info"
+        secondary
+        :title="t('automation.f.pickElement')"
         @click="$emit('pick', { mode: pickMode })"
       >{{ t('automation.f.pickElement') }}</n-button>
-      <n-button size="tiny" @click="$emit('cancel')">{{ t('common.cancel') }}</n-button>
-      <n-button size="tiny" type="primary" @click="save">{{ t('common.confirm') }}</n-button>
     </div>
   </div>
 </template>

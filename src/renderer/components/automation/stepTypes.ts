@@ -197,7 +197,13 @@ export function visibleFields(action: StepAction, step: Step): StepFieldDef[] {
 export function defaultStep(action: StepAction): Step {
   const step: Step = { action }
   for (const f of STEP_FIELDS[action] || []) {
-    if (f.default !== undefined) step[f.key] = f.default
+    if (f.default === undefined) continue
+    // Skip fields hidden under the step's current mode — no stale by/value
+    // pairs on a coord-mode tap, no ms on an element-mode wait, etc.
+    if (f.visibleWhen && !f.visibleWhen.equals.includes(step[f.visibleWhen.key] as string | number)) {
+      continue
+    }
+    step[f.key] = f.default
   }
   return step
 }

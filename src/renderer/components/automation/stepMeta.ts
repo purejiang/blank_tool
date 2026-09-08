@@ -21,6 +21,10 @@ function str(v: unknown): string {
 
 /** An element target: `by` + `value` both present (legacy or unified mode). */
 function isElementTarget(step: Step): boolean {
+  const mode = str((step as Record<string, unknown>).mode)
+  if (mode === 'element') return true
+  if (mode === 'coord' || mode === 'time') return false
+  // legacy steps carry no `mode` — fall back to field presence
   return !!str(step.by) && !!str(step.value)
 }
 
