@@ -32,6 +32,7 @@ from app.utils.adb_auto_core import (
     tap,
     swipe,
     input_text,
+    restore_ime,
     keyevent,
     back,
     home,
@@ -108,6 +109,7 @@ def run(
                 result["screenshots"].append(shot["file_path"])
             result["cancelled"] = True
             result["success"] = False
+            restore_ime(device_id)  # CJK input path may have switched the IME
             context.complete(result)
             return result
 
@@ -152,6 +154,7 @@ def run(
                 result["screenshots"].append(shot["file_path"])
                 step_rec["screenshot"] = shot["file_path"]
             result["success"] = False
+            restore_ime(device_id)
             context.step(step_rec)
             context.complete(result)
             return result
@@ -161,6 +164,7 @@ def run(
         f"done: {result['passed']}/{result['total']} passed"
         + (f", {result['failed']} failed" if result["failed"] else "")
     )
+    restore_ime(device_id)
     context.complete(result)
     return result
 
@@ -224,6 +228,17 @@ def _exec_step(
             return _ok(r), _err(r, "swipe failed"), None
 
         if action == "input":
+            # Optional focus: with by/value set, tap the field first —
+            # `input text` only types into the focused editor.
+            if has_element_target():
+                fr = tap_element(
+                    device_id, step.get("by", ""), step.get("value", ""),
+                    timeout_ms=int(step.get("timeout_ms", 10000)),
+                    instance=elem_instance(),
+                )
+                if not fr.get("success", False):
+                    return False, (fr.get("error") or "input field not found"), None
+                time.sleep(0.3)  # let the editor settle before typing
             r = input_text(device_id, str(step.get("text", "")))
             return _ok(r), _err(r, "input failed"), None
 

@@ -604,6 +604,8 @@ export default {
       command: '命令', by: '定位方式', value: '匹配值',
       timeoutMs: '超时 (ms)', expect: '期望', activity: '界面 Activity',
       instance: '第 N 个 (从 0 起)',
+      focusBy: '先点击输入框 · 定位（可选）',
+      focusValue: '先点击输入框 · 匹配值（选填，留空则不点击）',
       name: '截图名称',
       target: '目标方式',
       byCoord: '坐标', byElement: '元素', byDuration: '固定时长',

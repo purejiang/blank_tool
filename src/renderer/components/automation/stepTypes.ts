@@ -132,6 +132,15 @@ export const STEP_FIELDS: Record<StepAction, StepFieldDef[]> = {
   ],
   input: [
     { key: 'text', labelKey: 'text', type: 'textarea', required: true, default: '' },
+    // Optional focus tap: `input text` only types into the focused editor,
+    // so the step can tap the field first (empty value = no tap).
+    { key: 'by', labelKey: 'focusBy', type: 'select', default: 'text', options: BY_OPTIONS },
+    { key: 'value', labelKey: 'focusValue', type: 'text', default: '' },
+    { key: 'timeout_ms', labelKey: 'timeoutMs', type: 'number', default: 10000 },
+    {
+      key: 'instance', labelKey: 'instance', type: 'number', default: 0,
+      visibleWhen: { key: 'by', equals: ['class'] },
+    },
   ],
   keyevent: [
     {

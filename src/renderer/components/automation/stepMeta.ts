@@ -51,7 +51,12 @@ export function stepSummary(step: Step): string {
         : `${num(step.ms)}ms`
     case 'input': {
       const text = str(step.text)
-      return text ? `“${text}”` : '—'
+      const base = text ? `“${text}”` : '—'
+      // optional focus tap on the target field
+      if (str(step.by) && str(step.value)) {
+        return `${base} @${str(step.by)}:${str(step.value)}`
+      }
+      return base
     }
     case 'keyevent':
       return str(step.key) || '—'

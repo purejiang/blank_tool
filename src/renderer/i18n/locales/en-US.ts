@@ -601,6 +601,8 @@ export default {
       command: 'Command', by: 'Locator', value: 'Value',
       timeoutMs: 'Timeout (ms)', expect: 'Expect', activity: 'Activity',
       instance: 'Match index (0-based)',
+      focusBy: 'Focus field · selector (optional)',
+      focusValue: 'Focus field · value (empty = no tap)',
       name: 'Screenshot name',
       target: 'Target',
       byCoord: 'Coordinates', byElement: 'Element', byDuration: 'Fixed time',

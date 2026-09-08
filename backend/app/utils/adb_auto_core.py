@@ -14,6 +14,7 @@ UI hierarchy is dumped via ``uiautomator dump`` to a device-side temp file
 parsed for node attributes + bounds center, then the temp file is removed.
 """
 
+import base64
 import os
 import re
 import time
@@ -116,21 +117,99 @@ def swipe(
 
 
 def input_text(device_id: str, text: str) -> Dict[str, Any]:
-    """Type text via ``input text``. Spaces become %s (adb space token).
+    """Type text into the currently FOCUSED editor.
 
-    Non-ASCII text is usually ignored by the default IME (needs ADBKeyboard);
-    we log a warning but do not abort.
+    Two paths:
+    - ASCII: ``input text`` with device-shell-safe quoting. adb forwards
+      shell args through the device shell, so spaces/quotes/metachars must
+      be escaped or the command breaks silently.
+    - Non-ASCII (CJK etc.): ``input text`` silently DROPS non-ASCII on
+      virtually every ROM, so route through ADBKeyboard
+      (com.android.adbkeyboard) broadcast instead. The IME is enabled and
+      switched automatically; ``restore_ime`` puts the original back.
+
+    The text lands in whatever editor has input focus — pair an `input`
+    step with a preceding `tap` on the field (or set by/value so the step
+    taps it first).
     """
-    if text is None:
+    if text is None or text == "":
         return {"success": False, "error": "empty text"}
     if any(ord(c) > 0x7F for c in text):
-        logger.warning(
-            f"input_text contains non-ASCII chars ({text!r}); default IME may "
-            f"drop them — install ADBKeyboard for CJK input"
+        ok, err = ensure_adb_ime(device_id)
+        if not ok:
+            return {
+                "success": False,
+                "error": (
+                    "non-ASCII input requires ADBKeyboard ({err}); install "
+                    "ADBKeyBoard.apk from github.com/senzhk/ADBKeyBoard"
+                ).format(err=err),
+            }
+        b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
+        r = run_adb(
+            device_id,
+            ["shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "text", b64],
         )
-    payload = text.replace(" ", "%s")
+        if r.get("returncode", 1) != 0:
+            return {"success": False, "error": "ADBKeyboard broadcast failed"}
+        return {"success": True}
+    # Single-quote the payload for the device shell (embedded quotes doubled
+    # via the classic '\'' dance). This makes spaces and shell metachars
+    # literal — no %s hack needed.
+    payload = "'" + text.replace("'", "'\\''") + "'"
     r = run_adb(device_id, ["shell", "input", "text", payload])
     return {"success": r.get("returncode", 1) == 0}
+
+
+# ----------------------------------------------------------------------
+# ADBKeyboard IME management (for non-ASCII input)
+# ----------------------------------------------------------------------
+
+ADB_IME_PKG = "com.android.adbkeyboard"
+ADB_IME_ID = "com.android.adbkeyboard/.AdbIME"
+# device_id -> original default IME while ADBKeyboard is switched in
+_IME_ORIGINAL: Dict[str, Optional[str]] = {}
+
+
+def adb_ime_installed(device_id: str) -> bool:
+    r = run_adb(device_id, ["shell", "pm", "list", "packages", ADB_IME_PKG])
+    return ADB_IME_PKG in (r.get("stdout") or "")
+
+
+def ensure_adb_ime(device_id: str) -> Tuple[bool, str]:
+    """Switch the default IME to ADBKeyboard (remembering the original).
+
+    Idempotent within a run: once switched, later ``input_text`` calls are
+    no-ops. The caller should ``restore_ime`` when the run finishes.
+    """
+    if device_id in _IME_ORIGINAL:
+        return True, ""
+    cur = _current_ime(device_id)
+    if cur == ADB_IME_ID:
+        # Already active (user set it manually) — nothing to restore.
+        _IME_ORIGINAL[device_id] = None
+        return True, ""
+    if not adb_ime_installed(device_id):
+        return False, "not installed"
+    if run_adb(device_id, ["shell", "ime", "enable", ADB_IME_ID]).get("returncode", 1) != 0:
+        return False, "ime enable failed"
+    if run_adb(device_id, ["shell", "ime", "set", ADB_IME_ID]).get("returncode", 1) != 0:
+        return False, "ime set failed"
+    _IME_ORIGINAL[device_id] = cur
+    logger.info(f"IME switched to ADBKeyboard (was {cur!r}) for {device_id}")
+    return True, ""
+
+
+def restore_ime(device_id: str) -> None:
+    """Restore the original default IME after a run switched it."""
+    orig = _IME_ORIGINAL.pop(device_id, None)
+    if orig:
+        run_adb(device_id, ["shell", "ime", "set", orig])
+        logger.info(f"IME restored to {orig!r} for {device_id}")
+
+
+def _current_ime(device_id: str) -> str:
+    r = run_adb(device_id, ["shell", "settings", "get", "secure", "default_input_method"])
+    return (r.get("stdout") or "").strip()
 
 
 _KEYEVENT_ALIASES = {
