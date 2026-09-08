@@ -184,15 +184,6 @@ export const ADDABLE_ACTIONS: StepAction[] = [
   'launch_app', 'screenshot', 'shell', 'clear_app_data', 'assert_activity',
 ]
 
-/** Fields of `action` visible for the given step (honours `visibleWhen`). */
-export function visibleFields(action: StepAction, step: Step): StepFieldDef[] {
-  const all = STEP_FIELDS[action] || []
-  return all.filter((f) => {
-    if (!f.visibleWhen) return true
-    return f.visibleWhen.equals.includes(step[f.visibleWhen.key] as string | number)
-  })
-}
-
 /** Build a fresh step of the given action from the schema defaults. */
 export function defaultStep(action: StepAction): Step {
   const step: Step = { action }

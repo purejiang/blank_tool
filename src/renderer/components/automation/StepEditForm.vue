@@ -62,7 +62,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NInput, NInputNumber, NSelect } from 'naive-ui'
-import { STEP_FIELDS, visibleFields, type Step, type StepAction } from './stepTypes'
+import { STEP_FIELDS, type Step, type StepAction } from './stepTypes'
 
 const props = defineProps<{ step: Step }>()
 const emit = defineEmits<{
@@ -75,20 +75,31 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const allFields = computed(() => STEP_FIELDS[props.step.action as StepAction] || [])
-/** Fields rendered for THIS step (mode-dependent fields filtered out). */
-const fields = computed(() => visibleFields(props.step.action as StepAction, props.step))
+/**
+ * Fields rendered for THIS step, honouring `visibleWhen` against the LIVE
+ * form state (not the saved step) — switching 目标方式 must instantly swap
+ * the coordinate fields for the element fields and vice versa.
+ */
+const fields = computed(() =>
+  allFields.value.filter((f) => {
+    if (!f.visibleWhen) return true
+    return f.visibleWhen.equals.includes(form[f.visibleWhen.key] as string | number)
+  }),
+)
 
 /**
  * "Pick from current UI dump" availability + mode:
  *  * tap: coord → fills x/y with the picked element's center; element → fills by/value
- *  * wait: time → picking switches to element mode and fills by/value
+ *  * wait: element mode only — a fixed-duration wait has nothing to pick
  */
 const pickable = computed(() => {
   const a = props.step.action
-  return a === 'tap' || a === 'wait'
+  if (a === 'tap') return true
+  if (a === 'wait') return String(form.mode ?? '') === 'element'
+  return false
 })
 const pickMode = computed<'coord' | 'element'>(() => {
-  const m = String(props.step.mode ?? '')
+  const m = String(form.mode ?? '')
   if (props.step.action === 'tap' && m === 'coord') return 'coord'
   return 'element'
 })
