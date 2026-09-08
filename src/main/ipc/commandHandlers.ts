@@ -127,8 +127,17 @@ export function setupCommandHandlers(
                                 }
 
                                 if (!callbackInfo.resolved) {
-                                    resolve(response.result);
-                                    callbackInfo.resolved = true;
+                                    // Only the streaming INIT ({stream_id}, no
+                                    // `type` field) resolves the invoke. A first
+                                    // streaming event can beat the init onto
+                                    // stdout (worker-thread race in the backend);
+                                    // resolving with a typed event envelope
+                                    // (log/complete/…) would make the renderer's
+                                    // unwrapBackendResponse misread it as an error.
+                                    if (!resultType) {
+                                        resolve(response.result);
+                                        callbackInfo.resolved = true;
+                                    }
                                 }
                             } else if (response.result && (response.result as unknown as JsonObject).type === 'error') {
                                 const errorPayload = ((response.result as unknown as JsonObject).payload) as JsonObject | undefined;
