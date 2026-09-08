@@ -37,6 +37,30 @@ class PluginContext:
                 "payload": f"[{self.plugin_name}] {message}"
             })
 
+    def step_start(self, index: int, action: str):
+        """Emit a per-step ``step_start`` event (index is 1-based).
+
+        Lets the frontend render the row immediately (pending state) instead
+        of only showing everything at ``complete`` time.
+        """
+        if self._stream_handler:
+            self._stream_handler({
+                "type": "step_start",
+                "payload": {"index": index, "action": action},
+            })
+
+    def step(self, record: dict):
+        """Emit a per-step ``step`` event with the finished step record.
+
+        Payload shape matches the entry appended to ``result['steps']``:
+        ``{index, action, ok, message, duration_ms[, screenshot]}``.
+        """
+        if self._stream_handler:
+            self._stream_handler({
+                "type": "step",
+                "payload": record,
+            })
+
     def complete(self, payload: dict):
         """Emit the terminal ``complete`` event so the frontend's
         ``waitForPhase('operation')`` latch resolves.

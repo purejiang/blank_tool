@@ -549,6 +549,7 @@ export default {
     cancelled: 'Cancelled',
     screenshots: 'Screenshots',
     noResult: 'Not run yet',
+    stepPending: 'Running…',
     runLog: 'Run Log',
     copyHash: 'Copy',
     // Import / Export

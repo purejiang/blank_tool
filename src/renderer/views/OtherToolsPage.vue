@@ -221,21 +221,22 @@
         />
 
         <template v-if="rightMode === 'run'">
-        <div class="result-block" v-if="runResult">
+        <div class="result-block" v-if="runResult || liveSteps.length">
           <div class="result-summary">
-            <n-tag :type="runResult.cancelled ? 'warning' : (runResult.success ? 'success' : 'error')" size="small">
+            <n-tag v-if="runResult" :type="runResult.cancelled ? 'warning' : (runResult.success ? 'success' : 'error')" size="small">
               {{ runResult.cancelled ? t('automation.cancelled') : (runResult.success ? t('automation.success') : t('automation.failed')) }}
             </n-tag>
-            <span class="sum-item">{{ t('automation.total') }}: {{ runResult.total ?? 0 }}</span>
-            <span class="sum-item ok">{{ t('automation.passed') }}: {{ runResult.passed ?? 0 }}</span>
-            <span class="sum-item bad">{{ t('automation.failed') }}: {{ runResult.failed ?? 0 }}</span>
+            <n-tag v-else type="info" size="small">{{ t('automation.running') }}</n-tag>
+            <span class="sum-item">{{ t('automation.total') }}: {{ runResult ? (runResult.total ?? 0) : stepRows.length }}</span>
+            <span class="sum-item ok">{{ t('automation.passed') }}: {{ stepPassed }}</span>
+            <span class="sum-item bad">{{ t('automation.failed') }}: {{ stepFailed }}</span>
           </div>
 
-          <div class="steps-result">
-            <div v-for="st in runResult.steps || []" :key="st.index" class="step-line" :class="st.ok ? 'ok' : 'bad'">
+          <div class="steps-result" ref="stepsScroll">
+            <div v-for="st in stepRows" :key="st.index" class="step-line" :class="stepRowClass(st)">
               <span class="step-idx">#{{ st.index }}</span>
               <span class="step-act">{{ actLabel(st.action) }}</span>
-              <span class="step-msg">{{ st.message || (st.ok ? 'ok' : 'fail') }}</span>
+              <span class="step-msg">{{ st.pending ? t('automation.stepPending') : (st.message || (st.ok ? 'ok' : 'fail')) }}</span>
               <span class="step-dur" v-if="st.duration_ms">{{ st.duration_ms }}ms</span>
             </div>
           </div>
@@ -406,6 +407,24 @@ const taskId = ref('')
 const logs = ref<string[]>([])
 const runResult = ref<any>(null)
 const screenshots = ref<string[]>([])
+/** 运行中的实时步骤行（逐步推送，pending=true 表示正在执行） */
+const liveSteps = ref<any[]>([])
+
+/** 结果区渲染源：运行中/结束后优先用实时行，无则回落到 complete 载荷 */
+const stepRows = computed(() => {
+  if (liveSteps.value.length) return liveSteps.value
+  return runResult.value?.steps || []
+})
+const stepPassed = computed(
+  () => stepRows.value.filter((s: any) => s.ok === true).length,
+)
+const stepFailed = computed(
+  () => stepRows.value.filter((s: any) => s.ok === false).length,
+)
+function stepRowClass(st: any) {
+  if (st.pending) return 'pending'
+  return st.ok ? 'ok' : 'bad'
+}
 
 /** 右栏二选一模式：录制 / 运行（步骤展示与运行日志共用这一块区域） */
 const rightMode = ref<'record' | 'run'>('record')
@@ -440,6 +459,7 @@ const dumping = ref(false)
 const showElements = ref(false)
 const elements = ref<UiNode[]>([])
 const logScroll = ref<any>(null)
+const stepsScroll = ref<HTMLElement | null>(null)
 const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
 
 // ---------------- helpers ----------------
@@ -885,6 +905,7 @@ async function runScript() {
   logs.value = []
   runResult.value = null
   screenshots.value = []
+  liveSteps.value = []
 
   const id = genId()
   taskId.value = id
@@ -903,9 +924,22 @@ async function runScript() {
       logs.value.push('[CANCELLED]')
       running.value = false
     },
+    onStepStart: (st: any) => {
+      liveSteps.value = [...liveSteps.value.filter((x: any) => x.index !== st.index), st].sort(
+        (a: any, b: any) => a.index - b.index,
+      )
+    },
+    onStep: (st: any) => {
+      const rest = liveSteps.value.filter((x: any) => x.index !== st?.index)
+      liveSteps.value = [...rest, { ...st }].sort((a: any, b: any) => a.index - b.index)
+    },
     onComplete: (payload: any) => {
       runResult.value = payload || {}
       screenshots.value = (payload?.screenshots || []).slice()
+      // complete 是权威结果：有步骤数据就覆盖实时行
+      if (Array.isArray(payload?.steps) && payload.steps.length) {
+        liveSteps.value = payload.steps.slice()
+      }
       running.value = false
     },
   })
@@ -1081,6 +1115,16 @@ async function importConfig() {
   })
 }
 
+// auto-scroll step results to bottom as rows stream in
+watch(
+  () => liveSteps.value.length,
+  async () => {
+    await nextTick()
+    const el = stepsScroll.value
+    if (el) el.scrollTop = el.scrollHeight
+  },
+)
+
 // auto-scroll log to bottom
 watch(
   () => logs.value.length,
@@ -1228,6 +1272,8 @@ onMounted(() => {
 .step-line { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 2px 0; border-bottom: 1px dashed var(--app-card-border); }
 .step-line.ok .step-idx { color: #18a058; }
 .step-line.bad .step-idx { color: #d03050; }
+.step-line.pending .step-idx { color: #2080f0; }
+.step-line.pending .step-msg { color: #2080f0; font-style: italic; }
 .step-idx { font-weight: 600; }
 .step-act { color: var(--app-text-primary); font-weight: 500; }
 .step-msg { color: var(--app-text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

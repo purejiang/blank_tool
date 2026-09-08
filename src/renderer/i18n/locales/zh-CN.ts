@@ -552,6 +552,7 @@ export default {
     cancelled: '已取消',
     screenshots: '截图',
     noResult: '尚未运行',
+    stepPending: '执行中…',
     runLog: '运行日志',
     copyHash: '复制',
     // 导入导出

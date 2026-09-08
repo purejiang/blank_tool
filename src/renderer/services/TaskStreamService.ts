@@ -37,6 +37,10 @@ export interface TaskCallbacks {
   onError?: (message: string, phase: 'download' | 'operation') => void
   onCancelled?: () => void
   onLog?: (line: string) => void
+  /** Streaming per-step progress (adb_auto): a step started executing. */
+  onStepStart?: (payload: any) => void
+  /** Streaming per-step progress (adb_auto): a step finished. */
+  onStep?: (payload: any) => void
 }
 
 // ------------------------------------------------------------------
@@ -268,6 +272,20 @@ class TaskStreamService {
           }
           callbacks.onCancelled?.()
           this.unbindTask(tid)
+          break
+        }
+
+        // Streaming step progress (adb_auto plugin).
+        // 'step_start' renders a pending row immediately, 'step' replaces it
+        // with the finished record so results appear one by one during a run.
+        case 'step_start': {
+          const p = data.payload || {}
+          callbacks.onStepStart?.({ index: p.index, action: p.action, pending: true })
+          break
+        }
+
+        case 'step': {
+          callbacks.onStep?.(data.payload || {})
           break
         }
 

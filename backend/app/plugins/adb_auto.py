@@ -77,6 +77,7 @@ def run(
             {"index": 0, "action": "init", "ok": False,
              "message": "missing device_id", "duration_ms": 0}
         )
+        context.step(result["steps"][-1])
         context.complete(result)
         return result
 
@@ -99,6 +100,9 @@ def run(
             return result
 
         action = step.get("action", "")
+        # Stream the pending row BEFORE executing so the UI shows progress
+        # step by step (long waits / element polling no longer look frozen).
+        context.step_start(i + 1, action)
         t0 = time.time()
         ok, message, screenshot = _exec_step(
             context, device_id, package_name, action, step
@@ -117,6 +121,8 @@ def run(
             if screenshot not in result["screenshots"]:
                 result["screenshots"].append(screenshot)
         result["steps"].append(step_rec)
+        # Live progress: one event per finished step.
+        context.step(step_rec)
 
         if ok:
             result["passed"] += 1
@@ -134,6 +140,7 @@ def run(
                 result["screenshots"].append(shot["file_path"])
                 step_rec["screenshot"] = shot["file_path"]
             result["success"] = False
+            context.step(step_rec)
             context.complete(result)
             return result
         context.log(f"[FAIL] step {i + 1} continued ({action}): {message}")
