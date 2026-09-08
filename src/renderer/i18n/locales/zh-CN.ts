@@ -526,6 +526,7 @@ export default {
     // 元素选择器
     elements: '当前界面元素',
     pickHint: '点击一个元素，填充到正在编辑的步骤中',
+    clickable: '可点击',
     noDevice: '请先选择设备',
     dumpFailed: '界面抓取失败：{msg}',
     noElements: '未检测到可点击元素',

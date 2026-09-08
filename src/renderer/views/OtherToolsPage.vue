@@ -268,6 +268,7 @@
         <n-list-item v-for="(el, i) in elements" :key="i" @click="applyElement(el)" class="elem-item">
           <div class="elem-main">
             <span class="elem-label">{{ el.label }}</span>
+            <span v-if="el.clickable" class="elem-click">{{ t('automation.clickable') }}</span>
             <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
           </div>
           <span class="elem-bounds">{{ el.bounds }}</span>
@@ -376,6 +377,7 @@ interface UiNode {
   bounds: string
   by: string
   value: string
+  clickable: boolean
   label: string
 }
 
@@ -797,6 +799,11 @@ function attr(tag: string, name: string): string {
   return m ? m[1] : ''
 }
 
+function shortClass(cls: string): string {
+  const i = cls.lastIndexOf('.')
+  return i >= 0 ? cls.slice(i + 1) : cls
+}
+
 function parseUiDump(xml: string): UiNode[] {
   if (!xml) return []
   const openTags = xml.match(/<node[^>]*>/g) || []
@@ -807,7 +814,10 @@ function parseUiDump(xml: string): UiNode[] {
     const desc = attr(tag, 'content-desc')
     const cls = attr(tag, 'class')
     const bounds = attr(tag, 'bounds')
-    if (!text && !rid && !desc) continue
+    const clickable = attr(tag, 'clickable') === 'true'
+    // Keep nodes identifiable by text/rid/desc, plus clickable widgets
+    // (icon-only buttons etc.) which are located by class substring.
+    if (!text && !rid && !desc && !clickable) continue
     let by = ''
     let value = ''
     if (text) {
@@ -819,8 +829,21 @@ function parseUiDump(xml: string): UiNode[] {
     } else if (desc) {
       by = 'content_desc'
       value = desc
+    } else {
+      by = 'class'
+      value = cls
     }
-    nodes.push({ text, resource_id: rid, content_desc: desc, class: cls, bounds, by, value, label: text || rid || desc })
+    nodes.push({
+      text,
+      resource_id: rid,
+      content_desc: desc,
+      class: cls,
+      bounds,
+      by,
+      value,
+      clickable,
+      label: text || rid || desc || shortClass(cls),
+    })
   }
   return nodes
 }
@@ -1312,7 +1335,9 @@ onMounted(() => {
 .elem-item { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .elem-item:hover { background: var(--app-blue-bg); }
 .elem-main { display: flex; flex-direction: column; min-width: 0; }
+.elem-label-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .elem-label { font-size: 13px; color: var(--app-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.elem-click { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-green); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .elem-by { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-bounds { font-size: 10.5px; color: var(--app-text-muted); flex: 0 0 auto; }
 </style>

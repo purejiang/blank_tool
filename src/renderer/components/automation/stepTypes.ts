@@ -65,6 +65,7 @@ const BY_OPTIONS = [
   { value: 'text', label: 'text' },
   { value: 'resource_id', label: 'resource-id' },
   { value: 'content_desc', label: 'content-desc' },
+  { value: 'class', label: 'class' },
 ]
 
 function ELEMENT_FIELDS(visibleWhen?: { key: string; equals: Array<string | number> }): StepFieldDef[] {

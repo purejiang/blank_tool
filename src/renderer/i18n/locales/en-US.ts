@@ -523,6 +523,7 @@ export default {
     // Element picker
     elements: 'Current Screen Elements',
     pickHint: 'Click an element to fill it into the step being edited',
+    clickable: 'clickable',
     noDevice: 'Select a device first',
     dumpFailed: 'UI dump failed: {msg}',
     noElements: 'No tappable elements detected',
