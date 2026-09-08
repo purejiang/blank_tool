@@ -525,8 +525,6 @@ export default {
     noSelection: '请选择左侧的项目与脚本',
     // 元素选择器
     elements: '当前界面元素',
-    elementsDesc: '点击元素插入 tap_element 步骤，或用右侧按钮插入“等待该元素出现”步骤',
-    insertWaitElement: '等待出现',
     pickHint: '点击一个元素，填充到正在编辑的步骤中',
     noDevice: '请先选择设备',
     dumpFailed: '界面抓取失败：{msg}',

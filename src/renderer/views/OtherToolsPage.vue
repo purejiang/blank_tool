@@ -262,9 +262,7 @@
 
     <!-- ============ Element picker modal ============ -->
     <n-modal v-model:show="showElements" :title="t('automation.elements')" preset="card" style="width: 520px">
-      <p class="muted">
-        {{ pickTarget ? t('automation.pickHint') : t('automation.elementsDesc') }}
-      </p>
+      <p class="muted">{{ t('automation.pickHint') }}</p>
       <n-empty v-if="!elements.length" :description="t('automation.noElements')" size="small" />
       <n-list v-else bordered class="elem-list">
         <n-list-item v-for="(el, i) in elements" :key="i" @click="applyElement(el)" class="elem-item">
@@ -273,11 +271,6 @@
             <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
           </div>
           <span class="elem-bounds">{{ el.bounds }}</span>
-          <template v-if="!pickTarget" #suffix>
-            <n-button size="tiny" secondary @click.stop="insertWaitElement(el)">
-              {{ t('automation.insertWaitElement') }}
-            </n-button>
-          </template>
         </n-list-item>
       </n-list>
     </n-modal>
@@ -858,25 +851,8 @@ async function getElements() {
   }
 }
 
-function insertElement(el: UiNode) {
-  const step: Step = { action: 'tap', mode: 'element', by: el.by, value: el.value, timeout_ms: 10000 }
-  editor.value.steps = [...editor.value.steps, step]
-  if (stepsView.value === 'json') _syncJsonText()
-  showElements.value = false
-  message.success(el.label)
-}
-
-/** 插入“等待该元素出现”步骤，用于同步应用状态（弹窗/页面跳转后等按钮就绪）。 */
-function insertWaitElement(el: UiNode) {
-  const step: Step = { action: 'wait', mode: 'element', by: el.by, value: el.value, timeout_ms: 10000 }
-  editor.value.steps = [...editor.value.steps, step]
-  if (stepsView.value === 'json') _syncJsonText()
-  showElements.value = false
-  message.success(`${t('automation.insertWaitElement')}: ${el.label}`)
-}
-
 // ---------------- 从界面元素拾取（填充正在编辑的步骤） ----------------
-/** 非空 = 元素抽屉处于“填充步骤”模式；null = 插入新步骤模式 */
+/** 元素抽屉始终处于“填充步骤”模式（由编辑表单的“获取界面元素”按钮打开） */
 const pickTarget = ref<{ index: number; mode: 'coord' | 'element' } | null>(null)
 
 function onStepPick(payload: { index: number; mode: 'coord' | 'element' }) {
@@ -893,39 +869,36 @@ function boundsCenter(bounds: string): { x: number; y: number } | null {
   }
 }
 
-/** 元素抽屉里选中一个元素：填充拾取目标步骤，或按插入模式追加新步骤 */
+/** 元素抽屉里选中一个元素：填充正在编辑的步骤 */
 function applyElement(el: UiNode) {
   const target = pickTarget.value
-  if (target) {
-    const steps = [...editor.value.steps]
-    const s = { ...steps[target.index] } as Step
-    if (!s) return
-    if (target.mode === 'coord') {
-      const c = boundsCenter(el.bounds)
-      if (!c) {
-        message.error(t('automation.dumpFailed', { msg: 'no bounds' }))
-        return
-      }
-      s.x = c.x
-      s.y = c.y
-      delete s.by
-      delete s.value
-    } else {
-      s.mode = 'element'
-      s.by = el.by
-      s.value = el.value
-      if (s.timeout_ms === undefined) s.timeout_ms = 10000
-      if (s.action === 'wait') delete s.ms
+  if (!target) return
+  const steps = [...editor.value.steps]
+  const s = { ...steps[target.index] } as Step
+  if (!s) return
+  if (target.mode === 'coord') {
+    const c = boundsCenter(el.bounds)
+    if (!c) {
+      message.error(t('automation.dumpFailed', { msg: 'no bounds' }))
+      return
     }
-    steps[target.index] = s
-    editor.value.steps = steps
-    if (stepsView.value === 'json') _syncJsonText()
-    pickTarget.value = null
-    showElements.value = false
-    message.success(el.label)
+    s.x = c.x
+    s.y = c.y
+    delete s.by
+    delete s.value
   } else {
-    insertElement(el)
+    s.mode = 'element'
+    s.by = el.by
+    s.value = el.value
+    if (s.timeout_ms === undefined) s.timeout_ms = 10000
+    if (s.action === 'wait') delete s.ms
   }
+  steps[target.index] = s
+  editor.value.steps = steps
+  if (stepsView.value === 'json') _syncJsonText()
+  pickTarget.value = null
+  showElements.value = false
+  message.success(el.label)
 }
 
 // ---------------- run / stop ----------------
