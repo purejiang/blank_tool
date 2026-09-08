@@ -27,6 +27,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.utils.adb_auto_core import (
     launch_app,
     clear_app_data,
+    get_display_transform,
+    rotate_to_display,
     tap,
     swipe,
     input_text,
@@ -87,6 +89,16 @@ def run(
         return result
 
     n = len(steps)
+    # Recorded steps store touch-panel RAW coords (getevent native
+    # orientation); `input tap` needs display coords for the CURRENT
+    # rotation (e.g. a landscape-locked game rotates the 900x1600 panel
+    # to 1600x900 — raw y>900 would land off-screen and silently no-op).
+    dt = get_display_transform(device_id)
+    if dt.get("rotation"):
+        context.log(
+            f"display rotation={dt['rotation']}, panel={dt['width']}x{dt['height']}"
+            " — raw coords will be rotated to display space"
+        )
     for i, step in enumerate(steps):
         # Cancel check at the top of every step.
         if context.is_cancelled():
@@ -105,7 +117,7 @@ def run(
         context.step_start(i + 1, action)
         t0 = time.time()
         ok, message, screenshot = _exec_step(
-            context, device_id, package_name, action, step
+            context, device_id, package_name, action, step, dt
         )
         duration_ms = int((time.time() - t0) * 1000)
 
@@ -159,8 +171,15 @@ def _exec_step(
     package_name: Optional[str],
     action: str,
     step: Dict[str, Any],
+    dt: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, str, Optional[str]]:
     """Execute one step. Returns (ok, message, screenshot_path|None)."""
+    dt = dt or {"rotation": 0, "width": 0, "height": 0}
+
+    def disp(x, y):
+        """Panel raw coords → display coords for `input tap/swipe`."""
+        return rotate_to_display(x, y, dt["rotation"], dt["width"], dt["height"])
+
     try:
         if action == "launch_app":
             pkg = step.get("package") or package_name
@@ -168,14 +187,16 @@ def _exec_step(
             return _ok(r), _err(r, "launch failed"), None
 
         if action == "tap":
-            r = tap(device_id, int(step["x"]), int(step["y"]))
+            x, y = disp(int(step["x"]), int(step["y"]))
+            r = tap(device_id, x, y)
             return _ok(r), _err(r, "tap failed"), None
 
         if action == "swipe":
+            x1, y1 = disp(int(step["x1"]), int(step["y1"]))
+            x2, y2 = disp(int(step["x2"]), int(step["y2"]))
             r = swipe(
                 device_id,
-                int(step["x1"]), int(step["y1"]),
-                int(step["x2"]), int(step["y2"]),
+                x1, y1, x2, y2,
                 int(step.get("duration_ms", 300)),
             )
             return _ok(r), _err(r, "swipe failed"), None
@@ -206,7 +227,13 @@ def _exec_step(
         if action == "wait":
             ms = int(step.get("ms", 0))
             if ms > 0:
-                time.sleep(ms / 1000.0)
+                # Sleep in slices so Stop takes effect during long waits
+                # (otherwise a 5s wait swallows the cancel for 5 seconds).
+                deadline = time.time() + ms / 1000.0
+                while time.time() < deadline:
+                    if context.is_cancelled():
+                        break
+                    time.sleep(min(0.1, max(0.0, deadline - time.time())))
             return True, "", None
 
         if action == "tap_element":

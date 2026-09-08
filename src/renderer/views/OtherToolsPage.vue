@@ -978,9 +978,12 @@ async function runScript() {
 async function stopRun() {
   if (!taskId.value) return
   const api = window.electronAPI as any
-  if (api && typeof api.cancelApkTask === 'function') {
+  // Streams (adb_auto / plugin.run) register their stop_event in TaskManager
+  // under task_id — only `request.cancel` signals it. `apk.cancelTask` only
+  // touches APK jobs, so using it here left the run unstoppable.
+  if (api && typeof api.cancelRequest === 'function') {
     try {
-      await api.cancelApkTask(taskId.value)
+      await api.cancelRequest(taskId.value)
     } catch {
       /* ignore */
     }
