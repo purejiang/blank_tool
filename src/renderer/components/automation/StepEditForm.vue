@@ -88,15 +88,14 @@ const fields = computed(() =>
 )
 
 /**
- * "Pick from current UI dump" availability + mode:
- *  * tap: coord → fills x/y with the picked element's center; element → fills by/value
- *  * wait: element mode only — a fixed-duration wait has nothing to pick
+ * "Pick from current UI dump" availability: ONLY meaningful for an element
+ * target (fills by/value). Coordinate taps and fixed-duration waits have
+ * nothing to pick.
  */
 const pickable = computed(() => {
   const a = props.step.action
-  if (a === 'tap') return true
-  if (a === 'wait') return String(form.mode ?? '') === 'element'
-  return false
+  if (a !== 'tap' && a !== 'wait') return false
+  return String(form.mode ?? '') === 'element'
 })
 const pickMode = computed<'coord' | 'element'>(() => {
   const m = String(form.mode ?? '')
