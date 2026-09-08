@@ -94,6 +94,8 @@ const fields = computed(() =>
  */
 const pickable = computed(() => {
   const a = props.step.action
+  // input focuses the target field by by/value — always element-based
+  if (a === 'input') return true
   if (a !== 'tap' && a !== 'wait') return false
   return String(form.mode ?? '') === 'element'
 })

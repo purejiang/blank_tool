@@ -934,7 +934,8 @@ function applyElement(el: UiNode) {
     delete s.by
     delete s.value
   } else {
-    s.mode = 'element'
+    // input has no `mode` field — by/value is the optional focus tap
+    if (s.action !== 'input') s.mode = 'element'
     s.by = el.by
     s.value = el.value
     if (s.timeout_ms === undefined) s.timeout_ms = 10000
