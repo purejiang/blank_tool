@@ -277,6 +277,11 @@
             <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
           </div>
           <span class="elem-bounds">{{ el.bounds }}</span>
+          <template #suffix>
+            <n-button size="tiny" secondary @click.stop="insertWaitElement(el)">
+              {{ t('automation.insertWaitElement') }}
+            </n-button>
+          </template>
         </n-list-item>
       </n-list>
     </n-modal>
@@ -881,6 +886,15 @@ function insertElement(el: UiNode) {
   if (stepsView.value === 'json') _syncJsonText()
   showElements.value = false
   message.success(el.label)
+}
+
+/** 插入“等待该元素出现”步骤，用于同步应用状态（弹窗/页面跳转后等按钮就绪）。 */
+function insertWaitElement(el: UiNode) {
+  const step: Step = { action: 'wait_element', by: el.by, value: el.value, timeout_ms: 10000 }
+  editor.value.steps = [...editor.value.steps, step]
+  if (stepsView.value === 'json') _syncJsonText()
+  showElements.value = false
+  message.success(`${t('automation.insertWaitElement')}: ${el.label}`)
 }
 
 // ---------------- run / stop ----------------

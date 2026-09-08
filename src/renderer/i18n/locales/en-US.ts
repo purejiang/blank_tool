@@ -524,7 +524,8 @@ export default {
     noSelection: 'Select a project and script on the left',
     // Element picker
     elements: 'Current Screen Elements',
-    elementsDesc: 'Click an element to insert a tap_element step',
+    elementsDesc: 'Click an element to insert a tap_element step, or use the button on the right to insert a "wait for this element" step',
+    insertWaitElement: 'Wait',
     noDevice: 'Select a device first',
     dumpFailed: 'UI dump failed: {msg}',
     noElements: 'No tappable elements detected',
