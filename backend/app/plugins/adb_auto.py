@@ -180,6 +180,13 @@ def _exec_step(
         """Panel raw coords → display coords for `input tap/swipe`."""
         return rotate_to_display(x, y, dt["rotation"], dt["width"], dt["height"])
 
+    # Unified intents: legacy element action names map onto their base
+    # action; the by/value pair then selects the element target.
+    action = {"tap_element": "tap", "wait_element": "wait"}.get(action, action)
+
+    def has_element_target() -> bool:
+        return bool(str(step.get("by", "")) and str(step.get("value", "")))
+
     try:
         if action == "launch_app":
             pkg = step.get("package") or package_name
@@ -187,6 +194,13 @@ def _exec_step(
             return _ok(r), _err(r, "launch failed"), None
 
         if action == "tap":
+            if has_element_target():
+                r = tap_element(
+                    device_id, step.get("by", ""), step.get("value", ""),
+                    timeout_ms=int(step.get("timeout_ms", 10000)),
+                )
+                ok = r.get("success", False)
+                return ok, "" if ok else (r.get("error") or "element tap failed"), None
             x, y = disp(int(step["x"]), int(step["y"]))
             r = tap(device_id, x, y)
             return _ok(r), _err(r, "tap failed"), None
@@ -225,6 +239,14 @@ def _exec_step(
             return _ok(r), _err(r, "shell failed"), None
 
         if action == "wait":
+            if has_element_target():
+                # wait for an element to appear (poll uiautomator dump)
+                r = find_element(
+                    device_id, step.get("by", ""), step.get("value", ""),
+                    timeout_ms=int(step.get("timeout_ms", 10000)),
+                )
+                ok = r.get("found", False)
+                return ok, "" if ok else (r.get("error") or "element not found (wait)"), None
             ms = int(step.get("ms", 0))
             if ms > 0:
                 # Sleep in slices so Stop takes effect during long waits
@@ -236,7 +258,7 @@ def _exec_step(
                     time.sleep(min(0.1, max(0.0, deadline - time.time())))
             return True, "", None
 
-        if action == "tap_element":
+        if action == "tap_element":  # legacy name — handled via alias above
             r = tap_element(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),
@@ -244,7 +266,7 @@ def _exec_step(
             ok = r.get("success", False)
             return ok, "" if ok else (r.get("error") or "element not found"), None
 
-        if action == "wait_element":
+        if action == "wait_element":  # legacy name — handled via alias above
             r = find_element(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),

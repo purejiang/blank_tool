@@ -17,15 +17,30 @@ function num(v: unknown, fallback = 0): number {
 
 function str(v: unknown): string {
   return v === undefined || v === null ? '' : String(v)
-}/** One-line human-readable parameter summary (numbers verbatim, no i18n). */
+}
+
+/** An element target: `by` + `value` both present (legacy or unified mode). */
+function isElementTarget(step: Step): boolean {
+  return !!str(step.by) && !!str(step.value)
+}
+
+function elementSummary(step: Step): string {
+  return `${str(step.by)}: ${str(step.value) || '—'} · ${num(step.timeout_ms, 10000)}ms`
+}
+
+/** One-line human-readable parameter summary (numbers verbatim, no i18n). */
 export function stepSummary(step: Step): string {
   switch (step.action as StepAction) {
     case 'tap':
-      return `(${num(step.x)}, ${num(step.y)})`
+      return isElementTarget(step)
+        ? elementSummary(step)
+        : `(${num(step.x)}, ${num(step.y)})`
     case 'swipe':
       return `(${num(step.x1)}, ${num(step.y1)}) → (${num(step.x2)}, ${num(step.y2)}) · ${num(step.duration_ms, 300)}ms`
     case 'wait':
-      return `${num(step.ms)}ms`
+      return isElementTarget(step)
+        ? elementSummary(step)
+        : `${num(step.ms)}ms`
     case 'input': {
       const text = str(step.text)
       return text ? `“${text}”` : '—'
@@ -39,7 +54,7 @@ export function stepSummary(step: Step): string {
       return str(step.command) || '—'
     case 'tap_element':
     case 'wait_element':
-      return `${str(step.by)}: ${str(step.value) || '—'} · ${num(step.timeout_ms, 10000)}ms`
+      return elementSummary(step)
     case 'assert_element':
       return `${str(step.by)}: ${str(step.value) || '—'} · ${str(step.expect) || 'exists'}`
     case 'assert_activity':

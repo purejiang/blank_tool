@@ -529,6 +529,7 @@ export default {
     elements: '当前界面元素',
     elementsDesc: '点击元素插入 tap_element 步骤，或用右侧按钮插入“等待该元素出现”步骤',
     insertWaitElement: '等待出现',
+    pickHint: '点击一个元素，填充到正在编辑的步骤中',
     noDevice: '请先选择设备',
     dumpFailed: '界面抓取失败：{msg}',
     noElements: '未检测到可点击元素',
@@ -604,11 +605,14 @@ export default {
       command: '命令', by: '定位方式', value: '匹配值',
       timeoutMs: '超时 (ms)', expect: '期望', activity: '界面 Activity',
       name: '截图名称',
+      target: '目标方式',
+      byCoord: '坐标', byElement: '元素', byDuration: '固定时长',
+      pickElement: '获取界面元素',
     },
     // 步骤动作中文名
     act: {
       launch_app: '启动应用',
-      tap: '点击坐标',
+      tap: '点击',
       swipe: '滑动',
       input: '输入文本',
       keyevent: '按键',

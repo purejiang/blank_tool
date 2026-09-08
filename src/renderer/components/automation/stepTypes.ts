@@ -41,17 +41,68 @@ export interface StepFieldDef {
   required?: boolean
   default?: string | number
   placeholder?: string
-  options?: Array<{ value: string; label: string }>
+  options?: Array<{ value: string; label?: string; labelKey?: string }>
+  /**
+   * Render / validate this field ONLY when `<key>` equals one of `equals`.
+   * Enables one action (e.g. `tap`) to switch between coordinate and
+   * element targets via its `mode` field.
+   */
+  visibleWhen?: { key: string; equals: Array<string | number> }
 }
 
 /**
- * Parameter schema per action. Order defines form rendering order.
- * Required fields without defaults must be filled by the user.
+ * Per-action parameter schema. Order defines form rendering order.
+ *
+ * Design rule — **one action per intent, `mode` selects the target**:
+ *   * `tap`  → mode: coord (x/y) | element (by/value)
+ *   * `wait` → mode: time (ms)   | element (by/value)
+ * Legacy names (`tap_element`, `wait_element`, `assert_element`) stay
+ * readable/editable so existing scripts keep working, but they are no
+ * longer offered when adding a step.
  */
+/** Selector used to locate a UI element (shared by every "element" target). */
+const BY_OPTIONS = [
+  { value: 'text', label: 'text' },
+  { value: 'resource_id', label: 'resource-id' },
+  { value: 'content_desc', label: 'content-desc' },
+]
+
+function ELEMENT_FIELDS(visibleWhen?: { key: string; equals: Array<string | number> }): StepFieldDef[] {
+  return [
+    {
+      key: 'by', labelKey: 'by', type: 'select', required: true, default: 'text',
+      options: BY_OPTIONS,
+      visibleWhen,
+    },
+    {
+      key: 'value', labelKey: 'value', type: 'text', required: true, default: '',
+      visibleWhen,
+    },
+    {
+      key: 'timeout_ms', labelKey: 'timeoutMs', type: 'number', default: 10000,
+      visibleWhen,
+    },
+  ]
+}
+
 export const STEP_FIELDS: Record<StepAction, StepFieldDef[]> = {
   tap: [
-    { key: 'x', labelKey: 'x', type: 'number', required: true, default: 540 },
-    { key: 'y', labelKey: 'y', type: 'number', required: true, default: 960 },
+    {
+      key: 'mode', labelKey: 'target', type: 'select', required: true, default: 'coord',
+      options: [
+        { value: 'coord', labelKey: 'byCoord' },
+        { value: 'element', labelKey: 'byElement' },
+      ],
+    },
+    {
+      key: 'x', labelKey: 'x', type: 'number', required: true, default: 540,
+      visibleWhen: { key: 'mode', equals: ['coord'] },
+    },
+    {
+      key: 'y', labelKey: 'y', type: 'number', required: true, default: 960,
+      visibleWhen: { key: 'mode', equals: ['coord'] },
+    },
+    ...ELEMENT_FIELDS({ key: 'mode', equals: ['element'] }),
   ],
   swipe: [
     { key: 'x1', labelKey: 'x1', type: 'number', required: true, default: 540 },
@@ -61,7 +112,18 @@ export const STEP_FIELDS: Record<StepAction, StepFieldDef[]> = {
     { key: 'duration_ms', labelKey: 'durationMs', type: 'number', default: 300 },
   ],
   wait: [
-    { key: 'ms', labelKey: 'ms', type: 'number', required: true, default: 500 },
+    {
+      key: 'mode', labelKey: 'target', type: 'select', required: true, default: 'time',
+      options: [
+        { value: 'time', labelKey: 'byDuration' },
+        { value: 'element', labelKey: 'byElement' },
+      ],
+    },
+    {
+      key: 'ms', labelKey: 'ms', type: 'number', required: true, default: 500,
+      visibleWhen: { key: 'mode', equals: ['time'] },
+    },
+    ...ELEMENT_FIELDS({ key: 'mode', equals: ['element'] }),
   ],
   input: [
     { key: 'text', labelKey: 'text', type: 'textarea', required: true, default: '' },
@@ -93,41 +155,12 @@ export const STEP_FIELDS: Record<StepAction, StepFieldDef[]> = {
   shell: [
     { key: 'command', labelKey: 'command', type: 'textarea', required: true, default: '' },
   ],
-  tap_element: [
-    {
-      key: 'by', labelKey: 'by', type: 'select', required: true, default: 'text',
-      options: [
-        { value: 'text', label: 'text' },
-        { value: 'resource_id', label: 'resource-id' },
-        { value: 'content_desc', label: 'content-desc' },
-      ],
-    },
-    { key: 'value', labelKey: 'value', type: 'text', required: true, default: '' },
-    { key: 'timeout_ms', labelKey: 'timeoutMs', type: 'number', default: 10000 },
-  ],
-  wait_element: [
-    {
-      key: 'by', labelKey: 'by', type: 'select', required: true, default: 'text',
-      options: [
-        { value: 'text', label: 'text' },
-        { value: 'resource_id', label: 'resource-id' },
-        { value: 'content_desc', label: 'content-desc' },
-      ],
-    },
-    { key: 'value', labelKey: 'value', type: 'text', required: true, default: '' },
-    { key: 'timeout_ms', labelKey: 'timeoutMs', type: 'number', default: 10000 },
-  ],
+  // Legacy element actions — kept readable/editable for existing scripts,
+  // but no longer offered in the "add step" menu.
+  tap_element: ELEMENT_FIELDS(),
+  wait_element: ELEMENT_FIELDS(),
   assert_element: [
-    {
-      key: 'by', labelKey: 'by', type: 'select', required: true, default: 'text',
-      options: [
-        { value: 'text', label: 'text' },
-        { value: 'resource_id', label: 'resource-id' },
-        { value: 'content_desc', label: 'content-desc' },
-      ],
-    },
-    { key: 'value', labelKey: 'value', type: 'text', required: true, default: '' },
-    { key: 'timeout_ms', labelKey: 'timeoutMs', type: 'number', default: 10000 },
+    ...ELEMENT_FIELDS(),
     {
       key: 'expect', labelKey: 'expect', type: 'select', default: 'exists',
       options: [
@@ -147,15 +180,23 @@ export const STEP_FIELDS: Record<StepAction, StepFieldDef[]> = {
 
 /** Order of actions in the "add step" dropdown (most used first). */
 export const ADDABLE_ACTIONS: StepAction[] = [
-  'wait', 'tap', 'swipe', 'input', 'keyevent', 'back', 'home',
-  'launch_app', 'screenshot', 'shell', 'clear_app_data',
-  'tap_element', 'wait_element', 'assert_element', 'assert_activity',
+  'tap', 'wait', 'swipe', 'input', 'keyevent', 'back', 'home',
+  'launch_app', 'screenshot', 'shell', 'clear_app_data', 'assert_activity',
 ]
+
+/** Fields of `action` visible for the given step (honours `visibleWhen`). */
+export function visibleFields(action: StepAction, step: Step): StepFieldDef[] {
+  const all = STEP_FIELDS[action] || []
+  return all.filter((f) => {
+    if (!f.visibleWhen) return true
+    return f.visibleWhen.equals.includes(step[f.visibleWhen.key] as string | number)
+  })
+}
 
 /** Build a fresh step of the given action from the schema defaults. */
 export function defaultStep(action: StepAction): Step {
   const step: Step = { action }
-  for (const f of STEP_FIELDS[action]) {
+  for (const f of STEP_FIELDS[action] || []) {
     if (f.default !== undefined) step[f.key] = f.default
   }
   return step

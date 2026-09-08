@@ -526,6 +526,7 @@ export default {
     elements: 'Current Screen Elements',
     elementsDesc: 'Click an element to insert a tap_element step, or use the button on the right to insert a "wait for this element" step',
     insertWaitElement: 'Wait',
+    pickHint: 'Click an element to fill it into the step being edited',
     noDevice: 'Select a device first',
     dumpFailed: 'UI dump failed: {msg}',
     noElements: 'No tappable elements detected',
@@ -601,11 +602,14 @@ export default {
       command: 'Command', by: 'Locator', value: 'Value',
       timeoutMs: 'Timeout (ms)', expect: 'Expect', activity: 'Activity',
       name: 'Screenshot name',
+      target: 'Target',
+      byCoord: 'Coordinates', byElement: 'Element', byDuration: 'Fixed time',
+      pickElement: 'Pick from UI',
     },
     // Step action labels
     act: {
       launch_app: 'Launch App',
-      tap: 'Tap (xy)',
+      tap: 'Tap',
       swipe: 'Swipe',
       input: 'Input Text',
       keyevent: 'Key Event',

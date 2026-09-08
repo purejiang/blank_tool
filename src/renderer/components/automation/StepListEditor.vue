@@ -75,6 +75,7 @@
           @click.stop
           @save="onSave(i, $event)"
           @cancel="editingIndex = -1"
+          @pick="onPick(i, $event)"
         />
       </div>
     </div>
@@ -107,6 +108,8 @@ const emit = defineEmits<{
   (e: 'update:modelValue', steps: Step[]): void
   (e: 'update:selectedIndex', index: number): void
   (e: 'record-request'): void
+  /** StepEditForm 请求从当前界面 dump 中拾取元素/坐标 */
+  (e: 'pick', payload: { index: number; mode: 'coord' | 'element' }): void
 }>()
 
 const { t } = useI18n()
@@ -191,6 +194,10 @@ function onSave(i: number, step: Step) {
   list[i] = step
   emitList(list)
   editingIndex.value = -1
+}
+
+function onPick(i: number, payload: { mode: 'coord' | 'element' }) {
+  emit('pick', { index: i, ...payload })
 }
 </script>
 

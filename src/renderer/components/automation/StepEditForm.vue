@@ -17,7 +17,7 @@
         size="small"
         tag
         filterable
-        :options="(f.options || []).map(o => ({ value: o.value, label: o.label }))"
+        :options="(f.options || []).map(o => ({ value: o.value, label: o.labelKey ? t(`automation.f.${o.labelKey}`) : (o.label || o.value) }))"
         class="field-ctl"
         @update:value="(v: string) => setField(f.key, v)"
       />
@@ -44,6 +44,11 @@
     <div v-if="error" class="form-error">{{ error }}</div>
 
     <div class="form-actions">
+      <n-button
+        v-if="pickable"
+        size="tiny"
+        @click="$emit('pick', { mode: pickMode })"
+      >{{ t('automation.f.pickElement') }}</n-button>
       <n-button size="tiny" @click="$emit('cancel')">{{ t('common.cancel') }}</n-button>
       <n-button size="tiny" type="primary" @click="save">{{ t('common.confirm') }}</n-button>
     </div>
@@ -54,21 +59,40 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NInput, NInputNumber, NSelect } from 'naive-ui'
-import { STEP_FIELDS, type Step, type StepAction } from './stepTypes'
+import { STEP_FIELDS, visibleFields, type Step, type StepAction } from './stepTypes'
 
 const props = defineProps<{ step: Step }>()
 const emit = defineEmits<{
   (e: 'save', step: Step): void
   (e: 'cancel'): void
+  /** Request the current UI dump to fill element/coord targets. */
+  (e: 'pick', payload: { mode: 'coord' | 'element' }): void
 }>()
 
 const { t } = useI18n()
 
-const fields = computed(() => STEP_FIELDS[props.step.action as StepAction] || [])
+const allFields = computed(() => STEP_FIELDS[props.step.action as StepAction] || [])
+/** Fields rendered for THIS step (mode-dependent fields filtered out). */
+const fields = computed(() => visibleFields(props.step.action as StepAction, props.step))
+
+/**
+ * "Pick from current UI dump" availability + mode:
+ *  * tap: coord → fills x/y with the picked element's center; element → fills by/value
+ *  * wait: time → picking switches to element mode and fills by/value
+ */
+const pickable = computed(() => {
+  const a = props.step.action
+  return a === 'tap' || a === 'wait'
+})
+const pickMode = computed<'coord' | 'element'>(() => {
+  const m = String(props.step.mode ?? '')
+  if (props.step.action === 'tap' && m === 'coord') return 'coord'
+  return 'element'
+})
 
 function buildForm(): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const f of fields.value) out[f.key] = props.step[f.key] ?? f.default ?? null
+  for (const f of allFields.value) out[f.key] = props.step[f.key] ?? f.default ?? null
   return out
 }
 
@@ -105,13 +129,17 @@ function save() {
     }
   }
   error.value = ''
-  const next: Step = { ...props.step }
+  // Rebuild from VISIBLE fields only — switching mode (e.g. element → coord)
+  // must not leave stale by/value pairs behind (the backend keys element
+  // mode off their presence).
+  const next: Step = { action: props.step.action }
+  if (props.step.ts !== undefined) next.ts = props.step.ts
   for (const f of fields.value) {
     if (f.type === 'number') {
       const n = Number(form[f.key])
-      next[f.key] = Number.isFinite(n) ? n : 0
+      next[f.key] = Number.isFinite(n) ? n : (f.default ?? 0)
     } else {
-      next[f.key] = form[f.key] ?? ''
+      next[f.key] = form[f.key] ?? f.default ?? ''
     }
   }
   emit('save', next)
