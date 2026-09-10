@@ -323,7 +323,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   NButton,
@@ -358,91 +358,104 @@ import {
   Box,
 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
-import serviceManager from '@services/ServiceManager'
-import { ConfigService } from '@services/ConfigService'
 import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
-import type { Step } from '@components/automation/stepTypes'
 import { stepActionLabel } from '@components/automation/stepMeta'
+import { parseUiDump, boundsCenter, type UiNode } from '@components/automation/uiDump'
+import { useScriptRunner } from '@composables/automation/useScriptRunner'
+import { useAutomationStore } from '@composables/automation/useAutomationStore'
 
 const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 const deviceStore = useDeviceStore()
-const config = new ConfigService()
 
-// ---------------- types ----------------
-interface Script {
-  id: string
-  name: string
-  description?: string
-  updated_at: string
-  steps: Step[]
-}
-interface Project {
-  id: string
-  name: string
-  description?: string
-  package_name?: string
-  scripts: Script[]
-}
-interface UiNode {
-  text: string
-  resource_id: string
-  content_desc: string
-  class: string
-  bounds: string
-  by: string
-  value: string
-  clickable: boolean
-  matchCount: number
-  label: string
-}
+// ---------------- domain state (extracted) ----------------
+// Runner owns the run lifecycle; the store owns projects/scripts/editor.
+// Store mutations are blocked while a run (or recording, which flips the
+// runner's running flag) is in flight.
+const runner = useScriptRunner()
+const store = useAutomationStore(() => runner.running.value)
 
-// ---------------- state ----------------
-const projects = ref<Project[]>([])
-const selectedProjectId = ref('')
-const selectedScriptId = ref('')
-/** step editing model — the single source the UI list binds to */
-const editor = ref({
-  steps: [] as Step[],
+const {
+  projects,
+  selectedProjectId,
+  selectedScriptId,
+  editor,
+  stepsView,
+  stepsText,
+  jsonError,
+  stepCount,
+  selectedStepIndex,
+  showMeta,
+  metaForm,
+  selectedScript,
+  selectedProject,
+  loadConfig,
+  loadEditorFromSelection,
+  syncJsonText,
+  persist,
+  onSwitchView,
+  refreshJsonStatus,
+  selectProject,
+  selectScript,
+  newProject,
+  newScript,
+  deleteProject,
+  deleteScript,
+  saveScript,
+  saveMeta,
+  openProjectMeta,
+  openScriptMeta,
+  onRecorded,
+} = store
+const {
+  running,
+  runResult,
+  screenshots,
+  liveSteps,
+  stepRows,
+  stepPassed,
+  stepFailed,
+  stepRowClass,
+  runScript: startRun,
+  stopRun,
+} = runner
+const logs = runner.logs
+const logsText = computed(() => logs.value.join('\n'))
+
+// ---------------- page-local state ----------------
+// Automation-page device selection — deliberately DECOUPLED from the
+// device page's list selection (which is only for the detail panel).
+// Persisted locally so the page remembers the last device used.
+const autoDeviceId = ref(localStorage.getItem('bt:automationDeviceId') || '')
+watch(autoDeviceId, (v) => {
+  try { localStorage.setItem('bt:automationDeviceId', v) } catch {}
 })
+// Traffic capture (mitmdump) — opt-in per run; the backend restores the
+// device proxy in a finally block on every exit path.
+const captureTraffic = ref(false)
+// Drop the selection when the device vanishes from the live list.
+watch(() => deviceStore.devices, (list) => {
+  if (autoDeviceId.value && !(list as any[]).some(d => d.id === autoDeviceId.value)) {
+    autoDeviceId.value = ''
+  }
+}, { immediate: true })
 
-/** center column view: visual list vs raw JSON */
-const stepsView = ref<'ui' | 'json'>('ui')
-const stepsText = ref('[]')
-const jsonError = ref('')
-const stepCount = ref(0)
-
-const running = ref(false)
-const recording = ref(false)
-const taskId = ref('')
-const logs = ref<string[]>([])
-const runResult = ref<any>(null)
-const screenshots = ref<string[]>([])
-/** 运行中的实时步骤行（逐步推送，pending=true 表示正在执行） */
-const liveSteps = ref<any[]>([])
-
-/** 结果区渲染源：运行中/结束后优先用实时行，无则回落到 complete 载荷 */
-const stepRows = computed(() => {
-  if (liveSteps.value.length) return liveSteps.value
-  return runResult.value?.steps || []
-})
-const stepPassed = computed(
-  () => stepRows.value.filter((s: any) => s.ok === true).length,
+const deviceOptions = computed(() =>
+  deviceStore.devices.map((d: any) => ({
+    label: `${d.name || d.id}${d.status ? ' (' + d.status + ')' : ''}`,
+    value: d.id,
+  })),
 )
-const stepFailed = computed(
-  () => stepRows.value.filter((s: any) => s.ok === false).length,
-)
-function stepRowClass(st: any) {
-  if (st.pending) return 'pending'
-  return st.ok ? 'ok' : 'bad'
-}
+
+// Run is allowed only when both a device and a script are selected.
+const canRun = computed(() => !!autoDeviceId.value && !!selectedScriptId.value)
 
 /** 右栏二选一模式：录制 / 运行（步骤展示与运行日志共用这一块区域） */
 const rightMode = ref<'record' | 'run'>('record')
-/** 步骤编辑器当前选中行（-1 无），录制片段可插入到它之后 */
-const selectedStepIndex = ref(-1)
+const recording = ref(false)
+const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
 
 function onSwitchMode(v: string) {
   if (v === rightMode.value) return
@@ -468,27 +481,44 @@ function onRecordRequest() {
   message.info(t('automation.recordSegmentHint'))
 }
 
-const dumping = ref(false)
-const showElements = ref(false)
-const elements = ref<UiNode[]>([])
-const logScroll = ref<any>(null)
-const stepsScroll = ref<HTMLElement | null>(null)
-const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
+// Recording reuses the runner's `running` flag as the global busy signal —
+// every busy-guard in the store/runner keys off it.
+function onRecStart() {
+  recording.value = true
+  runner.running.value = true
+}
+function onRecEnd() {
+  recording.value = false
+  runner.running.value = false
+}
 
-// ---------------- helpers ----------------
-function genId(): string {
-  try {
-    return (crypto as any).randomUUID()
-  } catch {
-    return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+// ---------------- run ----------------
+async function runScript() {
+  if (running.value) return
+  if (!autoDeviceId.value) {
+    message.error(t('automation.noDeviceSelectedRun'))
+    return
   }
-}
-
-function findProject(id: string): Project | undefined {
-  return projects.value.find((p) => p.id === id)
-}
-function findScript(pid: string, sid: string): Script | undefined {
-  return findProject(pid)?.scripts.find((s) => s.id === sid)
+  if (!selectedScriptId.value) {
+    message.warning(t('automation.noScriptSelected'))
+    return
+  }
+  if (!store.commitEditor()) return
+  const s = selectedScript.value
+  if (!s || !s.steps.length) {
+    message.warning(t('automation.noSteps'))
+    return
+  }
+  try {
+    await startRun({
+      device_id: autoDeviceId.value,
+      package_name: selectedProject.value?.package_name || '',
+      steps: s.steps,
+      capture_traffic: captureTraffic.value,
+    })
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  }
 }
 
 function actLabel(action: string): string {
@@ -501,407 +531,12 @@ function fileUrl(p: string): string {
   return 'file:///' + p.replace(/\\/g, '/')
 }
 
-/**
- * Insert `{action:'wait', ms}` steps between recorded steps whose gap
- * exceeds the configured threshold. Uses each step's `ts` (device-time
- * seconds of the touch END marker); a step's own duration (swipe) is
- * subtracted so the wait measures true idle time. Gap is capped at maxMs.
- */
-function withWaits(
-  steps: Step[],
-  gap: { enabled: boolean; thresholdMs: number; maxMs: number },
-): Step[] {
-  if (!gap?.enabled || steps.length < 2) return steps
-  const out: Step[] = []
-  for (let i = 0; i < steps.length; i++) {
-    const cur = steps[i]
-    if (i > 0) {
-      const prev = steps[i - 1]
-      if (typeof prev?.ts === 'number' && typeof cur?.ts === 'number') {
-        const startOfCur = cur.ts - (Number(cur.duration_ms) || 0) / 1000
-        const gapMs = Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
-        if (gapMs > gap.thresholdMs) {
-          out.push({ action: 'wait', ms: Math.min(gapMs, gap.maxMs) })
-        }
-      }
-    }
-    out.push(cur)
-  }
-  return out
-}
-
-const logsText = computed(() => logs.value.join('\n'))
-
-const deviceOptions = computed(() =>
-  deviceStore.devices.map((d: any) => ({
-    label: `${d.name || d.id}${d.status ? ' (' + d.status + ')' : ''}`,
-    value: d.id,
-  })),
-)
-
-// Automation-page device selection — deliberately DECOUPLED from the
-// device page's list selection (which is only for the detail panel).
-// Persisted locally so the page remembers the last device used.
-const autoDeviceId = ref(localStorage.getItem('bt:automationDeviceId') || '')
-watch(autoDeviceId, (v) => {
-  try { localStorage.setItem('bt:automationDeviceId', v) } catch {}
-})
-// Traffic capture (mitmdump) — opt-in per run; the backend restores the
-// device proxy in a finally block on every exit path.
-const captureTraffic = ref(false)
-// Drop the selection when the device vanishes from the live list.
-watch(() => deviceStore.devices, (list) => {
-  if (autoDeviceId.value && !(list as any[]).some(d => d.id === autoDeviceId.value)) {
-    autoDeviceId.value = ''
-  }
-}, { immediate: true })
-
-// Run is allowed only when both a device and a script are selected.
-const canRun = computed(() => !!autoDeviceId.value && !!selectedScriptId.value)
-
-const selectedProject = computed(() => findProject(selectedProjectId.value))
-const selectedScript = computed(() => {
-  if (!selectedProjectId.value || !selectedScriptId.value) return undefined
-  return findScript(selectedProjectId.value, selectedScriptId.value)
-})
-
-// ---------------- persistence ----------------
-async function persist() {
-  try {
-    await config.setAppConfig('automation', { projects: projects.value })
-  } catch (e) {
-    message.error(String((e as any)?.message || e))
-  }
-}
-
-async function loadConfig() {
-  try {
-    const raw = (await config.getAppConfig('automation')) as any
-    const list = raw?.projects
-    if (Array.isArray(list)) {
-      projects.value = list as Project[]
-    }
-  } catch {
-    projects.value = []
-  }
-}
-
-// ---------------- selection / editing ----------------
-function loadEditorFromSelection() {
-  const p = selectedProject.value
-  const s = selectedScript.value
-  if (!p || !s) {
-    editor.value = { steps: [] }
-    _syncJsonText()
-    return
-  }
-  // legacy guard: very old builds may have stored steps as a JSON string
-  const raw = s.steps as unknown
-  if (typeof raw === 'string') {
-    try {
-      s.steps = JSON.parse(raw)
-    } catch {
-      s.steps = []
-    }
-  }
-  editor.value.steps = JSON.parse(JSON.stringify(s.steps || []))
-  selectedStepIndex.value = -1
-  _syncJsonText()
-}
-
-/** re-serialize editor.steps into the JSON view buffer */
-function _syncJsonText() {
-  stepsText.value = JSON.stringify(editor.value.steps || [], null, 2)
-  refreshJsonStatus()
-}
-
-function refreshJsonStatus() {
-  const r = _parseStepsText(stepsText.value)
-  jsonError.value = r.ok ? '' : r.error
-  stepCount.value = r.ok ? r.data.length : 0
-}
-
-function _parseStepsText(text: string): { ok: boolean; data: Step[]; error: string } {
-  if (!text || !text.trim()) return { ok: true, data: [], error: '' }
-  try {
-    const data = JSON.parse(text)
-    if (!Array.isArray(data)) return { ok: false, data: [], error: 'not an array' }
-    for (const s of data) {
-      if (typeof s !== 'object' || s === null || typeof s.action !== 'string') {
-        return { ok: false, data: [], error: 'step missing "action"' }
-      }
-    }
-    return { ok: true, data, error: '' }
-  } catch (e: any) {
-    return { ok: false, data: [], error: e?.message || String(e) }
-  }
-}
-
-/** view switch: UI -> JSON serializes; JSON -> UI validates (stay on error) */
-function onSwitchView(v: string) {
-  if (v === stepsView.value) return
-  if (v === 'json') {
-    _syncJsonText()
-    stepsView.value = 'json'
-    return
-  }
-  const r = _parseStepsText(stepsText.value)
-  if (!r.ok) {
-    jsonError.value = r.error
-    message.error(t('automation.jsonInvalid', { msg: r.error }))
-    return // stay in JSON view until fixed
-  }
-  editor.value.steps = r.data
-  stepsView.value = 'ui'
-}
-
-/** Commit editor steps into projects[]. Returns false when JSON invalid. */
-function commitEditor(): boolean {
-  const p = selectedProject.value
-  const s = selectedScript.value
-  if (!p || !s) return true
-  if (stepsView.value === 'json') {
-    const r = _parseStepsText(stepsText.value)
-    if (!r.ok) {
-      message.error(t('automation.jsonInvalid', { msg: r.error }))
-      return false
-    }
-    s.steps = r.data
-  } else {
-    s.steps = JSON.parse(JSON.stringify(editor.value.steps))
-  }
-  s.updated_at = new Date().toISOString()
-  return true
-}
-
-function selectProject(id: string) {
-  if (running.value) return
-  if (selectedProjectId.value && selectedProjectId.value !== id) {
-    if (!commitEditor()) return
-    persist()
-  }
-  selectedProjectId.value = id
-  // keep current script only if it belongs to this project
-  if (selectedScriptId.value && !findScript(id, selectedScriptId.value)) {
-    selectedScriptId.value = ''
-  }
-  loadEditorFromSelection()
-}
-
-function selectScript(pid: string, sid: string) {
-  if (running.value) return
-  if (selectedScriptId.value && (selectedProjectId.value !== pid || selectedScriptId.value !== sid)) {
-    if (!commitEditor()) return
-    persist()
-  }
-  selectedProjectId.value = pid
-  selectedScriptId.value = sid
-  loadEditorFromSelection()
-}
-
-function newProject() {
-  if (running.value) return
-  if (selectedProjectId.value && !commitEditor()) return
-  const proj: Project = { id: genId(), name: t('automation.newProject'), scripts: [] }
-  projects.value.push(proj)
-  selectedProjectId.value = proj.id
-  selectedScriptId.value = ''
-  editor.value = { steps: [] }
-  _syncJsonText()
-  persist()
-}
-
-function newScript(pid: string) {
-  if (running.value) return
-  const p = findProject(pid)
-  if (!p) return
-  if (selectedScriptId.value && !commitEditor()) return
-  const scr: Script = {
-    id: genId(),
-    name: t('automation.newScript'),
-    updated_at: new Date().toISOString(),
-    steps: [],
-  }
-  p.scripts.push(scr)
-  selectedProjectId.value = pid
-  selectedScriptId.value = scr.id
-  editor.value = { steps: [] }
-  _syncJsonText()
-  persist()
-}
-
-function deleteProject(p: Project) {
-  if (running.value) return
-  dialog.warning({
-    title: t('automation.delete'),
-    content: t('automation.deleteProjectConfirm', { name: p.name }),
-    positiveText: t('common.confirm'),
-    negativeText: t('common.cancel'),
-    onPositiveClick: () => {
-      projects.value = projects.value.filter((x) => x.id !== p.id)
-      if (selectedProjectId.value === p.id) {
-        selectedProjectId.value = ''
-        selectedScriptId.value = ''
-        loadEditorFromSelection()
-      }
-      persist()
-    },
-  })
-}
-
-function deleteScript(pid: string, sid: string) {
-  if (running.value) return
-  const p = findProject(pid)
-  if (!p) return
-  const s = findScript(pid, sid)
-  dialog.warning({
-    title: t('automation.delete'),
-    content: t('automation.deleteScriptConfirm', { name: s?.name || '' }),
-    positiveText: t('common.confirm'),
-    negativeText: t('common.cancel'),
-    onPositiveClick: () => {
-      p.scripts = p.scripts.filter((x) => x.id !== sid)
-      if (selectedScriptId.value === sid) {
-        selectedScriptId.value = ''
-        loadEditorFromSelection()
-      }
-      persist()
-    },
-  })
-}
-
-// ---------------- project / script meta dialog ----------------
-const showMeta = ref(false)
-const metaForm = reactive({
-  kind: 'project' as 'project' | 'script',
-  targetId: '',
-  name: '',
-  packageName: '',
-  description: '',
-})
-
-function openProjectMeta(p: Project) {
-  if (running.value) return
-  metaForm.kind = 'project'
-  metaForm.targetId = p.id
-  metaForm.name = p.name
-  metaForm.packageName = p.package_name || ''
-  metaForm.description = p.description || ''
-  showMeta.value = true
-}
-
-function openScriptMeta(pid: string, s: Script) {
-  if (running.value) return
-  metaForm.kind = 'script'
-  metaForm.targetId = `${pid}::${s.id}`
-  metaForm.name = s.name
-  metaForm.packageName = ''
-  metaForm.description = s.description || ''
-  showMeta.value = true
-}
-
-function saveMeta() {
-  const name = metaForm.name.trim()
-  if (!name) return
-  if (metaForm.kind === 'project') {
-    const p = findProject(metaForm.targetId)
-    if (!p) return
-    p.name = name
-    p.package_name = metaForm.packageName.trim() || undefined
-    p.description = metaForm.description.trim() || undefined
-  } else {
-    const [pid, sid] = metaForm.targetId.split('::')
-    const s = findScript(pid, sid)
-    if (!s) return
-    s.name = name
-    s.description = metaForm.description.trim() || undefined
-    s.updated_at = new Date().toISOString()
-  }
-  persist()
-  showMeta.value = false
-}
-
-function saveScript() {
-  if (running.value) return
-  if (!commitEditor()) return
-  persist()
-  message.success(t('automation.saved'))
-}
-
 // ---------------- element picker ----------------
-function attr(tag: string, name: string): string {
-  const m = tag.match(new RegExp(`${name}="([^"]*)"`))
-  return m ? m[1] : ''
-}
-
-function shortClass(cls: string): string {
-  const i = cls.lastIndexOf('.')
-  return i >= 0 ? cls.slice(i + 1) : cls
-}
-
-function parseUiDump(xml: string): UiNode[] {
-  if (!xml) return []
-  const openTags = xml.match(/<node[^>]*>/g) || []
-  // First pass: extract the identifying attrs of every node in the dump,
-  // so match counts reflect the full tree (not just the kept subset).
-  const all = openTags.map((tag) => ({
-    text: attr(tag, 'text'),
-    rid: attr(tag, 'resource-id'),
-    desc: attr(tag, 'content-desc'),
-    cls: attr(tag, 'class'),
-  }))
-  // Mirrors the backend matcher: substring match on the same attribute.
-  const countMatches = (by: string, value: string): number => {
-    if (!value) return 0
-    let n = 0
-    for (const t of all) {
-      const v =
-        by === 'text' ? t.text : by === 'resource_id' ? t.rid : by === 'content_desc' ? t.desc : t.cls
-      if (v && v.includes(value)) n++
-    }
-    return n
-  }
-  const nodes: UiNode[] = []
-  for (const tag of openTags) {
-    const text = attr(tag, 'text')
-    const rid = attr(tag, 'resource-id')
-    const desc = attr(tag, 'content-desc')
-    const cls = attr(tag, 'class')
-    const bounds = attr(tag, 'bounds')
-    const clickable = attr(tag, 'clickable') === 'true'
-    // Keep nodes identifiable by text/rid/desc, plus clickable widgets
-    // (icon-only buttons etc.) which are located by class substring.
-    if (!text && !rid && !desc && !clickable) continue
-    let by = ''
-    let value = ''
-    if (text) {
-      by = 'text'
-      value = text
-    } else if (rid) {
-      by = 'resource_id'
-      value = rid
-    } else if (desc) {
-      by = 'content_desc'
-      value = desc
-    } else {
-      by = 'class'
-      value = cls
-    }
-    nodes.push({
-      text,
-      resource_id: rid,
-      content_desc: desc,
-      class: cls,
-      bounds,
-      by,
-      value,
-      clickable,
-      matchCount: countMatches(by, value),
-      label: text || rid || desc || shortClass(cls),
-    })
-  }
-  return nodes
-}
+const dumping = ref(false)
+const showElements = ref(false)
+const elements = ref<UiNode[]>([])
+/** 元素抽屉始终处于“填充步骤”模式（由编辑表单的“获取界面元素”按钮打开） */
+const pickTarget = ref<{ index: number; mode: 'coord' | 'element' } | null>(null)
 
 async function getElements() {
   if (running.value) return
@@ -929,22 +564,9 @@ async function getElements() {
   }
 }
 
-// ---------------- 从界面元素拾取（填充正在编辑的步骤） ----------------
-/** 元素抽屉始终处于“填充步骤”模式（由编辑表单的“获取界面元素”按钮打开） */
-const pickTarget = ref<{ index: number; mode: 'coord' | 'element' } | null>(null)
-
 function onStepPick(payload: { index: number; mode: 'coord' | 'element' }) {
   pickTarget.value = payload
   void getElements()
-}
-
-function boundsCenter(bounds: string): { x: number; y: number } | null {
-  const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(bounds || '')
-  if (!m) return null
-  return {
-    x: Math.round((Number(m[1]) + Number(m[3])) / 2),
-    y: Math.round((Number(m[2]) + Number(m[4])) / 2),
-  }
 }
 
 /** 元素抽屉里选中一个元素：填充正在编辑的步骤 */
@@ -952,7 +574,7 @@ function applyElement(el: UiNode) {
   const target = pickTarget.value
   if (!target) return
   const steps = [...editor.value.steps]
-  const s = { ...steps[target.index] } as Step
+  const s = { ...steps[target.index] } as any
   if (!s) return
   if (target.mode === 'coord') {
     const c = boundsCenter(el.bounds)
@@ -974,7 +596,7 @@ function applyElement(el: UiNode) {
   }
   steps[target.index] = s
   editor.value.steps = steps
-  if (stepsView.value === 'json') _syncJsonText()
+  if (stepsView.value === 'json') syncJsonText()
   pickTarget.value = null
   showElements.value = false
   if (el.matchCount > 1) {
@@ -982,167 +604,6 @@ function applyElement(el: UiNode) {
   } else {
     message.success(el.label)
   }
-}
-
-// ---------------- run / stop ----------------
-async function runScript() {
-  if (running.value) return
-  if (!autoDeviceId.value) {
-    message.error(t('automation.noDeviceSelectedRun'))
-    return
-  }
-  if (!selectedScriptId.value) {
-    message.warning(t('automation.noScriptSelected'))
-    return
-  }
-  if (!commitEditor()) return
-  const s = selectedScript.value
-  if (!s || !s.steps.length) {
-    message.warning(t('automation.noSteps'))
-    return
-  }
-
-  running.value = true
-  logs.value = []
-  runResult.value = null
-  screenshots.value = []
-  liveSteps.value = []
-
-  const id = genId()
-  taskId.value = id
-
-  const taskStream = (await serviceManager.getService('taskStream')) as any
-  taskStream.bindTask(id)
-  taskStream.setCallbacks(id, {
-    onLog: (line: string) => {
-      logs.value.push(String(line))
-    },
-    onError: (msg: string) => {
-      logs.value.push('[ERROR] ' + msg)
-      running.value = false
-    },
-    onCancelled: () => {
-      logs.value.push('[CANCELLED]')
-      running.value = false
-    },
-    onStepStart: (st: any) => {
-      liveSteps.value = [...liveSteps.value.filter((x: any) => x.index !== st.index), st].sort(
-        (a: any, b: any) => a.index - b.index,
-      )
-    },
-    onStep: (st: any) => {
-      const rest = liveSteps.value.filter((x: any) => x.index !== st?.index)
-      liveSteps.value = [...rest, { ...st }].sort((a: any, b: any) => a.index - b.index)
-    },
-    onComplete: (payload: any) => {
-      runResult.value = payload || {}
-      screenshots.value = (payload?.screenshots || []).slice()
-      // complete 是权威结果：有步骤数据就覆盖实时行
-      if (Array.isArray(payload?.steps) && payload.steps.length) {
-        liveSteps.value = payload.steps.slice()
-      }
-      running.value = false
-    },
-  })
-  taskStream.setPhase(id, 'operation')
-
-  const api = window.electronAPI as any
-  try {
-    // plugin.run is @streaming: the init response resolves to undefined after
-    // unwrapBackendResponse (no `type` field) — NEVER test it for stream_id.
-    // Real failures arrive as stream error events / the waitForPhase latch.
-    // Deep-clone before IPC: steps come straight from reactive Pinia state and
-    // Vue proxies are not structured-cloneable (preload also normalizes, but
-    // this keeps the page safe even on a stale preload).
-    const plainSteps = JSON.parse(JSON.stringify(s.steps)) as Step[]
-    await api.callBackendAPI('plugin.run', {
-      name: 'adb_auto',
-      params: {
-        device_id: autoDeviceId.value,
-        package_name: selectedProject.value?.package_name || '',
-        steps: plainSteps,
-        continue_on_error: false,
-        capture_traffic: captureTraffic.value,
-      },
-      task_id: id,
-    })
-    await taskStream.waitForPhase(id, 'operation')
-  } catch (e: any) {
-    const m = e?.message
-    if (m !== 'cancelled' && m !== 'unbound') {
-      logs.value.push('[ERROR] ' + (m || String(e)))
-      message.error(m || String(e))
-    }
-    running.value = false
-  }
-}
-
-async function stopRun() {
-  if (!taskId.value) return
-  const api = window.electronAPI as any
-  // Streams (adb_auto / plugin.run) register their stop_event in TaskManager
-  // under task_id — only `request.cancel` signals it. `apk.cancelTask` only
-  // touches APK jobs, so using it here left the run unstoppable.
-  if (api && typeof api.cancelRequest === 'function') {
-    try {
-      await api.cancelRequest(taskId.value)
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-// ---------------- recording ----------------
-function onRecStart() {
-  recording.value = true
-  running.value = true
-}
-
-function onRecEnd() {
-  recording.value = false
-  running.value = false
-}
-
-function onRecorded(payload: {
-  steps: any[]
-  gap: { enabled: boolean; thresholdMs: number; maxMs: number }
-  insertAt: 'end' | 'start' | 'after'
-}) {
-  // 无脚本选中时拒绝写入（片段仍暂存在录制面板，可先建脚本再应用）
-  if (!selectedScript.value) {
-    message.warning(t('automation.noScriptSelected'))
-    return
-  }
-  // JSON 视图下的缓冲先校验落库，避免用旧数组插入
-  if (stepsView.value === 'json') {
-    const r = _parseStepsText(stepsText.value)
-    if (!r.ok) {
-      message.error(t('automation.jsonInvalid', { msg: r.error }))
-      return
-    }
-    editor.value.steps = r.data
-  }
-
-  const raw = Array.isArray(payload?.steps) ? payload.steps : []
-  const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 5000 }
-  const add = withWaits(raw as Step[], gap)
-
-  const old = editor.value.steps
-  const at = payload?.insertAt || 'end'
-  if (at === 'start') {
-    editor.value.steps = [...add, ...old]
-  } else if (at === 'after' && selectedStepIndex.value >= 0 && selectedStepIndex.value < old.length) {
-    const next = [...old]
-    next.splice(selectedStepIndex.value + 1, 0, ...add)
-    editor.value.steps = next
-    selectedStepIndex.value = selectedStepIndex.value + add.length
-  } else {
-    editor.value.steps = [...old, ...add]
-  }
-  if (stepsView.value === 'json') _syncJsonText()
-  message.success(
-    gap.enabled ? t('automation.autoWaitInserted') : t('automation.recordApplied'),
-  )
 }
 
 // ---------------- import / export ----------------
@@ -1210,7 +671,7 @@ async function importConfig() {
     positiveText: t('common.confirm'),
     negativeText: t('common.cancel'),
     onPositiveClick: () => {
-      projects.value = parsed.projects as Project[]
+      projects.value = parsed.projects
       selectedProjectId.value = ''
       selectedScriptId.value = ''
       loadEditorFromSelection()
@@ -1219,6 +680,10 @@ async function importConfig() {
     },
   })
 }
+
+// auto-scroll refs (DOM anchors live in the template)
+const logScroll = ref<any>(null)
+const stepsScroll = ref<HTMLElement | null>(null)
 
 // auto-scroll step results to bottom as rows stream in
 watch(
