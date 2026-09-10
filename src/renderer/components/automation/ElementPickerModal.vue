@@ -1,26 +1,35 @@
 <template>
   <n-modal :show="show" :title="t('automation.elements')" preset="card" style="width: 520px" @update:show="emit('update:show', $event)">
     <p class="muted">{{ t('automation.pickHint') }}</p>
-    <n-empty v-if="!elements.length" :description="t('automation.noElements')" size="small" />
-    <n-list v-else bordered class="elem-list">
-      <n-list-item v-for="(el, i) in elements" :key="i" @click="emit('apply', el)" class="elem-item">
-        <div class="elem-main">
-          <div class="elem-label-row">
-            <span class="elem-label">{{ el.label }}</span>
-            <span v-if="el.clickable" class="elem-click">{{ t('automation.clickable') }}</span>
-            <span v-if="el.matchCount > 1" class="elem-multi">{{ t('automation.multiMatch', { n: el.matchCount }) }}</span>
+
+    <!-- dumping in progress: show a spinner instead of looking frozen -->
+    <div v-if="dumping" class="dumping">
+      <n-spin size="medium" />
+      <p class="muted dumping-hint">{{ t('automation.dumpingHint') }}</p>
+    </div>
+
+    <template v-else>
+      <n-empty v-if="!elements.length" :description="t('automation.noElements')" size="small" />
+      <n-list v-else bordered class="elem-list">
+        <n-list-item v-for="(el, i) in elements" :key="i" @click="emit('apply', el)" class="elem-item">
+          <div class="elem-main">
+            <div class="elem-label-row">
+              <span class="elem-label">{{ el.label }}</span>
+              <span v-if="el.clickable" class="elem-click">{{ t('automation.clickable') }}</span>
+              <span v-if="el.matchCount > 1" class="elem-multi">{{ t('automation.multiMatch', { n: el.matchCount }) }}</span>
+            </div>
+            <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
           </div>
-          <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
-        </div>
-        <span class="elem-bounds">{{ el.bounds }}</span>
-      </n-list-item>
-    </n-list>
+          <span class="elem-bounds">{{ el.bounds }}</span>
+        </n-list-item>
+      </n-list>
+    </template>
   </n-modal>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { NModal, NList, NListItem, NEmpty } from 'naive-ui'
+import { NModal, NList, NListItem, NEmpty, NSpin } from 'naive-ui'
 import type { UiNode } from '@components/automation/uiDump'
 
 defineProps<{
@@ -39,6 +48,8 @@ const { t } = useI18n()
 
 <style scoped>
 .muted { color: var(--app-text-muted); font-size: 12px; }
+.dumping { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 0; }
+.dumping-hint { margin: 0; }
 .elem-list { max-height: 360px; overflow: auto; }
 .elem-item { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .elem-item:hover { background: var(--app-blue-bg); }

@@ -68,6 +68,7 @@
                 v-model="store.editor.steps"
                 v-model:selected-index="store.selectedStepIndex"
                 :disabled="runner.running"
+                :default-timeout="elementTimeoutMs"
                 class="steps-editor"
                 @record-request="onRecordRequest"
                 @pick="onStepPick"
@@ -111,6 +112,7 @@
         <RunControls
           v-model:auto-device-id="autoDeviceId"
           v-model:capture-traffic="captureTraffic"
+          v-model:element-timeout-ms="elementTimeoutMs"
           :running="runner.running"
           :can-run="canRun"
           @run="runScript"
@@ -213,7 +215,7 @@ function clampCol(v: number) {
 const colLeft = ref(clampCol(Number(localStorage.getItem('bt:autoColLeft')) || 240))
 const colRight = ref(clampCol(Number(localStorage.getItem('bt:autoColRight')) || 320))
 const gridStyle = computed(() => ({
-  gridTemplateColumns: `${colLeft.value}px 6px minmax(0, 1fr) 6px ${colRight.value}px`,
+  gridTemplateColumns: `${colLeft.value}px 12px minmax(0, 1fr) 12px ${colRight.value}px`,
 }))
 
 function startResize(side: 'left' | 'right', e: PointerEvent) {
@@ -253,6 +255,17 @@ watch(autoDeviceId, (v) => {
 // Traffic capture (mitmdump) — opt-in per run; the backend restores the
 // device proxy in a finally block on every exit path.
 const captureTraffic = ref(false)
+// Default element-poll timeout (ms): applied when a step switches to
+// element mode / picks an element; editable in the right column.
+const elementTimeoutMs = ref(
+  clampTimeout(Number(localStorage.getItem('bt:autoElementTimeoutMs')) || 10000)
+)
+function clampTimeout(v: number): number {
+  return Math.max(500, Math.min(120000, Math.round(v)))
+}
+watch(elementTimeoutMs, (v) => {
+  try { localStorage.setItem('bt:autoElementTimeoutMs', String(v)) } catch {}
+})
 // Drop the selection when the device vanishes from the live list.
 watch(() => deviceStore.devices, (list) => {
   if (autoDeviceId.value && !(list as any[]).some(d => d.id === autoDeviceId.value)) {
@@ -340,6 +353,9 @@ async function getElements() {
     return
   }
   dumping.value = true
+  // Open the picker immediately with a loading state — a dump can take
+  // seconds and a silent button looks frozen.
+  showElements.value = true
   try {
     const api = window.electronAPI as any
     const res = await api.callBackendAPI('device.ui_dump', {
@@ -347,12 +363,13 @@ async function getElements() {
       timeout_ms: 15000,
     })
     if (!res || !res.success) {
+      showElements.value = false
       message.error(t('automation.dumpFailed', { msg: res?.error || 'unknown' }))
       return
     }
     elements.value = parseUiDump(res.xml || '')
-    showElements.value = true
   } catch (e: any) {
+    showElements.value = false
     message.error(t('automation.dumpFailed', { msg: e?.message || String(e) }))
   } finally {
     dumping.value = false
@@ -367,7 +384,12 @@ function onStepPick(payload: { index: number; mode: 'coord' | 'element' }) {
 /** 元素抽屉里选中一个元素：填充正在编辑的步骤（v2 模型） */
 function applyElement(el: UiNode) {
   const target = pickTarget.value
-  if (!target) return
+  if (!target) {
+    // should not happen (modal only opens from a form pick) — surface it
+    // instead of failing silently if state ever desyncs
+    message.warning(t('automation.pickNoTarget'))
+    return
+  }
   const steps = [...store.editor.steps]
   const s = { ...steps[target.index] } as any
   if (!s) return
@@ -388,7 +410,7 @@ function applyElement(el: UiNode) {
       by: el.by,
       value: el.value,
       instance: s.target?.instance ?? 0,
-      timeout_ms: s.target?.timeout_ms ?? 10000,
+      timeout_ms: s.target?.timeout_ms ?? elementTimeoutMs.value,
     }
     delete s.coord
     delete s.ms

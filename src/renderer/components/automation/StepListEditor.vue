@@ -63,7 +63,9 @@
 
         <StepEditForm
           v-if="i === editingIndex"
+          :key="stepKey(step)"
           :step="step"
+          :default-timeout="defaultTimeout"
           @click.stop
           @save="onSave(i, $event)"
           @cancel="editingIndex = -1"
@@ -94,6 +96,8 @@ const props = defineProps<{
   disabled?: boolean
   /** 当前选中的行（-1 = 无），父级持有以支持"插入到选中步骤之后" */
   selectedIndex?: number
+  /** 元素目标默认超时（右栏可设），元素模式下自动填充 */
+  defaultTimeout?: number
 }>()
 
 const emit = defineEmits<{
@@ -212,6 +216,13 @@ function onSave(i: number, step: Step) {
 
 function onPick(i: number, payload: { mode: 'coord' | 'element' }) {
   emit('pick', { index: i, ...payload })
+}
+
+/** Remount key for the edit form: when the step CONTENT is replaced
+ * externally (element picked from the UI dump), the form remounts and
+ * rebuilds from the new step instead of relying on prop-watch timing. */
+function stepKey(step: Step): string {
+  return JSON.stringify(step)
 }
 </script>
 

@@ -15,6 +15,18 @@
     >
       {{ t('automation.captureTraffic') }}
     </n-checkbox>
+    <div class="timeout-row">
+      <span class="timeout-label">{{ t('automation.elementTimeout') }}</span>
+      <n-input-number
+        :value="elementTimeoutMs"
+        size="small"
+        :min="500"
+        :max="120000"
+        :step="1000"
+        class="timeout-ctl"
+        @update:value="(v: number | null) => emit('update:elementTimeoutMs', v ?? 10000)"
+      />
+    </div>
     <n-tooltip v-if="!running" :disabled="canRun" placement="top">
       <template #trigger>
         <n-button type="primary" size="small" block :disabled="!canRun" @click="emit('run')">
@@ -34,13 +46,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NCheckbox, NSelect, NIcon, NTooltip } from 'naive-ui'
+import { NButton, NCheckbox, NSelect, NIcon, NTooltip, NInputNumber } from 'naive-ui'
 import { Play, Square } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 
 defineProps<{
   autoDeviceId: string
   captureTraffic: boolean
+  /** Default element-poll timeout (ms) — applied to new element targets. */
+  elementTimeoutMs: number
   running: boolean
   canRun: boolean
 }>()
@@ -48,6 +62,7 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'update:autoDeviceId', v: string): void
   (e: 'update:captureTraffic', v: boolean): void
+  (e: 'update:elementTimeoutMs', v: number): void
   (e: 'run'): void
   (e: 'stop'): void
 }>()
@@ -65,4 +80,7 @@ const deviceOptions = computed(() =>
 <style scoped>
 .capture-toggle { flex-shrink: 0; }
 .run-actions { display: flex; flex-direction: column; gap: 8px; }
+.timeout-row { display: flex; align-items: center; gap: 6px; }
+.timeout-label { font-size: 12px; color: var(--app-text-muted); flex: none; }
+.timeout-ctl { flex: 1; min-width: 0; }
 </style>
