@@ -1,9 +1,10 @@
 /**
- * Run lifecycle for the adb_auto plugin task: streaming callbacks, live
- * step rows, logs, result payload, and cancel. All UI feedback (messages)
- * stays in the caller — validation of device/steps happens there too.
+ * Run lifecycle for the adb_auto plugin task: streaming callbacks, logs,
+ * result payload, and cancel. All UI feedback (messages) stays in the
+ * caller — validation of device/steps happens there too. Presentation
+ * (step rows/summary) lives in ResultPanel.
  */
-import { computed, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import serviceManager from '@services/ServiceManager'
 
 export interface RunPayload {
@@ -21,19 +22,6 @@ export function useScriptRunner() {
   const screenshots = ref<string[]>([])
   /** 运行中的实时步骤行（逐步推送，pending=true 表示正在执行） */
   const liveSteps = ref<any[]>([])
-
-  /** 结果区渲染源：运行中/结束后优先用实时行，无则回落到 complete 载荷 */
-  const stepRows = computed(() => {
-    if (liveSteps.value.length) return liveSteps.value
-    return runResult.value?.steps || []
-  })
-  const stepPassed = computed(() => stepRows.value.filter((s: any) => s.ok === true).length)
-  const stepFailed = computed(() => stepRows.value.filter((s: any) => s.ok === false).length)
-
-  function stepRowClass(st: any) {
-    if (st.pending) return 'pending'
-    return st.ok ? 'ok' : 'bad'
-  }
 
   function genId(): string {
     try {
@@ -140,18 +128,16 @@ export function useScriptRunner() {
     }
   }
 
-  return {
+  return reactive({
     running,
     taskId,
     logs,
     runResult,
     screenshots,
     liveSteps,
-    stepRows,
-    stepPassed,
-    stepFailed,
-    stepRowClass,
     runScript,
     stopRun,
-  }
+  })
 }
+
+export type ScriptRunner = ReturnType<typeof useScriptRunner>

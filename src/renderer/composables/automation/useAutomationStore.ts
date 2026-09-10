@@ -413,7 +413,7 @@ export function useAutomationStore(isBusy?: () => boolean) {
     )
   }
 
-  return {
+  return reactive({
     // state
     projects,
     selectedProjectId,
@@ -452,5 +452,7 @@ export function useAutomationStore(isBusy?: () => boolean) {
     openScriptMeta,
     // recording
     onRecorded,
-  }
+  })
 }
+
+export type AutomationStore = ReturnType<typeof useAutomationStore>
