@@ -369,6 +369,19 @@ export function useAutomationStore(isBusy?: () => boolean) {
     s.steps = next
     s.updated_at = new Date().toISOString()
     persist()
+    flashSaved()
+  }
+
+  /** transient "saved" indicator — the header shows it for ~2s per save */
+  const savedFlash = ref(false)
+  let savedFlashTimer: ReturnType<typeof setTimeout> | null = null
+  function flashSaved() {
+    savedFlash.value = true
+    if (savedFlashTimer) clearTimeout(savedFlashTimer)
+    savedFlashTimer = setTimeout(() => {
+      savedFlash.value = false
+      savedFlashTimer = null
+    }, 2000)
   }
 
   watch(
@@ -495,6 +508,7 @@ export function useAutomationStore(isBusy?: () => boolean) {
     stepsText,
     jsonError,
     stepCount,
+    savedFlash,
     selectedStepIndex,
     showMeta,
     metaForm,

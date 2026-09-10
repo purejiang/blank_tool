@@ -1,5 +1,17 @@
 <template>
   <div class="record-panel">
+    <div class="panel-head">
+      <span class="panel-title">{{ t('automation.recordSegment') }}</span>
+      <n-button
+        size="tiny"
+        quaternary
+        class="panel-close"
+        :title="t('common.close')"
+        @click="onClose"
+      >
+        <template #icon><n-icon><X /></n-icon></template>
+      </n-button>
+    </div>
     <n-button
       size="small"
       block
@@ -94,8 +106,9 @@
 import { ref, reactive, computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
-  NButton, NCheckbox, NInputNumber, NScrollbar, NTag, NTooltip, useMessage,
+  NButton, NCheckbox, NIcon, NInputNumber, NScrollbar, NTag, NTooltip, useMessage,
 } from 'naive-ui'
+import { X } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 
 // automation.record* i18n keys (zh-CN/en-US) landed in 4198cc3.
@@ -119,6 +132,8 @@ const emit = defineEmits<{
   (e: 'recording-start'): void
   (e: 'recorded', payload: { steps: any[]; gap: RecordedGap; insertAt: InsertAt }): void
   (e: 'recording-end'): void
+  /** 收起停靠面板（页面据此 v-show 隐藏） */
+  (e: 'close'): void
 }>()
 
 const { t } = useI18n()
@@ -242,6 +257,12 @@ async function stop(): Promise<void> {
   }
 }
 
+/** 收起面板；录制中先停止（v-show 不卸载组件，unmount 清理不会触发） */
+async function onClose(): Promise<void> {
+  if (recording.value) await stop()
+  emit('close')
+}
+
 function applyRecorded(): void {
   if (!lastRecord.value || recording.value) return
   // 无选中行时"选中之后"回落到追加末尾
@@ -291,6 +312,17 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-bottom: 10px;
 }
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+.panel-close { flex: none; }
 .record-count-line {
   display: flex;
   justify-content: flex-end;

@@ -33,17 +33,9 @@
               <span class="editor-name">{{ store.selectedScript?.name }}</span>
               <span v-if="store.selectedScript?.description" class="editor-desc">{{ store.selectedScript.description }}</span>
             </span>
-            <span class="autosave-hint">{{ t('automation.autoSaveHint') }}</span>
-            <n-button
-              size="small"
-              :type="recordPanelOpen ? 'warning' : 'default'"
-              :disabled="runner.running && !recording"
-              :title="t('automation.recordSegment')"
-              @click="toggleRecordPanel"
-            >
-              <template #icon><n-icon><Circle /></n-icon></template>
-              {{ t('automation.recordSegment') }}
-            </n-button>
+            <transition name="fade">
+              <span v-if="store.savedFlash" class="autosave-hint saved">{{ t('automation.savedNow') }}</span>
+            </transition>
           </div>
 
           <div class="editor-body">
@@ -98,6 +90,7 @@
             @recording-start="onRecStart"
             @recorded="store.onRecorded"
             @recording-end="onRecEnd"
+            @close="recordPanelOpen = false"
           />
         </template>
       </section>
@@ -177,7 +170,7 @@ import {
   useMessage,
   useDialog,
 } from 'naive-ui'
-import { Download, Upload, Circle } from 'lucide-vue-next'
+import { Download, Upload } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
@@ -273,18 +266,11 @@ watch(() => deviceStore.devices, (list) => {
 // Run is allowed only when both a device and a script are selected.
 const canRun = computed(() => !!autoDeviceId.value && !!store.selectedScriptId && !recording.value)
 
-/** 录制面板停靠开关（中栏编辑器下方） */
+/** 录制面板停靠开关（中栏编辑器下方）；唯一入口 = 添加步骤 → 录制片段，
+ * 关闭走面板自带的 X 按钮 */
 const recordPanelOpen = ref(false)
 const recording = ref(false)
 const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
-
-function toggleRecordPanel() {
-  if (runner.running && !recording.value) {
-    message.warning(t('automation.runStopFirst'))
-    return
-  }
-  recordPanelOpen.value = !recordPanelOpen.value
-}
 
 /** 「添加步骤 → 录制片段…」：展开中栏录制面板采集 */
 function onRecordRequest() {
@@ -567,6 +553,9 @@ onMounted(() => {
   font-size: 11px;
   color: var(--app-text-muted);
 }
+.autosave-hint.saved { color: #18a058; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 .steps-json { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
 .json-status { font-size: 11.5px; margin-top: 4px; }
 .json-status.ok { color: #18a058; }

@@ -518,6 +518,7 @@ export default {
     editInfo: 'Edit Info',
     description: 'Description',
     autoSaveHint: 'Changes save automatically',
+    savedNow: 'Saved',
     noSelection: 'Select a project and script on the left',
     // Element picker
     elements: 'Current Screen Elements',
@@ -650,6 +651,7 @@ export default {
     cancel: 'Cancel',
   },
   common: {
+    close: 'Close',
     unknown: 'Unknown',
     version: 'v',
     backend: 'backend',

@@ -521,6 +521,7 @@ export default {
     editInfo: '编辑信息',
     description: '描述',
     autoSaveHint: '改动自动保存',
+    savedNow: '已自动保存',
     noSelection: '请选择左侧的项目与脚本',
     // 元素选择器
     elements: '当前界面元素',
@@ -653,6 +654,7 @@ export default {
     cancel: '取消',
   },
   common: {
+    close: '关闭',
     unknown: '未知',
     version: 'v',
     backend: '后端',
