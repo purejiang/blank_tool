@@ -357,15 +357,18 @@ def ui_dump(
 
 
 def find_element(
-    device_id: str, by: str, value: str, timeout_ms: int = 10000, instance: int = 0
+    device_id: str, by: str, value: str, timeout_ms: int = 10000, instance: int = 0,
+    cancel_check: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Poll the UI hierarchy until the ``instance``-th ``by=value`` match
     (substring, document order) appears, or timeout.
 
     ``instance`` picks among multiple same-selector matches (0-based,
-    default 0 = first, which preserves the legacy behaviour). Returns
-    ``{"found": bool, "node": {...} | None, "error": str}``. Never raises
-    on "not found" — the caller decides abort vs continue.
+    default 0 = first, which preserves the legacy behaviour).
+    ``cancel_check`` (optional callable) is probed between polls so a user
+    Stop takes effect within ~100ms instead of at timeout. Returns
+    ``{"found": bool, "node": {...} | None, "error": str, "cancelled": bool}``.
+    Never raises on "not found" — the caller decides abort vs continue.
     """
     attr = _BY_ATTR.get(by)
     if not attr:
@@ -376,6 +379,9 @@ def find_element(
     deadline = time.time() + timeout_ms / 1000.0
     last_err = ""
     while True:
+        if cancel_check is not None and cancel_check():
+            return {"found": False, "node": None, "error": "cancelled",
+                    "cancelled": True}
         ok, xml_text = ui_dump(device_id, timeout_ms=2000)
         if ok:
             try:
@@ -405,15 +411,26 @@ def find_element(
                 last_err = f"ui xml parse error: {e}"
         if time.time() > deadline:
             break
-        time.sleep(1)
+        # Sliced sleep so cancellation lands within ~100ms.
+        deadline_now = time.time() + 1.0
+        while time.time() < deadline_now:
+            if cancel_check is not None and cancel_check():
+                return {"found": False, "node": None, "error": "cancelled",
+                        "cancelled": True}
+            time.sleep(min(0.1, max(0.0, deadline_now - time.time())))
     return {"found": False, "node": None, "error": last_err}
 
 
 def tap_element(
-    device_id: str, by: str, value: str, timeout_ms: int = 10000, instance: int = 0
+    device_id: str, by: str, value: str, timeout_ms: int = 10000, instance: int = 0,
+    cancel_check: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Find an element then tap its center. Returns success + node."""
-    res = find_element(device_id, by, value, timeout_ms=timeout_ms, instance=instance)
+    res = find_element(device_id, by, value, timeout_ms=timeout_ms,
+                       instance=instance, cancel_check=cancel_check)
+    if res.get("cancelled"):
+        return {"success": False, "node": None, "error": "cancelled",
+                "cancelled": True}
     if not res.get("found"):
         return {"success": False, "node": None,
                 "error": res.get("error") or "element not found"}

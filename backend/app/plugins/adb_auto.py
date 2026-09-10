@@ -178,6 +178,25 @@ def run(
         )
         duration_ms = int((time.time() - t0) * 1000)
 
+        # Stop pressed while the step ran (e.g. mid element-poll): finish
+        # the run as cancelled right away instead of continuing to step 2.
+        if context.is_cancelled():
+            context.log(f"cancelled during step {i + 1}/{n}")
+            if ok:
+                result["steps"].append(
+                    {"index": i + 1, "action": action, "ok": True,
+                     "message": message, "duration_ms": duration_ms}
+                )
+                result["passed"] += 1
+            shot = take_screenshot(device_id, f"cancel-{i + 1}")
+            if shot.get("success"):
+                result["screenshots"].append(shot["file_path"])
+            result["cancelled"] = True
+            result["success"] = False
+            restore_ime(device_id)
+            context.complete(result)
+            return result
+
         step_rec: Dict[str, Any] = {
             "index": i + 1,
             "action": action,
@@ -265,6 +284,7 @@ def _exec_step(
                     device_id, step.get("by", ""), step.get("value", ""),
                     timeout_ms=int(step.get("timeout_ms", 10000)),
                     instance=elem_instance(),
+                    cancel_check=context.is_cancelled,
                 )
                 ok = r.get("success", False)
                 return ok, "" if ok else (r.get("error") or "element tap failed"), None
@@ -290,6 +310,7 @@ def _exec_step(
                     device_id, step.get("by", ""), step.get("value", ""),
                     timeout_ms=int(step.get("timeout_ms", 10000)),
                     instance=elem_instance(),
+                    cancel_check=context.is_cancelled,
                 )
                 if not fr.get("success", False):
                     return False, (fr.get("error") or "input field not found"), None
@@ -323,6 +344,7 @@ def _exec_step(
                     device_id, step.get("by", ""), step.get("value", ""),
                     timeout_ms=int(step.get("timeout_ms", 10000)),
                     instance=elem_instance(),
+                    cancel_check=context.is_cancelled,
                 )
                 ok = r.get("found", False)
                 return ok, "" if ok else (r.get("error") or "element not found (wait)"), None
@@ -342,6 +364,7 @@ def _exec_step(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),
                 instance=elem_instance(),
+                cancel_check=context.is_cancelled,
             )
             ok = r.get("success", False)
             return ok, "" if ok else (r.get("error") or "element not found"), None
@@ -351,6 +374,7 @@ def _exec_step(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),
                 instance=elem_instance(),
+                cancel_check=context.is_cancelled,
             )
             ok = r.get("found", False)
             return ok, "" if ok else (r.get("error") or "element not found (wait)"), None
@@ -360,6 +384,7 @@ def _exec_step(
                 device_id, step.get("by", ""), step.get("value", ""),
                 timeout_ms=int(step.get("timeout_ms", 10000)),
                 instance=elem_instance(),
+                cancel_check=context.is_cancelled,
             )
             found = r.get("found", False)
             expect = step.get("expect", "exists")
