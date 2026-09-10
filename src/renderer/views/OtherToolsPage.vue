@@ -182,6 +182,9 @@
           />
           <!-- 运行模式的操作按钮（录制模式的开始/停止在 RecordPanel 内，同一位置随模式切换） -->
           <template v-if="rightMode === 'run'">
+            <n-checkbox v-model:checked="captureTraffic" size="small" class="capture-toggle">
+              {{ t('automation.captureTraffic') }}
+            </n-checkbox>
             <n-tooltip v-if="!running" :disabled="canRun" placement="top">
               <template #trigger>
                 <n-button
@@ -230,6 +233,11 @@
           <div class="crash-note" v-if="runResult?.aborted_by_crash">
             <span class="crash-text">{{ t('automation.crashAborted') }}</span>
             <span v-if="runResult?.crash_log" class="crash-log">{{ t('automation.crashLog') }}: {{ runResult.crash_log }}</span>
+          </div>
+
+          <div class="crash-note" v-if="runResult?.traffic_log">
+            <span class="crash-text">{{ t('automation.trafficRequests') }}: {{ runResult.traffic_requests ?? 0 }}</span>
+            <span class="crash-log">{{ t('automation.trafficLog') }}: {{ runResult.traffic_log }}</span>
           </div>
 
           <div class="steps-result" ref="stepsScroll">
@@ -538,6 +546,9 @@ const autoDeviceId = ref(localStorage.getItem('bt:automationDeviceId') || '')
 watch(autoDeviceId, (v) => {
   try { localStorage.setItem('bt:automationDeviceId', v) } catch {}
 })
+// Traffic capture (mitmdump) — opt-in per run; the backend restores the
+// device proxy in a finally block on every exit path.
+const captureTraffic = ref(false)
 // Drop the selection when the device vanishes from the live list.
 watch(() => deviceStore.devices, (list) => {
   if (autoDeviceId.value && !(list as any[]).some(d => d.id === autoDeviceId.value)) {
@@ -1051,6 +1062,7 @@ async function runScript() {
         package_name: selectedProject.value?.package_name || '',
         steps: plainSteps,
         continue_on_error: false,
+        capture_traffic: captureTraffic.value,
       },
       task_id: id,
     })
