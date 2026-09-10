@@ -176,11 +176,25 @@ def adb_ime_installed(device_id: str) -> bool:
     return ADB_IME_PKG in (r.get("stdout") or "")
 
 
+def _adb_ime_bound(device_id: str) -> bool:
+    """True once the system has actually bound ADBKeyboard as the IME.
+
+    ``settings get`` flips instantly on ``ime set``, but the IME service
+    (whose receiver must be alive to take our broadcast) binds a moment
+    later — check ``dumpsys input_method``'s mCurMethodId instead.
+    """
+    r = run_adb(device_id, ["shell", "dumpsys", "input_method"])
+    return "mCurMethodId=com.android.adbkeyboard/.AdbIME" in (r.get("stdout") or "")
+
+
 def ensure_adb_ime(device_id: str) -> Tuple[bool, str]:
     """Switch the default IME to ADBKeyboard (remembering the original).
 
-    Idempotent within a run: once switched, later ``input_text`` calls are
-    no-ops. The caller should ``restore_ime`` when the run finishes.
+    Waits until the IME service is actually bound before returning — a
+    broadcast fired between ``ime set`` and the service's receiver
+    registration is silently dropped. Idempotent within a run: once
+    switched, later ``input_text`` calls are no-ops. The caller should
+    ``restore_ime`` when the run finishes.
     """
     if device_id in _IME_ORIGINAL:
         return True, ""
@@ -195,6 +209,14 @@ def ensure_adb_ime(device_id: str) -> Tuple[bool, str]:
         return False, "ime enable failed"
     if run_adb(device_id, ["shell", "ime", "set", ADB_IME_ID]).get("returncode", 1) != 0:
         return False, "ime set failed"
+    # Wait (up to ~4s) for the IME service to bind, then a small settle so
+    # the focused editor's input connection restarts with the new IME.
+    deadline = time.time() + 4.0
+    while time.time() < deadline:
+        if _adb_ime_bound(device_id):
+            break
+        time.sleep(0.1)
+    time.sleep(0.3)
     _IME_ORIGINAL[device_id] = cur
     logger.info(f"IME switched to ADBKeyboard (was {cur!r}) for {device_id}")
     return True, ""
