@@ -27,8 +27,8 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.utils.env import get_output_dir
-from app.utils import traffic_capture
-from app.utils.adb_auto_core import (
+from app.automation import traffic as traffic_capture
+from app.automation import (
     launch_app,
     clear_app_data,
     get_display_transform,

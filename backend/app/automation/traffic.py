@@ -30,6 +30,7 @@ import sys
 import time
 from typing import Any, Dict, Optional
 
+from app.automation.adb import run_adb
 from app.utils.env import get_runtime_dir
 from app.utils.logger import Logger
 
@@ -176,7 +177,6 @@ def _su(device_id: str, script: str) -> Dict[str, Any]:
     an unquoted script. Wrap the whole script in single quotes (scripts
     here must therefore not contain single quotes themselves).
     """
-    from app.utils.adb_auto_core import run_adb
     return run_adb(device_id, ["shell", "su", "-c", "'" + script + "'"])
 
 
@@ -192,8 +192,6 @@ def install_ca(device_id: str) -> Dict[str, Any]:
     A failure here only means HTTPS stays encrypted — plain HTTP capture
     still works, so callers should degrade gracefully.
     """
-    from app.utils.adb_auto_core import run_adb
-
     cert = ca_cert_path()
     if not os.path.isfile(cert):
         return {"success": False, "error": f"CA cert not generated yet: {cert}"}
@@ -332,7 +330,6 @@ def start_capture(
         ca = install_ca(device_id)
         https_ready = bool(ca.get("success"))
 
-    from app.utils.adb_auto_core import run_adb
     r = run_adb(device_id, ["reverse", f"tcp:{port}", f"tcp:{port}"])
     if r.get("returncode", 1) != 0:
         _terminate(proc)
@@ -372,7 +369,6 @@ def stop_capture(device_id: str) -> Dict[str, Any]:
 
     # proxy restore first — a device pointing at a dead proxy is offline
     try:
-        from app.utils.adb_auto_core import run_adb
         run_adb(device_id, ["shell", "settings", "put", "global", "http_proxy", ":0"])
         if state:
             run_adb(device_id, ["reverse", "--remove", f"tcp:{state['port']}"])
