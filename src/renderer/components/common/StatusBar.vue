@@ -2,20 +2,20 @@
   <div class="status-bar" :class="{ collapsed }">
     <!-- Minimal mode: icon + dot only when sidebar collapsed -->
     <template v-if="collapsed">
-      <n-icon size="18" :color="deviceStatus === 'online' ? '#22C55E' : '#64748B'"><Smartphone /></n-icon>
-      <span class="status-dot" :class="deviceStatus"></span>
+      <n-icon size="18" :color="hasOnlineDevice ? '#22C55E' : '#64748B'"><Smartphone /></n-icon>
+      <span class="status-dot" :class="hasOnlineDevice ? 'online' : 'offline'"></span>
     </template>
     <!-- Full mode -->
     <template v-else>
       <div class="status-device" @click="goToDevice">
-        <div class="device-badge" v-if="connectedDevice">
+        <div class="device-badge" v-if="hasOnlineDevice">
           <n-icon size="14"><Smartphone /></n-icon>
-          <span>{{ connectedDevice.name || connectedDevice.id }}</span>
-          <span class="status-dot" :class="deviceStatusClass"></span>
+          <span>{{ t('device.connected', { count: onlineCount }) }}</span>
+          <span class="status-dot online"></span>
         </div>
         <div class="device-badge off" v-else>
           <n-icon size="14" color="#64748B"><Smartphone /></n-icon>
-          <span class="dim">{{ t('statusBar.noDevice') }}</span>
+          <span class="dim">{{ t('device.noDevices') }}</span>
           <span class="status-dot offline"></span>
         </div>
       </div>
@@ -35,7 +35,6 @@ import { NIcon } from 'naive-ui'
 import { Smartphone } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
-import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
 
 const { t } = useI18n()
@@ -48,19 +47,18 @@ const goToDevice = () => {
 }
 
 const deviceStore = useDeviceStore()
-const { selectedDevice } = storeToRefs(deviceStore)
-const connectedDevice = computed(() => selectedDevice.value || null)
+// Bottom-left badge = how many devices are online (not which one is
+// selected — each page has its own device selector).
+const onlineCount = computed(() => {
+  const list = (deviceStore.devices || []) as Array<{ status?: string }>
+  const online = list.filter(d => !d.status || d.status === 'device' || d.status === 'online')
+  return online.length
+})
+const hasOnlineDevice = computed(() => onlineCount.value > 0)
 const frontendVersion = ref('1.0.0')
 const backendVersion = ref('')
 
-const deviceStatus = computed(() => {
-  if (!connectedDevice.value) return 'offline'
-  const s = connectedDevice.value.state || connectedDevice.value.status
-  if (s === 'device') return 'online'
-  if (s === 'unauthorized') return 'connecting'
-  return 'offline'
-})
-
+const deviceStatus = computed(() => (hasOnlineDevice.value ? 'online' : 'offline'))
 const deviceStatusClass = computed(() => deviceStatus.value)
 
 const getVersions = async () => {
