@@ -293,26 +293,33 @@ def _exec_step(
     step: Dict[str, Any],
     dt: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, str, Optional[str]]:
-    """Execute one step. Returns (ok, message, screenshot_path|None)."""
+    """Execute one v2 step. Returns (ok, message, screenshot_path|None).
+
+    v2 step model (see renderer stepTypes.ts — the single source of truth):
+      * mode discriminates the target for tap (coord|element) and
+        wait (time|element);
+      * element targets are the nested target object
+        {by, value, instance?, timeout_ms?} shared by tap/wait/input/assert;
+      * swipe carries path {x1,y1,x2,y2,duration_ms?}, tap carries
+        coord {x,y}.
+    """
     dt = dt or {"rotation": 0, "width": 0, "height": 0}
 
     def disp(x, y):
-        """Panel raw coords → display coords for `input tap/swipe`."""
+        """Panel raw coords → display coords for input tap/swipe."""
         return rotate_to_display(x, y, dt["rotation"], dt["width"], dt["height"])
 
-    # Unified intents: legacy element action names map onto their base
-    # action; the by/value pair then selects the element target.
-    action = {"tap_element": "tap", "wait_element": "wait"}.get(action, action)
-
-    def has_element_target() -> bool:
-        return bool(str(step.get("by", "")) and str(step.get("value", "")))
-
-    def elem_instance() -> int:
-        """0-based match index among same-selector nodes (default first)."""
+    def tgt() -> Tuple[str, str, int, int]:
+        t = step.get("target") or {}
         try:
-            return max(0, int(step.get("instance", 0)))
+            instance = max(0, int(t.get("instance", 0) or 0))
         except (TypeError, ValueError):
-            return 0
+            instance = 0
+        try:
+            timeout = int(t.get("timeout_ms", 10000) or 10000)
+        except (TypeError, ValueError):
+            timeout = 10000
+        return str(t.get("by", "")), str(t.get("value", "")), instance, timeout
 
     try:
         if action == "launch_app":
@@ -321,37 +328,41 @@ def _exec_step(
             return _ok(r), _err(r, "launch failed"), None
 
         if action == "tap":
-            if has_element_target():
+            if step.get("mode") == "element" or step.get("target"):
+                by, value, instance, timeout = tgt()
                 r = tap_element(
-                    device_id, step.get("by", ""), step.get("value", ""),
-                    timeout_ms=int(step.get("timeout_ms", 10000)),
-                    instance=elem_instance(),
+                    device_id, by, value,
+                    timeout_ms=timeout,
+                    instance=instance,
                     cancel_check=context.is_cancelled,
                 )
                 ok = r.get("success", False)
                 return ok, "" if ok else (r.get("error") or "element tap failed"), None
-            x, y = disp(int(step["x"]), int(step["y"]))
+            c = step.get("coord") or {}
+            x, y = disp(int(c.get("x", 0)), int(c.get("y", 0)))
             r = tap(device_id, x, y)
             return _ok(r), _err(r, "tap failed"), None
 
         if action == "swipe":
-            x1, y1 = disp(int(step["x1"]), int(step["y1"]))
-            x2, y2 = disp(int(step["x2"]), int(step["y2"]))
-            r = swipe(
-                device_id,
-                x1, y1, x2, y2,
-                int(step.get("duration_ms", 300)),
-            )
+            p = step.get("path") or {}
+            x1, y1 = disp(int(p.get("x1", 0)), int(p.get("y1", 0)))
+            x2, y2 = disp(int(p.get("x2", 0)), int(p.get("y2", 0)))
+            try:
+                duration = int(p.get("duration_ms", 300))
+            except (TypeError, ValueError):
+                duration = 300
+            r = swipe(device_id, x1, y1, x2, y2, duration)
             return _ok(r), _err(r, "swipe failed"), None
 
         if action == "input":
-            # Optional focus: with by/value set, tap the field first —
+            # Optional focus: with a non-empty target, tap the field first —
             # `input text` only types into the focused editor.
-            if has_element_target():
+            by, value, instance, timeout = tgt()
+            if value:
                 fr = tap_element(
-                    device_id, step.get("by", ""), step.get("value", ""),
-                    timeout_ms=int(step.get("timeout_ms", 10000)),
-                    instance=elem_instance(),
+                    device_id, by, value,
+                    timeout_ms=timeout,
+                    instance=instance,
                     cancel_check=context.is_cancelled,
                 )
                 if not fr.get("success", False):
@@ -380,12 +391,13 @@ def _exec_step(
             return _ok(r), _err(r, "shell failed"), None
 
         if action == "wait":
-            if has_element_target():
+            if step.get("mode") == "element" or step.get("target"):
+                by, value, instance, timeout = tgt()
                 # wait for an element to appear (poll uiautomator dump)
                 r = find_element(
-                    device_id, step.get("by", ""), step.get("value", ""),
-                    timeout_ms=int(step.get("timeout_ms", 10000)),
-                    instance=elem_instance(),
+                    device_id, by, value,
+                    timeout_ms=timeout,
+                    instance=instance,
                     cancel_check=context.is_cancelled,
                 )
                 ok = r.get("found", False)
@@ -401,31 +413,12 @@ def _exec_step(
                     time.sleep(min(0.1, max(0.0, deadline - time.time())))
             return True, "", None
 
-        if action == "tap_element":  # legacy name — handled via alias above
-            r = tap_element(
-                device_id, step.get("by", ""), step.get("value", ""),
-                timeout_ms=int(step.get("timeout_ms", 10000)),
-                instance=elem_instance(),
-                cancel_check=context.is_cancelled,
-            )
-            ok = r.get("success", False)
-            return ok, "" if ok else (r.get("error") or "element not found"), None
-
-        if action == "wait_element":  # legacy name — handled via alias above
-            r = find_element(
-                device_id, step.get("by", ""), step.get("value", ""),
-                timeout_ms=int(step.get("timeout_ms", 10000)),
-                instance=elem_instance(),
-                cancel_check=context.is_cancelled,
-            )
-            ok = r.get("found", False)
-            return ok, "" if ok else (r.get("error") or "element not found (wait)"), None
-
         if action == "assert_element":
+            by, value, instance, timeout = tgt()
             r = find_element(
-                device_id, step.get("by", ""), step.get("value", ""),
-                timeout_ms=int(step.get("timeout_ms", 10000)),
-                instance=elem_instance(),
+                device_id, by, value,
+                timeout_ms=timeout,
+                instance=instance,
                 cancel_check=context.is_cancelled,
             )
             found = r.get("found", False)
@@ -435,15 +428,19 @@ def _exec_step(
             return ok, msg, None
 
         if action == "assert_activity":
-            r = current_activity(device_id, timeout_ms=int(step.get("timeout_ms", 3000)))
+            try:
+                timeout = int(step.get("timeout_ms", 3000) or 3000)
+            except (TypeError, ValueError):
+                timeout = 3000
+            r = current_activity(device_id, timeout_ms=timeout)
             act = r.get("activity", "")
-            sub = step.get("activity", "")
+            sub = str(step.get("activity", ""))
             ok = bool(sub) and (sub in act)
             msg = "" if ok else f"assert_activity failed: current={act!r}, expect contains {sub!r}"
             return ok, msg, None
 
         if action == "screenshot":
-            r = take_screenshot(device_id, step.get("name", ""))
+            r = take_screenshot(device_id, str(step.get("name", "")))
             if r.get("success"):
                 return True, "", r.get("file_path")
             return False, r.get("error") or "screenshot failed", None

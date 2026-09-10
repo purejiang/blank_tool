@@ -107,9 +107,11 @@ export function useAutomationStore(isBusy?: () => boolean) {
   }
 
   // ---------------- persistence ----------------
+  const STORAGE_VERSION = 2
+
   async function persist() {
     try {
-      await config.setAppConfig('automation', { projects: projects.value })
+      await config.setAppConfig('automation', { version: STORAGE_VERSION, projects: projects.value })
     } catch (e) {
       message.error(String((e as any)?.message || e))
     }
@@ -118,9 +120,12 @@ export function useAutomationStore(isBusy?: () => boolean) {
   async function loadConfig() {
     try {
       const raw = (await config.getAppConfig('automation')) as any
-      const list = raw?.projects
-      if (Array.isArray(list)) {
-        projects.value = list as Project[]
+      // v2-only: anything else (missing version / legacy format) is dropped —
+      // the v2 data model is not backwards compatible by design.
+      if (raw?.version === STORAGE_VERSION && Array.isArray(raw.projects)) {
+        projects.value = raw.projects as Project[]
+      } else {
+        projects.value = []
       }
     } catch {
       projects.value = []
@@ -343,10 +348,31 @@ export function useAutomationStore(isBusy?: () => boolean) {
 
   // ---------------- recording ----------------
   /**
-   * Insert `{action:'wait', ms}` steps between recorded steps whose gap
-   * exceeds the configured threshold. Uses each step's `ts` (device-time
-   * seconds of the touch END marker); a step's own duration (swipe) is
-   * subtracted so the wait measures true idle time. Gap is capped at maxMs.
+   * Recorder steps arrive in the parser's flat shape
+   * ({action:'tap', x, y, ts} / {action:'swipe', x1..y2, duration_ms, ts});
+   * convert them into the v2 nested model here, at the boundary.
+   */
+  function toV2Step(raw: any): Step {
+    const base: any = { id: genId(), action: raw?.action }
+    if (typeof raw?.ts === 'number') base.ts = raw.ts
+    if (raw?.action === 'tap') {
+      base.mode = 'coord'
+      base.coord = { x: Number(raw.x) || 0, y: Number(raw.y) || 0 }
+    } else if (raw?.action === 'swipe') {
+      base.path = {
+        x1: Number(raw.x1) || 0, y1: Number(raw.y1) || 0,
+        x2: Number(raw.x2) || 0, y2: Number(raw.y2) || 0,
+        duration_ms: Number(raw.duration_ms) || 300,
+      }
+    }
+    return base
+  }
+
+  /**
+   * Insert fixed-wait steps between recorded steps whose gap exceeds the
+   * configured threshold. Uses each step's `ts` (device-time seconds of the
+   * touch END marker); a swipe's own duration is subtracted so the wait
+   * measures true idle time. Gap is capped at maxMs.
    */
   function withWaits(
     steps: Step[],
@@ -359,10 +385,14 @@ export function useAutomationStore(isBusy?: () => boolean) {
       if (i > 0) {
         const prev = steps[i - 1]
         if (typeof prev?.ts === 'number' && typeof cur?.ts === 'number') {
-          const startOfCur = cur.ts - (Number(cur.duration_ms) || 0) / 1000
+          const dur = (cur as any).path?.duration_ms ?? (cur as any).duration_ms ?? 0
+          const startOfCur = cur.ts - (Number(dur) || 0) / 1000
           const gapMs = Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
           if (gapMs > gap.thresholdMs) {
-            out.push({ action: 'wait', ms: Math.min(gapMs, gap.maxMs) })
+            out.push({
+              id: genId(), action: 'wait', mode: 'time',
+              ms: Math.min(gapMs, gap.maxMs),
+            })
           }
         }
       }
@@ -393,7 +423,7 @@ export function useAutomationStore(isBusy?: () => boolean) {
 
     const raw = Array.isArray(payload?.steps) ? payload.steps : []
     const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 5000 }
-    const add = withWaits(raw as Step[], gap)
+    const add = withWaits(raw.map(toV2Step), gap)
 
     const old = editor.value.steps
     const at = payload?.insertAt || 'end'

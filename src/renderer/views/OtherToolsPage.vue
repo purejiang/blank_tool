@@ -332,7 +332,7 @@ function onStepPick(payload: { index: number; mode: 'coord' | 'element' }) {
   void getElements()
 }
 
-/** 元素抽屉里选中一个元素：填充正在编辑的步骤 */
+/** 元素抽屉里选中一个元素：填充正在编辑的步骤（v2 模型） */
 function applyElement(el: UiNode) {
   const target = pickTarget.value
   if (!target) return
@@ -345,17 +345,21 @@ function applyElement(el: UiNode) {
       message.error(t('automation.dumpFailed', { msg: 'no bounds' }))
       return
     }
-    s.x = c.x
-    s.y = c.y
-    delete s.by
-    delete s.value
+    s.mode = 'coord'
+    s.coord = c
+    delete s.target
+    delete s.ms
   } else {
-    // input has no `mode` field — by/value is the optional focus tap
-    if (s.action !== 'input') s.mode = 'element'
-    s.by = el.by
-    s.value = el.value
-    if (s.timeout_ms === undefined) s.timeout_ms = 10000
-    if (s.action === 'wait') delete s.ms
+    // element target: tap/wait switch modes; input keeps its optional focus
+    if (s.action === 'tap' || s.action === 'wait') s.mode = 'element'
+    s.target = {
+      by: el.by,
+      value: el.value,
+      instance: s.target?.instance ?? 0,
+      timeout_ms: s.target?.timeout_ms ?? 10000,
+    }
+    delete s.coord
+    delete s.ms
   }
   steps[target.index] = s
   store.editor.steps = steps

@@ -62,7 +62,9 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NInput, NInputNumber, NSelect } from 'naive-ui'
-import { STEP_FIELDS, type Step, type StepAction } from './stepTypes'
+import {
+  STEP_FIELDS, getPath, setPath, type Step, type StepAction,
+} from './stepTypes'
 
 const props = defineProps<{ step: Step }>()
 const emit = defineEmits<{
@@ -83,31 +85,34 @@ const allFields = computed(() => STEP_FIELDS[props.step.action as StepAction] ||
 const fields = computed(() =>
   allFields.value.filter((f) => {
     if (!f.visibleWhen) return true
-    return f.visibleWhen.equals.includes(form[f.visibleWhen.key] as string | number)
+    return f.visibleWhen.equals.includes(getPath(form, f.visibleWhen.key) as string | number)
   }),
 )
 
 /**
  * "Pick from current UI dump" availability: ONLY meaningful for an element
- * target (fills by/value). Coordinate taps and fixed-duration waits have
- * nothing to pick.
+ * target (fills target.by/value). Coordinate taps and fixed-duration waits
+ * have nothing to pick.
  */
 const pickable = computed(() => {
   const a = props.step.action
   // input focuses the target field by by/value — always element-based
   if (a === 'input') return true
   if (a !== 'tap' && a !== 'wait') return false
-  return String(form.mode ?? '') === 'element'
+  return String(getPath(form, 'mode') ?? '') === 'element'
 })
 const pickMode = computed<'coord' | 'element'>(() => {
-  const m = String(form.mode ?? '')
+  const m = String(getPath(form, 'mode') ?? '')
   if (props.step.action === 'tap' && m === 'coord') return 'coord'
   return 'element'
 })
 
 function buildForm(): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const f of allFields.value) out[f.key] = props.step[f.key] ?? f.default ?? null
+  for (const f of allFields.value) {
+    const v = getPath(props.step, f.key)
+    out[f.key] = v === undefined ? (f.default ?? null) : v
+  }
   return out
 }
 
@@ -118,15 +123,15 @@ watch(() => props.step, () => {
 })
 
 function numVal(k: string): number | null {
-  const v = form[k]
+  const v = getPath(form, k)
   return v === null || v === undefined || v === '' ? null : Number(v)
 }
 function strVal(k: string): string {
-  const v = form[k]
+  const v = getPath(form, k)
   return v === null || v === undefined ? '' : String(v)
 }
 function setField(k: string, v: unknown) {
-  form[k] = v
+  setPath(form, k, v)
 }
 
 const error = ref('')
@@ -134,7 +139,7 @@ const error = ref('')
 function save() {
   for (const f of fields.value) {
     if (f.required) {
-      const v = form[f.key]
+      const v = getPath(form, f.key)
       if (v === null || v === undefined || v === '') {
         error.value = t('automation.f.required', {
           field: t(`automation.f.${f.labelKey}`),
@@ -145,17 +150,20 @@ function save() {
   }
   error.value = ''
   // Rebuild from VISIBLE fields only — switching mode (e.g. element → coord)
-  // must not leave stale by/value pairs behind (the backend keys element
-  // mode off their presence).
-  const next: Step = { action: props.step.action }
+  // must not leave stale coord/target pairs behind.
+  const next: any = { id: props.step.id, action: props.step.action }
   if (props.step.ts !== undefined) next.ts = props.step.ts
   for (const f of fields.value) {
     if (f.type === 'number') {
-      const n = Number(form[f.key])
-      next[f.key] = Number.isFinite(n) ? n : (f.default ?? 0)
+      const n = Number(getPath(form, f.key))
+      setPath(next, f.key, Number.isFinite(n) ? n : (f.default ?? 0))
     } else {
-      next[f.key] = form[f.key] ?? f.default ?? ''
+      setPath(next, f.key, getPath(form, f.key) ?? f.default ?? '')
     }
+  }
+  // input: empty focus target = no pre-typing tap — drop it entirely
+  if (props.step.action === 'input' && !(next.target as any)?.value) {
+    delete next.target
   }
   emit('save', next)
 }
