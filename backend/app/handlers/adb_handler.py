@@ -14,16 +14,18 @@ from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 from app.tools.adb import Adb
 from app.utils.env import get_output_dir
-from app.utils.adb_auto_core import (
-    tap,
-    swipe,
+from app.automation.input import (
     input_text,
     keyevent,
-    ui_dump,
+    swipe,
+    tap,
+)
+from app.automation.elements import (
     find_element,
     tap_element,
-    current_activity,
+    ui_dump,
 )
+from app.automation.apps import current_activity
 from app.common.decorators import streaming, logs_errors
 
 logger = Logger.get_logger("AdbHandler")
@@ -489,7 +491,7 @@ def device_screenshot(params, stream_handler):
 
 # ----------------------------------------------------------------------
 # ADB UI automation atomic handlers (batch 1)
-# Thin wrappers over app.utils.adb_auto_core, exposed as backend APIs so the
+# Thin wrappers over app.automation functions, exposed as backend APIs so the
 # frontend "pick element from current screen" can call them directly, and the
 # adb_auto plugin orchestrates them.
 # ----------------------------------------------------------------------

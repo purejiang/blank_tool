@@ -21,7 +21,7 @@ from typing import Any, Dict
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.exceptions import ToolNotFoundError, ToolException
-from app.utils.adb_auto_core import run_adb
+from app.automation.adb import run_adb
 from app.utils.getevent_parser import (
     GeteventStatefulParser,
     find_touchscreen,
