@@ -126,7 +126,11 @@ function buildForm(): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const f of allFields.value) {
     const v = getPath(props.step, f.key)
-    out[f.key] = v === undefined ? fieldDefault(f) : v
+    // MUST write through setPath (nested), matching getPath/setField reads —
+    // `out[f.key] = v` would create a FLAT "target.value" key while every
+    // reader resolves the dotted path as form.target.value → fields
+    // (incl. the element pick fill and the default timeout) rendered empty.
+    setPath(out, f.key, v === undefined ? fieldDefault(f) : v)
   }
   return out
 }
