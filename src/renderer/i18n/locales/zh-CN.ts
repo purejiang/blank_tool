@@ -520,8 +520,7 @@ export default {
     jsonOk: '{n} 个步骤',
     editInfo: '编辑信息',
     description: '描述',
-    save: '保存',
-    saved: '已保存',
+    autoSaveHint: '改动自动保存',
     noSelection: '请选择左侧的项目与脚本',
     // 元素选择器
     elements: '当前界面元素',

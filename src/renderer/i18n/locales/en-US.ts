@@ -517,8 +517,7 @@ export default {
     jsonOk: '{n} step(s)',
     editInfo: 'Edit Info',
     description: 'Description',
-    save: 'Save',
-    saved: 'Saved',
+    autoSaveHint: 'Changes save automatically',
     noSelection: 'Select a project and script on the left',
     // Element picker
     elements: 'Current Screen Elements',

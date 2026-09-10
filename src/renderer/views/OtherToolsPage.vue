@@ -33,10 +33,7 @@
               <span class="editor-name">{{ store.selectedScript?.name }}</span>
               <span v-if="store.selectedScript?.description" class="editor-desc">{{ store.selectedScript.description }}</span>
             </span>
-            <n-button size="small" type="primary" :disabled="runner.running" @click="store.saveScript">
-              <template #icon><n-icon><Save /></n-icon></template>
-              {{ t('automation.save') }}
-            </n-button>
+            <span class="autosave-hint">{{ t('automation.autoSaveHint') }}</span>
             <n-button
               size="small"
               :type="recordPanelOpen ? 'warning' : 'default'"
@@ -180,7 +177,7 @@ import {
   useMessage,
   useDialog,
 } from 'naive-ui'
-import { Download, Upload, Save, Circle } from 'lucide-vue-next'
+import { Download, Upload, Circle } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
@@ -321,6 +318,8 @@ async function runScript() {
     message.warning(t('automation.noScriptSelected'))
     return
   }
+  // flush any pending debounced auto-save so the run uses the latest edits
+  store.flushAutoSaveNow()
   if (!store.commitEditor()) return
   const s = store.selectedScript
   if (!s || !s.steps.length) {
@@ -562,6 +561,11 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.autosave-hint {
+  flex: none;
+  font-size: 11px;
+  color: var(--app-text-muted);
 }
 .steps-json { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
 .json-status { font-size: 11.5px; margin-top: 4px; }

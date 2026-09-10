@@ -8,7 +8,7 @@
  * Mutating actions bail out while `isBusy()` returns true (a run is in
  * flight or recording).
  */
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog } from 'naive-ui'
 import { ConfigService } from '@services/ConfigService'
@@ -339,11 +339,53 @@ export function useAutomationStore(isBusy?: () => boolean) {
     })
   }
 
-  function saveScript() {
-    if (busy()) return
-    if (!commitEditor()) return
+  // ---------------- auto-save ----------------
+  /**
+   * Auto-save: any editor change (UI list or JSON typing) commits to the
+   * selected script and persists after a short debounce. The save button
+   * was removed — this is the only persistence path besides the
+   * commit-on-selection-switch in selectProject/selectScript.
+   *
+   * JSON view: invalid JSON is skipped SILENTLY (no toast per keystroke)
+   * and resumes saving once it parses again.
+   */
+  let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+  function flushAutoSave() {
+    autoSaveTimer = null
+    const s = selectedScript.value
+    if (!s) return
+    let next: Step[]
+    if (stepsView.value === 'json') {
+      const r = _parseStepsText(stepsText.value)
+      if (!r.ok) return // wait until the JSON is valid again
+      next = r.data
+    } else {
+      next = JSON.parse(JSON.stringify(editor.value.steps))
+    }
+    // skip the write when nothing actually changed (e.g. editor reload
+    // after switching scripts would otherwise bump updated_at forever)
+    if (JSON.stringify(s.steps) === JSON.stringify(next)) return
+    s.steps = next
+    s.updated_at = new Date().toISOString()
     persist()
-    message.success(t('automation.saved'))
+  }
+
+  watch(
+    () => [editor.value.steps, stepsText.value] as const,
+    () => {
+      if (autoSaveTimer) clearTimeout(autoSaveTimer)
+      autoSaveTimer = setTimeout(flushAutoSave, 600)
+    },
+    { deep: true },
+  )
+
+  /** Flush immediately (used when leaving the page / before a run). */
+  function flushAutoSaveNow() {
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer)
+      flushAutoSave()
+    }
   }
 
   // ---------------- recording ----------------
@@ -476,7 +518,7 @@ export function useAutomationStore(isBusy?: () => boolean) {
     newScript,
     deleteProject,
     deleteScript,
-    saveScript,
+    flushAutoSaveNow,
     saveMeta,
     openProjectMeta,
     openScriptMeta,
