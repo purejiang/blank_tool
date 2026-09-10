@@ -96,7 +96,6 @@ import { useI18n } from 'vue-i18n'
 import {
   NButton, NCheckbox, NInputNumber, NScrollbar, NTag, NTooltip, useMessage,
 } from 'naive-ui'
-import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 
 // automation.record* i18n keys (zh-CN/en-US) landed in 4198cc3.
@@ -104,6 +103,8 @@ const props = defineProps<{
   disabled: boolean
   /** 步骤编辑器里是否有选中行（决定"插入到选中步骤之后"是否可选） */
   hasSelection?: boolean
+  /** 录制目标设备 — 来自自动化页自己的选择，与设备页详情选中解耦 */
+  deviceId?: string
 }>()
 
 export type InsertAt = 'end' | 'start' | 'after'
@@ -122,7 +123,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const message = useMessage()
-const deviceStore = useDeviceStore()
 
 const recording = ref(false)
 const liveSteps = ref<any[]>([])
@@ -163,7 +163,7 @@ const insertOptions = computed(() => [
 ])
 
 const startDisabled = computed(
-  () => props.disabled || recording.value || !deviceStore.selectedDeviceId
+  () => props.disabled || recording.value || !props.deviceId
 )
 
 function actLabel(action: unknown): string {
@@ -181,7 +181,7 @@ function posSummary(step: any): string {
 
 async function startRecording(): Promise<void> {
   if (startDisabled.value) return
-  const deviceId = deviceStore.selectedDeviceId
+  const deviceId = props.deviceId
   // Synchronous state flip before ANY await (page precedent: runScript sets
   // running before awaiting) — a double click cannot issue a second
   // record_start; the catch below rolls both flags back via _reset.
@@ -227,7 +227,7 @@ function onStopped(_payload: any): void {
 async function stop(): Promise<void> {
   if (!recording.value || !recId.value) return
   try {
-    const res = await svc.stopRecording(deviceStore.selectedDeviceId)
+    const res = await svc.stopRecording(props.deviceId)
     // 只暂存展示，不自动写入脚本 —— 写入由「应用到脚本」按钮显式触发
     lastRecord.value = {
       steps: Array.isArray(res?.steps) ? res.steps : [],

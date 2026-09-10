@@ -174,11 +174,11 @@
 
         <div class="run-bar">
           <n-select
-            :value="deviceStore.selectedDeviceId"
+            :value="autoDeviceId"
             :options="deviceOptions"
             size="small"
             :placeholder="t('automation.selectDevice')"
-            @update:value="(v: string) => deviceStore.selectDevice(v)"
+            @update:value="(v: string) => (autoDeviceId = v)"
           />
           <!-- 运行模式的操作按钮（录制模式的开始/停止在 RecordPanel 内，同一位置随模式切换） -->
           <template v-if="rightMode === 'run'">
@@ -195,7 +195,7 @@
                   {{ t('automation.run') }}
                 </n-button>
               </template>
-              {{ !deviceStore.selectedDeviceId ? t('automation.noDevice') : t('automation.noScriptSelected') }}
+              {{ !autoDeviceId ? t('automation.noDevice') : t('automation.noScriptSelected') }}
             </n-tooltip>
             <n-button v-else type="warning" size="small" block @click="stopRun">
               <template #icon><n-icon><Square /></n-icon></template>
@@ -207,6 +207,7 @@
         <RecordPanel
           v-show="rightMode === 'record'"
           ref="recordPanelRef"
+          :device-id="autoDeviceId"
           :disabled="running && !recording"
           :has-selection="selectedStepIndex >= 0"
           @recording-start="onRecStart"
@@ -530,8 +531,22 @@ const deviceOptions = computed(() =>
   })),
 )
 
+// Automation-page device selection — deliberately DECOUPLED from the
+// device page's list selection (which is only for the detail panel).
+// Persisted locally so the page remembers the last device used.
+const autoDeviceId = ref(localStorage.getItem('bt:automationDeviceId') || '')
+watch(autoDeviceId, (v) => {
+  try { localStorage.setItem('bt:automationDeviceId', v) } catch {}
+})
+// Drop the selection when the device vanishes from the live list.
+watch(() => deviceStore.devices, (list) => {
+  if (autoDeviceId.value && !(list as any[]).some(d => d.id === autoDeviceId.value)) {
+    autoDeviceId.value = ''
+  }
+}, { immediate: true })
+
 // Run is allowed only when both a device and a script are selected.
-const canRun = computed(() => !!deviceStore.selectedDeviceId && !!selectedScriptId.value)
+const canRun = computed(() => !!autoDeviceId.value && !!selectedScriptId.value)
 
 const selectedProject = computed(() => findProject(selectedProjectId.value))
 const selectedScript = computed(() => {
@@ -879,7 +894,7 @@ function parseUiDump(xml: string): UiNode[] {
 
 async function getElements() {
   if (running.value) return
-  if (!deviceStore.selectedDeviceId) {
+  if (!autoDeviceId.value) {
     message.error(t('automation.noDevice'))
     return
   }
@@ -887,7 +902,7 @@ async function getElements() {
   try {
     const api = window.electronAPI as any
     const res = await api.callBackendAPI('device.ui_dump', {
-      device_id: deviceStore.selectedDeviceId,
+      device_id: autoDeviceId.value,
       timeout_ms: 15000,
     })
     if (!res || !res.success) {
@@ -961,7 +976,7 @@ function applyElement(el: UiNode) {
 // ---------------- run / stop ----------------
 async function runScript() {
   if (running.value) return
-  if (!deviceStore.selectedDeviceId) {
+  if (!autoDeviceId.value) {
     message.error(t('automation.noDeviceSelectedRun'))
     return
   }
@@ -1032,7 +1047,7 @@ async function runScript() {
     await api.callBackendAPI('plugin.run', {
       name: 'adb_auto',
       params: {
-        device_id: deviceStore.selectedDeviceId,
+        device_id: autoDeviceId.value,
         package_name: selectedProject.value?.package_name || '',
         steps: plainSteps,
         continue_on_error: false,
