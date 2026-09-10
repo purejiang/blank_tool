@@ -27,8 +27,14 @@
         v-for="(step, i) in modelValue"
         :key="i"
         class="step-item"
-        :class="{ editing: i === editingIndex, selected: i === selectedIndex }"
+        :class="{ editing: i === editingIndex, selected: i === selectedIndex, dragging: dragIndex === i, 'drag-over': overIndex === i && dragIndex !== -1 && dragIndex !== i }"
+        :draggable="i !== editingIndex"
         @click="toggleSelect(i)"
+        @dragstart="onDragStart(i, $event)"
+        @dragover.prevent="overIndex = i"
+        @dragleave="overIndex = -1"
+        @drop.prevent="onDrop(i)"
+        @dragend="dragIndex = -1; overIndex = -1"
       >
         <div class="step-row">
           <span class="step-idx">{{ i + 1 }}</span>
@@ -38,20 +44,6 @@
           <span class="step-sum" :title="stepSummary(step)">{{ stepSummary(step) }}</span>
 
           <div class="step-ops" @click.stop>
-            <n-button
-              size="tiny" text :disabled="disabled || i === 0"
-              :title="t('automation.stepUp')"
-              @click.stop="move(i, -1)"
-            >
-              <n-icon size="14"><ChevronUp /></n-icon>
-            </n-button>
-            <n-button
-              size="tiny" text :disabled="disabled || i === modelValue.length - 1"
-              :title="t('automation.stepDown')"
-              @click.stop="move(i, 1)"
-            >
-              <n-icon size="14"><ChevronDown /></n-icon>
-            </n-button>
             <n-button
               size="tiny" text type="primary" :disabled="disabled"
               :title="t('automation.stepEdit')"
@@ -89,7 +81,7 @@ import {
   NButton, NDropdown, NEmpty, NIcon, NTag,
 } from 'naive-ui'
 import {
-  ChevronUp, ChevronDown, Pencil, Plus, Trash2,
+  Pencil, Plus, Trash2,
 } from 'lucide-vue-next'
 import StepEditForm from './StepEditForm.vue'
 import {
@@ -160,21 +152,43 @@ function adjustedIndexAfterRemove(i: number): number {
   return cur
 }
 
-function adjustedIndexAfterMove(i: number, delta: number): number {
-  const cur = props.selectedIndex ?? -1
-  if (cur === i) return i + delta
-  if (cur === i + delta) return i
+// ---------------- drag reorder ----------------
+const dragIndex = ref(-1)
+const overIndex = ref(-1)
+
+function onDragStart(i: number, e: DragEvent) {
+  dragIndex.value = i
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(i))
+  }
+}
+
+/** from → to 的落点下标换算（选中行与编辑行同步跟随） */
+function movedIndex(cur: number, from: number, to: number): number {
+  if (cur === from) return to
+  if (from < cur && to <= cur) return cur - 1
+  if (to >= cur && cur < from) return cur + 1
   return cur
 }
 
-function move(i: number, delta: number) {
+function reorder(from: number, to: number) {
+  if (from === to || from < 0) return
   const list = [...props.modelValue]
-  const j = i + delta
-  if (j < 0 || j >= list.length) return
-  ;[list[i], list[j]] = [list[j], list[i]]
+  const [m] = list.splice(from, 1)
+  list.splice(to, 0, m)
   emitList(list)
-  emit('update:selectedIndex', adjustedIndexAfterMove(i, delta))
-  if (editingIndex.value === i) editingIndex.value = j
+  emit('update:selectedIndex', movedIndex(props.selectedIndex ?? -1, from, to))
+  if (editingIndex.value >= 0) {
+    editingIndex.value = movedIndex(editingIndex.value, from, to)
+  }
+}
+
+function onDrop(to: number) {
+  if (dragIndex.value < 0) return
+  reorder(dragIndex.value, to)
+  dragIndex.value = -1
+  overIndex.value = -1
 }
 
 function remove(i: number) {
@@ -236,6 +250,12 @@ function onPick(i: number, payload: { mode: 'coord' | 'element' }) {
 .step-item.selected {
   border-color: var(--primary-color, #4a90d9);
   background: var(--app-blue-bg, rgba(74, 144, 217, 0.12));
+}
+/* drag & drop reorder (whole row is the handle, except the open editor) */
+.step-item:not(.editing) { cursor: grab; }
+.step-item.dragging { opacity: 0.45; }
+.step-item.drag-over {
+  border-top: 2px solid var(--primary-color, #4a90d9);
 }
 .step-row {
   display: flex;

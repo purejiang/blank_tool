@@ -17,9 +17,11 @@
       </n-space>
     </div>
 
-    <div class="three-cols">
+    <div class="three-cols" :style="gridStyle">
       <!-- ============ LEFT: project / script tree ============ -->
       <ProjectTree :store="store" :running="runner.running" />
+
+      <div class="col-divider" @pointerdown.prevent="startResize('left', $event)" />
 
       <!-- ============ CENTER: script editor ============ -->
       <section class="col col-center">
@@ -101,6 +103,8 @@
           />
         </template>
       </section>
+
+      <div class="col-divider" @pointerdown.prevent="startResize('right', $event)" />
 
       <!-- ============ RIGHT: run console ============ -->
       <section class="col col-right">
@@ -197,6 +201,46 @@ const deviceStore = useDeviceStore()
 // runner's running flag) is in flight.
 const runner = useScriptRunner()
 const store = useAutomationStore(() => runner.running)
+
+// ---------------- column resize ----------------
+// Side columns are user-resizable via the drag dividers; widths persist.
+// Center column is minmax(0,1fr) and absorbs the remaining space.
+const COL_MIN = 180
+const COL_MAX = 520
+function clampCol(v: number) {
+  return Math.max(COL_MIN, Math.min(COL_MAX, Math.round(v)))
+}
+const colLeft = ref(clampCol(Number(localStorage.getItem('bt:autoColLeft')) || 240))
+const colRight = ref(clampCol(Number(localStorage.getItem('bt:autoColRight')) || 320))
+const gridStyle = computed(() => ({
+  gridTemplateColumns: `${colLeft.value}px 6px minmax(0, 1fr) 6px ${colRight.value}px`,
+}))
+
+function startResize(side: 'left' | 'right', e: PointerEvent) {
+  const startX = e.clientX
+  const startW = side === 'left' ? colLeft.value : colRight.value
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  const onMove = (ev: PointerEvent) => {
+    // Left divider: drag right → wider. Right divider: drag right → narrower.
+    const w = side === 'left' ? startW + (ev.clientX - startX)
+                              : startW - (ev.clientX - startX)
+    if (side === 'left') colLeft.value = clampCol(w)
+    else colRight.value = clampCol(w)
+  }
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    try {
+      localStorage.setItem('bt:autoColLeft', String(colLeft.value))
+      localStorage.setItem('bt:autoColRight', String(colRight.value))
+    } catch {}
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+}
 
 // ---------------- page-local state ----------------
 // Automation-page device selection — deliberately DECOUPLED from the
@@ -451,19 +495,17 @@ onMounted(() => {
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .three-cols {
   flex: 1; display: grid;
-  /* 中栏必须 minmax(0,1fr)：1fr 的 min-width 是 auto，内容（JSON 域/按钮行）
-     会把轨道顶开压到相邻列上——这就是窄窗口下排版重叠的根因 */
-  grid-template-columns: minmax(210px, 280px) minmax(0, 1fr) minmax(290px, 360px);
-  gap: 14px; min-height: 0;
+  /* 列宽由 gridStyle 内联给定：两侧列可拖拽调宽（localStorage 持久化），
+     中栏 minmax(0,1fr) 吸收剩余空间——1fr 的 min-width 是 auto，内容会顶开
+     轨道压到相邻列，因此必须 minmax(0,1fr) */
+  gap: 0; min-height: 0;
 }
-/* Responsive fallback: shrink side columns on narrower viewports so the
-   editor column keeps usable width instead of being crushed. */
-@media (max-width: 1180px) {
-  .three-cols { grid-template-columns: minmax(190px, 230px) minmax(0, 1fr) minmax(270px, 300px); }
+.col-divider {
+  cursor: col-resize;
+  border-radius: 3px;
+  transition: background 0.15s;
 }
-@media (max-width: 920px) {
-  .three-cols { grid-template-columns: minmax(170px, 200px) minmax(0, 1fr) minmax(250px, 260px); gap: 10px; }
-}
+.col-divider:hover { background: var(--app-card-border); }
 .col {
   background: var(--app-card-bg); border: 1px solid var(--app-card-border);
   border-radius: 10px; padding: 12px; display: flex; flex-direction: column; min-height: 0;

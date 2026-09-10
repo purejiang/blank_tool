@@ -29,7 +29,6 @@
             </n-button>
           </div>
         </div>
-        <div v-if="p.description" class="row-desc" :title="p.description">{{ p.description }}</div>
 
         <div v-if="p.id === store.selectedProjectId" class="scripts">
           <div
@@ -40,10 +39,10 @@
             @click="store.selectScript(p.id, s.id)"
           >
             <n-icon size="13"><FileText /></n-icon>
-            <div class="script-name-wrap" :title="s.description ? `${s.name} · ${s.description}` : s.name">
-              <span class="name-line">{{ s.name }}</span>
-              <span v-if="s.description" class="script-desc">{{ s.description }}</span>
-            </div>
+            <span
+              class="name-line"
+              :title="s.description ? `${s.name} · ${s.description}` : s.name"
+            >{{ s.name }}</span>
             <n-button
               size="tiny"
               text
@@ -111,50 +110,26 @@ const { t } = useI18n()
 .muted { color: var(--app-text-muted); font-size: 12px; }
 
 .tree { overflow: auto; flex: 1; }
-.proj { margin-bottom: 8px; }
+.proj { margin-bottom: 2px; }
 .proj-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 8px; border-radius: 8px; cursor: pointer;
+  padding: 4px 6px; border-radius: 7px; cursor: pointer;
 }
 .proj-row.active { background: var(--app-blue-bg); }
-.proj-name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; color: var(--app-text-primary); overflow: hidden; }
+.proj-name { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12.5px; color: var(--app-text-primary); overflow: hidden; min-width: 0; }
 .proj-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row-actions { display: flex; gap: 2px; opacity: 0; }
+.row-actions { display: flex; gap: 1px; opacity: 0; flex: none; }
 .proj-row:hover .row-actions { opacity: 1; }
-.scripts { margin: 4px 0 8px 18px; display: flex; flex-direction: column; gap: 3px; }
+.scripts { margin: 2px 0 6px 12px; display: flex; flex-direction: column; gap: 1px; }
 .script-row {
-  display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px;
-  cursor: pointer; font-size: 12.5px; color: var(--app-text-secondary);
+  display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px;
+  cursor: pointer; font-size: 12px; color: var(--app-text-secondary);
 }
 .script-row.active { background: var(--app-blue-bg); color: var(--app-text-primary); }
-.row-desc {
-  font-size: 11px;
-  color: var(--app-text-muted);
-  padding: 0 10px 2px 30px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.script-row .name-line {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.script-name-wrap {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-}
-.script-row .name-line,
-.proj-name .name-line {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.script-desc {
-  font-size: 10.5px;
-  color: var(--app-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.script-ops { opacity: 0; }
+.script-ops { opacity: 0; flex: none; }
 .script-row:hover .script-ops { opacity: 1; }
 </style>
