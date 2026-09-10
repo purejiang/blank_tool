@@ -514,7 +514,7 @@ export default {
     viewSteps: 'Steps',
     viewJson: 'JSON',
     jsonInvalid: 'Invalid JSON: {msg}',
-    jsonOk: '{n} step(s)',
+    stepCountLabel: '{n} step(s)',
     editInfo: 'Edit Info',
     description: 'Description',
     autoSaveHint: 'Changes save automatically',

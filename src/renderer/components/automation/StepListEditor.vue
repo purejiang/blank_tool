@@ -1,20 +1,5 @@
 <template>
   <div class="step-list-editor" :class="{ disabled }">
-    <div class="sl-head">
-      <n-dropdown
-        trigger="click"
-        placement="bottom-start"
-        :options="addOptions"
-        @select="onAdd"
-      >
-        <n-button size="tiny" type="primary" dashed :disabled="disabled">
-          <template #icon><n-icon><Plus /></n-icon></template>
-          {{ t('automation.addStep') }}
-        </n-button>
-      </n-dropdown>
-      <span class="sl-count">{{ modelValue.length }}</span>
-    </div>
-
     <n-empty
       v-if="!modelValue.length"
       size="small"
@@ -77,18 +62,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
-  NButton, NDropdown, NEmpty, NIcon, NTag,
+  NButton, NEmpty, NIcon, NTag,
 } from 'naive-ui'
 import {
-  Pencil, Plus, Trash2,
+  Pencil, Trash2,
 } from 'lucide-vue-next'
 import StepEditForm from './StepEditForm.vue'
-import {
-  ADDABLE_ACTIONS, defaultStep, type Step, type StepAction,
-} from './stepTypes'
+import { type Step } from './stepTypes'
 import { stepActionLabel, stepSummary } from './stepMeta'
 
 const props = defineProps<{
@@ -103,7 +86,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', steps: Step[]): void
   (e: 'update:selectedIndex', index: number): void
-  (e: 'record-request'): void
   /** StepEditForm 请求从当前界面 dump 中拾取元素/坐标 */
   (e: 'pick', payload: { index: number; mode: 'coord' | 'element' }): void
 }>()
@@ -111,20 +93,6 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const editingIndex = ref(-1)
-
-const RECORD_KEY = '__record__'
-
-const addOptions = computed(() => [
-  {
-    key: RECORD_KEY,
-    label: t('automation.recordSegment'),
-  },
-  { type: 'divider' as const, key: 'd1' },
-  ...ADDABLE_ACTIONS.map(a => ({
-    key: a,
-    label: stepActionLabel(a, t),
-  })),
-])
 
 /** 行选中：再点一次取消；按钮区已 stop 冒泡 */
 function toggleSelect(i: number) {
@@ -136,16 +104,6 @@ function toggleSelect(i: number) {
 /** emit a fresh (cloned) array — never mutate the prop in place */
 function emitList(steps: Step[]) {
   emit('update:modelValue', JSON.parse(JSON.stringify(steps)))
-}
-
-function onAdd(action: string) {
-  if (action === RECORD_KEY) {
-    emit('record-request')
-    return
-  }
-  const list = [...props.modelValue, defaultStep(action as StepAction)]
-  emitList(list)
-  editingIndex.value = list.length - 1
 }
 
 /** 增删移动后修正父级持有的选中下标 */
@@ -218,6 +176,14 @@ function onPick(i: number, payload: { mode: 'coord' | 'element' }) {
   emit('pick', { index: i, ...payload })
 }
 
+/** 外部（页面顶部"添加步骤"）追加步骤后打开对应行的编辑表单 */
+function openEditor(i: number) {
+  if (i >= 0 && i < props.modelValue.length && !props.disabled) {
+    editingIndex.value = i
+  }
+}
+defineExpose({ openEditor })
+
 /** Remount key for the edit form: when the step CONTENT is replaced
  * externally (element picked from the UI dump), the form remounts and
  * rebuilds from the new step instead of relying on prop-watch timing. */
@@ -234,12 +200,6 @@ function stepKey(step: Step): string {
   min-height: 0;
 }
 .step-list-editor.disabled { opacity: 0.6; pointer-events: none; }
-.sl-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.sl-count { font-size: 12px; color: var(--text-tertiary, #999); }
 .sl-empty { margin: 18px 0; }
 .sl-body {
   flex: 1;

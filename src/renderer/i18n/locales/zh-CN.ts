@@ -517,7 +517,7 @@ export default {
     viewSteps: '步骤',
     viewJson: 'JSON',
     jsonInvalid: 'JSON 格式错误：{msg}',
-    jsonOk: '{n} 个步骤',
+    stepCountLabel: '{n} 个步骤',
     editInfo: '编辑信息',
     description: '描述',
     autoSaveHint: '改动自动保存',

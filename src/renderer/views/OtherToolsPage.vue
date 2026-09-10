@@ -40,26 +40,42 @@
 
           <div class="editor-body">
             <div class="field steps-field">
+              <!-- 统一头行：左侧步骤计数，右侧 添加步骤 + 视图切换 -->
               <div class="steps-head">
-                <n-radio-group
-                  size="small"
-                  :value="store.stepsView"
-                  :disabled="runner.running"
-                  @update:value="store.onSwitchView"
-                >
-                  <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
-                  <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
-                </n-radio-group>
+                <span class="steps-count">{{ t('automation.stepCountLabel', { n: stepCountDisplay }) }}</span>
+                <div class="steps-head-right">
+                  <n-dropdown
+                    trigger="click"
+                    placement="bottom-end"
+                    :options="addOptions"
+                    :disabled="runner.running || store.stepsView !== 'ui'"
+                    @select="onAdd"
+                  >
+                    <n-button size="tiny" type="primary" dashed :disabled="runner.running || store.stepsView !== 'ui'">
+                      <template #icon><n-icon><Plus /></n-icon></template>
+                      {{ t('automation.addStep') }}
+                    </n-button>
+                  </n-dropdown>
+                  <n-radio-group
+                    size="small"
+                    :value="store.stepsView"
+                    :disabled="runner.running"
+                    @update:value="store.onSwitchView"
+                  >
+                    <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
+                    <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
+                  </n-radio-group>
+                </div>
               </div>
 
               <StepListEditor
                 v-if="store.stepsView === 'ui'"
+                ref="stepListRef"
                 v-model="store.editor.steps"
                 v-model:selected-index="store.selectedStepIndex"
                 :disabled="runner.running"
                 :default-timeout="elementTimeoutMs"
                 class="steps-editor"
-                @record-request="onRecordRequest"
                 @pick="onStepPick"
               />
               <template v-else>
@@ -71,9 +87,8 @@
                   class="steps-json"
                   @update:value="store.refreshJsonStatus"
                 />
-                <div class="json-status" :class="store.jsonError ? 'bad' : 'ok'">
-                  <template v-if="store.jsonError">{{ t('automation.jsonInvalid', { msg: store.jsonError }) }}</template>
-                  <template v-else>{{ t('automation.jsonOk', { n: store.stepCount }) }}</template>
+                <div v-if="store.jsonError" class="json-status bad">
+                  {{ t('automation.jsonInvalid', { msg: store.jsonError }) }}
                 </div>
               </template>
             </div>
@@ -156,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   NButton,
@@ -167,6 +182,7 @@ import {
   NSpace,
   NRadioButton,
   NRadioGroup,
+  NDropdown,
   useMessage,
   useDialog,
 } from 'naive-ui'
@@ -179,6 +195,10 @@ import RunControls from '@components/automation/RunControls.vue'
 import ResultPanel from '@components/automation/ResultPanel.vue'
 import ElementPickerModal from '@components/automation/ElementPickerModal.vue'
 import { parseUiDump, boundsCenter, type UiNode } from '@components/automation/uiDump'
+import {
+  ADDABLE_ACTIONS, defaultStep, type Step, type StepAction,
+} from '@components/automation/stepTypes'
+import { stepActionLabel } from '@components/automation/stepMeta'
 import { useScriptRunner } from '@composables/automation/useScriptRunner'
 import { useAutomationStore } from '@composables/automation/useAutomationStore'
 
@@ -265,6 +285,38 @@ watch(() => deviceStore.devices, (list) => {
 
 // Run is allowed only when both a device and a script are selected.
 const canRun = computed(() => !!autoDeviceId.value && !!store.selectedScriptId && !recording.value)
+
+// ---------------- steps header (count / add / view switch) ----------------
+const stepListRef = ref<InstanceType<typeof StepListEditor> | null>(null)
+/** 左侧计数：UI 视图取编辑器实时列表，JSON 视图取解析后的 stepCount */
+const stepCountDisplay = computed(() =>
+  store.stepsView === 'json' ? store.stepCount : store.editor.steps.length
+)
+
+const RECORD_KEY = '__record__'
+const addOptions = computed(() => [
+  {
+    key: RECORD_KEY,
+    label: t('automation.recordSegment'),
+  },
+  { type: 'divider' as const, key: 'd1' },
+  ...ADDABLE_ACTIONS.map(a => ({
+    key: a,
+    label: stepActionLabel(a, t),
+  })),
+])
+
+function onAdd(action: string) {
+  if (action === RECORD_KEY) {
+    onRecordRequest()
+    return
+  }
+  const list: Step[] = [...store.editor.steps, defaultStep(action as StepAction)]
+  store.editor.steps = list
+  if (store.stepsView === 'json') store.syncJsonText()
+  // 新步骤直接进入编辑状态
+  nextTick(() => stepListRef.value?.openEditor(list.length - 1))
+}
 
 /** 录制面板停靠开关（中栏编辑器下方）；唯一入口 = 添加步骤 → 录制片段，
  * 关闭走面板自带的 X 按钮 */
@@ -565,6 +617,8 @@ onMounted(() => {
 .field label { font-size: 12px; color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
 .steps-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.steps-count { font-size: 12px; color: var(--app-text-muted); }
+.steps-head-right { display: flex; align-items: center; gap: 8px; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
 
 /* right run */
