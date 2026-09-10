@@ -548,6 +548,8 @@ export default {
     failed: 'Failed',
     success: 'Success',
     cancelled: 'Cancelled',
+    crashAborted: 'App crashed — run aborted',
+    crashLog: 'Crash log',
     screenshots: 'Screenshots',
     noResult: 'Not run yet',
     stepPending: 'Running…',

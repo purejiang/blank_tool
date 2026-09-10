@@ -551,6 +551,8 @@ export default {
     failed: '失败',
     success: '成功',
     cancelled: '已取消',
+    crashAborted: '应用崩溃，流程已中止',
+    crashLog: '崩溃日志',
     screenshots: '截图',
     noResult: '尚未运行',
     stepPending: '执行中…',

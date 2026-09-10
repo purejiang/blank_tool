@@ -21,13 +21,18 @@ Cancel / error contract (plan defects 1 & 2):
     with ``context.complete(cancelled=True)`` when the user hits Stop.
 """
 
+import os
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.utils.env import get_output_dir
 from app.utils.adb_auto_core import (
     launch_app,
     clear_app_data,
     get_display_transform,
+    get_app_pid,
+    dump_crash_log,
     rotate_to_display,
     tap,
     swipe,
@@ -60,6 +65,7 @@ def run(
     package_name: Optional[str] = None,
     steps: Optional[List[Dict[str, Any]]] = None,
     continue_on_error: bool = False,
+    abort_on_crash: bool = True,
     **kwargs,
 ) -> Dict[str, Any]:
     steps = steps or []
@@ -100,6 +106,17 @@ def run(
             f"display rotation={dt['rotation']}, panel={dt['width']}x{dt['height']}"
             " — raw coords will be rotated to display space"
         )
+
+    # Crash watch: track the target app's pid and abort the run as soon as
+    # the process dies / restarts (checked at every step boundary — steps
+    # are serial, so this is effectively real-time without a thread).
+    watch_pid: Optional[int] = None
+    watch = bool(abort_on_crash and package_name)
+    if watch:
+        watch_pid = get_app_pid(device_id, package_name)
+        if watch_pid:
+            context.log(f"crash watch on {package_name} (pid {watch_pid})")
+
     for i, step in enumerate(steps):
         # Cancel check at the top of every step.
         if context.is_cancelled():
@@ -112,6 +129,44 @@ def run(
             restore_ime(device_id)  # CJK input path may have switched the IME
             context.complete(result)
             return result
+
+        # Crash check — only once the app was seen alive at least once
+        # (a script may launch it itself; pid None before launch is normal).
+        if watch:
+            cur = get_app_pid(device_id, package_name)
+            if watch_pid is not None and cur != watch_pid:
+                died = "exited" if cur is None else f"restarted (pid {watch_pid} -> {cur})"
+                crash_msg = f"app {package_name} crashed: {died}"
+                context.log(f"[FAIL] {crash_msg}")
+                shot = take_screenshot(device_id, "crash")
+                if shot.get("success"):
+                    result["screenshots"].append(shot["file_path"])
+                crash = dump_crash_log(
+                    device_id,
+                    os.path.join(
+                        get_output_dir(), "crash_logs",
+                        f"crash-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.log",
+                    ),
+                )
+                rec = {
+                    "index": i + 1, "action": "app_crash", "ok": False,
+                    "message": crash_msg, "duration_ms": 0,
+                }
+                if crash.get("success"):
+                    rec["crash_log"] = crash["file_path"]
+                    result["crash_log"] = crash["file_path"]
+                else:
+                    rec["message"] += f"; logcat export failed: {crash.get('error')}"
+                result["steps"].append(rec)
+                context.step(rec)
+                result["failed"] += 1
+                result["success"] = False
+                result["aborted_by_crash"] = True
+                restore_ime(device_id)
+                context.complete(result)
+                return result
+            if cur is not None:
+                watch_pid = cur
 
         action = step.get("action", "")
         # Stream the pending row BEFORE executing so the UI shows progress

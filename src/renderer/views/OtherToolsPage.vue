@@ -226,6 +226,11 @@
             <span class="sum-item bad">{{ t('automation.failed') }}: {{ stepFailed }}</span>
           </div>
 
+          <div class="crash-note" v-if="runResult?.aborted_by_crash">
+            <span class="crash-text">{{ t('automation.crashAborted') }}</span>
+            <span v-if="runResult?.crash_log" class="crash-log">{{ t('automation.crashLog') }}: {{ runResult.crash_log }}</span>
+          </div>
+
           <div class="steps-result" ref="stepsScroll">
             <div v-for="st in stepRows" :key="st.index" class="step-line" :class="stepRowClass(st)">
               <span class="step-idx">#{{ st.index }}</span>
@@ -1341,6 +1346,9 @@ onMounted(() => {
 .sum-item { font-size: 12px; color: var(--app-text-secondary); }
 .sum-item.ok { color: #18a058; }
 .sum-item.bad { color: #d03050; }
+.crash-note { display: flex; flex-direction: column; gap: 2px; font-size: 12px; margin: 6px 0; }
+.crash-text { color: #d03050; font-weight: 600; }
+.crash-log { color: var(--app-text-muted); word-break: break-all; }
 .steps-result { max-height: 200px; overflow: auto; border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px; }
 .step-line { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 2px 0; border-bottom: 1px dashed var(--app-card-border); }
 .step-line.ok .step-idx { color: #18a058; }
