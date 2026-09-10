@@ -139,6 +139,16 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
     try {
       await serviceManager.getService('taskStream')
     } catch {}
+
+    // Global device monitoring: refresh the device list (and re-poll every
+    // 5s) for ALL pages, not just while the Device page is mounted — other
+    // pages (automation/install) read deviceStore.devices and used to show
+    // stale disconnected devices until the user visited the Device page.
+    try {
+      const deviceSvc = await serviceManager.getService('device')
+      await deviceSvc.refreshDevices()
+      void deviceSvc.startMonitoring()
+    } catch {}
   }
 
   async function initializeApplication() {

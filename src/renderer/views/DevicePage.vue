@@ -391,13 +391,12 @@ onMounted(async () => {
   try {
     const svc = await serviceManager.getService('device')
     deviceSvcRef.value = svc
-    // Initial load without requiring the manual refresh button, then keep
-    // the list (and the selected device's info) fresh: startMonitoring
-    // polls adb devices every 5s, so plugging/unplugging a phone shows up
-    // without user action. Stopped on unmount so the polling doesn't run
-    // while the page is hidden.
+    // The list itself is polled globally (useAppBootstrap starts the
+    // monitor at app startup, refresh only). This page additionally asks
+    // for the selected device's info refresh, which is dumpsys-heavy and
+    // only needed while the details panel is visible.
     await svc.refreshDevices()
-    void svc.startMonitoring()
+    void svc.startMonitoring(5000, true)
   } catch {}
 })
 
@@ -405,7 +404,8 @@ onUnmounted(() => {
   if (isLogcatRunning.value) {
     serviceManager.getService('device').then(svc => svc.toggleLogcat()).catch(() => {})
   }
-  void deviceSvcRef.value?.stopMonitoring()
+  // NOTE: do NOT stopMonitoring here — the monitor is global now and keeps
+  // device lists fresh on every page.
 })
 
 // --- Logcat ---

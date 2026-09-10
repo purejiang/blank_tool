@@ -144,16 +144,20 @@ class DeviceService {
     }
   }
 
-  async startMonitoring(intervalMs = 5000) {
+  async startMonitoring(intervalMs = 5000, withInfo = false) {
     if (this.monitoringTimer) return { success: true }
     const store = getDeviceStore()
     store.isMonitoring = true
     this.monitoringTimer = setInterval(async () => {
       try {
         await this.refreshDevices()
-        const dev = store.selectedDevice
-        if (dev && dev.id) {
-          await this.getDeviceInfo(dev.id)
+        // Device-info refresh is dumpsys-heavy — only the Device page asks
+        // for it; the global monitor just keeps the device list fresh.
+        if (withInfo) {
+          const dev = store.selectedDevice
+          if (dev && dev.id) {
+            await this.getDeviceInfo(dev.id)
+          }
         }
       } catch {}
     }, intervalMs)
