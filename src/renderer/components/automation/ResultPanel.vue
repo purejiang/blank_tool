@@ -1,5 +1,5 @@
 <template>
-  <div v-show="active" class="result-panel">
+  <div class="result-panel">
   <div class="result-block" v-if="runResult || liveSteps.length">
     <div class="result-summary">
       <n-tag v-if="runResult" :type="runResult.cancelled ? 'warning' : (runResult.success ? 'success' : 'error')" size="small">
@@ -61,7 +61,6 @@ import { NTag, NImage, NEmpty, NScrollbar } from 'naive-ui'
 import { stepActionLabel } from '@components/automation/stepMeta'
 
 const props = defineProps<{
-  active: boolean
   running: boolean
   runResult: any
   liveSteps: any[]

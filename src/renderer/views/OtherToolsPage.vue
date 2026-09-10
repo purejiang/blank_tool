@@ -35,6 +35,16 @@
               <template #icon><n-icon><Save /></n-icon></template>
               {{ t('automation.save') }}
             </n-button>
+            <n-button
+              size="small"
+              :type="recordPanelOpen ? 'warning' : 'default'"
+              :disabled="runner.running && !recording"
+              :title="t('automation.recordSegment')"
+              @click="toggleRecordPanel"
+            >
+              <template #icon><n-icon><Circle /></n-icon></template>
+              {{ t('automation.recordSegment') }}
+            </n-button>
           </div>
 
           <div class="editor-body">
@@ -76,49 +86,33 @@
               </template>
             </div>
           </div>
+
+          <!-- 录制面板：停靠在中栏编辑器下方 -->
+          <RecordPanel
+            v-show="recordPanelOpen"
+            ref="recordPanelRef"
+            class="docked-record"
+            :device-id="autoDeviceId"
+            :disabled="runner.running && !recording"
+            :has-selection="store.selectedStepIndex >= 0"
+            @recording-start="onRecStart"
+            @recorded="store.onRecorded"
+            @recording-end="onRecEnd"
+          />
         </template>
       </section>
 
-      <!-- ============ RIGHT: record / run (mutually exclusive modes) ============ -->
+      <!-- ============ RIGHT: run console ============ -->
       <section class="col col-right">
-        <div class="col-head">
-          <n-radio-group
-            size="small"
-            :value="rightMode"
-            @update:value="onSwitchMode"
-          >
-            <n-radio-button value="record">{{ t('automation.record') }}</n-radio-button>
-            <n-radio-button value="run">{{ t('automation.run') }}</n-radio-button>
-          </n-radio-group>
-        </div>
-
-        <div class="run-bar">
-          <!-- 运行模式的操作按钮（录制模式的开始/停止在 RecordPanel 内，同一位置随模式切换） -->
-          <RunControls
-            :mode="rightMode"
-            v-model:auto-device-id="autoDeviceId"
-            v-model:capture-traffic="captureTraffic"
-            :running="runner.running"
-            :can-run="canRun"
-            @run="runScript"
-            @stop="runner.stopRun"
-          />
-        </div>
-
-        <RecordPanel
-          v-show="rightMode === 'record'"
-          ref="recordPanelRef"
-          :device-id="autoDeviceId"
-          :disabled="runner.running && !recording"
-          :has-selection="store.selectedStepIndex >= 0"
-          @recording-start="onRecStart"
-          @recorded="store.onRecorded"
-          @recording-end="onRecEnd"
+        <RunControls
+          v-model:auto-device-id="autoDeviceId"
+          v-model:capture-traffic="captureTraffic"
+          :running="runner.running"
+          :can-run="canRun"
+          @run="runScript"
+          @stop="runner.stopRun"
         />
-
         <ResultPanel
-          v-show="rightMode === 'run'"
-          :active="rightMode === 'run'"
           :running="runner.running"
           :run-result="runner.runResult"
           :live-steps="runner.liveSteps"
@@ -180,7 +174,7 @@ import {
   useMessage,
   useDialog,
 } from 'naive-ui'
-import { Download, Upload, Save } from 'lucide-vue-next'
+import { Download, Upload, Save, Circle } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
@@ -223,34 +217,28 @@ watch(() => deviceStore.devices, (list) => {
 }, { immediate: true })
 
 // Run is allowed only when both a device and a script are selected.
-const canRun = computed(() => !!autoDeviceId.value && !!store.selectedScriptId)
+const canRun = computed(() => !!autoDeviceId.value && !!store.selectedScriptId && !recording.value)
 
-/** 右栏二选一模式：录制 / 运行（步骤展示与运行日志共用这一块区域） */
-const rightMode = ref<'record' | 'run'>('record')
+/** 录制面板停靠开关（中栏编辑器下方） */
+const recordPanelOpen = ref(false)
 const recording = ref(false)
 const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
 
-function onSwitchMode(v: string) {
-  if (v === rightMode.value) return
-  // 互斥：录制中不能切运行；脚本执行中不能切录制
-  if (v === 'run' && recording.value) {
-    message.warning(t('automation.recordStopFirst'))
-    return
-  }
-  if (v === 'record' && runner.running) {
+function toggleRecordPanel() {
+  if (runner.running && !recording.value) {
     message.warning(t('automation.runStopFirst'))
     return
   }
-  rightMode.value = v as 'record' | 'run'
+  recordPanelOpen.value = !recordPanelOpen.value
 }
 
-/** 「添加步骤 → 录制片段…」：切到右栏录制模式采集 */
+/** 「添加步骤 → 录制片段…」：展开中栏录制面板采集 */
 function onRecordRequest() {
   if (runner.running && !recording.value) {
     message.warning(t('automation.runStopFirst'))
     return
   }
-  rightMode.value = 'record'
+  recordPanelOpen.value = true
   message.info(t('automation.recordSegmentHint'))
 }
 
@@ -523,5 +511,5 @@ onMounted(() => {
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
 
 /* right run */
-.run-bar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; min-width: 0; }
+.docked-record { flex: 0 0 auto; border-top: 1px solid var(--app-card-border); padding-top: 10px; }
 </style>

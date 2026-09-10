@@ -6,7 +6,7 @@
     :placeholder="t('automation.selectDevice')"
     @update:value="emit('update:autoDeviceId', $event)"
   />
-  <template v-if="mode === 'run'">
+  <div class="run-actions">
     <n-checkbox
       :checked="captureTraffic"
       size="small"
@@ -28,7 +28,7 @@
       <template #icon><n-icon><Square /></n-icon></template>
       {{ t('automation.stop') }}
     </n-button>
-  </template>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -39,7 +39,6 @@ import { Play, Square } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 
 defineProps<{
-  mode: 'record' | 'run'
   autoDeviceId: string
   captureTraffic: boolean
   running: boolean
@@ -65,4 +64,5 @@ const deviceOptions = computed(() =>
 
 <style scoped>
 .capture-toggle { flex-shrink: 0; }
+.run-actions { display: flex; flex-direction: column; gap: 8px; }
 </style>
