@@ -551,6 +551,7 @@ export default {
     downloadReport: 'Download report',
     openInBrowser: 'Open in browser',
     runDir: 'Run folder',
+    clickToOpen: 'Click to open',
     captureTrafficHint: 'Also capture network requests for this run (mitmdump; device proxy is restored afterwards)',
     reportUnavailable: 'No run report available',
     reportExportFailed: 'Report export failed',

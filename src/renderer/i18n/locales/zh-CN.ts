@@ -554,6 +554,7 @@ export default {
     downloadReport: '下载报告',
     openInBrowser: '浏览器打开',
     runDir: '运行目录',
+    clickToOpen: '点击打开',
     captureTrafficHint: '本次运行同时抓取网络请求（mitmdump，结束后自动恢复设备代理）',
     reportUnavailable: '暂无可导出的运行报告',
     reportExportFailed: '报告导出失败',

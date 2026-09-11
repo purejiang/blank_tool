@@ -33,8 +33,8 @@
           <div class="detail-pop">
             <div class="dp-row" v-if="src.runDir">
               <span class="dp-k">{{ t('automation.runDir') }}</span>
-              <span class="dp-v path" :title="src.runDir" @click="copyText(src.runDir, 'runDir')">
-                {{ copied === 'runDir' ? t('automation.copied') : src.runDir }}
+              <span class="dp-v path" :title="t('automation.clickToOpen')" @click="openPath(src.runDir)">
+                {{ src.runDir }}
               </span>
             </div>
             <div class="dp-row" v-if="src.deviceId">
@@ -51,8 +51,8 @@
             </div>
             <div class="dp-row" v-if="src.trafficLog">
               <span class="dp-k">{{ t('automation.trafficFile') }}</span>
-              <span class="dp-v path" :title="src.trafficLog" @click="copyText(src.trafficLog, 'traffic')">
-                {{ copied === 'traffic' ? t('automation.copied') : src.trafficLog }}
+              <span class="dp-v path" :title="t('automation.clickToOpen')" @click="openPath(src.trafficLog)">
+                {{ src.trafficLog }}
               </span>
             </div>
             <div class="dp-row" v-if="src.crashLog">
@@ -440,6 +440,14 @@ async function copyText(text: string, key: string) {
   } catch {
     /* clipboard unavailable — the path is still selectable in the DOM */
   }
+}
+
+/** Direct-open from the details popover. openPath's default semantics fit
+ * both: a DIRECTORY (run_dir) opens in Explorer, a FILE (traffic log) is
+ * revealed selected in Explorer. */
+function openPath(path?: string) {
+  if (!path) return
+  void (window.electronAPI as any)?.openPath?.(path)
 }
 
 // auto-scroll the log feed
