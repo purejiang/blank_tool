@@ -720,6 +720,7 @@ export default {
     disconnected: 'Disconnected',
     confirm: 'Confirm',
     cancel: 'Cancel',
+    more: 'More actions',
   },
   update: {
     title: 'Update',

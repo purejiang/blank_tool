@@ -723,6 +723,7 @@ export default {
     disconnected: '未连接',
     confirm: '确认',
     cancel: '取消',
+    more: '更多操作',
   },
   update: {
     title: '更新',

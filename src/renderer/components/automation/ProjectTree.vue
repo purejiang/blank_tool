@@ -34,18 +34,16 @@
             <div v-if="p.description" class="item-desc proj-desc">{{ p.description }}</div>
           </div>
           <div class="row-actions">
-            <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.editInfo')" @click.stop="store.openProjectMeta(p)">
-              <template #icon><n-icon><Pencil /></n-icon></template>
-            </n-button>
-            <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.exportProject')" @click.stop="exportProject(p)">
-              <template #icon><n-icon><Download /></n-icon></template>
-            </n-button>
-            <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.importScriptsTo')" @click.stop="importScriptsTo(p)">
-              <template #icon><n-icon><Upload /></n-icon></template>
-            </n-button>
-            <n-button size="tiny" text type="error" :disabled="running" @click.stop="store.deleteProject(p)">
-              <template #icon><n-icon><Trash2 /></n-icon></template>
-            </n-button>
+            <n-dropdown
+              trigger="click"
+              placement="bottom-end"
+              :options="projectMenuOptions"
+              @select="(key: string) => onProjectMenu(key, p)"
+            >
+              <n-button size="tiny" text :disabled="running" :title="t('common.more')" @click.stop>
+                <template #icon><n-icon><MoreHorizontal /></n-icon></template>
+              </n-button>
+            </n-dropdown>
           </div>
         </div>
 
@@ -65,38 +63,23 @@
               >{{ s.name }}</span>
               <div v-if="s.description" class="item-desc script-desc">{{ s.description }}</div>
             </div>
-            <n-button
-              size="tiny"
-              text
-              type="primary"
-              class="script-ops"
-              :disabled="running"
-              :title="t('automation.editInfo')"
-              @click.stop="store.openScriptMeta(p.id, s)"
+            <n-dropdown
+              trigger="click"
+              placement="bottom-end"
+              :options="scriptMenuOptions"
+              @select="(key: string) => onScriptMenu(key, p, s)"
             >
-              <template #icon><n-icon><Pencil /></n-icon></template>
-            </n-button>
-            <n-button
-              size="tiny"
-              text
-              type="primary"
-              class="script-ops"
-              :disabled="running"
-              :title="t('automation.exportScript')"
-              @click.stop="exportScript(p, s)"
-            >
-              <template #icon><n-icon><Download /></n-icon></template>
-            </n-button>
-            <n-button
-              size="tiny"
-              text
-              type="error"
-              class="script-ops"
-              :disabled="running"
-              @click.stop="store.deleteScript(p.id, s.id)"
-            >
-              <template #icon><n-icon><Trash2 /></n-icon></template>
-            </n-button>
+              <n-button
+                size="tiny"
+                text
+                class="script-ops"
+                :disabled="running"
+                :title="t('common.more')"
+                @click.stop
+              >
+                <template #icon><n-icon><MoreHorizontal /></n-icon></template>
+              </n-button>
+            </n-dropdown>
           </div>
           <n-button
             size="tiny"
@@ -115,9 +98,11 @@
 </template>
 
 <script setup lang="ts">
+import { h } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NEmpty, NIcon, NTooltip, useDialog, useMessage } from 'naive-ui'
-import { Download, FolderPlus, FilePlus, FileText, Pencil, Trash2, Box, Upload } from 'lucide-vue-next'
+import { NButton, NDropdown, NEmpty, NIcon, NTooltip, useDialog, useMessage } from 'naive-ui'
+import type { DropdownOption } from 'naive-ui'
+import { Download, FolderPlus, FilePlus, FileText, MoreHorizontal, Pencil, Trash2, Box, Upload } from 'lucide-vue-next'
 import type { AutomationStore } from '@composables/automation/useAutomationStore'
 
 const props = defineProps<{
@@ -128,6 +113,37 @@ const props = defineProps<{
 const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
+
+// ---------------- 行级三点菜单（收敛 hover 按钮） ----------------
+const menuIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
+
+const projectMenuOptions: DropdownOption[] = [
+  { label: t('automation.editInfo'), key: 'edit', icon: menuIcon(Pencil) },
+  { label: t('automation.exportProject'), key: 'export', icon: menuIcon(Download) },
+  { label: t('automation.importScriptsTo'), key: 'import', icon: menuIcon(Upload) },
+  { type: 'divider', key: 'd1' },
+  { label: t('automation.delete'), key: 'delete', icon: menuIcon(Trash2), props: { style: 'color: var(--app-red)' } },
+]
+
+const scriptMenuOptions: DropdownOption[] = [
+  { label: t('automation.editInfo'), key: 'edit', icon: menuIcon(Pencil) },
+  { label: t('automation.exportScript'), key: 'export', icon: menuIcon(Download) },
+  { type: 'divider', key: 'd1' },
+  { label: t('automation.delete'), key: 'delete', icon: menuIcon(Trash2), props: { style: 'color: var(--app-red)' } },
+]
+
+function onProjectMenu(key: string, p: any) {
+  if (key === 'edit') props.store.openProjectMeta(p)
+  else if (key === 'export') exportProject(p)
+  else if (key === 'import') importScriptsTo(p)
+  else if (key === 'delete') props.store.deleteProject(p)
+}
+
+function onScriptMenu(key: string, p: any, s: any) {
+  if (key === 'edit') props.store.openScriptMeta(p.id, s)
+  else if (key === 'export') exportScript(p, s)
+  else if (key === 'delete') props.store.deleteScript(p.id, s.id)
+}
 
 // ---------------- 导入/导出（细粒度） ----------------
 // 文件格式统一为 { projects: [...] }：导出项目 = 整个项目；导出脚本 =
