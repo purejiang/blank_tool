@@ -21,7 +21,8 @@ Two deliberate details:
 * ``-s <serial>`` is only added when the user filled the param — empty
   means "let scrcpy pick the only/default device".
 
-Contract: call ``context.complete(...)`` exactly once before returning.
+Contract: end with ``return context.finish(...)`` exactly once
+(success, failure, or cancel) — it emits the terminal ``complete``.
 """
 
 import os
@@ -55,13 +56,11 @@ def run(context, serial: str = "", extra_args: str = "",
         task_id: str = "", **kwargs):
     scrcpy = context.which("scrcpy")
     if not scrcpy:
-        result = {
+        return context.finish({
             "success": False,
             "message": "找不到 scrcpy。请安装后加入 PATH，设置 BT_TOOL_SCRCPY，"
                        "或将其解压到 <runtime>/scrcpy/。",
-        }
-        context.complete(result)
-        return result
+        })
 
     cmd = [scrcpy]
 
@@ -97,5 +96,4 @@ def run(context, serial: str = "", extra_args: str = "",
             "message": "镜像已关闭",
             "duration_ms": proc["duration_ms"],
         }
-    context.complete(result)
-    return result
+    return context.finish(result)

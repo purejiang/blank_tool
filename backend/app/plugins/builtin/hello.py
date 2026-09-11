@@ -7,7 +7,8 @@ Demonstrates the plugin contract: a module with a ``run(context, **params)``
 function, optional metadata (DESCRIPTION/VERSION/AUTHOR) and an optional
 ``PARAMS`` declaration the frontend renders as a small form.
 
-Contract: call ``context.complete(...)`` exactly once before returning.
+Contract: end with ``return context.finish(...)`` exactly once — it
+emits the terminal ``complete`` event.
 """
 
 DESCRIPTION = "Hello world: echoes a greeting. Minimal logic-plugin example."
@@ -25,6 +26,4 @@ def run(context, name: str = "world", shout: bool = False, **kwargs):
     message = f"Hello, {name}!"
     if shout:
         message = message.upper()
-    result = {"message": message}
-    context.complete(result)
-    return result
+    return context.finish({"message": message})

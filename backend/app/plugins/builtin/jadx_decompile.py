@@ -15,8 +15,8 @@ The reference example for "plugin = run an outside tool":
 jadx is NOT bundled with the app: install it separately (or unzip it into
 ``<runtime>/jadx/``), otherwise this plugin fails with a clear message.
 
-Contract: call ``context.complete(...)`` exactly once before returning
-(success, failure, or cancel).
+Contract: end with ``return context.finish(...)`` exactly once
+(success, failure, or cancel) — it emits the terminal ``complete``.
 """
 
 import os
@@ -56,17 +56,15 @@ PARAMS = [
 def run(context, apk_path: str = "", out_name: str = "jadx_out",
         extra_args: str = "", task_id: str = "", **kwargs):
     if not apk_path or not os.path.isfile(apk_path):
-        context.complete({"success": False, "message": f"APK 不存在: {apk_path}"})
-        return {"success": False, "message": f"APK 不存在: {apk_path}"}
+        return context.finish({"success": False, "message": f"APK 不存在: {apk_path}"})
 
     jadx = context.which("jadx")
     if not jadx:
-        context.complete({
+        return context.finish({
             "success": False,
             "message": "找不到 jadx。请安装后加入 PATH，设置 BT_TOOL_JADX，"
                        "或将其解压到 <runtime>/jadx/。",
         })
-        return {"success": False, "message": "jadx not found"}
 
     out_dir = context.work_dir(task_id, os.path.join("jadx", out_name))
     cmd = [jadx, "-d", out_dir, apk_path]
@@ -90,5 +88,4 @@ def run(context, apk_path: str = "", out_name: str = "jadx_out",
             "out_dir": out_dir,
             "duration_ms": proc["duration_ms"],
         }
-    context.complete(result)
-    return result
+    return context.finish(result)

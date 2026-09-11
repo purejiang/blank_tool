@@ -13,6 +13,8 @@ Extends the generic :class:`~app.common.stream_context.StreamContext`
 * ``run_command`` — run an external CLI with line-streamed output,
   timeout and cooperative cancellation.
 * ``work_dir`` — a per-run directory for artifacts.
+* ``finish`` — emit ``complete`` once and return the result; the
+  standard way for a plugin to end.
 """
 
 import os
@@ -45,30 +47,15 @@ class PluginContext(StreamContext):
             raise Exception(f"工具 {tool_name} 不可用")
         return tool
 
-    @property
-    def adb(self):
-        """获取 ADB 工具"""
-        return self.get_tool("adb")
+    # named sugar — ``context.adb`` is just ``context.get_tool("adb")``
+    def _tool_prop(name):
+        return property(lambda self: self.get_tool(name))
 
-    @property
-    def apktool(self):
-        """获取 Apktool 工具"""
-        return self.get_tool("apktool")
-
-    @property
-    def aapt(self):
-        """获取 AAPT 工具"""
-        return self.get_tool("aapt")
-
-    @property
-    def apksigner(self):
-        """获取 Apksigner 工具"""
-        return self.get_tool("apksigner")
-
-    @property
-    def zipalign(self):
-        """获取 Zipalign 工具"""
-        return self.get_tool("zipalign")
+    adb = _tool_prop("adb")
+    apktool = _tool_prop("apktool")
+    aapt = _tool_prop("aapt")
+    apksigner = _tool_prop("apksigner")
+    zipalign = _tool_prop("zipalign")
 
     # ------------------------------------------------- external executables --
 
@@ -92,23 +79,23 @@ class PluginContext(StreamContext):
             return override
 
         runtime_root = get_runtime_dir()
-        tool_dir = os.path.join(runtime_root, name)
-        if os.path.isdir(tool_dir):
-            candidates = [
-                os.path.join(tool_dir, name + ext)
-                for ext in (".exe", ".bat", ".cmd", "")
-            ]
-            bin_dir = os.path.join(tool_dir, "bin")
-            if os.path.isdir(bin_dir):
-                candidates += [
-                    os.path.join(bin_dir, name + ext)
-                    for ext in (".exe", ".bat", ".cmd", "")
-                ]
-            for cand in candidates:
+        for base in (os.path.join(runtime_root, name),
+                     os.path.join(runtime_root, name, "bin")):
+            if not os.path.isdir(base):
+                continue
+            for ext in (".exe", ".bat", ".cmd", ""):
+                cand = os.path.join(base, name + ext)
                 if os.path.isfile(cand):
                     return cand
 
         return shutil.which(name)
+
+    def finish(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Standard plugin exit: emit ``complete`` once and return the
+        result — ``return context.finish({...})`` keeps the
+        "complete exactly once" contract unbreakable by duplication."""
+        self.complete(result)
+        return result
 
     def run_command(
         self,

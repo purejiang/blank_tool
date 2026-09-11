@@ -42,7 +42,6 @@ class PluginManager:
         self.builtin_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "builtin"
         )
-        self.plugins_dir = self.builtin_dir  # legacy alias, tests may read it
         self.user_dir = get_plugins_root()
         self.plugins: Dict[str, Any] = {}
         self.logger = Logger.get_logger("PluginManager")
@@ -169,7 +168,6 @@ class PluginManager:
             context.log(f"插件运行结束")
             return result
         except Exception as e:
-            error_msg = f"插件运行出错: {str(e)}"
-            context.error(error_msg)
+            context.error(f"插件运行出错: {e}")
             self.logger.error(f"运行插件 {plugin_name} 失败: {traceback.format_exc()}")
-            raise e
+            raise
