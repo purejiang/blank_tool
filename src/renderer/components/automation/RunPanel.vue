@@ -2,7 +2,13 @@
   <div class="run-panel">
     <!-- ============ status bar (one line, replaces the old title + summary
          + report-button + run-dir rows) ============ -->
-    <div class="status-bar" :class="statusClass">
+    <!-- NOTE: this bar is `.run-status`, deliberately NOT `.status-bar` —
+         main.css styles `.status-bar` globally for the app footer
+         (height:100% + space-between). A scoped rule only wins for the
+         properties it declares, so the global `height: 100%` silently
+         stretched this bar across the whole panel and pushed the tabs +
+         steps/logs out of the clipped area. -->
+    <div class="run-status" :class="statusClass">
       <span class="dot" />
       <span class="st-label">{{ statusLabel }}</span>
       <span class="st-meta" v-if="!idle">
@@ -460,7 +466,7 @@ watch(visibleLogs, async () => {
 .run-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
 /* ---- status bar ---- */
-.status-bar {
+.run-status {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
   padding: 7px 9px; border-radius: 8px;
   border: 1px solid var(--app-card-border);
@@ -468,16 +474,16 @@ watch(visibleLogs, async () => {
   flex: none;
 }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--app-text-muted); }
-.status-bar.idle .st-label { color: var(--app-text-muted); font-weight: 400; }
-.status-bar.ok .dot { background: #18a058; }
-.status-bar.bad .dot { background: #d03050; }
-.status-bar.warn .dot { background: #f0a020; }
-.status-bar.run .dot { background: #2080f0; }
+.run-status.idle .st-label { color: var(--app-text-muted); font-weight: 400; }
+.run-status.ok .dot { background: #18a058; }
+.run-status.bad .dot { background: #d03050; }
+.run-status.warn .dot { background: #f0a020; }
+.run-status.run .dot { background: #2080f0; }
 .st-label { font-size: 12px; font-weight: 600; flex: none; }
-.status-bar.ok .st-label { color: #18a058; }
-.status-bar.bad .st-label { color: #d03050; }
-.status-bar.warn .st-label { color: #f0a020; }
-.status-bar.run .st-label { color: #2080f0; }
+.run-status.ok .st-label { color: #18a058; }
+.run-status.bad .st-label { color: #d03050; }
+.run-status.warn .st-label { color: #f0a020; }
+.run-status.run .st-label { color: #2080f0; }
 .st-meta { font-size: 11.5px; color: var(--app-text-secondary); flex: 1; min-width: 0; }
 .st-meta .sep { color: var(--app-text-muted); margin: 0 3px; }
 .st-acts { display: flex; align-items: center; gap: 4px; flex: none; margin-left: auto; }
