@@ -33,45 +33,21 @@
               <span class="editor-name">{{ store.selectedScript?.name }}</span>
               <span v-if="store.selectedScript?.description" class="editor-desc">{{ store.selectedScript.description }}</span>
             </span>
-            <!-- 默认超时是脚本编辑侧的东西：元素模式的步骤没显式填 timeout 时用它 -->
-            <div class="head-timeout">
-              <span class="ht-label">{{ t('automation.elementTimeout') }}</span>
-              <n-input-number
-                :value="elementTimeoutMs"
-                size="tiny"
-                :min="500"
-                :max="120000"
-                :step="1000"
-                :disabled="runner.running"
-                class="ht-ctl"
-                @update:value="(v: number | null) => (elementTimeoutMs = clampTimeout(v ?? 10000))"
-              />
-              <span class="ht-unit">ms</span>
-            </div>
             <transition name="fade">
               <span v-if="store.savedFlash" class="autosave-hint saved">{{ t('automation.savedNow') }}</span>
             </transition>
+            <!-- 这一行只放脚本身份 + 自动保存提示：右上角是"已保存"闪现的位置，
+                 视图切换/添加按钮放这儿会跟它抢，所以都留在 .steps-head -->
           </div>
 
           <div class="editor-body">
             <div class="field steps-field">
-              <!-- 统一头行：左侧步骤计数，右侧 添加步骤 + 视图切换 -->
+              <!-- 列表头行：左 = 计数，右 = 视图切换 + 添加步骤（添加按钮贴最右） -->
               <div class="steps-head">
                 <span class="steps-count">{{ t('automation.stepCountLabel', { n: stepCountDisplay }) }}</span>
                 <div class="steps-head-right">
-                  <n-dropdown
-                    trigger="click"
-                    placement="bottom-end"
-                    :options="addOptions"
-                    :disabled="runner.running || store.stepsView !== 'ui'"
-                    @select="onAdd"
-                  >
-                    <n-button size="tiny" type="primary" secondary :disabled="runner.running || store.stepsView !== 'ui'">
-                      <template #icon><n-icon><Plus /></n-icon></template>
-                      {{ t('automation.addStep') }}
-                    </n-button>
-                  </n-dropdown>
                   <n-radio-group
+                    class="view-switch"
                     size="small"
                     :value="store.stepsView"
                     :disabled="runner.running"
@@ -80,6 +56,24 @@
                     <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
                     <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
                   </n-radio-group>
+                  <n-dropdown
+                    trigger="click"
+                    placement="bottom-end"
+                    :options="addOptions"
+                    :disabled="runner.running || store.stepsView !== 'ui'"
+                    @select="onAdd"
+                  >
+                    <n-button
+                      class="add-step-btn"
+                      size="small"
+                      type="primary"
+                      secondary
+                      :disabled="runner.running || store.stepsView !== 'ui'"
+                    >
+                      <template #icon><n-icon><Plus /></n-icon></template>
+                      {{ t('automation.addStep') }}
+                    </n-button>
+                  </n-dropdown>
                 </div>
               </div>
 
@@ -209,7 +203,6 @@ import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NInput,
-  NInputNumber,
   NModal,
   NEmpty,
   NIcon,
@@ -799,14 +792,11 @@ onMounted(() => {
   font-size: 13px; font-weight: 600; color: var(--app-text-primary);
   margin-bottom: 10px;
 }
-/* script-level default timeout — lives on the script page, not the run page */
-.head-timeout {
-  display: flex; align-items: center; gap: 5px;
-  margin-left: auto; flex: none; font-weight: 400;
-}
-.ht-label { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; }
-.ht-ctl { width: 84px; }
-.ht-unit { font-size: 11px; color: var(--app-text-muted); }
+/* NOTE: the "元素超时" (element default timeout) control used to sit on this
+   row. It is gone from the UI — whichever row it lived on it read as clutter,
+   and a per-step timeout can already be set inside the step editor. The
+   underlying `elementTimeoutMs` state is KEPT (it is still the fallback used
+   when building steps), only the control is removed. */
 .col-empty { margin: auto; text-align: center; }
 .muted { color: var(--app-text-muted); font-size: 12px; }
 
@@ -814,8 +804,11 @@ onMounted(() => {
 .editor-title {
   display: flex;
   flex-direction: column;
+  /* absorb the slack so the view switch is pinned to the right edge */
+  flex: 1 1 auto;
   min-width: 0;
 }
+.view-switch { flex: none; }
 .editor-name {
   font-size: 13px;
   font-weight: 600;
@@ -852,9 +845,13 @@ onMounted(() => {
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
-.steps-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.steps-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; flex-wrap: wrap;
+}
 .steps-count { font-size: 12px; color: var(--app-text-secondary); }
 .steps-head-right { display: flex; align-items: center; gap: 8px; }
+.add-step-btn { flex: none; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
 
 /* right run */

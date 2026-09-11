@@ -590,7 +590,6 @@ export default {
     crashAborted: 'App crashed — run aborted',
     crashLog: 'Crash log',
     captureTraffic: 'Capture traffic',
-    elementTimeout: 'Element timeout',
     dumpingHint: 'Dumping UI elements…',
     pickNoTarget: 'No step being edited — reopen the form before picking',
     trafficLog: 'Traffic log',
