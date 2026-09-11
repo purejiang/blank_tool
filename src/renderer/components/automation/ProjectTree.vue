@@ -9,15 +9,7 @@
               <template #icon><n-icon><Upload /></n-icon></template>
             </n-button>
           </template>
-          {{ t('automation.import') }}
-        </n-tooltip>
-        <n-tooltip trigger="hover" placement="bottom">
-          <template #trigger>
-            <n-button size="tiny" tertiary :disabled="running" :title="t('automation.export')" @click="exportConfig">
-              <template #icon><n-icon><Download /></n-icon></template>
-            </n-button>
-          </template>
-          {{ t('automation.export') }}
+          {{ t('automation.importMergeHint') }}
         </n-tooltip>
         <n-button size="tiny" tertiary type="primary" :disabled="running" @click="store.newProject">
           <template #icon><n-icon><FolderPlus /></n-icon></template>
@@ -41,6 +33,9 @@
           <div class="row-actions">
             <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.editInfo')" @click.stop="store.openProjectMeta(p)">
               <template #icon><n-icon><Pencil /></n-icon></template>
+            </n-button>
+            <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.exportProject')" @click.stop="exportProject(p)">
+              <template #icon><n-icon><Download /></n-icon></template>
             </n-button>
             <n-button size="tiny" text type="error" :disabled="running" @click.stop="store.deleteProject(p)">
               <template #icon><n-icon><Trash2 /></n-icon></template>
@@ -71,6 +66,17 @@
               @click.stop="store.openScriptMeta(p.id, s)"
             >
               <template #icon><n-icon><Pencil /></n-icon></template>
+            </n-button>
+            <n-button
+              size="tiny"
+              text
+              type="primary"
+              class="script-ops"
+              :disabled="running"
+              :title="t('automation.exportScript')"
+              @click.stop="exportScript(p, s)"
+            >
+              <template #icon><n-icon><Download /></n-icon></template>
             </n-button>
             <n-button
               size="tiny"
@@ -114,37 +120,45 @@ const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 
-// ---------------- import / export（脚本配置整体备份，覆盖式导入） ----------------
-async function exportConfig() {
-  if (!props.store.projects.length) {
-    message.warning(t('automation.exportEmpty'))
-    return
-  }
+// ---------------- 导入/导出（细粒度） ----------------
+// 文件格式统一为 { projects: [...] }：导出项目 = 整个项目；导出脚本 =
+// 只带该脚本的壳项目；导入按 id 合并（项目不存在则追加，脚本同名 id
+// 则替换），绝不删除文件里没提到的数据——全量备份/单项目/单脚本通用。
+
+function safeFileName(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, '_') || 'untitled'
+}
+
+async function saveJson(defaultName: string, data: unknown): Promise<boolean> {
   const api = window.electronAPI as any
-  if (!api || typeof api.showSaveDialog !== 'function') {
+  if (!api || typeof api.showSaveDialog !== 'function' || typeof api.writeFile !== 'function') {
     message.error('save dialog unavailable')
-    return
+    return false
   }
   const res = await api.showSaveDialog({
     title: t('automation.export'),
-    defaultPath: 'automation.json',
+    defaultPath: `${safeFileName(defaultName)}.json`,
     filters: [{ name: 'JSON', extensions: ['json'] }],
   })
-  if (!res || res.canceled || !res.filePath) return
-  const content = JSON.stringify({ projects: props.store.projects }, null, 2)
-  if (api.writeFile) {
-    await api.writeFile(res.filePath, content)
-  } else {
-    message.error('writeFile unavailable')
-    return
-  }
+  if (!res || res.canceled || !res.filePath) return false
+  await api.writeFile(res.filePath, JSON.stringify(data, null, 2))
   message.success(t('automation.exportSuccess', { path: res.filePath }))
+  return true
+}
+
+function exportProject(p: { name: string }) {
+  void saveJson(p.name, { projects: [p] })
+}
+
+function exportScript(p: { name: string }, s: { name: string }) {
+  // 壳项目只携带这一个脚本，导入时按脚本 id 合并，不会碰项目下其他脚本
+  void saveJson(s.name, { projects: [{ ...p, scripts: [s] }] })
 }
 
 async function importConfig() {
   if (props.running) return
   const api = window.electronAPI as any
-  if (!api || typeof api.showOpenDialog !== 'function') {
+  if (!api || typeof api.showOpenDialog !== 'function' || typeof api.readFile !== 'function') {
     message.error('open dialog unavailable')
     return
   }
@@ -154,10 +168,9 @@ async function importConfig() {
     filters: [{ name: 'JSON', extensions: ['json'] }],
   })
   if (!res || res.canceled || !res.filePaths || !res.filePaths.length) return
-  const path = res.filePaths[0]
   let text = ''
   try {
-    text = api.readFile ? await api.readFile(path) : ''
+    text = await api.readFile(res.filePaths[0])
   } catch (e: any) {
     message.error(t('automation.importFailed', { msg: e?.message || String(e) }))
     return
@@ -169,24 +182,69 @@ async function importConfig() {
     message.error(t('automation.importFailed', { msg: 'JSON: ' + (e?.message || e) }))
     return
   }
-  if (!parsed || !Array.isArray(parsed.projects)) {
+  if (!parsed || !Array.isArray(parsed.projects) || !parsed.projects.length) {
     message.error(t('automation.importFailed', { msg: 'missing projects[]' }))
     return
   }
-  dialog.warning({
-    title: t('automation.import'),
-    content: t('automation.importConfirm'),
-    positiveText: t('common.confirm'),
-    negativeText: t('common.cancel'),
-    onPositiveClick: () => {
-      props.store.projects = parsed.projects
-      props.store.selectedProjectId = ''
-      props.store.selectedScriptId = ''
-      props.store.loadEditorFromSelection()
-      props.store.persist()
-      message.success(t('automation.importSuccess'))
-    },
-  })
+
+  // dry-run：统计合并影响（新增项目/脚本、被替换的同 id 脚本）
+  let addedProjects = 0
+  let addedScripts = 0
+  let replacedScripts = 0
+  for (const imp of parsed.projects) {
+    if (!imp || !Array.isArray(imp.scripts)) continue
+    const exist = props.store.projects.find((p) => p.id === imp.id)
+    if (!exist) {
+      addedProjects += 1
+      addedScripts += imp.scripts.length
+    } else {
+      for (const s of imp.scripts) {
+        if (exist.scripts.some((x) => x.id === s.id)) replacedScripts += 1
+        else addedScripts += 1
+      }
+    }
+  }
+  if (!addedProjects && !addedScripts && !replacedScripts) {
+    message.warning(t('automation.importNothing'))
+    return
+  }
+
+  const apply = () => {
+    for (const imp of parsed.projects) {
+      if (!imp || !Array.isArray(imp.scripts)) continue
+      const exist = props.store.projects.find((p) => p.id === imp.id)
+      if (!exist) {
+        props.store.projects.push(imp)
+        continue
+      }
+      for (const s of imp.scripts) {
+        const idx = exist.scripts.findIndex((x) => x.id === s.id)
+        if (idx >= 0) exist.scripts.splice(idx, 1, s)
+        else exist.scripts.push(s)
+      }
+    }
+    props.store.persist()
+    // 选中项的 id 在合并下始终有效（不删除任何既有项），但被替换的
+    // 选中脚本需要刷新编辑器内容
+    props.store.loadEditorFromSelection()
+    message.success(t('automation.importDone', {
+      projects: addedProjects,
+      added: addedScripts,
+      replaced: replacedScripts,
+    }))
+  }
+
+  if (replacedScripts > 0) {
+    dialog.warning({
+      title: t('automation.import'),
+      content: t('automation.importMerge', { replaced: replacedScripts, added: addedScripts }),
+      positiveText: t('common.confirm'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: apply,
+    })
+  } else {
+    apply()
+  }
 }
 </script>
 
