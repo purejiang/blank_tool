@@ -575,7 +575,9 @@ async function runScript() {
   } finally {
     // 无论成功、失败还是取消，都要把「刚跑完的那条」对账进列表 —— report.json
     // 落在 complete 之后，所以这里必须轮询而不是只刷一次。
-    void reconcileFinishedRun()
+    // 但 IPC/流层就失败（没收到 complete、不会有落盘记录）时轮询纯属空转，
+    // 还会让刷新按钮连闪 20 次 —— 只有真跑完过才对账。
+    if (runner.runResult) void reconcileFinishedRun()
   }
 }
 

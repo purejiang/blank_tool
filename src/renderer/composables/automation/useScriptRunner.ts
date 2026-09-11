@@ -46,7 +46,7 @@ export function useScriptRunner() {
   }
 
   /**
-   * Kick off a plugin.run stream. Throws on IPC failure; stream failures
+   * Kick off an automation.run stream. Throws on IPC failure; stream failures
    * arrive via callbacks / logs. Caller is responsible for validating the
    * payload BEFORE calling (device picked, steps non-empty, editor committed).
    */
@@ -99,22 +99,20 @@ export function useScriptRunner() {
 
     const api = window.electronAPI as any
     try {
-      // plugin.run is @streaming: the init response resolves to undefined after
-      // unwrapBackendResponse (no `type` field) — NEVER test it for stream_id.
-      // Real failures arrive as stream error events / the waitForPhase latch.
+      // automation.run is @streaming: the init response resolves to undefined
+      // after unwrapBackendResponse (no `type` field) — NEVER test it for
+      // stream_id. Real failures arrive as stream error events / the
+      // waitForPhase latch.
       // Deep-clone before IPC: steps come straight from reactive state and
       // Vue proxies are not structured-cloneable (preload also normalizes,
       // but this keeps the page safe even on a stale preload).
       const plainSteps = JSON.parse(JSON.stringify(payload.steps))
-      await api.callBackendAPI('plugin.run', {
-        name: 'adb_auto',
-        params: {
-          device_id: payload.device_id,
-          package_name: payload.package_name,
-          steps: plainSteps,
-          continue_on_error: false,
-          capture_traffic: payload.capture_traffic,
-        },
+      await api.callBackendAPI('automation.run', {
+        device_id: payload.device_id,
+        package_name: payload.package_name,
+        steps: plainSteps,
+        continue_on_error: false,
+        capture_traffic: payload.capture_traffic,
         task_id: id,
       })
       await taskStream.waitForPhase(id, 'operation')
@@ -124,8 +122,11 @@ export function useScriptRunner() {
         // IPC-level failure (backend down / request timed out / error
         // envelope). No `onError` stream callback fires on this path, so the
         // error line must be added here — and the rethrow is what lets the
-        // page surface a toast.
-        pushLog('[ERROR] ' + (m || String(e)))
+        // page surface a toast. Skip when the identical line was already
+        // pushed by the onError callback (waitForPhase rejects on the same
+        // error event that fired the callback — that used to log twice).
+        const line = '[ERROR] ' + (m || String(e))
+        if (logs.value[logs.value.length - 1]?.text !== line) pushLog(line)
         throw e
       }
     } finally {
