@@ -5,16 +5,6 @@
         <h1 class="page-title">{{ t('automation.title') }}</h1>
         <p class="page-subtitle">{{ t('automation.subtitle') }}</p>
       </div>
-      <n-space>
-        <n-button size="small" @click="exportConfig">
-          <template #icon><n-icon><Download /></n-icon></template>
-          {{ t('automation.export') }}
-        </n-button>
-        <n-button size="small" @click="importConfig">
-          <template #icon><n-icon><Upload /></n-icon></template>
-          {{ t('automation.import') }}
-        </n-button>
-      </n-space>
     </div>
 
     <div class="three-cols" :style="gridStyle">
@@ -215,7 +205,7 @@ import {
   useMessage,
   useDialog,
 } from 'naive-ui'
-import { Download, Upload } from 'lucide-vue-next'
+
 import { useDeviceStore } from '@stores/deviceStore'
 import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
@@ -675,81 +665,6 @@ function applyElement(el: UiNode) {
   } else {
     message.success(el.label)
   }
-}
-
-// ---------------- import / export ----------------
-async function exportConfig() {
-  if (!store.projects.length) {
-    message.warning(t('automation.exportEmpty'))
-    return
-  }
-  const api = window.electronAPI as any
-  if (!api || typeof api.showSaveDialog !== 'function') {
-    message.error('save dialog unavailable')
-    return
-  }
-  const res = await api.showSaveDialog({
-    title: t('automation.export'),
-    defaultPath: 'automation.json',
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-  })
-  if (!res || res.canceled || !res.filePath) return
-  const content = JSON.stringify({ projects: store.projects }, null, 2)
-  if (api.writeFile) {
-    await api.writeFile(res.filePath, content)
-  } else {
-    message.error('writeFile unavailable')
-    return
-  }
-  message.success(t('automation.exportSuccess', { path: res.filePath }))
-}
-
-async function importConfig() {
-  if (runner.running) return
-  const api = window.electronAPI as any
-  if (!api || typeof api.showOpenDialog !== 'function') {
-    message.error('open dialog unavailable')
-    return
-  }
-  const res = await api.showOpenDialog({
-    title: t('automation.import'),
-    properties: ['openFile'],
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-  })
-  if (!res || res.canceled || !res.filePaths || !res.filePaths.length) return
-  const path = res.filePaths[0]
-  let text = ''
-  try {
-    text = api.readFile ? await api.readFile(path) : ''
-  } catch (e: any) {
-    message.error(t('automation.importFailed', { msg: e?.message || String(e) }))
-    return
-  }
-  let parsed: any
-  try {
-    parsed = JSON.parse(text)
-  } catch (e: any) {
-    message.error(t('automation.importFailed', { msg: 'JSON: ' + (e?.message || e) }))
-    return
-  }
-  if (!parsed || !Array.isArray(parsed.projects)) {
-    message.error(t('automation.importFailed', { msg: 'missing projects[]' }))
-    return
-  }
-  dialog.warning({
-    title: t('automation.import'),
-    content: t('automation.importConfirm'),
-    positiveText: t('common.confirm'),
-    negativeText: t('common.cancel'),
-    onPositiveClick: () => {
-      store.projects = parsed.projects
-      store.selectedProjectId = ''
-      store.selectedScriptId = ''
-      store.loadEditorFromSelection()
-      store.persist()
-      message.success(t('automation.importSuccess'))
-    },
-  })
 }
 
 onMounted(() => {

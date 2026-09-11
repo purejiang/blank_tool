@@ -2,9 +2,27 @@
   <section class="col col-left">
     <div class="col-head">
       <span>{{ t('automation.projects') }}</span>
-      <n-button size="tiny" tertiary type="primary" :disabled="running" @click="store.newProject">
-        <template #icon><n-icon><FolderPlus /></n-icon></template>
-      </n-button>
+      <div class="head-actions">
+        <n-tooltip trigger="hover" placement="bottom">
+          <template #trigger>
+            <n-button size="tiny" tertiary :disabled="running" :title="t('automation.import')" @click="importConfig">
+              <template #icon><n-icon><Upload /></n-icon></template>
+            </n-button>
+          </template>
+          {{ t('automation.import') }}
+        </n-tooltip>
+        <n-tooltip trigger="hover" placement="bottom">
+          <template #trigger>
+            <n-button size="tiny" tertiary :disabled="running" :title="t('automation.export')" @click="exportConfig">
+              <template #icon><n-icon><Download /></n-icon></template>
+            </n-button>
+          </template>
+          {{ t('automation.export') }}
+        </n-tooltip>
+        <n-button size="tiny" tertiary type="primary" :disabled="running" @click="store.newProject">
+          <template #icon><n-icon><FolderPlus /></n-icon></template>
+        </n-button>
+      </div>
     </div>
 
     <n-empty v-if="!store.projects.length" :description="t('automation.noProject')" size="small" class="col-empty">
@@ -83,16 +101,93 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { NButton, NEmpty, NIcon } from 'naive-ui'
-import { FolderPlus, FilePlus, FileText, Pencil, Trash2, Box } from 'lucide-vue-next'
+import { NButton, NEmpty, NIcon, NTooltip, useDialog, useMessage } from 'naive-ui'
+import { Download, FolderPlus, FilePlus, FileText, Pencil, Trash2, Box, Upload } from 'lucide-vue-next'
 import type { AutomationStore } from '@composables/automation/useAutomationStore'
 
-defineProps<{
+const props = defineProps<{
   store: AutomationStore
   running: boolean
 }>()
 
 const { t } = useI18n()
+const message = useMessage()
+const dialog = useDialog()
+
+// ---------------- import / export（脚本配置整体备份，覆盖式导入） ----------------
+async function exportConfig() {
+  if (!props.store.projects.length) {
+    message.warning(t('automation.exportEmpty'))
+    return
+  }
+  const api = window.electronAPI as any
+  if (!api || typeof api.showSaveDialog !== 'function') {
+    message.error('save dialog unavailable')
+    return
+  }
+  const res = await api.showSaveDialog({
+    title: t('automation.export'),
+    defaultPath: 'automation.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+  if (!res || res.canceled || !res.filePath) return
+  const content = JSON.stringify({ projects: props.store.projects }, null, 2)
+  if (api.writeFile) {
+    await api.writeFile(res.filePath, content)
+  } else {
+    message.error('writeFile unavailable')
+    return
+  }
+  message.success(t('automation.exportSuccess', { path: res.filePath }))
+}
+
+async function importConfig() {
+  if (props.running) return
+  const api = window.electronAPI as any
+  if (!api || typeof api.showOpenDialog !== 'function') {
+    message.error('open dialog unavailable')
+    return
+  }
+  const res = await api.showOpenDialog({
+    title: t('automation.import'),
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+  if (!res || res.canceled || !res.filePaths || !res.filePaths.length) return
+  const path = res.filePaths[0]
+  let text = ''
+  try {
+    text = api.readFile ? await api.readFile(path) : ''
+  } catch (e: any) {
+    message.error(t('automation.importFailed', { msg: e?.message || String(e) }))
+    return
+  }
+  let parsed: any
+  try {
+    parsed = JSON.parse(text)
+  } catch (e: any) {
+    message.error(t('automation.importFailed', { msg: 'JSON: ' + (e?.message || e) }))
+    return
+  }
+  if (!parsed || !Array.isArray(parsed.projects)) {
+    message.error(t('automation.importFailed', { msg: 'missing projects[]' }))
+    return
+  }
+  dialog.warning({
+    title: t('automation.import'),
+    content: t('automation.importConfirm'),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => {
+      props.store.projects = parsed.projects
+      props.store.selectedProjectId = ''
+      props.store.selectedScriptId = ''
+      props.store.loadEditorFromSelection()
+      props.store.persist()
+      message.success(t('automation.importSuccess'))
+    },
+  })
+}
 </script>
 
 <style scoped>
@@ -106,6 +201,7 @@ const { t } = useI18n()
   font-size: 13px; font-weight: 600; color: var(--app-text-primary);
   margin-bottom: 10px;
 }
+.head-actions { display: flex; align-items: center; gap: 4px; }
 .col-empty { margin: auto; text-align: center; }
 .muted { color: var(--app-text-muted); font-size: 12px; }
 
