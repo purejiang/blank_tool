@@ -536,6 +536,7 @@ export default {
     jsonInvalid: 'Invalid JSON: {msg}',
     stepCountLabel: '{n} step(s)',
     editInfo: 'Edit Info',
+    edit: 'Edit',
     description: 'Description',
     autoSaveHint: 'Changes save automatically',
     savedNow: 'Saved',

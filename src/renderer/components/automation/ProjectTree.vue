@@ -118,16 +118,16 @@ const dialog = useDialog()
 const menuIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
 
 const projectMenuOptions: DropdownOption[] = [
-  { label: t('automation.editInfo'), key: 'edit', icon: menuIcon(Pencil) },
-  { label: t('automation.exportProject'), key: 'export', icon: menuIcon(Download) },
-  { label: t('automation.importScriptsTo'), key: 'import', icon: menuIcon(Upload) },
+  { label: t('automation.edit'), key: 'edit', icon: menuIcon(Pencil) },
+  { label: t('automation.export'), key: 'export', icon: menuIcon(Download) },
+  { label: t('automation.import'), key: 'import', icon: menuIcon(Upload) },
   { type: 'divider', key: 'd1' },
   { label: t('automation.delete'), key: 'delete', icon: menuIcon(Trash2), props: { style: 'color: var(--app-red)' } },
 ]
 
 const scriptMenuOptions: DropdownOption[] = [
-  { label: t('automation.editInfo'), key: 'edit', icon: menuIcon(Pencil) },
-  { label: t('automation.exportScript'), key: 'export', icon: menuIcon(Download) },
+  { label: t('automation.edit'), key: 'edit', icon: menuIcon(Pencil) },
+  { label: t('automation.export'), key: 'export', icon: menuIcon(Download) },
   { type: 'divider', key: 'd1' },
   { label: t('automation.delete'), key: 'delete', icon: menuIcon(Trash2), props: { style: 'color: var(--app-red)' } },
 ]

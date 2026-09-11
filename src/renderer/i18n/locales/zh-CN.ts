@@ -539,6 +539,7 @@ export default {
     jsonInvalid: 'JSON 格式错误：{msg}',
     stepCountLabel: '{n} 个步骤',
     editInfo: '编辑信息',
+    edit: '编辑',
     description: '描述',
     autoSaveHint: '改动自动保存',
     savedNow: '已自动保存',
