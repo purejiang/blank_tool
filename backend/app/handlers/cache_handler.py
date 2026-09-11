@@ -3,17 +3,22 @@
 """
 Storage directory management handlers.
 
-Three top-level directories, each with independent lifecycle:
-  - tasks/   user work products (signed APKs, decompiled sources)
-  - output/  standalone exports
-  - logs/    backend diagnostic logs (3-day rotation)
+Four top-level directories, each with independent lifecycle:
+  - tasks/       user work products (signed APKs, decompiled sources)
+  - auto_tasks/  script automation runs (artifacts + report.json each)
+  - output/      standalone exports
+  - logs/        backend diagnostic logs (3-day rotation)
+
+``tasks`` and ``auto_tasks`` are cleared independently: the "tasks" action
+only touches APK/package work products, so it can never wipe a run report
+by accident; ``all`` covers everything.
 """
 
 import os
 import shutil
 
 from app.utils.logger import Logger
-from app.utils.env import get_output_dir, get_tasks_root
+from app.utils.env import get_auto_tasks_root, get_output_dir, get_tasks_root
 from app.common.exceptions import ToolException
 from app.common.decorators import logs_errors
 
@@ -22,6 +27,10 @@ logger = Logger.get_logger("StorageHandler")
 
 def _tasks_root():
     return get_tasks_root()
+
+
+def _auto_tasks_root():
+    return get_auto_tasks_root()
 
 
 def _output_root():
@@ -51,10 +60,12 @@ def _get_dir_size(path):
 @logs_errors("StorageHandler")
 def cache_info(params, stream_handler):
     tasks_root = _tasks_root()
+    auto_tasks_root = _auto_tasks_root()
     output_root = _output_root()
     logs_root = _logs_root()
 
     tasks_size, tasks_files = _get_dir_size(tasks_root)
+    auto_size, auto_files = _get_dir_size(auto_tasks_root)
     output_size, output_files = _get_dir_size(output_root)
     logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
 
@@ -63,6 +74,11 @@ def cache_info(params, stream_handler):
             "path": tasks_root,
             "size": tasks_size,
             "files": tasks_files,
+        },
+        "auto_tasks": {
+            "path": auto_tasks_root,
+            "size": auto_size,
+            "files": auto_files,
         },
         "output": {
             "path": output_root,
@@ -75,8 +91,8 @@ def cache_info(params, stream_handler):
             "files": logs_files,
         },
         "total": {
-            "size": tasks_size + output_size + logs_size,
-            "files": tasks_files + output_files + logs_files,
+            "size": tasks_size + auto_size + output_size + logs_size,
+            "files": tasks_files + auto_files + output_files + logs_files,
         },
     }
 
@@ -116,6 +132,11 @@ def storage_clear(params, stream_handler):
         if _clear_directory(tasks_root):
             cleared_paths.append(tasks_root)
 
+    if target in ["all", "auto_tasks", "autoTasks"]:
+        auto_tasks_root = _auto_tasks_root()
+        if _clear_directory(auto_tasks_root):
+            cleared_paths.append(auto_tasks_root)
+
     if target in ["all", "output"]:
         output_root = _output_root()
         if _clear_directory(output_root):
@@ -137,6 +158,13 @@ def tasks_clear(params, stream_handler):
 
 
 @logs_errors("StorageHandler")
+def auto_tasks_clear(params, stream_handler):
+    root = _auto_tasks_root()
+    _clear_directory(root)
+    return {"path": root, "size": 0, "files": 0}
+
+
+@logs_errors("StorageHandler")
 def logs_clear(params, stream_handler):
     root = _logs_root()
     if not root:
@@ -150,6 +178,7 @@ API_MAP = {
     "cache.info": cache_info,
     "output.clear": output_clear,
     "tasks.clear": tasks_clear,
+    "auto_tasks.clear": auto_tasks_clear,
     "logs.clear": logs_clear,
     "storage.clear": storage_clear,
 }

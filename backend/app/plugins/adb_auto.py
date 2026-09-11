@@ -28,7 +28,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from app.utils.env import get_output_dir, get_task_dir
+from app.utils.env import get_auto_task_dir, get_auto_tasks_root, get_output_dir
 from app.automation import traffic as traffic_capture
 from app.automation.apps import get_app_pid, take_screenshot
 from app.automation.crash import dump_crash_log
@@ -48,9 +48,13 @@ AUTHOR = "blank_tool"
 
 
 def _fallback_run_dir() -> str:
-    """Run dir when no task_id is available (probe/manual invocation)."""
+    """Run dir when no task_id is available (probe/manual invocation).
+
+    Still lands under the automation root so every script run lives in
+    ``auto_tasks/`` regardless of how it was launched.
+    """
     d = os.path.join(
-        get_output_dir(), "automation",
+        get_auto_tasks_root(),
         f"auto-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}",
     )
     os.makedirs(d, exist_ok=True)
@@ -74,12 +78,12 @@ def run(
     started_t = time.time()
     started_iso = time.strftime("%Y-%m-%dT%H:%M:%S")
 
-    # Per-run artifact directory — like every other task, one folder per run
-    # ({BT_TASKS_DIR}/{task_id}/) with artifacts categorized into
-    # screenshots/ traffic/ crash_logs/ and a report.json written at the end.
+    # Per-run artifact directory — one folder per run, in the automation root
+    # ({BT_AUTO_TASKS_DIR}/{task_id}/, a sibling of tasks/) with artifacts
+    # categorized into screenshots/ traffic/ crash_logs/ plus report.json.
     if task_id:
         try:
-            run_dir = get_task_dir(str(task_id))
+            run_dir = get_auto_task_dir(str(task_id))
         except ValueError:
             run_dir = _fallback_run_dir()
     else:

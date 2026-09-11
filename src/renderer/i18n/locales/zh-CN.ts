@@ -463,6 +463,7 @@ export default {
     tools: '捆绑工具',
     loading: '加载中...',
     tasks: '任务',
+    auto_tasks: '自动化运行',
     output: '输出',
     logs: '日志',
     total: '合计',

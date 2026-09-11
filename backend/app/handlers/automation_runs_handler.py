@@ -3,13 +3,14 @@
 """
 Automation run history handlers.
 
-Every adb_auto run writes ``report.json`` into its per-task directory
-(``{BT_TASKS_DIR}/{task_id}/``); artifacts are categorized into
-``screenshots/`` ``traffic/`` ``crash_logs/`` and ``logs/``. These handlers
-list / read / delete those run directories. Deletion removes the WHOLE run
-directory and is containment-checked against the tasks root, and only run
-dirs that actually contain a ``report.json`` (i.e. automation runs) are
-touched — other task types' directories are never eligible.
+Every adb_auto run writes ``report.json`` into its per-run directory under
+the AUTOMATION root — ``{BT_AUTO_TASKS_DIR}/{task_id}/``, i.e.
+``auto_tasks/`` as a sibling of ``tasks/`` — with artifacts categorized into
+``screenshots/`` ``traffic/`` ``crash_logs/``. These handlers list / read /
+delete those run directories. Deletion removes the WHOLE run directory and
+is containment-checked against the automation root, and only directories
+that actually contain a ``report.json`` are eligible — APK/package task
+dirs (which live under ``tasks/``) can never be touched from here.
 """
 
 import base64
@@ -18,7 +19,7 @@ import os
 import shutil
 import time
 
-from app.utils.env import get_tasks_root
+from app.utils.env import get_auto_tasks_root
 from app.utils.logger import Logger
 
 logger = Logger.get_logger("AutomationRunsHandler")
@@ -27,16 +28,18 @@ REPORT_NAME = "report.json"
 
 
 def _run_dir_for(task_id: str) -> str:
-    """Resolve ``{tasks_root}/{task_id}`` with traversal containment checks.
+    """Resolve ``{auto_tasks_root}/{task_id}`` with containment checks.
 
-    Returns the real path; raises ``ValueError`` for bad ids / escapes.
+    Script runs live in the automation root (``auto_tasks/``, a sibling of
+    ``tasks/``), never inside ``tasks/``. Returns the real path; raises
+    ``ValueError`` for bad ids / escapes.
     """
     task_id = str(task_id or "").strip()
     if not task_id or task_id in (".", ".."):
         raise ValueError("invalid task_id")
     if any(c in task_id for c in ("/", "\\",)) or ".." in task_id:
         raise ValueError(f"task_id contains invalid characters: {task_id}")
-    root = os.path.realpath(get_tasks_root())
+    root = os.path.realpath(get_auto_tasks_root())
     path = os.path.realpath(os.path.join(root, task_id))
     if path != root and not path.startswith(root + os.sep):
         raise ValueError("run dir outside tasks root")
@@ -51,7 +54,7 @@ def _read_report(run_dir: str) -> dict:
 
 def handle_list_runs(params, stream_handler):
     """Summaries of every automation run, newest first (max 100)."""
-    root = os.path.realpath(get_tasks_root())
+    root = os.path.realpath(get_auto_tasks_root())
     runs = []
     try:
         entries = os.listdir(root)

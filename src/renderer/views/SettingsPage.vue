@@ -244,7 +244,7 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive } from 'lucide-vue-next'
+import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
@@ -347,9 +347,10 @@ const themeOptions = computed(() => [
 ])
 // Storage categories: key → label, icon, color
 const storageCategories = [
-  { key: 'tasks',   label: 'settings.tasks',   icon: Archive,        color: '#F59E0B' },
-  { key: 'output',  label: 'settings.output',  icon: FolderArchive,  color: '#3B82F6' },
-  { key: 'logs',    label: 'settings.logs',    icon: FileText,       color: '#10B981' },
+  { key: 'tasks',      label: 'settings.tasks',      icon: Archive,       color: '#F59E0B' },
+  { key: 'auto_tasks', label: 'settings.auto_tasks', icon: History,       color: '#8B5CF6' },
+  { key: 'output',     label: 'settings.output',     icon: FolderArchive, color: '#3B82F6' },
+  { key: 'logs',       label: 'settings.logs',       icon: FileText,      color: '#10B981' },
 ] as const
 
 const getCatSize = (key: string) => (cacheInfo.value as any)[key]?.size || 0

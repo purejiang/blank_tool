@@ -187,13 +187,12 @@ def get_tasks_root() -> str:
     return root
 
 
-def get_task_dir(task_id: str) -> str:
+def _validate_task_id(task_id: str) -> str:
     """
-    Return the per-task working directory under the tasks root.
+    Shared format/traversal guard for per-run directory ids.
 
-    Creates ``<tasks_root>/<task_id>/`` on disk (``exist_ok=True``) and
-    returns the absolute path. Raises ``ValueError`` when *task_id* is empty
-    or contains path traversal characters.
+    Returns the id as a string; raises ``ValueError`` for empty ids, path
+    separators or ``..`` components (in any position).
     """
     if not task_id:
         raise ValueError("task_id must be a non-empty string")
@@ -216,9 +215,60 @@ def get_task_dir(task_id: str) -> str:
     if ".." in task_id_str:
         raise ValueError(f"task_id contains invalid characters: {task_id_str}")
 
+    return task_id_str
+
+
+def get_task_dir(task_id: str) -> str:
+    """
+    Return the per-task working directory under the tasks root.
+
+    Creates ``<tasks_root>/<task_id>/`` on disk (``exist_ok=True``) and
+    returns the absolute path. Raises ``ValueError`` when *task_id* is empty
+    or contains path traversal characters.
+    """
+    task_id_str = _validate_task_id(task_id)
     task_dir = os.path.join(get_tasks_root(), task_id_str)
     os.makedirs(task_dir, exist_ok=True)
     return task_dir
+
+
+def get_auto_tasks_root() -> str:
+    """
+    Return the root directory for script-automation runs.
+
+    Script runs are a different species from APK/package tasks — they own
+    categorized artifacts (screenshots / traffic / crash_logs) plus a
+    ``report.json`` — so they get their own root instead of interleaving
+    with task ids inside ``tasks/``. The root is a SIBLING of the tasks
+    root: ``<localdata>/auto_tasks`` next to ``<localdata>/tasks``.
+
+    Uses ``BT_AUTO_TASKS_DIR`` (set by the Electron main process); falls
+    back to ``<tasks_root>/../auto_tasks`` when running without a parent
+    process. Creates the directory on disk if missing.
+    """
+    auto_dir = get_env("BT_AUTO_TASKS_DIR")
+    if auto_dir:
+        root = resolve_path(auto_dir)
+    else:
+        root = os.path.abspath(
+            os.path.join(get_tasks_root(), os.pardir, "auto_tasks")
+        )
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def get_auto_task_dir(task_id: str) -> str:
+    """
+    Return the per-run directory of one script automation run.
+
+    Creates ``<auto_tasks_root>/<task_id>/`` on disk and returns the
+    absolute path. Same traversal guard as :func:`get_task_dir`.
+    """
+    task_id_str = _validate_task_id(task_id)
+    run_dir = os.path.join(get_auto_tasks_root(), task_id_str)
+    os.makedirs(run_dir, exist_ok=True)
+    return run_dir
+
 
 def get_task_subdir(task_id: str, name: str) -> str:
     """

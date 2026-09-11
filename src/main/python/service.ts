@@ -24,10 +24,14 @@ export async function startPythonService(): Promise<ChildProcessWithoutNullStrea
     const cacheDir = path.join(localDataPath, 'cache');
     const outputDir = path.join(localDataPath, 'output');
     const tasksDir = path.join(localDataPath, 'tasks');
+    // script automation runs get their own root — sibling of tasks/, not
+    // interleaved with it (they carry categorized artifacts + a report)
+    const autoTasksDir = path.join(localDataPath, 'auto_tasks');
     const logsDir = path.join(localDataPath, 'logs');
     ensureDir(cacheDir);
     ensureDir(outputDir);
     ensureDir(tasksDir);
+    ensureDir(autoTasksDir);
     ensureDir(logsDir);
 
     const logsConfig = appStore.get('logs') as { level?: string } | undefined;
@@ -38,6 +42,7 @@ export async function startPythonService(): Promise<ChildProcessWithoutNullStrea
         BT_RUNTIME_DIR: absRuntimeDir || '',
         BT_CACHE_DIR: cacheDir,
         BT_TASKS_DIR: tasksDir,
+        BT_AUTO_TASKS_DIR: autoTasksDir,
         BT_OUTPUT_DIR: outputDir,
         BT_LOG_DIR: logsDir,
         BT_LOG_LEVEL: logLevel

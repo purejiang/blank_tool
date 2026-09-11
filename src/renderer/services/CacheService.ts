@@ -32,6 +32,7 @@ class CacheService {
             // Return empty structure on error to prevent UI issues
             return {
                 tasks: { size: 0, files: 0 },
+                auto_tasks: { size: 0, files: 0 },
                 output: { size: 0, files: 0 },
                 logs: { size: 0, files: 0 },
                 total: { size: 0, files: 0 }

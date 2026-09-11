@@ -460,6 +460,7 @@ export default {
     tools: 'Bundled Tools',
     loading: 'Loading...',
     tasks: 'Tasks',
+    auto_tasks: 'Automation runs',
     output: 'Output',
     logs: 'Logs',
     total: 'Total',
