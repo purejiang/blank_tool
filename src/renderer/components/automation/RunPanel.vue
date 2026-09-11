@@ -363,22 +363,21 @@ const tabs = computed(() => [
 ])
 
 // Switching to a different run (or a new one) resets the transient UI state
-// and lands on the most useful tab: live runs open on logs (the user asked
-// to see progress while it runs), history opens on steps.
+// and lands on the steps tab (default per user preference); the log tab is
+// one click away while a run is in progress.
 watch(
   () => [src.value.taskId, isReport.value].join('|'),
   () => {
     expanded.value = null
     onlyErrors.value = false
-    tab.value = props.running ? 'logs' : 'steps'
+    tab.value = 'steps'
   },
   { immediate: true },
 )
-// A fresh run opens on the log tab (progress is what matters while it runs);
-// replaying history opens on steps.
+// When a run ends without any logs (e.g. failed before starting), an open
+// log tab would just show emptiness — fall back to steps.
 watch(() => props.running, (v) => {
   if (v) {
-    tab.value = 'logs'
     expanded.value = null
   } else if (tab.value === 'logs' && !logs.value.length) {
     tab.value = 'steps'
