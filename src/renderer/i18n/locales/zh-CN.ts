@@ -551,7 +551,6 @@ export default {
     deleteRun: '删除记录',
     deleteRunConfirm: '将删除该次运行的全部产物（截图 / 抓包 / 日志 / 报告），确定？',
     reportLoadFailed: '报告读取失败',
-    openReport: '打开报告',
     downloadReport: '下载报告',
     openInBrowser: '浏览器打开',
     runDir: '运行目录',

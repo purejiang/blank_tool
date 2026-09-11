@@ -136,7 +136,6 @@
           :run-started-ts="runner.runStartedTs"
           :report="viewingReport"
           :exporting="exporting"
-          @open-report="onOpenReport"
           @open-file="openReportFile"
           @download-report="downloadRunReport"
           @close-report="closeReport"
@@ -466,16 +465,6 @@ function onDeleteRun(taskId: string) {
 /** 当前要操作的那次运行：优先页面里正在看的那条，否则最近一次运行 */
 function currentRunTaskId(): string {
   return viewingReport.value?.task_id || String(runner.runResult?.task_id || '')
-}
-
-/** 打开报告：把那次运行的报告恢复到页面里（带时间戳 + 请求日志的完整视图） */
-async function onOpenReport() {
-  const taskId = currentRunTaskId()
-  if (!taskId) {
-    message.warning(t('automation.reportUnavailable'))
-    return
-  }
-  await onSelectRun(taskId)
 }
 
 const exporting = ref(false)

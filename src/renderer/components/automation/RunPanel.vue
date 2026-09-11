@@ -78,9 +78,9 @@
           </n-button>
         </template>
         <template v-else-if="src.taskId && !running">
-          <n-button size="tiny" type="primary" @click="emit('open-report')">
-            <template #icon><n-icon size="13"><FileText /></n-icon></template>
-            {{ t('automation.openReport') }}
+          <n-button size="tiny" :loading="exporting" @click="emit('open-file')">
+            <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
+            {{ t('automation.openInBrowser') }}
           </n-button>
           <n-button size="tiny" @click="emit('download-report')">
             <template #icon><n-icon size="13"><Download /></n-icon></template>
@@ -175,7 +175,7 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NCheckbox, NIcon, NImage, NPopover } from 'naive-ui'
-import { Download, ExternalLink, FileText, Image as ImageIcon, X } from 'lucide-vue-next'
+import { Download, ExternalLink, Image as ImageIcon, X } from 'lucide-vue-next'
 import { stepActionLabel } from '@components/automation/stepMeta'
 
 const props = defineProps<{
@@ -193,7 +193,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'open-report'): void
   (e: 'open-file'): void
   (e: 'download-report'): void
   (e: 'close-report'): void

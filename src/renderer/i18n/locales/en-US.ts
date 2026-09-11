@@ -548,7 +548,6 @@ export default {
     deleteRun: 'Delete run',
     deleteRunConfirm: 'This deletes ALL artifacts of the run (screenshots / traffic / logs / report). Continue?',
     reportLoadFailed: 'Failed to load report',
-    openReport: 'Open report',
     downloadReport: 'Download report',
     openInBrowser: 'Open in browser',
     runDir: 'Run folder',
