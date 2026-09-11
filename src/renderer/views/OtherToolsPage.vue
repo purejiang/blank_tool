@@ -42,9 +42,8 @@
 
           <div class="editor-body">
             <div class="field steps-field">
-              <!-- 列表头行：左 = 计数，右 = 视图切换 + 添加步骤（添加按钮贴最右） -->
+              <!-- 工具行：视图切换 + 添加步骤，整组右对齐（添加按钮贴最右） -->
               <div class="steps-head">
-                <span class="steps-count">{{ t('automation.stepCountLabel', { n: stepCountDisplay }) }}</span>
                 <div class="steps-head-right">
                   <n-radio-group
                     class="view-switch"
@@ -75,6 +74,11 @@
                     </n-button>
                   </n-dropdown>
                 </div>
+              </div>
+
+              <!-- 计数单独一行，紧贴下面的列表，左对齐 -->
+              <div class="steps-count-row">
+                <span class="steps-count">{{ t('automation.stepCountLabel', { n: stepCountDisplay }) }}</span>
               </div>
 
               <StepListEditor
@@ -845,12 +849,15 @@ onMounted(() => {
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
+/* 工具行：只放右侧一组控件（切换 + 添加），整组贴右 */
 .steps-head {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: flex-end; align-items: center;
   gap: 8px; flex-wrap: wrap;
 }
-.steps-count { font-size: 12px; color: var(--app-text-secondary); }
 .steps-head-right { display: flex; align-items: center; gap: 8px; }
+/* 计数单独一行，落在工具行下面、贴着列表，左对齐 */
+.steps-count-row { display: flex; align-items: center; }
+.steps-count { font-size: 12px; color: var(--app-text-secondary); }
 .add-step-btn { flex: none; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
 
