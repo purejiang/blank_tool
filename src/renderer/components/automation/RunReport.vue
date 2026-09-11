@@ -12,9 +12,13 @@
       <span class="rp-title">{{ t('automation.reportTitle') }}</span>
       <span class="rp-meta">{{ report.task_id }}</span>
       <div class="rp-ops">
-        <n-button size="tiny" :loading="exporting" @click="emit('export')">
+        <n-button size="tiny" :loading="exporting" @click="emit('open-file')">
+          <template #icon><n-icon><ExternalLink /></n-icon></template>
+          {{ t('automation.openInBrowser') }}
+        </n-button>
+        <n-button size="tiny" :loading="exporting" @click="emit('download')">
           <template #icon><n-icon><Download /></n-icon></template>
-          {{ t('automation.exportReport') }}
+          {{ t('automation.downloadReport') }}
         </n-button>
         <n-button size="tiny" text :title="t('common.close')" @click="emit('close')">
           <template #icon><n-icon><X /></n-icon></template>
@@ -132,7 +136,7 @@ import { useI18n } from 'vue-i18n'
 import {
   NButton, NCheckbox, NIcon, NImage, NScrollbar, NTag,
 } from 'naive-ui'
-import { Download, X } from 'lucide-vue-next'
+import { Download, ExternalLink, X } from 'lucide-vue-next'
 
 const props = defineProps<{
   /** report object from automation.read_run (report.json + traffic[]) */
@@ -142,7 +146,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'export'): void
+  /** write the HTML then hand it to the OS (default browser) */
+  (e: 'open-file'): void
+  /** write the HTML to a user-chosen path */
+  (e: 'download'): void
 }>()
 
 const { t } = useI18n()

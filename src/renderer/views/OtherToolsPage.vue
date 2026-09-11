@@ -33,6 +33,21 @@
               <span class="editor-name">{{ store.selectedScript?.name }}</span>
               <span v-if="store.selectedScript?.description" class="editor-desc">{{ store.selectedScript.description }}</span>
             </span>
+            <!-- 默认超时是脚本编辑侧的东西：元素模式的步骤没显式填 timeout 时用它 -->
+            <div class="head-timeout">
+              <span class="ht-label">{{ t('automation.elementTimeout') }}</span>
+              <n-input-number
+                :value="elementTimeoutMs"
+                size="tiny"
+                :min="500"
+                :max="120000"
+                :step="1000"
+                :disabled="runner.running"
+                class="ht-ctl"
+                @update:value="(v: number | null) => (elementTimeoutMs = clampTimeout(v ?? 10000))"
+              />
+              <span class="ht-unit">ms</span>
+            </div>
             <transition name="fade">
               <span v-if="store.savedFlash" class="autosave-hint saved">{{ t('automation.savedNow') }}</span>
             </transition>
@@ -116,48 +131,44 @@
       <section class="col col-right">
         <div class="right-head">
           <span class="right-title">{{ t('automation.runResultTitle') }}</span>
-          <n-button size="tiny" text :type="historyOpen ? 'primary' : 'default'" @click="toggleHistory">
-            {{ t('automation.runHistory') }}
-          </n-button>
         </div>
+        <RunControls
+          v-model:auto-device-id="autoDeviceId"
+          v-model:capture-traffic="captureTraffic"
+          :running="runner.running"
+          :can-run="canRun"
+          @run="runScript"
+          @stop="runner.stopRun"
+        />
+        <!-- 运行记录常驻展开：点一条即把那次运行恢复到下面的区域 -->
         <RunHistory
-          v-if="historyOpen"
           :runs="runs"
           :loading="runsLoading"
+          :selected-task-id="viewingReport?.task_id || ''"
           @refresh="fetchRuns"
-          @close="historyOpen = false"
           @select="onSelectRun"
           @remove="onDeleteRun"
         />
-        <!-- report view takes over the column: steps + requests + shots on
-             one timeline, with export -->
+        <!-- 报告视图：步骤 + 请求 + 截图同一条时间线，可浏览器打开 / 下载 -->
         <RunReport
           v-if="viewingReport"
           :report="viewingReport"
           :exporting="exporting"
-          @close="viewingReport = null"
-          @export="exportRunReport"
+          @close="closeReport"
+          @open-file="openReportFile"
+          @download="downloadRunReport"
         />
-        <template v-else>
-          <RunControls
-            v-model:auto-device-id="autoDeviceId"
-            v-model:capture-traffic="captureTraffic"
-            v-model:element-timeout-ms="elementTimeoutMs"
-            :running="runner.running"
-            :can-run="canRun"
-            @run="runScript"
-            @stop="runner.stopRun"
-          />
-          <ResultPanel
-            :running="runner.running"
-            :run-result="runner.runResult"
-            :live-steps="runner.liveSteps"
-            :screenshots="runner.screenshots"
-            :logs="runner.logs"
-            @open-report="onOpenReport"
-            @export-report="exportRunReport"
-          />
-        </template>
+        <!-- 实时/最近一次运行：运行中看步骤与日志，结束后给报告按钮 -->
+        <ResultPanel
+          v-else
+          :running="runner.running"
+          :run-result="runner.runResult"
+          :live-steps="runner.liveSteps"
+          :screenshots="runner.screenshots"
+          :logs="runner.logs"
+          @open-report="onOpenReport"
+          @download-report="downloadRunReport"
+        />
       </section>
     </div>
 
@@ -204,6 +215,7 @@ import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NInput,
+  NInputNumber,
   NModal,
   NEmpty,
   NIcon,
@@ -377,8 +389,8 @@ function onRecEnd() {
 
 // ---------------- run history ----------------
 // Each run persists report.json + categorized artifacts under
-// {BT_TASKS_DIR}/{task_id}/; the history panel lists those reports.
-const historyOpen = ref(false)
+// {BT_AUTO_TASKS_DIR}/{task_id}/; the history list is always visible on the
+// run page (no collapse) and a click restores that run into the panel below.
 const runs = ref<any[]>([])
 const runsLoading = ref(false)
 const viewingReport = ref<any | null>(null)
@@ -395,12 +407,9 @@ async function fetchRuns() {
     runsLoading.value = false
   }
 }
+onMounted(() => { void fetchRuns() })
 
-function toggleHistory() {
-  historyOpen.value = !historyOpen.value
-  if (historyOpen.value && !runs.value.length) void fetchRuns()
-}
-
+/** 点运行记录 → 把那次运行的报告恢复到页面里 */
 async function onSelectRun(taskId: string) {
   try {
     const api = window.electronAPI as any
@@ -410,10 +419,14 @@ async function onSelectRun(taskId: string) {
       return
     }
     viewingReport.value = res.report
-    historyOpen.value = false
   } catch (e: any) {
     message.error(e?.message || String(e))
   }
+}
+
+/** 回到实时/最近一次运行视图 */
+function closeReport() {
+  viewingReport.value = null
 }
 
 function onDeleteRun(taskId: string) {
@@ -439,14 +452,19 @@ function onDeleteRun(taskId: string) {
   })
 }
 
-// refresh history when a run completes
+// refresh the list when a run completes — the new run must show up as a record
 watch(() => runner.runResult, () => {
   if (runner.runResult) void fetchRuns()
 })
 
-/** 打开当前（或最近一次）运行报告 — 报告里带时间戳、请求日志，比实时流更完整 */
+/** 当前要操作的那次运行：优先页面里正在看的那条，否则最近一次运行 */
+function currentRunTaskId(): string {
+  return viewingReport.value?.task_id || String(runner.runResult?.task_id || '')
+}
+
+/** 打开报告：把那次运行的报告恢复到页面里（带时间戳 + 请求日志的完整视图） */
 async function onOpenReport() {
-  const taskId = runner.runResult?.task_id
+  const taskId = currentRunTaskId()
   if (!taskId) {
     message.warning(t('automation.reportUnavailable'))
     return
@@ -456,9 +474,39 @@ async function onOpenReport() {
 
 const exporting = ref(false)
 
-/** 导出报告：后端渲染自包含 HTML（截图 base64 内嵌 + 请求表），写到用户选定路径 */
-async function exportRunReport() {
-  const taskId = viewingReport.value?.task_id || runner.runResult?.task_id
+/** 内置 API：导出 HTML（始终在运行目录里留一份归档，返回其路径） */
+async function buildRunReportHtml(taskId: string, target = ''): Promise<string> {
+  const api = window.electronAPI as any
+  const r = await api.callBackendAPI('automation.export_run', { task_id: taskId, target })
+  if (!r?.success) {
+    message.error(r?.error || t('automation.reportExportFailed'))
+    return ''
+  }
+  return r.file_path || r.archive_path || ''
+}
+
+/** 浏览器打开：先落盘归档，再交给系统用默认程序打开 */
+async function openReportFile() {
+  const taskId = currentRunTaskId()
+  if (!taskId) {
+    message.warning(t('automation.reportUnavailable'))
+    return
+  }
+  exporting.value = true
+  try {
+    const path = await buildRunReportHtml(taskId)
+    if (!path) return
+    await (window.electronAPI as any)?.openPath?.(path)
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    exporting.value = false
+  }
+}
+
+/** 下载报告：自包含 HTML（截图 base64 内嵌 + 请求表），存到用户选定路径 */
+async function downloadRunReport() {
+  const taskId = currentRunTaskId()
   if (!taskId) {
     message.warning(t('automation.reportUnavailable'))
     return
@@ -470,7 +518,7 @@ async function exportRunReport() {
     const pad = (v: number) => String(v).padStart(2, '0')
     const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
     const res = await api.showSaveDialog({
-      title: t('automation.exportReport'),
+      title: t('automation.downloadReport'),
       defaultPath: `automation-${taskId}-${ts}.html`,
       filters: [{ name: 'HTML', extensions: ['html'] }],
     })
@@ -479,12 +527,8 @@ async function exportRunReport() {
   }
   exporting.value = true
   try {
-    const r = await api.callBackendAPI('automation.export_run', { task_id: taskId, target })
-    if (r?.success) {
-      message.success(`${t('automation.exportReport')} → ${r.file_path}`)
-    } else {
-      message.error(r?.error || t('automation.reportExportFailed'))
-    }
+    const path = await buildRunReportHtml(taskId, target)
+    if (path) message.success(`${t('automation.downloadReport')} → ${path}`)
   } catch (e: any) {
     message.error(e?.message || String(e))
   } finally {
@@ -512,6 +556,8 @@ async function runScript() {
     return
   }
   try {
+    // 报告视图会让位给实时日志：开跑就关掉历史报告，否则看不到运行中的日志
+    viewingReport.value = null
     await runner.runScript({
       device_id: autoDeviceId.value,
       package_name: store.selectedProject?.package_name || '',
@@ -718,10 +764,18 @@ onMounted(() => {
   min-width: 0;
 }
 .col-head {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: flex-start; align-items: center; gap: 10px;
   font-size: 13px; font-weight: 600; color: var(--app-text-primary);
   margin-bottom: 10px;
 }
+/* script-level default timeout — lives on the script page, not the run page */
+.head-timeout {
+  display: flex; align-items: center; gap: 5px;
+  margin-left: auto; flex: none; font-weight: 400;
+}
+.ht-label { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; }
+.ht-ctl { width: 96px; }
+.ht-unit { font-size: 11px; color: var(--app-text-muted); }
 .col-empty { margin: auto; text-align: center; }
 .muted { color: var(--app-text-muted); font-size: 12px; }
 

@@ -9,18 +9,24 @@
       <span class="sum-item">{{ t('automation.total') }}: {{ res ? (res.total ?? 0) : stepRows.length }}</span>
       <span class="sum-item ok">{{ t('automation.passed') }}: {{ stepPassed }}</span>
       <span class="sum-item bad">{{ t('automation.failed') }}: {{ stepFailed }}</span>
-      <!-- post-run: the report.json on disk carries more than the live stream
-           (timestamps, request log) — these open/export it -->
-      <template v-if="res?.task_id && !running">
-        <n-button size="tiny" text type="primary" @click="emit('open-report')">
-          <template #icon><n-icon size="13"><FileText /></n-icon></template>
-          {{ t('automation.viewReport') }}
-        </n-button>
-        <n-button size="tiny" text @click="emit('export-report')">
-          <template #icon><n-icon size="13"><Download /></n-icon></template>
-          {{ t('automation.exportReport') }}
-        </n-button>
-      </template>
+    </div>
+
+    <!-- post-run actions: report.json on disk carries more than the live
+         stream (timestamps, request log) — open / download it -->
+    <div class="result-actions" v-if="res?.task_id && !running">
+      <n-button size="tiny" type="primary" @click="emit('open-report')">
+        <template #icon><n-icon size="13"><FileText /></n-icon></template>
+        {{ t('automation.openReport') }}
+      </n-button>
+      <n-button size="tiny" @click="emit('download-report')">
+        <template #icon><n-icon size="13"><Download /></n-icon></template>
+        {{ t('automation.downloadReport') }}
+      </n-button>
+    </div>
+
+    <div class="run-dir" v-if="res?.run_dir" :title="res.run_dir">
+      <span class="rd-label">{{ t('automation.runDir') }}</span>
+      <span class="rd-path" @click="copyRunDir(res.run_dir)">{{ res.run_dir }}</span>
     </div>
 
     <div class="crash-note" v-if="res?.aborted_by_crash">
@@ -83,10 +89,19 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'open-report'): void
-  (e: 'export-report'): void
+  (e: 'download-report'): void
 }>()
 
 const { t } = useI18n()
+
+/** Run dir path is click-to-copy — handy when the user wants the raw artifacts. */
+async function copyRunDir(path: string) {
+  try {
+    await navigator.clipboard.writeText(path)
+  } catch {
+    /* clipboard unavailable — the path is still selectable in the DOM */
+  }
+}
 
 /** 展示用结果：运行结束后的 complete 载荷（含 task_id，可打开/导出报告） */
 const res = computed(() => props.runResult)
@@ -147,7 +162,15 @@ watch(
 .result-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .col-empty { margin: auto; text-align: center; }
 .result-block { flex: 0 0 auto; }
-.result-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.result-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+.result-actions { display: flex; gap: 6px; margin-bottom: 6px; }
+.run-dir { display: flex; gap: 6px; align-items: baseline; font-size: 11px; margin: 0 0 6px; }
+.rd-label { color: var(--app-text-muted); flex: none; }
+.rd-path {
+  color: var(--app-text-secondary); cursor: copy;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rd-path:hover { color: #2080f0; }
 .sum-item { font-size: 12px; color: var(--app-text-secondary); }
 .sum-item.ok { color: #18a058; }
 .sum-item.bad { color: #d03050; }
