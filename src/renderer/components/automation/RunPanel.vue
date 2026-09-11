@@ -133,7 +133,7 @@
       <!-- ---- requests ---- -->
       <div v-else-if="tab === 'requests'" class="scroll">
         <div v-if="!requests.length" class="empty">
-          {{ isReport ? t('automation.noRequests') : t('automation.requestsLiveHint') }}
+          {{ running ? t('automation.requestsLiveHint') : t('automation.noRequests') }}
         </div>
         <div v-else class="req-list">
           <div v-for="(rq, i) in requests" :key="i" class="req-row" :class="reqClass(rq)">
@@ -178,6 +178,8 @@ const props = defineProps<{
   screenshots: string[]
   /** run start (renderer clock, epoch seconds) — baseline for the live log tab */
   runStartedTs: number
+  /** 抓包明细：实时流不推送，运行结束后由父页面读盘补一次（report 模式忽略此 prop） */
+  liveTraffic?: any[]
   /** set when replaying a historical run (read_run payload); null = live view */
   report?: any | null
   exporting?: boolean
@@ -238,7 +240,7 @@ const src = computed(() => {
     logs: props.logs || [],
     shots: res.screenshots || props.screenshots || [],
     shotsMeta: res.shots_meta || [],
-    requests: [] as any[],
+    requests: (props.liveTraffic || []) as any[],
     trafficTotal: res.traffic_requests ?? 0,
     truncated: false,
     startedTs: props.runStartedTs || 0,

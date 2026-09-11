@@ -134,6 +134,7 @@
           :logs="runner.logs"
           :screenshots="runner.screenshots"
           :run-started-ts="runner.runStartedTs"
+          :live-traffic="liveTraffic"
           :report="viewingReport"
           :exporting="exporting"
           @open-file="openReportFile"
@@ -403,6 +404,21 @@ async function onSelectRun(taskId: string) {
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
+/** 实时视图的抓包明细：流式不推，跑完后从落盘的 jsonl 补读一次 */
+const liveTraffic = ref<any[]>([])
+
+async function loadFinishedTraffic(taskId: string) {
+  try {
+    const api = window.electronAPI as any
+    const res = await api.callBackendAPI('automation.read_run', { task_id: taskId, traffic_limit: 500 })
+    // 只有还是同一次运行的结果时才填充（防止慢返回覆盖掉新开跑的空态）
+    if (res?.success && res.report
+        && String(runner.runResult?.task_id || runner.taskId || '') === taskId) {
+      liveTraffic.value = res.report.traffic || []
+    }
+  } catch { /* 明细拉不到就空着，计数（traffic_requests）还在 */ }
+}
+
 /**
  * 运行结束后的对账。
  *
@@ -422,6 +438,8 @@ async function reconcileFinishedRun() {
     await sleep(200)
   }
   const persisted = !!taskId && runs.value.some(r => String(r.task_id) === taskId)
+  // 报告落盘了就把抓包明细补进实时视图 —— 「请求」页签跑完才有数据靠的就是这一步
+  if (persisted) void loadFinishedTraffic(taskId)
   // 实时流一条都没到（既没日志也没步骤）：用落盘报告回放面板，并明确提示 ——
   // 否则又是一个「运行信息里就一点点信息」的无声故障。
   if (persisted && !runner.liveSteps.length && !runner.logs.length) {
@@ -555,6 +573,7 @@ async function runScript() {
   try {
     // 报告视图会让位给实时日志：开跑就关掉历史报告，否则看不到运行中的日志
     viewingReport.value = null
+    liveTraffic.value = []
     await runner.runScript({
       device_id: autoDeviceId.value,
       package_name: store.selectedProject?.package_name || '',
