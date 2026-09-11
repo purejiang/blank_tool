@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-adb_auto — ADB UI automation plugin.
+automation.orchestrator — ADB UI automation run orchestration.
 
 Orchestrates a JSON step list against a device: launch app, tap / swipe /
 input / keyevent, tap elements by text / resource-id / content-desc, wait,
 assert element / activity, and screenshot.
 
 Atomic device ops live in ``app.automation`` (stdlib only); step execution is
-table-driven in ``app.automation.steps`` (``ACTIONS`` registry). This
-plugin only orchestrates and streams progress / logs through ``PluginContext``.
+table-driven in ``app.automation.steps`` (``ACTIONS`` registry). This module
+only orchestrates and streams progress / logs through ``StreamContext``.
+
+Served by the ``automation.run`` streaming handler
+(``app/handlers/automation_handler.py``) — this used to be the ``adb_auto``
+"plugin" and was deliberately moved OUT of the plugin framework: automation
+is a first-class feature, plugins are for external tools (jadx, scrapy, ...).
 
 Cancel / error contract (plan defects 1 & 2):
   * Always end with exactly one ``context.complete(result)`` — never hang.
@@ -37,14 +42,7 @@ from app.automation.input import restore_ime
 from app.automation.steps import execute_step
 from app.utils.logger import Logger
 
-logger = Logger.get_logger("adb_auto")
-
-DESCRIPTION = (
-    "ADB UI automation: run a JSON step list "
-    "(launch/tap/swipe/input/assert/screenshot) against a device."
-)
-VERSION = "1.0.0"
-AUTHOR = "blank_tool"
+logger = Logger.get_logger("automation")
 
 
 def _fallback_run_dir() -> str:
