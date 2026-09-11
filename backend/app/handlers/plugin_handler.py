@@ -27,6 +27,10 @@ def run_plugin(params, stream_handler):
     """Run a specified plugin."""
     plugin_name = params.get("name")
     plugin_params = params.get("params", {})
+    # Forward the stream's task_id so plugins can locate their per-task
+    # working directory ({BT_TASKS_DIR}/{task_id}/) for artifacts/reports.
+    if isinstance(plugin_params, dict) and params.get("task_id"):
+        plugin_params.setdefault("task_id", str(params.get("task_id")))
 
     if not plugin_name:
         raise ToolException("Plugin name not specified")

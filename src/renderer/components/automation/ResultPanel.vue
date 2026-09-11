@@ -1,24 +1,36 @@
 <template>
   <div class="result-panel">
-  <div class="result-block" v-if="runResult || liveSteps.length">
+  <div class="result-block" v-if="res || stepRows.length">
     <div class="result-summary">
-      <n-tag v-if="runResult" :type="runResult.cancelled ? 'warning' : (runResult.success ? 'success' : 'error')" size="small">
-        {{ runResult.cancelled ? t('automation.cancelled') : (runResult.success ? t('automation.success') : t('automation.failed')) }}
+      <n-tag v-if="res" :type="res.cancelled ? 'warning' : (res.success ? 'success' : 'error')" size="small">
+        {{ res.cancelled ? t('automation.cancelled') : (res.success ? t('automation.success') : t('automation.failed')) }}
       </n-tag>
       <n-tag v-else type="info" size="small">{{ t('automation.running') }}</n-tag>
-      <span class="sum-item">{{ t('automation.total') }}: {{ runResult ? (runResult.total ?? 0) : stepRows.length }}</span>
+      <span class="sum-item">{{ t('automation.total') }}: {{ res ? (res.total ?? 0) : stepRows.length }}</span>
       <span class="sum-item ok">{{ t('automation.passed') }}: {{ stepPassed }}</span>
       <span class="sum-item bad">{{ t('automation.failed') }}: {{ stepFailed }}</span>
+      <!-- post-run: the report.json on disk carries more than the live stream
+           (timestamps, request log) — these open/export it -->
+      <template v-if="res?.task_id && !running">
+        <n-button size="tiny" text type="primary" @click="emit('open-report')">
+          <template #icon><n-icon size="13"><FileText /></n-icon></template>
+          {{ t('automation.viewReport') }}
+        </n-button>
+        <n-button size="tiny" text @click="emit('export-report')">
+          <template #icon><n-icon size="13"><Download /></n-icon></template>
+          {{ t('automation.exportReport') }}
+        </n-button>
+      </template>
     </div>
 
-    <div class="crash-note" v-if="runResult?.aborted_by_crash">
+    <div class="crash-note" v-if="res?.aborted_by_crash">
       <span class="crash-text">{{ t('automation.crashAborted') }}</span>
-      <span v-if="runResult?.crash_log" class="crash-log">{{ t('automation.crashLog') }}: {{ runResult.crash_log }}</span>
+      <span v-if="res?.crash_log" class="crash-log">{{ t('automation.crashLog') }}: {{ res.crash_log }}</span>
     </div>
 
-    <div class="crash-note" v-if="runResult?.traffic_log">
-      <span class="crash-text">{{ t('automation.trafficRequests') }}: {{ runResult.traffic_requests ?? 0 }}</span>
-      <span class="crash-log">{{ t('automation.trafficLog') }}: {{ runResult.traffic_log }}</span>
+    <div class="crash-note" v-if="res?.traffic_log">
+      <span class="crash-text">{{ t('automation.trafficRequests') }}: {{ res.traffic_requests ?? 0 }}</span>
+      <span class="crash-log">{{ t('automation.trafficLog') }}: {{ res.traffic_log }}</span>
     </div>
 
     <div class="steps-result" ref="stepsScroll">
@@ -30,11 +42,11 @@
       </div>
     </div>
 
-    <div class="shots" v-if="screenshots.length">
+    <div class="shots" v-if="shots.length">
       <div class="shots-title">{{ t('automation.screenshots') }}</div>
       <div class="shot-grid">
         <n-image
-          v-for="(sp, i) in screenshots"
+          v-for="(sp, i) in shots"
           :key="i"
           :src="fileUrl(sp)"
           width="96"
@@ -57,7 +69,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NTag, NImage, NEmpty, NScrollbar } from 'naive-ui'
+import { NButton, NTag, NImage, NEmpty, NIcon, NScrollbar } from 'naive-ui'
+import { Download, FileText } from 'lucide-vue-next'
 import { stepActionLabel } from '@components/automation/stepMeta'
 
 const props = defineProps<{
@@ -68,7 +81,15 @@ const props = defineProps<{
   logs: string[]
 }>()
 
+const emit = defineEmits<{
+  (e: 'open-report'): void
+  (e: 'export-report'): void
+}>()
+
 const { t } = useI18n()
+
+/** 展示用结果：运行结束后的 complete 载荷（含 task_id，可打开/导出报告） */
+const res = computed(() => props.runResult)
 
 /** 结果区渲染源：运行中/结束后优先用实时行，无则回落到 complete 载荷 */
 const stepRows = computed(() => {
@@ -77,6 +98,7 @@ const stepRows = computed(() => {
 })
 const stepPassed = computed(() => stepRows.value.filter((s: any) => s.ok === true).length)
 const stepFailed = computed(() => stepRows.value.filter((s: any) => s.ok === false).length)
+const shots = computed(() => props.screenshots)
 
 function stepRowClass(st: any) {
   if (st.pending) return 'pending'

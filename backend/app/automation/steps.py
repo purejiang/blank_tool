@@ -17,6 +17,7 @@ polling and sliced waits); ``dt`` is the display transform from
 display space.
 """
 
+import os
 import time
 from typing import Any, Dict, Optional, Tuple
 
@@ -208,7 +209,11 @@ def _assert_activity(ctx, device_id, package_name, step, dt) -> StepHandlerRetur
 
 
 def _screenshot(ctx, device_id, package_name, step, dt) -> StepHandlerReturn:
-    r = take_screenshot(device_id, str(step.get("name", "")))
+    # keep step screenshots inside the per-run directory when the plugin
+    # provided one (context.run_dir)
+    run_dir = getattr(ctx, "run_dir", "")
+    out_dir = os.path.join(run_dir, "screenshots") if run_dir else ""
+    r = take_screenshot(device_id, str(step.get("name", "")), out_dir=out_dir)
     if r.get("success"):
         return True, "", r.get("file_path")
     return False, r.get("error") or "screenshot failed", None

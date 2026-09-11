@@ -44,11 +44,17 @@ def current_activity(device_id: str, timeout_ms: int = 3000) -> Dict[str, Any]:
             "error": "mResumedActivity not found"}
 
 
-def take_screenshot(device_id: str, name: str = "") -> Dict[str, Any]:
-    """Capture screen to ``output/screenshots/<name|uuid>.png``; return path."""
+def take_screenshot(
+    device_id: str, name: str = "", out_dir: str = ""
+) -> Dict[str, Any]:
+    """Capture screen to a PNG; return ``{"success", "file_path", "error"}``.
+
+    Default location is ``<output>/screenshots/``; automation runs pass
+    ``out_dir`` to keep artifacts inside the per-run directory.
+    """
     ts = time.strftime("%Y%m%d-%H%M%S")
     suffix = f"-{name}" if name else ""
-    screenshots_dir = os.path.join(get_output_dir(), "screenshots")
+    screenshots_dir = out_dir or os.path.join(get_output_dir(), "screenshots")
     os.makedirs(screenshots_dir, exist_ok=True)
     file_path = os.path.join(
         screenshots_dir, f"auto-{ts}{suffix}-{uuid.uuid4().hex[:6]}.png"

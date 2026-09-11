@@ -114,22 +114,50 @@
 
       <!-- ============ RIGHT: run console ============ -->
       <section class="col col-right">
-        <RunControls
-          v-model:auto-device-id="autoDeviceId"
-          v-model:capture-traffic="captureTraffic"
-          v-model:element-timeout-ms="elementTimeoutMs"
-          :running="runner.running"
-          :can-run="canRun"
-          @run="runScript"
-          @stop="runner.stopRun"
+        <div class="right-head">
+          <span class="right-title">{{ t('automation.runResultTitle') }}</span>
+          <n-button size="tiny" text :type="historyOpen ? 'primary' : 'default'" @click="toggleHistory">
+            {{ t('automation.runHistory') }}
+          </n-button>
+        </div>
+        <RunHistory
+          v-if="historyOpen"
+          :runs="runs"
+          :loading="runsLoading"
+          @refresh="fetchRuns"
+          @close="historyOpen = false"
+          @select="onSelectRun"
+          @remove="onDeleteRun"
         />
-        <ResultPanel
-          :running="runner.running"
-          :run-result="runner.runResult"
-          :live-steps="runner.liveSteps"
-          :screenshots="runner.screenshots"
-          :logs="runner.logs"
+        <!-- report view takes over the column: steps + requests + shots on
+             one timeline, with export -->
+        <RunReport
+          v-if="viewingReport"
+          :report="viewingReport"
+          :exporting="exporting"
+          @close="viewingReport = null"
+          @export="exportRunReport"
         />
+        <template v-else>
+          <RunControls
+            v-model:auto-device-id="autoDeviceId"
+            v-model:capture-traffic="captureTraffic"
+            v-model:element-timeout-ms="elementTimeoutMs"
+            :running="runner.running"
+            :can-run="canRun"
+            @run="runScript"
+            @stop="runner.stopRun"
+          />
+          <ResultPanel
+            :running="runner.running"
+            :run-result="runner.runResult"
+            :live-steps="runner.liveSteps"
+            :screenshots="runner.screenshots"
+            :logs="runner.logs"
+            @open-report="onOpenReport"
+            @export-report="exportRunReport"
+          />
+        </template>
       </section>
     </div>
 
@@ -193,6 +221,8 @@ import StepListEditor from '@components/automation/StepListEditor.vue'
 import ProjectTree from '@components/automation/ProjectTree.vue'
 import RunControls from '@components/automation/RunControls.vue'
 import ResultPanel from '@components/automation/ResultPanel.vue'
+import RunReport from '@components/automation/RunReport.vue'
+import RunHistory from '@components/automation/RunHistory.vue'
 import ElementPickerModal from '@components/automation/ElementPickerModal.vue'
 import { parseUiDump, boundsCenter, type UiNode } from '@components/automation/uiDump'
 import {
@@ -343,6 +373,123 @@ function onRecStart() {
 function onRecEnd() {
   recording.value = false
   runner.running = false
+}
+
+// ---------------- run history ----------------
+// Each run persists report.json + categorized artifacts under
+// {BT_TASKS_DIR}/{task_id}/; the history panel lists those reports.
+const historyOpen = ref(false)
+const runs = ref<any[]>([])
+const runsLoading = ref(false)
+const viewingReport = ref<any | null>(null)
+
+async function fetchRuns() {
+  runsLoading.value = true
+  try {
+    const api = window.electronAPI as any
+    const res = await api.callBackendAPI('automation.list_runs', {})
+    runs.value = res?.runs || []
+  } catch {
+    /* history is best-effort */
+  } finally {
+    runsLoading.value = false
+  }
+}
+
+function toggleHistory() {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value && !runs.value.length) void fetchRuns()
+}
+
+async function onSelectRun(taskId: string) {
+  try {
+    const api = window.electronAPI as any
+    const res = await api.callBackendAPI('automation.read_run', { task_id: taskId })
+    if (!res?.success || !res.report) {
+      message.error(t('automation.reportLoadFailed'))
+      return
+    }
+    viewingReport.value = res.report
+    historyOpen.value = false
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  }
+}
+
+function onDeleteRun(taskId: string) {
+  dialog.warning({
+    title: t('automation.deleteRun'),
+    content: t('automation.deleteRunConfirm'),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      const api = window.electronAPI as any
+      try {
+        const res = await api.callBackendAPI('automation.delete_run', { task_id: taskId })
+        if (!res?.deleted) {
+          message.error(res?.error || 'delete failed')
+          return
+        }
+        if (viewingReport.value?.task_id === taskId) viewingReport.value = null
+        void fetchRuns()
+      } catch (e: any) {
+        message.error(e?.message || String(e))
+      }
+    },
+  })
+}
+
+// refresh history when a run completes
+watch(() => runner.runResult, () => {
+  if (runner.runResult) void fetchRuns()
+})
+
+/** 打开当前（或最近一次）运行报告 — 报告里带时间戳、请求日志，比实时流更完整 */
+async function onOpenReport() {
+  const taskId = runner.runResult?.task_id
+  if (!taskId) {
+    message.warning(t('automation.reportUnavailable'))
+    return
+  }
+  await onSelectRun(taskId)
+}
+
+const exporting = ref(false)
+
+/** 导出报告：后端渲染自包含 HTML（截图 base64 内嵌 + 请求表），写到用户选定路径 */
+async function exportRunReport() {
+  const taskId = viewingReport.value?.task_id || runner.runResult?.task_id
+  if (!taskId) {
+    message.warning(t('automation.reportUnavailable'))
+    return
+  }
+  const api = window.electronAPI as any
+  let target = ''
+  if (api?.showSaveDialog) {
+    const now = new Date()
+    const pad = (v: number) => String(v).padStart(2, '0')
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
+    const res = await api.showSaveDialog({
+      title: t('automation.exportReport'),
+      defaultPath: `automation-${taskId}-${ts}.html`,
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+    })
+    if (!res || res.canceled || !res.filePath) return
+    target = res.filePath
+  }
+  exporting.value = true
+  try {
+    const r = await api.callBackendAPI('automation.export_run', { task_id: taskId, target })
+    if (r?.success) {
+      message.success(`${t('automation.exportReport')} → ${r.file_path}`)
+    } else {
+      message.error(r?.error || t('automation.reportExportFailed'))
+    }
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    exporting.value = false
+  }
 }
 
 // ---------------- run ----------------
@@ -608,6 +755,13 @@ onMounted(() => {
 .autosave-hint.saved { color: #18a058; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* right run console */
+.right-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.right-title { font-size: 12px; font-weight: 600; color: var(--app-text-primary); }
 .steps-json { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
 .json-status { font-size: 11.5px; margin-top: 4px; }
 .json-status.ok { color: #18a058; }

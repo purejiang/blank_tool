@@ -22,12 +22,13 @@ Cancel / error contract (plan defects 1 & 2):
     with ``context.complete(cancelled=True)`` when the user hits Stop.
 """
 
+import json
 import os
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from app.utils.env import get_output_dir
+from app.utils.env import get_output_dir, get_task_dir
 from app.automation import traffic as traffic_capture
 from app.automation.apps import get_app_pid, take_screenshot
 from app.automation.crash import dump_crash_log
@@ -46,6 +47,16 @@ VERSION = "1.0.0"
 AUTHOR = "blank_tool"
 
 
+def _fallback_run_dir() -> str:
+    """Run dir when no task_id is available (probe/manual invocation)."""
+    d = os.path.join(
+        get_output_dir(), "automation",
+        f"auto-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}",
+    )
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def run(
     context,
     device_id: Optional[str] = None,
@@ -56,32 +67,112 @@ def run(
     capture_traffic: bool = False,
     traffic_port: int = traffic_capture.DEFAULT_PORT,
     traffic_host_filter: str = "",
+    task_id: Optional[str] = None,
     **kwargs,
 ) -> Dict[str, Any]:
     steps = steps or []
+    started_t = time.time()
+    started_iso = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Per-run artifact directory — like every other task, one folder per run
+    # ({BT_TASKS_DIR}/{task_id}/) with artifacts categorized into
+    # screenshots/ traffic/ crash_logs/ and a report.json written at the end.
+    if task_id:
+        try:
+            run_dir = get_task_dir(str(task_id))
+        except ValueError:
+            run_dir = _fallback_run_dir()
+    else:
+        run_dir = _fallback_run_dir()
+    shots_dir = os.path.join(run_dir, "screenshots")
+    # step handlers (steps.py) read this to keep their artifacts in-run-dir
+    context.run_dir = run_dir
+
     result: Dict[str, Any] = {
         "success": True,
+        "task_id": str(task_id or ""),
         "total": len(steps),
         "passed": 0,
         "failed": 0,
         "cancelled": False,
         "screenshots": [],
+        "shots_meta": [],
         "steps": [],
+        "run_dir": run_dir,
     }
+
+    def _shot(name: str, step_index: Optional[int] = None) -> Optional[str]:
+        """Capture into the run dir and record its metadata (path + ts).
+
+        The timestamp lets the report viewer line screenshots up with the
+        step they belong to and with network requests captured at the
+        same moment.
+        """
+        r = take_screenshot(device_id, name, out_dir=shots_dir)
+        if not r.get("success"):
+            return None
+        path = r["file_path"]
+        if path not in result["screenshots"]:
+            result["screenshots"].append(path)
+        result["shots_meta"].append({
+            "path": path,
+            "name": name,
+            "ts": time.time(),
+            "step_index": step_index,
+        })
+        return path
+
+    def _write_report() -> None:
+        """Persist ``report.json`` — machine-readable summary of this run."""
+        try:
+            report = {
+                "kind": "automation_run",
+                "task_id": str(task_id or ""),
+                "device_id": device_id or "",
+                "package_name": package_name or "",
+                "started_at": started_iso,
+                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                # epoch anchors — the report viewer correlates steps,
+                # screenshots and captured requests on the same clock
+                "started_ts": started_t,
+                "finished_ts": time.time(),
+                "duration_ms": int((time.time() - started_t) * 1000),
+                "success": bool(result.get("success")),
+                "cancelled": bool(result.get("cancelled")),
+                "aborted_by_crash": bool(result.get("aborted_by_crash")),
+                "total": result.get("total", 0),
+                "passed": result.get("passed", 0),
+                "failed": result.get("failed", 0),
+                "steps": result.get("steps", []),
+                "screenshots": result.get("screenshots", []),
+                "shots_meta": result.get("shots_meta", []),
+                "traffic_log": result.get("traffic_log"),
+                "traffic_requests": result.get("traffic_requests"),
+                "traffic_https_ready": result.get("traffic_https_ready"),
+                "crash_log": result.get("crash_log"),
+                "run_dir": run_dir,
+            }
+            with open(os.path.join(run_dir, "report.json"), "w", encoding="utf-8") as f:
+                json.dump(report, f, ensure_ascii=False, indent=2)
+        except Exception as e:  # never let reporting break the run
+            logger.warning(f"failed to write report.json: {e}")
 
     if not device_id:
         context.log("[FAIL] missing device_id")
         result["success"] = False
         result["steps"].append(
             {"index": 0, "action": "init", "ok": False,
-             "message": "missing device_id", "duration_ms": 0}
+             "message": "missing device_id", "duration_ms": 0,
+             "started_at": started_t, "ended_at": time.time()}
         )
         context.step(result["steps"][-1])
+        _write_report()
         context.complete(result)
         return result
 
     if not steps:
         context.log("no steps to run")
+        _write_report()
         context.complete(result)
         return result
 
@@ -113,7 +204,7 @@ def run(
     capture_on = False
     if capture_traffic:
         jsonl = os.path.join(
-            get_output_dir(), "traffic",
+            run_dir, "traffic",
             f"traffic-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.jsonl",
         )
         cap = traffic_capture.start_capture(
@@ -140,9 +231,7 @@ def run(
             # Cancel check at the top of every step.
             if context.is_cancelled():
                 context.log(f"cancelled before step {i + 1}/{n}")
-                shot = take_screenshot(device_id, f"cancel-{i + 1}")
-                if shot.get("success"):
-                    result["screenshots"].append(shot["file_path"])
+                _shot(f"cancel-{i + 1}", i + 1)
                 result["cancelled"] = True
                 result["success"] = False
                 restore_ime(device_id)  # CJK input path may have switched the IME
@@ -157,19 +246,19 @@ def run(
                     died = "exited" if cur is None else f"restarted (pid {watch_pid} -> {cur})"
                     crash_msg = f"app {package_name} crashed: {died}"
                     context.log(f"[FAIL] {crash_msg}")
-                    shot = take_screenshot(device_id, "crash")
-                    if shot.get("success"):
-                        result["screenshots"].append(shot["file_path"])
+                    _shot("crash", i + 1)
                     crash = dump_crash_log(
                         device_id,
                         os.path.join(
-                            get_output_dir(), "crash_logs",
+                            run_dir, "crash_logs",
                             f"crash-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.log",
                         ),
                     )
+                    _now = time.time()
                     rec = {
                         "index": i + 1, "action": "app_crash", "ok": False,
                         "message": crash_msg, "duration_ms": 0,
+                        "started_at": _now, "ended_at": _now,
                     }
                     if crash.get("success"):
                         rec["crash_log"] = crash["file_path"]
@@ -204,12 +293,11 @@ def run(
                 if ok:
                     result["steps"].append(
                         {"index": i + 1, "action": action, "ok": True,
-                         "message": message, "duration_ms": duration_ms}
+                         "message": message, "duration_ms": duration_ms,
+                         "started_at": t0, "ended_at": t0 + duration_ms / 1000.0}
                     )
                     result["passed"] += 1
-                shot = take_screenshot(device_id, f"cancel-{i + 1}")
-                if shot.get("success"):
-                    result["screenshots"].append(shot["file_path"])
+                _shot(f"cancel-{i + 1}", i + 1)
                 result["cancelled"] = True
                 result["success"] = False
                 restore_ime(device_id)
@@ -222,11 +310,19 @@ def run(
                 "ok": ok,
                 "message": message,
                 "duration_ms": duration_ms,
+                "started_at": t0,
+                "ended_at": t0 + duration_ms / 1000.0,
             }
             if screenshot:
                 step_rec["screenshot"] = screenshot
                 if screenshot not in result["screenshots"]:
                     result["screenshots"].append(screenshot)
+                result["shots_meta"].append({
+                    "path": screenshot,
+                    "name": f"step-{i + 1}",
+                    "ts": t0 + duration_ms / 1000.0,
+                    "step_index": i + 1,
+                })
             result["steps"].append(step_rec)
             # Live progress: one event per finished step.
             context.step(step_rec)
@@ -242,10 +338,9 @@ def run(
             )
             if step_on_error == "abort":
                 context.log(f"[FAIL] step {i + 1} aborted ({action}): {message}")
-                shot = take_screenshot(device_id, f"fail-{i + 1}")
-                if shot.get("success"):
-                    result["screenshots"].append(shot["file_path"])
-                    step_rec["screenshot"] = shot["file_path"]
+                sp = _shot(f"fail-{i + 1}", i + 1)
+                if sp:
+                    step_rec["screenshot"] = sp
                 result["success"] = False
                 restore_ime(device_id)
                 context.step(step_rec)
@@ -269,4 +364,5 @@ def run(
             context.log(
                 f"traffic capture stopped ({result.get('traffic_requests', 0)} requests)"
             )
+        _write_report()
 
