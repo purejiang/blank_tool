@@ -63,30 +63,6 @@
             </div>
           </div>
         </n-popover>
-
-        <template v-if="isReport">
-          <n-button size="tiny" :loading="exporting" @click="emit('open-file')">
-            <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
-            {{ t('automation.openInBrowser') }}
-          </n-button>
-          <n-button size="tiny" :loading="exporting" @click="emit('download-report')">
-            <template #icon><n-icon size="13"><Download /></n-icon></template>
-            {{ t('automation.downloadReport') }}
-          </n-button>
-          <n-button size="tiny" text :title="t('common.close')" @click="emit('close-report')">
-            <template #icon><n-icon size="13"><X /></n-icon></template>
-          </n-button>
-        </template>
-        <template v-else-if="src.taskId && !running">
-          <n-button size="tiny" :loading="exporting" @click="emit('open-file')">
-            <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
-            {{ t('automation.openInBrowser') }}
-          </n-button>
-          <n-button size="tiny" @click="emit('download-report')">
-            <template #icon><n-icon size="13"><Download /></n-icon></template>
-            {{ t('automation.downloadReport') }}
-          </n-button>
-        </template>
       </div>
     </div>
 
@@ -96,7 +72,9 @@
       <span v-if="src.crashLog" class="crash-log">{{ src.crashLog }}</span>
     </div>
 
-    <!-- ============ tabs: steps / requests / logs share ONE block ============ -->
+    <!-- ============ tabs: steps / requests / logs share ONE block;
+         report actions live on the right of this row so the status
+         bar stays a single calm line ============ -->
     <div class="tabs">
       <button
         v-for="tb in tabs" :key="tb.key" type="button"
@@ -105,9 +83,22 @@
       >
         {{ tb.label }}<span v-if="tb.count" class="tab-n">{{ tb.count }}</span>
       </button>
-      <span v-if="tab === 'logs' && logs.length" class="only-err">
-        <n-checkbox v-model:checked="onlyErrors" size="small">{{ t('automation.onlyErrors') }}</n-checkbox>
-      </span>
+      <div class="tabs-acts">
+        <span v-if="tab === 'logs' && logs.length" class="only-err">
+          <n-checkbox v-model:checked="onlyErrors" size="small">{{ t('automation.onlyErrors') }}</n-checkbox>
+        </span>
+        <n-button v-if="src.taskId && !running" size="tiny" :loading="exporting" @click="emit('open-file')">
+          <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
+          {{ t('automation.openInBrowser') }}
+        </n-button>
+        <n-button v-if="src.taskId && !running" size="tiny" @click="emit('download-report')">
+          <template #icon><n-icon size="13"><Download /></n-icon></template>
+          {{ t('automation.downloadReport') }}
+        </n-button>
+        <n-button v-if="isReport" size="tiny" text :title="t('common.close')" @click="emit('close-report')">
+          <template #icon><n-icon size="13"><X /></n-icon></template>
+        </n-button>
+      </div>
     </div>
 
     <div class="panel-body">
@@ -516,7 +507,13 @@ watch(visibleLogs, async () => {
   font-size: 10.5px; font-weight: 400; color: var(--app-text-muted);
   background: var(--app-blue-bg); border-radius: 8px; padding: 0 5px; line-height: 15px;
 }
-.only-err { margin-left: auto; display: flex; align-items: center; padding-bottom: 2px; }
+.only-err { display: flex; align-items: center; padding-bottom: 2px; }
+/* report actions live on the tabs row, right-aligned; bottom padding
+   keeps their hit area above the tab underline */
+.tabs-acts {
+  margin-left: auto; display: flex; align-items: center; gap: 5px;
+  padding-bottom: 3px; flex: none;
+}
 
 /* ---- panel body ---- */
 .panel-body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; margin-top: 6px; }
