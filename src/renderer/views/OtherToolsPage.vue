@@ -42,38 +42,36 @@
 
           <div class="editor-body">
             <div class="field steps-field">
-              <!-- 工具行：视图切换 + 添加步骤，整组右对齐（添加按钮贴最右） -->
+              <!-- 工具行：视图切换靠左、添加步骤贴最右，两端撑开 -->
               <div class="steps-head">
-                <div class="steps-head-right">
-                  <n-radio-group
-                    class="view-switch"
+                <n-radio-group
+                  class="view-switch"
+                  size="small"
+                  :value="store.stepsView"
+                  :disabled="runner.running"
+                  @update:value="store.onSwitchView"
+                >
+                  <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
+                  <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
+                </n-radio-group>
+                <n-dropdown
+                  trigger="click"
+                  placement="bottom-end"
+                  :options="addOptions"
+                  :disabled="runner.running || store.stepsView !== 'ui'"
+                  @select="onAdd"
+                >
+                  <n-button
+                    class="add-step-btn"
                     size="small"
-                    :value="store.stepsView"
-                    :disabled="runner.running"
-                    @update:value="store.onSwitchView"
-                  >
-                    <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
-                    <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
-                  </n-radio-group>
-                  <n-dropdown
-                    trigger="click"
-                    placement="bottom-end"
-                    :options="addOptions"
+                    type="primary"
+                    secondary
                     :disabled="runner.running || store.stepsView !== 'ui'"
-                    @select="onAdd"
                   >
-                    <n-button
-                      class="add-step-btn"
-                      size="small"
-                      type="primary"
-                      secondary
-                      :disabled="runner.running || store.stepsView !== 'ui'"
-                    >
-                      <template #icon><n-icon><Plus /></n-icon></template>
-                      {{ t('automation.addStep') }}
-                    </n-button>
-                  </n-dropdown>
-                </div>
+                    <template #icon><n-icon><Plus /></n-icon></template>
+                    {{ t('automation.addStep') }}
+                  </n-button>
+                </n-dropdown>
               </div>
 
               <!-- 计数单独一行，紧贴下面的列表，左对齐 -->
@@ -849,12 +847,11 @@ onMounted(() => {
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
-/* 工具行：只放右侧一组控件（切换 + 添加），整组贴右 */
+/* 工具行：视图切换靠左、添加步骤贴最右（两端撑开） */
 .steps-head {
-  display: flex; justify-content: flex-end; align-items: center;
+  display: flex; justify-content: space-between; align-items: center;
   gap: 8px; flex-wrap: wrap;
 }
-.steps-head-right { display: flex; align-items: center; gap: 8px; }
 /* 计数单独一行，落在工具行下面、贴着列表，左对齐 */
 .steps-count-row { display: flex; align-items: center; }
 .steps-count { font-size: 12px; color: var(--app-text-secondary); }
