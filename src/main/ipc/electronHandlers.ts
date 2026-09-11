@@ -94,12 +94,17 @@ export function setupElectronHandlers(): void {
     }
   })
   
-  // 文件/目录打开
-  ipcMain.handle(IPC_CHANNEL_NAMES.openPath, async (event: IpcMainInvokeEvent, targetPath: string) => {
+  // 文件/目录打开。opts.reveal === false 表示「用系统默认程序真正打开」
+  // （.html 报告 → 浏览器）；缺省保持历史行为：目录 openPath，
+  // 文件 showItemInFolder（资源管理器中显示并选中）。
+  ipcMain.handle(IPC_CHANNEL_NAMES.openPath, async (event: IpcMainInvokeEvent, targetPath: string, opts?: { reveal?: boolean }) => {
     if (!targetPath) return { success: false, error: 'Path is required' }
     try {
+      const reveal = opts?.reveal !== false
       const stat = await fs.stat(targetPath).catch(() => null)
-      if (stat && stat.isDirectory()) {
+      if (!reveal && stat && stat.isFile()) {
+        await shell.openPath(targetPath)
+      } else if (stat && stat.isDirectory()) {
         await shell.openPath(targetPath)
       } else {
         shell.showItemInFolder(targetPath)

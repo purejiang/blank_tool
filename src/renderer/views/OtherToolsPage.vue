@@ -502,7 +502,9 @@ async function openReportFile() {
   try {
     const path = await buildRunReportHtml(taskId)
     if (!path) return
-    await (window.electronAPI as any)?.openPath?.(path)
+    // reveal:false → 系统默认程序真正打开（.html → 浏览器）；缺省会变成
+    // 「在资源管理器中显示」——openPath 主进程对文件的历史语义就是 reveal
+    await (window.electronAPI as any)?.openPath?.(path, { reveal: false })
   } catch (e: any) {
     message.error(e?.message || String(e))
   } finally {
