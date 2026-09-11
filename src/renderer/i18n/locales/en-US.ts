@@ -16,7 +16,8 @@ export default {
   nav: {
     device: 'Device',
     package: 'Tasks',
-    tools: 'Automation',
+    automation: 'Automation',
+    plugins: 'Plugins',
     settings: 'Settings',
     about: 'About',
   },
@@ -344,9 +345,6 @@ export default {
     // Warnings
     warnings: 'Analysis Warnings',
     metaData: 'Metadata',
-    // Plugin
-    pluginDev: 'Feature in Development',
-    pluginDevDesc: 'Plugin feature is under development, stay tuned',
     dangerousPerms: 'Dangerous Permissions',
     // Signature info
     signatureInfo: 'Signature',
@@ -490,6 +488,27 @@ export default {
     pathsSaved: 'Paths saved',
   },
   // Automation page (ADB UI automation)
+  plugins: {
+    title: 'Plugins',
+    subtitle: 'External .py plugins: drop them into the user plugin directory',
+    refresh: 'Refresh',
+    reload: 'Reload',
+    reloadHint: 'Rescan the builtin and user plugin directories',
+    reloadDone: 'Loaded {n} plugins',
+    empty: 'No plugins found',
+    selectHint: 'Pick a plugin on the left',
+    paramCount: '{n} params',
+    required: 'required',
+    missingRequired: 'Some required parameters are missing',
+    rawJson: 'Parameters (JSON, used when the plugin declares no form)',
+    run: 'Run',
+    stop: 'Stop',
+    logs: 'Logs',
+    onlyErrors: 'Errors only',
+    noLogs: 'No logs yet',
+    result: 'Result',
+    userDirHint: 'Drop .py plugins into the user plugin directory, then click Reload',
+  },
   automation: {
     title: 'Automation',
     subtitle: 'Author and run ADB UI automation scripts',

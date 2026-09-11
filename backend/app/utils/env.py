@@ -270,6 +270,27 @@ def get_auto_task_dir(task_id: str) -> str:
     return run_dir
 
 
+def get_plugins_root() -> str:
+    """
+    Return the user plugin directory (writable across dev/packaged runs).
+
+    This is where users drop their own ``.py`` plugins; the manager scans
+    it BEFORE the read-only ``builtin/`` dir so same-name user plugins
+    override the bundled ones. Uses ``BT_PLUGINS_DIR`` (set by the
+    Electron main process); falls back to ``<tasks_root>/../plugins``
+    when running without a parent process. Creates the dir if missing.
+    """
+    plugins_dir = get_env("BT_PLUGINS_DIR")
+    if plugins_dir:
+        root = resolve_path(plugins_dir)
+    else:
+        root = os.path.abspath(
+            os.path.join(get_tasks_root(), os.pardir, "plugins")
+        )
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
 def get_task_subdir(task_id: str, name: str) -> str:
     """
     Return the absolute path to a named subdirectory of a task's working dir.

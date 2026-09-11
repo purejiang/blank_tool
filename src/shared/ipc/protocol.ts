@@ -471,4 +471,21 @@ export interface ApiMethodMap {
   // undefined on the renderer side, hence result: void.
   'automation.record_start': { params: { device_id: string; task_id: string }; result: void }
   'automation.record_stop': { params: { device_id: string }; result: { steps: Array<Record<string, unknown>>; record_device: { serial: string; screen_w: number; screen_h: number } } }
+
+  // --- automation_handler.py ---
+  // automation.run is @streaming (same envelope as the former
+  // plugin.run name=adb_auto): init resolves to undefined on the
+  // renderer side, hence result: void. task_id is required — the
+  // orchestrator uses it to locate the per-run artifact directory.
+  'automation.run': {
+    params: {
+      device_id?: string
+      package_name?: string
+      steps?: Array<Record<string, unknown>>
+      continue_on_error?: boolean
+      capture_traffic?: boolean
+      task_id: string
+    }
+    result: void
+  }
 }

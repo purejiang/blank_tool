@@ -1,53 +1,47 @@
-import unifiedApi from '../api/unifiedApi'
-import { log } from '@utils/logger'
+/**
+ * PluginService — thin wrapper over the plugin.* backend API.
+ *
+ * Plugins are external .py files (builtin/ + user dir); running one is a
+ * STREAMING operation, so `run` is NOT here — pages drive it through
+ * TaskStreamService with `plugin.run` (see PluginsPage.vue), same pattern
+ * as useScriptRunner does for automation.run.
+ */
 
-interface PluginApiLike {
-  callBackend?: (method: string, payload: Record<string, unknown>) => Promise<unknown>
+export interface PluginParam {
+  key: string
+  label?: string
+  type?: 'string' | 'number' | 'bool'
+  required?: boolean
+  default?: unknown
+}
+
+export interface PluginInfo {
+  name: string
+  description: string
+  version: string
+  author: string
+  params?: PluginParam[]
 }
 
 class PluginService {
-  private api: PluginApiLike | null
-
-  constructor() {
-    this.api = unifiedApi.getAPI() as PluginApiLike | null
+  private api(method: string, params: Record<string, unknown> = {}): Promise<any> {
+    const api = (window as any).electronAPI
+    if (!api || typeof api.callBackendAPI !== 'function') {
+      return Promise.reject(new Error('backend API unavailable'))
+    }
+    return api.callBackendAPI(method, params)
   }
 
-  /**
-   * 获取插件列表
-   */
-  async getPlugins() {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.list', {})
-    }
-    // Mock data for browser environment
-    return [
-      { name: 'hello_world', description: 'Mock Plugin', version: '1.0.0', author: 'Dev' }
-    ]
+  /** plugin.list → PluginInfo[] */
+  async list(): Promise<PluginInfo[]> {
+    const res = await this.api('plugin.list')
+    return Array.isArray(res) ? res : []
   }
 
-  /**
-   * 运行插件
-   * @param {string} pluginName 插件名称
-   * @param {Object} params 参数
-   */
-  async runPlugin(pluginName: string, params: Record<string, unknown> = {}) {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.run', {
-        name: pluginName,
-        params: params
-      })
-    }
-    return { success: true, message: 'Mock execution result' }
-  }
-
-  /**
-   * 重新加载插件
-   */
-  async reloadPlugins() {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.reload', {})
-    }
-    return await this.getPlugins()
+  /** plugin.reload → PluginInfo[] (rescans builtin + user dirs) */
+  async reload(): Promise<PluginInfo[]> {
+    const res = await this.api('plugin.reload')
+    return Array.isArray(res) ? res : []
   }
 }
 

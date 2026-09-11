@@ -16,7 +16,8 @@ export default {
   nav: {
     device: '设备',
     package: '任务管理',
-    tools: '自动化',
+    automation: '自动化',
+    plugins: '插件',
     settings: '设置',
     about: '关于',
   },
@@ -344,9 +345,6 @@ export default {
     // Warnings
     warnings: '分析警告',
     metaData: '元数据',
-    // Plugin
-    pluginDev: '功能开发中',
-    pluginDevDesc: '插件功能正在开发中，敬请期待',
     dangerousPerms: '危险权限',
     // Signature info
     signatureInfo: '签名信息',
@@ -493,6 +491,27 @@ export default {
     pathsSaved: '路径已保存',
   },
   // Automation page (ADB UI automation)
+  plugins: {
+    title: '插件',
+    subtitle: '外置 .py 插件：放到用户插件目录即插即用',
+    refresh: '刷新',
+    reload: '重新加载',
+    reloadHint: '重新扫描内置与用户插件目录',
+    reloadDone: '已加载 {n} 个插件',
+    empty: '未发现插件',
+    selectHint: '从左侧选择一个插件',
+    paramCount: '{n} 个参数',
+    required: '必填',
+    missingRequired: '还有必填参数未填写',
+    rawJson: '参数（JSON，插件未声明参数表单时使用）',
+    run: '运行',
+    stop: '停止',
+    logs: '日志',
+    onlyErrors: '仅错误',
+    noLogs: '暂无日志',
+    result: '结果',
+    userDirHint: '把 .py 插件放到用户插件目录（设置内可查看路径），然后点「重新加载」',
+  },
   automation: {
     title: '自动化',
     subtitle: '编写并运行 ADB UI 自动化脚本',

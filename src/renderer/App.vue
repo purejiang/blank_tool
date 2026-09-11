@@ -44,7 +44,7 @@ import { ref, h, computed, provide, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { darkTheme, NIcon, zhCN, enUS, type GlobalTheme, type MenuOption } from 'naive-ui'
-import { Package, Settings, Wrench, ChevronsLeft, ChevronsRight, Info, Activity, Smartphone } from 'lucide-vue-next'
+import { Package, Settings, ChevronsLeft, ChevronsRight, Info, Activity, Smartphone, Bot, Puzzle } from 'lucide-vue-next'
 import StatusBar from '@components/common/StatusBar.vue'
 import QuitDialog from '@components/QuitDialog.vue'
 import Notification from '@components/common/Notification.vue'
@@ -81,7 +81,8 @@ const renderIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) 
 const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.package'), key: '/package', icon: renderIcon(Package) },
   { label: t('nav.device'), key: '/device', icon: renderIcon(Smartphone) },
-  { label: t('nav.tools'), key: '/plugins', icon: renderIcon(Wrench) },
+  { label: t('nav.automation'), key: '/automation', icon: renderIcon(Bot) },
+  { label: t('nav.plugins'), key: '/plugins', icon: renderIcon(Puzzle) },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(Settings) },
   { label: t('diagnostics.title'), key: '/diagnostics', icon: renderIcon(Activity) },
   { label: t('nav.about'), key: '/about', icon: renderIcon(Info) },

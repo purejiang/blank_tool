@@ -1,5 +1,5 @@
 /**
- * Run lifecycle for the adb_auto plugin task: streaming callbacks, logs,
+ * Run lifecycle for an automation.run task: streaming callbacks, logs,
  * result payload, and cancel. All UI feedback (messages) stays in the
  * caller — validation of device/steps happens there too. Presentation
  * (status bar / step rows / log feed) lives in RunPanel.
@@ -140,7 +140,7 @@ export function useScriptRunner() {
   async function stopRun() {
     if (!taskId.value) return
     const api = window.electronAPI as any
-    // Streams (adb_auto / plugin.run) register their stop_event in TaskManager
+    // automation.run registers its stop_event in TaskManager
     // under task_id — only `request.cancel` signals it. `apk.cancelTask` only
     // touches APK jobs, so using it here left the run unstoppable.
     if (api && typeof api.cancelRequest === 'function') {

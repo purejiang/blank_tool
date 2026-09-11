@@ -28,11 +28,14 @@ export async function startPythonService(): Promise<ChildProcessWithoutNullStrea
     // interleaved with it (they carry categorized artifacts + a report)
     const autoTasksDir = path.join(localDataPath, 'auto_tasks');
     const logsDir = path.join(localDataPath, 'logs');
+    // user plugin dir — drop .py files here, plugin.reload picks them up
+    const pluginsDir = path.join(localDataPath, 'plugins');
     ensureDir(cacheDir);
     ensureDir(outputDir);
     ensureDir(tasksDir);
     ensureDir(autoTasksDir);
     ensureDir(logsDir);
+    ensureDir(pluginsDir);
 
     const logsConfig = appStore.get('logs') as { level?: string } | undefined;
     const logLevel = logsConfig?.level || 'info';
@@ -43,6 +46,7 @@ export async function startPythonService(): Promise<ChildProcessWithoutNullStrea
         BT_CACHE_DIR: cacheDir,
         BT_TASKS_DIR: tasksDir,
         BT_AUTO_TASKS_DIR: autoTasksDir,
+        BT_PLUGINS_DIR: pluginsDir,
         BT_OUTPUT_DIR: outputDir,
         BT_LOG_DIR: logsDir,
         BT_LOG_LEVEL: logLevel
