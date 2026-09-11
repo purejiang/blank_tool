@@ -66,7 +66,7 @@
                     :disabled="runner.running || store.stepsView !== 'ui'"
                     @select="onAdd"
                   >
-                    <n-button size="tiny" type="primary" dashed :disabled="runner.running || store.stepsView !== 'ui'">
+                    <n-button size="tiny" type="primary" secondary :disabled="runner.running || store.stepsView !== 'ui'">
                       <template #icon><n-icon><Plus /></n-icon></template>
                       {{ t('automation.addStep') }}
                     </n-button>
@@ -805,7 +805,7 @@ onMounted(() => {
   margin-left: auto; flex: none; font-weight: 400;
 }
 .ht-label { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; }
-.ht-ctl { width: 96px; }
+.ht-ctl { width: 84px; }
 .ht-unit { font-size: 11px; color: var(--app-text-muted); }
 .col-empty { margin: auto; text-align: center; }
 .muted { color: var(--app-text-muted); font-size: 12px; }
@@ -853,7 +853,7 @@ onMounted(() => {
 .field label { font-size: 12px; color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
 .steps-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
-.steps-count { font-size: 12px; color: var(--app-text-muted); }
+.steps-count { font-size: 12px; color: var(--app-text-secondary); }
 .steps-head-right { display: flex; align-items: center; gap: 8px; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
 

@@ -10,6 +10,28 @@ export function stepActionLabel(action: string, t: T): string {
   return t(`automation.act.${action}`)
 }
 
+/** Coarse action family — drives the badge colour in the step list. */
+export type StepActionGroup = 'nav' | 'act' | 'wait' | 'check' | 'other'
+
+const ACTION_GROUP: Record<string, StepActionGroup> = {
+  launch_app: 'nav',
+  clear_app_data: 'nav',
+  back: 'nav',
+  home: 'nav',
+  tap: 'act',
+  swipe: 'act',
+  input: 'act',
+  keyevent: 'act',
+  wait: 'wait',
+  assert_element: 'check',
+  assert_activity: 'check',
+}
+
+/** ``shell`` / ``screenshot`` fall through to ``other``. */
+export function stepActionGroup(action: string): StepActionGroup {
+  return ACTION_GROUP[action] ?? 'other'
+}
+
 function num(v: unknown, fallback = 0): number {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback

@@ -209,7 +209,8 @@ function save() {
 
 <style scoped>
 .step-edit-form {
-  padding: 6px 8px 8px 30px;
+  /* left edge lines up with the badge (row padding 8 + index 20 + gap 8) */
+  padding: 6px 8px 8px 36px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -223,15 +224,15 @@ function save() {
   width: 72px;
   flex: none;
   font-size: 12px;
-  color: var(--text-secondary, #888);
+  color: var(--app-text-muted);
   text-align: right;
 }
-.req { color: var(--danger-color, #e05555); margin-left: 2px; }
+.req { color: var(--app-red); margin-left: 2px; }
 .field-ctl { flex: 1; }
 .ctl-pick { display: flex; align-items: center; gap: 6px; }
 .ctl-pick .n-input { flex: 1; min-width: 0; }
 .ctl-pick-btn { flex: none; }
-.form-error { font-size: 12px; color: var(--danger-color, #e05555); }
+.form-error { font-size: 12px; color: var(--app-red); }
 .form-actions {
   display: flex;
   justify-content: flex-end;

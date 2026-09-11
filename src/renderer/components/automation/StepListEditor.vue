@@ -23,9 +23,9 @@
       >
         <div class="step-row">
           <span class="step-idx">{{ i + 1 }}</span>
-          <n-tag size="tiny" :bordered="false" class="step-badge">
+          <span class="step-badge" :class="'g-' + stepActionGroup(step.action)">
             {{ stepActionLabel(step.action, t) }}
-          </n-tag>
+          </span>
           <span class="step-sum" :title="stepSummary(step)">{{ stepSummary(step) }}</span>
 
           <div class="step-ops" @click.stop>
@@ -65,14 +65,14 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
-  NButton, NEmpty, NIcon, NTag,
+  NButton, NEmpty, NIcon,
 } from 'naive-ui'
 import {
   Pencil, Trash2,
 } from 'lucide-vue-next'
 import StepEditForm from './StepEditForm.vue'
 import { type Step } from './stepTypes'
-import { stepActionLabel, stepSummary } from './stepMeta'
+import { stepActionGroup, stepActionLabel, stepSummary } from './stepMeta'
 
 const props = defineProps<{
   modelValue: Step[]
@@ -193,6 +193,11 @@ function stepKey(step: Step): string {
 </script>
 
 <style scoped>
+/* NOTE: every colour here comes from the app's own `--app-*` theme tokens
+   (themes.css). Do NOT reach for the legacy Bootstrap vars in main.css
+   (--border-color / --text-secondary / --primary-color): those are hardcoded
+   LIGHT-theme values, so on the dark card they render a near-white 1px
+   outline around every row. */
 .step-list-editor {
   display: flex;
   flex-direction: column;
@@ -206,56 +211,86 @@ function stepKey(step: Step): string {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   overflow-y: auto;
 }
 .step-item {
-  border: 1px solid var(--border-color, #2c2c32);
-  border-radius: 6px;
-  background: var(--card-color, transparent);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  background: transparent;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+/* hover tint first, then selected/editing — same specificity, later wins */
+.step-item:hover {
+  background: color-mix(in srgb, var(--app-card-border) 40%, transparent);
 }
 .step-item.editing {
-  border-color: var(--primary-color, #4a90d9);
+  border-color: var(--app-blue);
+  background: var(--app-blue-bg);
 }
 .step-item.selected {
-  border-color: var(--primary-color, #4a90d9);
-  background: var(--app-blue-bg, rgba(74, 144, 217, 0.12));
+  border-color: var(--app-blue);
+  background: var(--app-blue-bg);
 }
 /* drag & drop reorder (whole row is the handle, except the open editor) */
 .step-item:not(.editing) { cursor: grab; }
 .step-item.dragging { opacity: 0.45; }
 .step-item.drag-over {
-  border-top: 2px solid var(--primary-color, #4a90d9);
+  border-top: 2px solid var(--app-blue);
 }
 .step-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 8px;
+  padding: 6px 8px;
 }
 .step-idx {
-  width: 22px;
+  width: 20px;
   flex: none;
   font-size: 11px;
-  color: var(--text-tertiary, #999);
+  line-height: 1;
+  color: var(--app-text-dim);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.step-badge { flex: none; font-size: 11px; }
+/* action badge — hue = action family, see stepMeta.stepActionGroup */
+.step-badge {
+  flex: none;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+  color: var(--app-text-muted);
+  background: color-mix(in srgb, var(--app-text-muted) 16%, transparent);
+}
+.step-badge.g-nav { color: var(--app-blue); background: color-mix(in srgb, var(--app-blue) 16%, transparent); }
+.step-badge.g-act { color: var(--app-green); background: color-mix(in srgb, var(--app-green) 16%, transparent); }
+.step-badge.g-wait { color: var(--app-yellow); background: color-mix(in srgb, var(--app-yellow) 16%, transparent); }
+.step-badge.g-check { color: var(--app-purple); background: color-mix(in srgb, var(--app-purple) 16%, transparent); }
 .step-sum {
   flex: 1;
+  min-width: 0;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-secondary, #aaa);
+  color: var(--app-text-secondary);
   font-variant-numeric: tabular-nums;
 }
+/* row actions stay out of the way until the row is hovered / focused —
+   6 rows × 2 coloured icons was the loudest thing in the column, and the
+   space they occupy is reserved either way, so nothing shifts on hover */
 .step-ops {
   display: flex;
   align-items: center;
   gap: 0;
   flex: none;
+  opacity: 0;
+  transition: opacity 0.13s;
 }
+.step-item:hover .step-ops,
+.step-item.selected .step-ops,
+.step-item.editing .step-ops { opacity: 1; }
 </style>
