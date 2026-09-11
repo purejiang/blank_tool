@@ -2,7 +2,7 @@
  * Run lifecycle for the adb_auto plugin task: streaming callbacks, logs,
  * result payload, and cancel. All UI feedback (messages) stays in the
  * caller — validation of device/steps happens there too. Presentation
- * (step rows/summary) lives in ResultPanel.
+ * (status bar / step rows / log feed) lives in RunPanel.
  */
 import { reactive, ref } from 'vue'
 import serviceManager from '@services/ServiceManager'
@@ -14,14 +14,28 @@ export interface RunPayload {
   capture_traffic: boolean
 }
 
+/** One console line. `ts` is epoch **seconds** (renderer clock on receipt,
+ *  backend clock when replayed from report.json) so the log tab can show a
+ *  timestamp without the backend having to stamp the streamed string. */
+export interface LogLine {
+  ts: number
+  text: string
+}
+
 export function useScriptRunner() {
   const running = ref(false)
   const taskId = ref('')
-  const logs = ref<string[]>([])
+  const logs = ref<LogLine[]>([])
   const runResult = ref<any>(null)
   const screenshots = ref<string[]>([])
   /** 运行中的实时步骤行（逐步推送，pending=true 表示正在执行） */
   const liveSteps = ref<any[]>([])
+  /** 本次运行的起点（渲染进程时钟，epoch 秒）——实时日志算相对时间的基准 */
+  const runStartedTs = ref(0)
+
+  function pushLog(text: string) {
+    logs.value.push({ ts: Date.now() / 1000, text: String(text) })
+  }
 
   function genId(): string {
     try {
@@ -43,6 +57,7 @@ export function useScriptRunner() {
     runResult.value = null
     screenshots.value = []
     liveSteps.value = []
+    runStartedTs.value = Date.now() / 1000
 
     const id = genId()
     taskId.value = id
@@ -51,14 +66,14 @@ export function useScriptRunner() {
     taskStream.bindTask(id)
     taskStream.setCallbacks(id, {
       onLog: (line: string) => {
-        logs.value.push(String(line))
+        pushLog(line)
       },
       onError: (msg: string) => {
-        logs.value.push('[ERROR] ' + msg)
+        pushLog('[ERROR] ' + msg)
         running.value = false
       },
       onCancelled: () => {
-        logs.value.push('[CANCELLED]')
+        pushLog('[CANCELLED]')
         running.value = false
       },
       onStepStart: (st: any) => {
@@ -106,9 +121,18 @@ export function useScriptRunner() {
     } catch (e: any) {
       const m = e?.message
       if (m !== 'cancelled' && m !== 'unbound') {
-        logs.value.push('[ERROR] ' + (m || String(e)))
+        // IPC-level failure (backend down / request timed out / error
+        // envelope). No `onError` stream callback fires on this path, so the
+        // error line must be added here — and the rethrow is what lets the
+        // page surface a toast.
+        pushLog('[ERROR] ' + (m || String(e)))
         throw e
       }
+    } finally {
+      // ALWAYS clear the busy flag: on the IPC-failure path above neither
+      // `onComplete` nor `onError` ever runs, which previously left
+      // `running === true` forever — the run console stayed "运行中" (stop
+      // button, inputs disabled) while showing no logs and no steps.
       running.value = false
     }
   }
@@ -135,6 +159,7 @@ export function useScriptRunner() {
     runResult,
     screenshots,
     liveSteps,
+    runStartedTs,
     runScript,
     stopRun,
   })

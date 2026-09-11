@@ -128,10 +128,11 @@
       <div class="col-divider" @pointerdown.prevent="startResize('right', $event)" />
 
       <!-- ============ RIGHT: run console ============ -->
+      <!-- top → bottom: run controls, the run panel (status bar + steps /
+           requests / logs tabs, live or replayed), then run history. The
+           history stays permanently expanded and a click replays that run
+           into the panel above it. -->
       <section class="col col-right">
-        <div class="right-head">
-          <span class="right-title">{{ t('automation.runResultTitle') }}</span>
-        </div>
         <RunControls
           v-model:auto-device-id="autoDeviceId"
           v-model:capture-traffic="captureTraffic"
@@ -140,7 +141,20 @@
           @run="runScript"
           @stop="runner.stopRun"
         />
-        <!-- 运行记录常驻展开：点一条即把那次运行恢复到下面的区域 -->
+        <RunPanel
+          :running="runner.running"
+          :run-result="runner.runResult"
+          :live-steps="runner.liveSteps"
+          :logs="runner.logs"
+          :screenshots="runner.screenshots"
+          :run-started-ts="runner.runStartedTs"
+          :report="viewingReport"
+          :exporting="exporting"
+          @open-report="onOpenReport"
+          @open-file="openReportFile"
+          @download-report="downloadRunReport"
+          @close-report="closeReport"
+        />
         <RunHistory
           :runs="runs"
           :loading="runsLoading"
@@ -148,26 +162,6 @@
           @refresh="fetchRuns"
           @select="onSelectRun"
           @remove="onDeleteRun"
-        />
-        <!-- 报告视图：步骤 + 请求 + 截图同一条时间线，可浏览器打开 / 下载 -->
-        <RunReport
-          v-if="viewingReport"
-          :report="viewingReport"
-          :exporting="exporting"
-          @close="closeReport"
-          @open-file="openReportFile"
-          @download="downloadRunReport"
-        />
-        <!-- 实时/最近一次运行：运行中看步骤与日志，结束后给报告按钮 -->
-        <ResultPanel
-          v-else
-          :running="runner.running"
-          :run-result="runner.runResult"
-          :live-steps="runner.liveSteps"
-          :screenshots="runner.screenshots"
-          :logs="runner.logs"
-          @open-report="onOpenReport"
-          @download-report="downloadRunReport"
         />
       </section>
     </div>
@@ -232,8 +226,7 @@ import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
 import ProjectTree from '@components/automation/ProjectTree.vue'
 import RunControls from '@components/automation/RunControls.vue'
-import ResultPanel from '@components/automation/ResultPanel.vue'
-import RunReport from '@components/automation/RunReport.vue'
+import RunPanel from '@components/automation/RunPanel.vue'
 import RunHistory from '@components/automation/RunHistory.vue'
 import ElementPickerModal from '@components/automation/ElementPickerModal.vue'
 import { parseUiDump, boundsCenter, type UiNode } from '@components/automation/uiDump'
@@ -424,6 +417,35 @@ async function onSelectRun(taskId: string) {
   }
 }
 
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+/**
+ * 运行结束后的对账。
+ *
+ * `report.json` 是插件在 `finally` 里写的 —— 也就是**在 `complete` 事件之后**
+ * 一点点。所以「收到 complete 就立刻刷一次列表」必然和写盘抢跑：列表里看不到
+ * 刚跑完的那条（这就是「运行记录不会自动刷新」的原因）。
+ * 这里轮询到记录真的落盘为止，再刷一次列表。
+ *
+ * 另外：如果实时控制台什么都没收到（没有日志也没有步骤），但磁盘上有这次运行
+ * 的记录，就把落盘的报告回放到面板里 —— 保证「运行完，运行信息里有日志和步骤」。
+ */
+async function reconcileFinishedRun() {
+  const taskId = String(runner.runResult?.task_id || runner.taskId || '')
+  for (let i = 0; i < 20; i++) {
+    await fetchRuns()
+    if (!taskId || runs.value.some(r => String(r.task_id) === taskId)) break
+    await sleep(200)
+  }
+  const persisted = !!taskId && runs.value.some(r => String(r.task_id) === taskId)
+  // 实时流一条都没到（既没日志也没步骤）：用落盘报告回放面板，并明确提示 ——
+  // 否则又是一个「运行信息里就一点点信息」的无声故障。
+  if (persisted && !runner.liveSteps.length && !runner.logs.length) {
+    await onSelectRun(taskId)
+    message.warning(t('automation.streamSilentHint'))
+  }
+}
+
 /** 回到实时/最近一次运行视图 */
 function closeReport() {
   viewingReport.value = null
@@ -452,10 +474,9 @@ function onDeleteRun(taskId: string) {
   })
 }
 
-// refresh the list when a run completes — the new run must show up as a record
-watch(() => runner.runResult, () => {
-  if (runner.runResult) void fetchRuns()
-})
+// The run record is written to disk a beat AFTER the `complete` event, so the
+// list must be reconciled rather than refreshed once — see
+// `reconcileFinishedRun`. Called from the run's finally block below.
 
 /** 当前要操作的那次运行：优先页面里正在看的那条，否则最近一次运行 */
 function currentRunTaskId(): string {
@@ -566,6 +587,10 @@ async function runScript() {
     })
   } catch (e: any) {
     message.error(e?.message || String(e))
+  } finally {
+    // 无论成功、失败还是取消，都要把「刚跑完的那条」对账进列表 —— report.json
+    // 落在 complete 之后，所以这里必须轮询而不是只刷一次。
+    void reconcileFinishedRun()
   }
 }
 
@@ -738,8 +763,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.auto-page { max-width: var(--page-max-width); margin: 0 auto; height: 100%; display: flex; flex-direction: column; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.auto-page { max-width: var(--page-max-width); margin: 0 auto; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex: none; }
 .page-title {
   font-family: Inter, sans-serif; font-size: 22px; font-weight: 700;
   color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em;
@@ -749,8 +774,11 @@ onMounted(() => {
   flex: 1; display: grid;
   /* 列宽由 gridStyle 内联给定：两侧列可拖拽调宽（localStorage 持久化），
      中栏 minmax(0,1fr) 吸收剩余空间——1fr 的 min-width 是 auto，内容会顶开
-     轨道压到相邻列，因此必须 minmax(0,1fr) */
-  gap: 0; min-height: 0;
+     轨道压到相邻列，因此必须 minmax(0,1fr)。
+     行高同理用 minmax(0,1fr) 锁死：否则某列内容一高，auto 行就顶破容器，
+     溢出内容会让外层 .main-content 长出页面级滚动条。 */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0; min-height: 0; overflow: hidden;
 }
 .col-divider {
   cursor: col-resize;
@@ -762,6 +790,9 @@ onMounted(() => {
   background: var(--app-card-bg); border: 1px solid var(--app-card-border);
   border-radius: 10px; padding: 12px; display: flex; flex-direction: column; min-height: 0;
   min-width: 0;
+  /* clip: a child that outgrows the column must scroll inside it, never
+     paint over the neighbouring column or the run history below */
+  overflow: hidden;
 }
 .col-head {
   display: flex; justify-content: flex-start; align-items: center; gap: 10px;
@@ -810,12 +841,9 @@ onMounted(() => {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* right run console */
-.right-head {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 8px;
-}
-.right-title { font-size: 12px; font-weight: 600; color: var(--app-text-primary); }
+/* right run console: controls / panel / history stacked with a uniform gap
+   (the panel itself absorbs the slack) */
+.col-right { gap: 8px; }
 .steps-json { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
 .json-status { font-size: 11.5px; margin-top: 4px; }
 .json-status.ok { color: #18a058; }

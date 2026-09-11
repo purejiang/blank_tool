@@ -13,7 +13,7 @@ plugin only orchestrates and streams progress / logs through ``PluginContext``.
 
 Cancel / error contract (plan defects 1 & 2):
   * Always end with exactly one ``context.complete(result)`` — never hang.
-  * Non-fatal step failures are reported via ``context.log("[FAIL] ...")``
+  * Non-fatal step failures are reported via ``_log("[FAIL] ...")``
     ONLY. ``context.error()`` is reserved for truly fatal / exceptional cases
     (it tears down the stream listener and rejects ``waitForPhase``), so an
     aborted run still calls ``context.complete(success=False)`` rather than
@@ -102,8 +102,22 @@ def run(
         "screenshots": [],
         "shots_meta": [],
         "steps": [],
+        # Persisted log lines ({ts, text}) — the run report's log tab reads
+        # these so a historical run shows the same feed the live console did.
+        # ``context.log`` also streams each line to the frontend unchanged.
+        "logs": [],
         "run_dir": run_dir,
     }
+
+    def _log(message: str) -> None:
+        """Stream a log line AND keep it for report.json.
+
+        The frontend receives the raw string via ``context.log`` (payload
+        shape unchanged); the copy stored here carries an epoch timestamp
+        so the report viewer can place it on the run's clock.
+        """
+        context.log(message)
+        result["logs"].append({"ts": time.time(), "text": message})
 
     def _shot(name: str, step_index: Optional[int] = None) -> Optional[str]:
         """Capture into the run dir and record its metadata (path + ts).
@@ -148,6 +162,7 @@ def run(
                 "passed": result.get("passed", 0),
                 "failed": result.get("failed", 0),
                 "steps": result.get("steps", []),
+                "logs": result.get("logs", []),
                 "screenshots": result.get("screenshots", []),
                 "shots_meta": result.get("shots_meta", []),
                 "traffic_log": result.get("traffic_log"),
@@ -162,7 +177,7 @@ def run(
             logger.warning(f"failed to write report.json: {e}")
 
     if not device_id:
-        context.log("[FAIL] missing device_id")
+        _log("[FAIL] missing device_id")
         result["success"] = False
         result["steps"].append(
             {"index": 0, "action": "init", "ok": False,
@@ -175,7 +190,7 @@ def run(
         return result
 
     if not steps:
-        context.log("no steps to run")
+        _log("no steps to run")
         _write_report()
         context.complete(result)
         return result
@@ -187,7 +202,7 @@ def run(
     # to 1600x900 — raw y>900 would land off-screen and silently no-op).
     dt = get_display_transform(device_id)
     if dt.get("rotation"):
-        context.log(
+        _log(
             f"display rotation={dt['rotation']}, panel={dt['width']}x{dt['height']}"
             " — raw coords will be rotated to display space"
         )
@@ -200,7 +215,7 @@ def run(
     if watch:
         watch_pid = get_app_pid(device_id, package_name)
         if watch_pid:
-            context.log(f"crash watch on {package_name} (pid {watch_pid})")
+            _log(f"crash watch on {package_name} (pid {watch_pid})")
 
     # Traffic capture (optional): mitmdump on the PC + device HTTP proxy.
     # The device proxy MUST be restored on EVERY exit path — a device left
@@ -219,13 +234,13 @@ def run(
             capture_on = True
             result["traffic_log"] = cap["jsonl"]
             result["traffic_https_ready"] = bool(cap.get("https_ready"))
-            context.log(
+            _log(
                 f"traffic capture started (port {cap['port']})"
                 + (" — HTTPS decryptable" if cap.get("https_ready")
                    else " — CA not installed, HTTPS stays encrypted")
             )
         else:
-            context.log(
+            _log(
                 f"[FAIL] traffic capture unavailable: {cap.get('error')}"
                 " — continuing without capture"
             )
@@ -234,12 +249,11 @@ def run(
         for i, step in enumerate(steps):
             # Cancel check at the top of every step.
             if context.is_cancelled():
-                context.log(f"cancelled before step {i + 1}/{n}")
+                _log(f"cancelled before step {i + 1}/{n}")
                 _shot(f"cancel-{i + 1}", i + 1)
                 result["cancelled"] = True
                 result["success"] = False
                 restore_ime(device_id)  # CJK input path may have switched the IME
-                context.complete(result)
                 return result
 
             # Crash check — only once the app was seen alive at least once
@@ -249,7 +263,7 @@ def run(
                 if watch_pid is not None and cur != watch_pid:
                     died = "exited" if cur is None else f"restarted (pid {watch_pid} -> {cur})"
                     crash_msg = f"app {package_name} crashed: {died}"
-                    context.log(f"[FAIL] {crash_msg}")
+                    _log(f"[FAIL] {crash_msg}")
                     _shot("crash", i + 1)
                     crash = dump_crash_log(
                         device_id,
@@ -275,7 +289,6 @@ def run(
                     result["success"] = False
                     result["aborted_by_crash"] = True
                     restore_ime(device_id)
-                    context.complete(result)
                     return result
                 if cur is not None:
                     watch_pid = cur
@@ -293,7 +306,7 @@ def run(
             # Stop pressed while the step ran (e.g. mid element-poll): finish
             # the run as cancelled right away instead of continuing to step 2.
             if context.is_cancelled():
-                context.log(f"cancelled during step {i + 1}/{n}")
+                _log(f"cancelled during step {i + 1}/{n}")
                 if ok:
                     result["steps"].append(
                         {"index": i + 1, "action": action, "ok": True,
@@ -305,7 +318,6 @@ def run(
                 result["cancelled"] = True
                 result["success"] = False
                 restore_ime(device_id)
-                context.complete(result)
                 return result
 
             step_rec: Dict[str, Any] = {
@@ -341,23 +353,21 @@ def run(
                 "continue" if continue_on_error else "abort"
             )
             if step_on_error == "abort":
-                context.log(f"[FAIL] step {i + 1} aborted ({action}): {message}")
+                _log(f"[FAIL] step {i + 1} aborted ({action}): {message}")
                 sp = _shot(f"fail-{i + 1}", i + 1)
                 if sp:
                     step_rec["screenshot"] = sp
                 result["success"] = False
                 restore_ime(device_id)
                 context.step(step_rec)
-                context.complete(result)
                 return result
-            context.log(f"[FAIL] step {i + 1} continued ({action}): {message}")
+            _log(f"[FAIL] step {i + 1} continued ({action}): {message}")
 
-        context.log(
+        _log(
             f"done: {result['passed']}/{result['total']} passed"
             + (f", {result['failed']} failed" if result["failed"] else "")
         )
         restore_ime(device_id)
-        context.complete(result)
         return result
     finally:
         if capture_on:
@@ -365,8 +375,17 @@ def run(
             result["traffic_requests"] = stopped.get("requests", 0)
             if stopped.get("jsonl"):
                 result["traffic_log"] = stopped["jsonl"]
-            context.log(
+            _log(
                 f"traffic capture stopped ({result.get('traffic_requests', 0)} requests)"
             )
+        # Order matters: persist the report BEFORE emitting the terminal
+        # `complete` event. The frontend reacts to `complete` by refreshing
+        # its run list (and may replay the record), so report.json must
+        # already be on disk — otherwise the run that just finished is
+        # missing from the history until a manual refresh.
+        # Emitting `complete` exactly once, here, also means every exit path
+        # (cancel / crash / abort / normal end) goes through the same
+        # write-then-notify sequence.
         _write_report()
+        context.complete(result)
 

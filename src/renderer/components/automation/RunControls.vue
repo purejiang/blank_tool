@@ -7,34 +7,32 @@
       :placeholder="t('automation.selectDevice')"
       @update:value="emit('update:autoDeviceId', $event)"
     />
-    <div class="run-actions">
-      <n-tooltip placement="top">
-        <template #trigger>
-          <n-checkbox
-            :checked="captureTraffic"
-            size="small"
-            class="capture-toggle"
-            @update:checked="emit('update:captureTraffic', $event)"
-          >
-            {{ t('automation.captureTraffic') }}
-          </n-checkbox>
-        </template>
-        {{ t('automation.captureTrafficHint') }}
-      </n-tooltip>
-      <n-tooltip v-if="!running" :disabled="canRun" placement="top">
-        <template #trigger>
-          <n-button type="primary" size="small" block :disabled="!canRun" @click="emit('run')">
-            <template #icon><n-icon><Play /></n-icon></template>
-            {{ t('automation.run') }}
-          </n-button>
-        </template>
-        {{ !autoDeviceId ? t('automation.noDevice') : t('automation.noScriptSelected') }}
-      </n-tooltip>
-      <n-button v-else type="warning" size="small" block @click="emit('stop')">
-        <template #icon><n-icon><Square /></n-icon></template>
-        {{ t('automation.stop') }}
-      </n-button>
-    </div>
+    <n-tooltip placement="top">
+      <template #trigger>
+        <n-checkbox
+          :checked="captureTraffic"
+          size="small"
+          class="capture-toggle"
+          @update:checked="emit('update:captureTraffic', $event)"
+        >
+          {{ t('automation.captureTrafficShort') }}
+        </n-checkbox>
+      </template>
+      {{ t('automation.captureTrafficHint') }}
+    </n-tooltip>
+    <n-tooltip v-if="!running" :disabled="canRun" placement="top">
+      <template #trigger>
+        <n-button type="primary" size="small" :disabled="!canRun" class="run-btn" @click="emit('run')">
+          <template #icon><n-icon><Play /></n-icon></template>
+          {{ t('automation.run') }}
+        </n-button>
+      </template>
+      {{ !autoDeviceId ? t('automation.noDevice') : t('automation.noScriptSelected') }}
+    </n-tooltip>
+    <n-button v-else type="warning" size="small" class="run-btn" @click="emit('stop')">
+      <template #icon><n-icon><Square /></n-icon></template>
+      {{ t('automation.stop') }}
+    </n-button>
   </div>
 </template>
 
@@ -71,9 +69,12 @@ const deviceOptions = computed(() =>
 </script>
 
 <style scoped>
-/* single root so the parent column can lay it out; fixed height, the
-   result / report area below absorbs the remaining space */
-.run-controls { display: flex; flex-direction: column; gap: 8px; flex: none; }
-.capture-toggle { flex-shrink: 0; }
-.run-actions { display: flex; flex-direction: column; gap: 8px; }
+/* single root so the parent column can lay it out; ONE row — the device
+   select absorbs the slack, the run button is the primary action, and
+   traffic capture is a short label (full explanation lives in its tooltip) */
+.run-controls { display: flex; align-items: center; gap: 8px; flex: none; }
+.run-controls :deep(.n-select) { flex: 1; min-width: 0; }
+.capture-toggle { flex: none; }
+.run-controls :deep(.capture-toggle .n-checkbox__label) { font-size: 12px; padding-left: 6px; }
+.run-btn { flex: none; }
 </style>
