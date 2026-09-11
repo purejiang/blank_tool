@@ -626,6 +626,7 @@ export default {
     export: '导出',
     exportProject: '导出此项目',
     exportScript: '导出此脚本',
+    importScriptsTo: '导入脚本到此项目',
     importMergeHint: '导入脚本文件（按 id 合并，不删除现有内容）',
     importMerge: '将替换 {replaced} 个同名脚本、新增 {added} 个脚本，确定继续？',
     importDone: '导入完成：新增 {projects} 个项目、{added} 个脚本，替换 {replaced} 个脚本',

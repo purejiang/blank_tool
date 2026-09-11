@@ -623,6 +623,7 @@ export default {
     export: 'Export',
     exportProject: 'Export this project',
     exportScript: 'Export this script',
+    importScriptsTo: 'Import scripts into this project',
     importMergeHint: 'Import script file (merged by id, nothing is deleted)',
     importMerge: 'Will replace {replaced} existing script(s) and add {added} new one(s). Continue?',
     importDone: 'Imported: {projects} project(s), {added} script(s) added, {replaced} replaced',

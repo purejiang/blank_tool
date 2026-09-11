@@ -26,9 +26,12 @@
     <div v-else class="tree">
       <div v-for="p in store.projects" :key="p.id" class="proj">
         <div class="proj-row" :class="{ active: p.id === store.selectedProjectId }">
-          <div class="proj-name" @click="store.selectProject(p.id)">
-            <n-icon size="14"><Box /></n-icon>
-            <span class="name-line" :title="p.description ? `${p.name} · ${p.description}` : p.name">{{ p.name }}</span>
+          <div class="proj-main">
+            <div class="proj-name" @click="store.selectProject(p.id)">
+              <n-icon size="14"><Box /></n-icon>
+              <span class="name-line" :title="p.description ? `${p.name} · ${p.description}` : p.name">{{ p.name }}</span>
+            </div>
+            <div v-if="p.description" class="item-desc proj-desc">{{ p.description }}</div>
           </div>
           <div class="row-actions">
             <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.editInfo')" @click.stop="store.openProjectMeta(p)">
@@ -36,6 +39,9 @@
             </n-button>
             <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.exportProject')" @click.stop="exportProject(p)">
               <template #icon><n-icon><Download /></n-icon></template>
+            </n-button>
+            <n-button size="tiny" text type="primary" :disabled="running" :title="t('automation.importScriptsTo')" @click.stop="importScriptsTo(p)">
+              <template #icon><n-icon><Upload /></n-icon></template>
             </n-button>
             <n-button size="tiny" text type="error" :disabled="running" @click.stop="store.deleteProject(p)">
               <template #icon><n-icon><Trash2 /></n-icon></template>
@@ -52,10 +58,13 @@
             @click="store.selectScript(p.id, s.id)"
           >
             <n-icon size="13"><FileText /></n-icon>
-            <span
-              class="name-line"
-              :title="s.description ? `${s.name} · ${s.description}` : s.name"
-            >{{ s.name }}</span>
+            <div class="script-main">
+              <span
+                class="name-line"
+                :title="s.description ? `${s.name} · ${s.description}` : s.name"
+              >{{ s.name }}</span>
+              <div v-if="s.description" class="item-desc script-desc">{{ s.description }}</div>
+            </div>
             <n-button
               size="tiny"
               text
@@ -155,43 +164,59 @@ function exportScript(p: { name: string }, s: { name: string }) {
   void saveJson(s.name, { projects: [{ ...p, scripts: [s] }] })
 }
 
-async function importConfig() {
-  if (props.running) return
+/** 弹文件选择框并解析出 projects[]；失败/取消返回 null（错误已提示） */
+async function readProjectsFile(): Promise<any[] | null> {
   const api = window.electronAPI as any
   if (!api || typeof api.showOpenDialog !== 'function' || typeof api.readFile !== 'function') {
     message.error('open dialog unavailable')
-    return
+    return null
   }
   const res = await api.showOpenDialog({
     title: t('automation.import'),
     properties: ['openFile'],
     filters: [{ name: 'JSON', extensions: ['json'] }],
   })
-  if (!res || res.canceled || !res.filePaths || !res.filePaths.length) return
+  if (!res || res.canceled || !res.filePaths || !res.filePaths.length) return null
   let text = ''
   try {
     text = await api.readFile(res.filePaths[0])
   } catch (e: any) {
     message.error(t('automation.importFailed', { msg: e?.message || String(e) }))
-    return
+    return null
   }
   let parsed: any
   try {
     parsed = JSON.parse(text)
   } catch (e: any) {
     message.error(t('automation.importFailed', { msg: 'JSON: ' + (e?.message || e) }))
-    return
+    return null
   }
   if (!parsed || !Array.isArray(parsed.projects) || !parsed.projects.length) {
     message.error(t('automation.importFailed', { msg: 'missing projects[]' }))
-    return
+    return null
   }
+  return parsed.projects
+}
+
+/** 收集文件里的全部脚本（项目壳或全量文件都适用） */
+function collectScripts(projects: any[]): any[] {
+  const out: any[] = []
+  for (const imp of projects) {
+    if (imp && Array.isArray(imp.scripts)) out.push(...imp.scripts)
+  }
+  return out
+}
+
+async function importConfig() {
+  if (props.running) return
+  const imported = await readProjectsFile()
+  if (!imported) return
 
   // dry-run：统计合并影响（新增项目/脚本、被替换的同 id 脚本）
   let addedProjects = 0
   let addedScripts = 0
   let replacedScripts = 0
-  for (const imp of parsed.projects) {
+  for (const imp of imported) {
     if (!imp || !Array.isArray(imp.scripts)) continue
     const exist = props.store.projects.find((p) => p.id === imp.id)
     if (!exist) {
@@ -210,7 +235,7 @@ async function importConfig() {
   }
 
   const apply = () => {
-    for (const imp of parsed.projects) {
+    for (const imp of imported) {
       if (!imp || !Array.isArray(imp.scripts)) continue
       const exist = props.store.projects.find((p) => p.id === imp.id)
       if (!exist) {
@@ -246,6 +271,55 @@ async function importConfig() {
     apply()
   }
 }
+
+/** 行级导入：把文件里的脚本合并进「这个」项目（目标由用户点选，不看
+ *  文件里的项目 id——同事互发脚本时目标项目 id 对不上也能导入） */
+async function importScriptsTo(p: { id: string; scripts: any[] }) {
+  if (props.running) return
+  const imported = await readProjectsFile()
+  if (!imported) return
+  const scripts = collectScripts(imported)
+  if (!scripts.length) {
+    message.warning(t('automation.importNothing'))
+    return
+  }
+
+  let added = 0
+  let replaced = 0
+  for (const s of scripts) {
+    if (p.scripts.some((x) => x.id === s.id)) replaced += 1
+    else added += 1
+  }
+  if (!added && !replaced) {
+    message.warning(t('automation.importNothing'))
+    return
+  }
+
+  const apply = () => {
+    for (const s of scripts) {
+      const idx = p.scripts.findIndex((x) => x.id === s.id)
+      if (idx >= 0) p.scripts.splice(idx, 1, s)
+      else p.scripts.push(s)
+    }
+    props.store.persist()
+    props.store.loadEditorFromSelection()
+    message.success(t('automation.importDone', {
+      projects: 0, added, replaced,
+    }))
+  }
+
+  if (replaced > 0) {
+    dialog.warning({
+      title: t('automation.import'),
+      content: t('automation.importMerge', { replaced, added }),
+      positiveText: t('common.confirm'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: apply,
+    })
+  } else {
+    apply()
+  }
+}
 </script>
 
 <style scoped>
@@ -270,20 +344,29 @@ async function importConfig() {
   padding: 4px 6px; border-radius: 7px; cursor: pointer;
 }
 .proj-row.active { background: var(--app-blue-bg); }
+.proj-main { flex: 1; min-width: 0; }
 .proj-name { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12.5px; color: var(--app-text-primary); overflow: hidden; min-width: 0; }
 .proj-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-actions { display: flex; gap: 1px; opacity: 0; flex: none; }
 .proj-row:hover .row-actions { opacity: 1; }
+/* 可见备注行：与名字后的图标对齐（图标 14px + gap 5px） */
+.item-desc {
+  font-size: 11px; color: var(--app-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.proj-desc { padding: 1px 0 4px 19px; }
 .scripts { margin: 2px 0 6px 12px; display: flex; flex-direction: column; gap: 1px; }
 .script-row {
   display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px;
   cursor: pointer; font-size: 12px; color: var(--app-text-secondary);
 }
 .script-row.active { background: var(--app-blue-bg); color: var(--app-text-primary); }
-.script-row .name-line {
-  flex: 1; min-width: 0;
+.script-main { flex: 1; min-width: 0; }
+.script-main .name-line {
+  display: block;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.script-desc { padding: 1px 0 2px 18px; } /* 图标 13px + gap 5px */
 .script-ops { opacity: 0; flex: none; }
 .script-row:hover .script-ops { opacity: 1; }
 </style>
