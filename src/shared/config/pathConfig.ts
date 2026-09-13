@@ -3,6 +3,8 @@ export const PATH_CONFIG_DEFAULTS = {
   server: '.\\backend',
   serverEntry: 'main.py',
   runtimeExecutable: 'python\\python.exe',
+  // Empty = follow whatever the app itself runs on (Electron's bundled Node).
+  nodePath: '',
   devServerUrl: 'http://localhost:3000',
   rendererEntry: 'renderer\\index.html',
   preloadCandidates: [
@@ -20,6 +22,7 @@ export const APP_CONFIG_KEYS = {
   server: 'server',
   serverEntry: 'serverEntry',
   runtimeExecutable: 'runtimeExecutable',
+  nodePath: 'nodePath',
   devServerUrl: 'devServerUrl',
   rendererEntry: 'rendererEntry',
   preloadCandidates: 'preloadCandidates'
@@ -49,4 +52,6 @@ export type WritableAppConfigKey =
   | 'apktoolPath'
   | 'bundletoolPath'
   | 'javaPath'
+  | 'pythonPath'
+  | 'nodePath'
   | 'signatureConfigs'

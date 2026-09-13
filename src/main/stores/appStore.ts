@@ -15,7 +15,9 @@ const LEGACY_SETTINGS_DEFAULTS = {
     aaptPath: '',
     apktoolPath: '',
     bundletoolPath: '',
-    javaPath: ''
+    javaPath: '',
+    pythonPath: '',
+    nodePath: ''
 };
 
 const schema = {
@@ -207,6 +209,14 @@ const schema = {
     javaPath: {
         type: 'string',
         default: LEGACY_SETTINGS_DEFAULTS.javaPath
+    },
+    pythonPath: {
+        type: 'string',
+        default: LEGACY_SETTINGS_DEFAULTS.pythonPath
+    },
+    nodePath: {
+        type: 'string',
+        default: LEGACY_SETTINGS_DEFAULTS.nodePath
     },
     signatureConfigs: {
         type: 'array',

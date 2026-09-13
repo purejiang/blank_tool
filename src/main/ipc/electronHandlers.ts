@@ -171,7 +171,11 @@ export function setupElectronHandlers(): void {
       appDescription,
       nodeVersion: process.versions.node,
       chromeVersion: process.versions.chrome,
-      electronVersion: process.versions.electron
+      electronVersion: process.versions.electron,
+      // The Node binary this app actually runs on — shown on the settings
+      // page so the "local runtimes" card can display a path (Electron has no
+      // separate Node install to discover).
+      nodePath: process.execPath
     }
   })
 

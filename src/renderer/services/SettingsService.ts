@@ -10,7 +10,8 @@ const EMPTY_SETTINGS_MODEL: SettingsViewModel = {
   settings: {},
   displayPaths: {
     runtime: '',
-    server: ''
+    server: '',
+    runtimeExecutable: ''
   }
 }
 
@@ -95,7 +96,8 @@ class SettingsService {
       try {
         return await settingsApi.resolvePaths({
           runtime: source.runtime,
-          server: source.server
+          server: source.server,
+          runtimeExecutable: source.runtimeExecutable
         })
       } catch {}
     }
@@ -103,11 +105,13 @@ class SettingsService {
     if (api && typeof api.resolvePath === 'function') {
       const runtimeInput = typeof source.runtime === 'string' ? source.runtime : ''
       const serverInput = typeof source.server === 'string' ? source.server : ''
-      const [runtime, server] = await Promise.all([
+      const execInput = typeof source.runtimeExecutable === 'string' ? source.runtimeExecutable : ''
+      const [runtime, server, runtimeExecutable] = await Promise.all([
         runtimeInput ? api.resolvePath(runtimeInput) : Promise.resolve(''),
-        serverInput ? api.resolvePath(serverInput) : Promise.resolve('')
+        serverInput ? api.resolvePath(serverInput) : Promise.resolve(''),
+        execInput ? api.resolvePath(execInput) : Promise.resolve('')
       ])
-      return { runtime, server }
+      return { runtime, server, runtimeExecutable }
     }
     return { ...EMPTY_SETTINGS_MODEL.displayPaths }
   }

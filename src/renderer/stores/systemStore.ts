@@ -29,7 +29,12 @@ export const useSystemStore = defineStore('system', () => {
     nodeVersion: '',
     chromeVersion: '',
     javaVersion: '',
-    pythonVersion: ''
+    pythonVersion: '',
+    // Paths of the runtimes actually in use — the settings page shows these
+    // next to each version so a user can tell "auto-detected" from "override".
+    javaPath: '',
+    pythonPath: '',
+    nodePath: ''
   })
 
   const loading = ref(false)
@@ -96,6 +101,9 @@ export const useSystemStore = defineStore('system', () => {
         buildInfo.electronVersion = frontendInfo.electronVersion || ''
         buildInfo.nodeVersion = frontendInfo.nodeVersion || ''
         buildInfo.chromeVersion = frontendInfo.chromeVersion || ''
+        // Electron has no separate Node install to discover — the running
+        // binary's own path is the only honest answer.
+        buildInfo.nodePath = frontendInfo.nodePath || ''
         buildInfo.appName = frontendInfo.appName || ''
         buildInfo.appVersion = frontendInfo.appVersion || ''
         buildInfo.appDescription = frontendInfo.appDescription || ''
@@ -104,6 +112,8 @@ export const useSystemStore = defineStore('system', () => {
       if (backendInfo) {
         buildInfo.pythonVersion = backendInfo.python_version || ''
         buildInfo.javaVersion = backendInfo.java_version || ''
+        buildInfo.pythonPath = backendInfo.python_path || ''
+        buildInfo.javaPath = backendInfo.java_path || ''
       }
     } catch (err: unknown) {
       log.error('Failed to fetch build info:', err)

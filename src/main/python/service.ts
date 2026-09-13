@@ -9,6 +9,7 @@ import {
   getIsAppQuitting
 } from '../state';
 import { getBaseDir, resolveServerPath, resolvePythonExecutable } from './paths';
+import { buildBackendEnv, RUNTIME_OVERRIDE_KEYS } from './backendEnv';
 import { createStderrCapturer } from './stderrCapture';
 import { isProcessWritable } from './processHealth';
 
@@ -41,17 +42,23 @@ export async function startPythonService(): Promise<ChildProcessWithoutNullStrea
     const logsConfig = appStore.get('logs') as { level?: string } | undefined;
     const logLevel = logsConfig?.level || 'info';
 
-    const env = {
-        ...process.env,
-        BT_RUNTIME_DIR: absRuntimeDir || '',
-        BT_CACHE_DIR: cacheDir,
-        BT_TASKS_DIR: tasksDir,
-        BT_AUTO_TASKS_DIR: autoTasksDir,
-        BT_PLUGINS_DIR: pluginsDir,
-        BT_OUTPUT_DIR: outputDir,
-        BT_LOG_DIR: logsDir,
-        BT_LOG_LEVEL: logLevel
-    };
+    const env = buildBackendEnv(
+        {
+            ...process.env,
+            BT_RUNTIME_DIR: absRuntimeDir || '',
+            BT_CACHE_DIR: cacheDir,
+            BT_TASKS_DIR: tasksDir,
+            BT_AUTO_TASKS_DIR: autoTasksDir,
+            BT_PLUGINS_DIR: pluginsDir,
+            BT_OUTPUT_DIR: outputDir,
+            BT_LOG_DIR: logsDir,
+            BT_LOG_LEVEL: logLevel
+        },
+        {
+            javaBin: (appStore.get(RUNTIME_OVERRIDE_KEYS.java) as string) || '',
+            nodeBin: (appStore.get(RUNTIME_OVERRIDE_KEYS.node) as string) || ''
+        }
+    );
     log.info(`Spawning Python process with: ${pythonExecutable} ${scriptPath}`);
     const proc = spawn(pythonExecutable, [scriptPath], { env });
     setPythonProcess(proc);
