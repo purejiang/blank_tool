@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog } from 'naive-ui'
 import { ConfigService } from '@services/ConfigService'
 import type { Step } from '@components/automation/stepTypes'
+import { genId } from '@utils/id'
 
 export interface Script {
   id: string
@@ -133,14 +134,6 @@ export function useAutomationStore(isBusy?: () => boolean) {
   }
 
   // ---------------- helpers ----------------
-  function genId(): string {
-    try {
-      return (crypto as any).randomUUID()
-    } catch {
-      return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
-    }
-  }
-
   function findProject(id: string): Project | undefined {
     return projects.value.find((p) => p.id === id)
   }

@@ -1,18 +1,14 @@
 import { ChildProcessWithoutNullStreams } from 'child_process';
-import { BrowserWindow } from 'electron';
 import log from 'electron-log';
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
+import { broadcastToAllWindows } from '../utils/broadcast';
 
 const STDERR_RING_MAX = 200;
 const PYTHON_ERROR_LEVEL = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - .* - (ERROR|CRITICAL) -/;
 const PYTHON_TRACEBACK = /Traceback \(most recent call last\):/;
 
 function broadcastStderrTail(lines: string[], reason: 'crash' | 'traceback') {
-  BrowserWindow.getAllWindows().forEach(win => {
-    if (!win.isDestroyed()) {
-      win.webContents.send(IPC_CHANNEL_NAMES.backendStderrTail, { lines, reason });
-    }
-  });
+  broadcastToAllWindows(IPC_CHANNEL_NAMES.backendStderrTail, { lines, reason });
 }
 
 export function createStderrCapturer(proc: ChildProcessWithoutNullStreams) {

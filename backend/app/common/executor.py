@@ -8,6 +8,31 @@ import subprocess
 import threading
 from typing import Optional, Callable
 from app.common.exceptions import TimeoutException
+from app.utils.logger import Logger
+
+
+def terminate_gracefully(proc: Optional[subprocess.Popen], grace: float = 5.0) -> bool:
+    """Terminate ``proc``: SIGTERM, wait ``grace`` seconds, then SIGKILL.
+
+    Safe to call on an already-exited or ``None`` process. Returns True when a
+    live process was actually signalled. Single implementation — the streaming
+    deadline watcher, ProcessExecutor and TaskManager cancel all route here.
+    """
+    if proc is None or proc.poll() is not None:
+        return False
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            Logger.warning(
+                f"Process {proc.pid} ignored SIGTERM after {grace}s, killing"
+            )
+            proc.kill()
+            proc.wait()
+    except Exception as exc:  # pragma: no cover - OS-level race
+        Logger.warning(f"Failed to terminate process: {exc}")
+    return True
 
 
 class ProcessExecutor:
@@ -65,13 +90,7 @@ class ProcessExecutor:
 
     def _kill(self):
         """Graceful shutdown: SIGTERM -> 5s wait -> SIGKILL."""
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait()
+        terminate_gracefully(self.process)
 
     @property
     def is_running(self) -> bool:

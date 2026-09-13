@@ -5,6 +5,7 @@ import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 import { getPythonProcess } from '../state'
 import { getAppLocalDataPath } from '../utils/appPaths'
+import { getBaseDir, resolvePathFromBase } from '../python/paths'
 
 export function setupElectronHandlers(): void {
   ipcMain.handle(IPC_CHANNEL_NAMES.showSystemNotification, async (event: IpcMainInvokeEvent, payload: { title?: string; body?: string }) => {
@@ -184,20 +185,9 @@ export function setupElectronHandlers(): void {
     return true
   })
   
-  // 路径解析
+  // 路径解析（相对路径一律相对应用根目录；基准目录单一来源 getBaseDir）
   ipcMain.handle(IPC_CHANNEL_NAMES.pathResolve, async (event: IpcMainInvokeEvent, pathStr: string) => {
-    if (!pathStr) return pathStr;
-  
-    if (path.isAbsolute(pathStr)) return pathStr;
-    
-    // 如果是相对路径，则相对于应用根目录解析
-    const baseDir = !app.isPackaged
-      ? path.join(__dirname, '..', '..')
-      : process.resourcesPath;
-      
-    // 移除可能存在的开头的 .\ 或 ./
-    const cleanPath = pathStr.replace(/^\.[\\/]/, '');
-    return path.join(baseDir, cleanPath);
+    return resolvePathFromBase(getBaseDir(), pathStr);
   })
 
   // Backend health check — lightweight, < 5ms (no stdin roundtrip)

@@ -18,6 +18,7 @@
  */
 
 import { log } from '@utils/logger'
+import { genId } from '@utils/id'
 import unifiedApi from '../api/unifiedApi'
 
 // ------------------------------------------------------------------
@@ -57,7 +58,7 @@ class RecordingService {
    * routable (subscription precedes launch).
    */
   async startRecording(deviceId: string, callbacks?: RecordingCallbacks): Promise<string> {
-    const recId = 'rec-' + crypto.randomUUID()
+    const recId = genId('rec')
     const slot = this.getSlot(recId)
     if (callbacks?.onStep) slot.onStep = callbacks.onStep
     if (callbacks?.onError) slot.onError = callbacks.onError

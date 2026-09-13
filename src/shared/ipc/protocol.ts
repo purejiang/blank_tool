@@ -268,7 +268,7 @@ export interface ConvertAabToApksResult {
   task_id?: string
 }
 
-/** Return type of storage.clear / output.clear / tasks.clear / logs.clear */
+/** Return type of storage.clear / output.clear / tasks.clear / auto_tasks.clear / logs.clear */
 export interface ClearResult {
   path?: string
   size?: number
@@ -430,6 +430,7 @@ export interface ApiMethodMap {
   'cache.info': { params: Record<string, never>; result: CacheInfoResult }
   'output.clear': { params: Record<string, never>; result: ClearResult }
   'tasks.clear': { params: Record<string, never>; result: ClearResult }
+  'auto_tasks.clear': { params: Record<string, never>; result: ClearResult }
   'logs.clear': { params: Record<string, never>; result: ClearResult }
   'storage.clear': { params: { target?: string }; result: ClearResult }
 
@@ -487,5 +488,26 @@ export interface ApiMethodMap {
       task_id: string
     }
     result: void
+  }
+
+  // --- automation_runs_handler.py ---
+  // Run history / report viewer. Consumed by OtherToolsPage.vue; shaped after
+  // the handlers' actual return dicts (they never raise — they return a
+  // `success`/`deleted` flag plus an optional `error`).
+  'automation.list_runs': {
+    params: Record<string, never>
+    result: { success: boolean; runs: Array<Record<string, unknown>>; error?: string }
+  }
+  'automation.read_run': {
+    params: { task_id: string; traffic_limit?: number }
+    result: { success: boolean; report: Record<string, unknown> | null; error?: string }
+  }
+  'automation.delete_run': {
+    params: { task_id: string }
+    result: { deleted: boolean; error?: string }
+  }
+  'automation.export_run': {
+    params: { task_id: string; target?: string }
+    result: { success: boolean; file_path?: string; archive_path?: string; error?: string }
   }
 }

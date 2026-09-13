@@ -6,6 +6,7 @@
  */
 import { reactive, ref } from 'vue'
 import serviceManager from '@services/ServiceManager'
+import { genId } from '@utils/id'
 
 export interface RunPayload {
   device_id: string
@@ -35,14 +36,6 @@ export function useScriptRunner() {
 
   function pushLog(text: string) {
     logs.value.push({ ts: Date.now() / 1000, text: String(text) })
-  }
-
-  function genId(): string {
-    try {
-      return (crypto as any).randomUUID()
-    } catch {
-      return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
-    }
   }
 
   /**

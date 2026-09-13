@@ -48,6 +48,8 @@ export class ConfigService {
   // App config
   async getAppConfig(key?: string) { return this.appConfig.get(key) }
   async setAppConfig(key: string, value: unknown) { return this.appConfig.set(key, toPlainValue(value)) }
+  /** Single-IPC bulk write (`set-app-config-batch`). Prefer this over N × setAppConfig. */
+  async setManyAppConfig(updates: Record<string, unknown>) { return this.appConfig.setMany(toPlainValue(updates)) }
   async getAllAppConfig() { return this.appConfig.getAll() }
   async resetAppConfig() { return this.appConfig.reset() }
 

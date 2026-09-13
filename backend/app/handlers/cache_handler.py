@@ -18,11 +18,15 @@ import os
 import shutil
 
 from app.utils.logger import Logger
-from app.utils.env import get_auto_tasks_root, get_output_dir, get_tasks_root
+from app.utils.env import get_auto_tasks_root, get_cache_dir, get_output_dir, get_tasks_root
 from app.common.exceptions import ToolException
 from app.common.decorators import logs_errors
 
 logger = Logger.get_logger("StorageHandler")
+
+
+def _cache_root():
+    return get_cache_dir()
 
 
 def _tasks_root():
@@ -59,17 +63,27 @@ def _get_dir_size(path):
 
 @logs_errors("StorageHandler")
 def cache_info(params, stream_handler):
+    cache_root = _cache_root()
     tasks_root = _tasks_root()
     auto_tasks_root = _auto_tasks_root()
     output_root = _output_root()
     logs_root = _logs_root()
 
+    cache_size, cache_files = _get_dir_size(cache_root)
     tasks_size, tasks_files = _get_dir_size(tasks_root)
     auto_size, auto_files = _get_dir_size(auto_tasks_root)
     output_size, output_files = _get_dir_size(output_root)
     logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
 
     return {
+        # Reported for completeness but excluded from `total`: in a dev run
+        # without BT_TASKS_DIR the tasks root lives inside the cache dir, so
+        # adding it would double-count.
+        "cache": {
+            "path": cache_root,
+            "size": cache_size,
+            "files": cache_files,
+        },
         "tasks": {
             "path": tasks_root,
             "size": tasks_size,
@@ -115,6 +129,22 @@ def _clear_directory(path):
 
 
 @logs_errors("StorageHandler")
+def cache_clear(params, stream_handler):
+    """Clear the standalone cache directory (``BT_CACHE_DIR``).
+
+    This is the route behind the renderer's ``CacheService.clearCache()``.
+    It never touches tasks/auto_tasks/output — user work products are only
+    removed by the explicit ``storage.clear`` targets.
+
+    Legacy callers pass ``cache_types`` (a list of sub-caches) and ``confirm``;
+    the cache root is cleared as a whole regardless, so both are ignored.
+    """
+    root = _cache_root()
+    _clear_directory(root)
+    return {"path": root, "size": 0, "files": 0}
+
+
+@logs_errors("StorageHandler")
 def output_clear(params, stream_handler):
     root = _output_root()
     _clear_directory(root)
@@ -147,6 +177,14 @@ def storage_clear(params, stream_handler):
         if logs_root and _clear_directory(logs_root):
             cleared_paths.append(logs_root)
 
+    # Explicit `cache` target only — deliberately not part of "all", because in
+    # a dev run without BT_TASKS_DIR the tasks root lives *inside* the cache
+    # dir, and clearing it would delete user work products.
+    if target == "cache":
+        cache_root = _cache_root()
+        if _clear_directory(cache_root):
+            cleared_paths.append(cache_root)
+
     return {"success": True, "cleared_paths": cleared_paths}
 
 
@@ -176,6 +214,7 @@ def logs_clear(params, stream_handler):
 API_MAP = {
     "cache.get_info": cache_info,
     "cache.info": cache_info,
+    "cache.clear": cache_clear,
     "output.clear": output_clear,
     "tasks.clear": tasks_clear,
     "auto_tasks.clear": auto_tasks_clear,

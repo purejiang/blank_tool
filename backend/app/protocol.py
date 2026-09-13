@@ -76,3 +76,4 @@ class ErrorCode:
     INTERNAL_ERROR = -32603
     TIMEOUT = -32000
     TOOL_ERROR = -32001
+    TOOL_NOT_FOUND = -32002

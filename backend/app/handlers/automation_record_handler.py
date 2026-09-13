@@ -20,7 +20,7 @@ from typing import Any, Dict
 
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
-from app.common.exceptions import ToolNotFoundError, ToolException
+from app.common.exceptions import ToolNotFoundError, ToolException, error_payload
 from app.automation.adb import run_adb
 from app.utils.getevent_parser import (
     GeteventStatefulParser,
@@ -49,7 +49,7 @@ def record_start(params, stream_handler):
     try:
         touchscreen = find_touchscreen(pl.get("stdout", "") or "")
     except ValueError as e:
-        stream_handler({"type": "error", "payload": {"message": str(e)}})
+        stream_handler(error_payload(e))
         return
     device_path = str(touchscreen["device"])
 

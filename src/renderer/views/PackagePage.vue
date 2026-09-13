@@ -315,7 +315,7 @@ const sigStore = useSignatureStore()
 const deviceStore = useDeviceStore()
 if (sigStore.configs.length === 0) sigStore.loadConfigs()
 
-const { showError, showWarning, showSuccess } = useNotification()
+const { showError, showWarning, showSuccess, showInfo } = useNotification()
 
 const OP_TAG_MAP: Record<Task['operation'], string> = {
   analyze: 'info', install: 'success', decompile: 'warning', recompile: 'warning', resign: 'error'
@@ -1128,7 +1128,6 @@ async function cancelTask(task: Task) {
             if (current?.status === ('cancelling' as any)) {
               taskStore.updateTask(task.id, { status: prevStatus, progressLabel: '' })
             }
-            const { showInfo } = useNotification()
             showInfo(name, t('task.alreadyFinished'))
           }
         } catch (e) {

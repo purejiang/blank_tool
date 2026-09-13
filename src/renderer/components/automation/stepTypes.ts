@@ -18,6 +18,8 @@
  * `adb_auto`, whose step executor consumes exactly this shape.
  */
 
+import { genId } from '@utils/id'
+
 export type By = 'text' | 'resource_id' | 'content_desc' | 'class'
 
 export type StepAction =
@@ -219,17 +221,9 @@ export const ADDABLE_ACTIONS: StepAction[] = [
   'launch_app', 'screenshot', 'shell', 'clear_app_data', 'assert_activity',
 ]
 
-function newId(): string {
-  try {
-    return (crypto as any).randomUUID()
-  } catch {
-    return 'step-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
-  }
-}
-
 /** Build a fresh v2 step of the given action from the schema defaults. */
 export function defaultStep(action: StepAction): Step {
-  const step: any = { id: newId(), action }
+  const step: any = { id: genId(), action }
   for (const f of STEP_FIELDS[action] || []) {
     if (f.default === undefined) continue
     if (f.visibleWhen && !f.visibleWhen.equals.includes(getPath(step, f.visibleWhen.key) as string | number)) {

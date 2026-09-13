@@ -14,7 +14,7 @@ import zlib
 from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
-from app.common.exceptions import ToolNotFoundError, ToolException
+from app.common.exceptions import ToolNotFoundError, ToolException, error_payload
 from app.common.decorators import streaming, logs_errors
 from app.utils.logger import Logger
 from app.utils.env import get_output_dir, get_task_subdir
@@ -673,13 +673,13 @@ def apk_analyze(params, stream_handler):
         stream_handler({"type": "complete", "payload": info})
     except ToolException as e:
         logger.error(f"APK analysis tool error: {e}")
-        stream_handler({"type": "error", "payload": {"message": str(e)}})
+        stream_handler(error_payload(e))
     except Exception as e:
         if task_id and task_manager.is_cancelled(task_id):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
         else:
             logger.error(f"APK analysis failed: {e}")
-            stream_handler({"type": "error", "payload": {"message": str(e)}})
+            stream_handler(error_payload(e))
     finally:
         if task_id:
             task_manager.unregister(task_id)

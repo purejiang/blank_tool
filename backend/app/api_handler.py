@@ -103,7 +103,9 @@ class ApiHandler:
                 self.logger.error(f"Tool error (method={method}): {e}")
                 return self._error_response(req_id, e.message, e.code)
             except Exception as e:
-                self.logger.error(f"Handler error (method={method}): {e}")
+                self.logger.error(
+                    f"Handler error (method={method}): {e}", exc_info=True
+                )
                 return self._error_response(
                     req_id, str(e), ErrorCode.INTERNAL_ERROR
                 )
@@ -183,11 +185,26 @@ class ApiHandler:
             ):
                 try:
                     handler(params_dict, stream_callback)
-                except Exception as e:
-                    self.logger.error(f"Error in stream thread: {e}")
+                except (ToolNotFoundError, TimeoutException, ToolException) as e:
+                    # Typed failures keep their error code so the renderer can
+                    # distinguish "missing/invalid parameter" from a crash.
+                    self.logger.error(
+                        f"Error in stream thread (code={e.code}): {e.message}"
+                    )
                     stream_callback({
                         "type": "error",
-                        "payload": {"message": str(e)},
+                        "payload": {"code": e.code, "message": e.message},
+                    })
+                except Exception as e:
+                    self.logger.error(
+                        f"Error in stream thread: {e}", exc_info=True
+                    )
+                    stream_callback({
+                        "type": "error",
+                        "payload": {
+                            "code": ErrorCode.INTERNAL_ERROR,
+                            "message": str(e),
+                        },
                     })
                 finally:
                     if task_id:

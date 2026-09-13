@@ -14,6 +14,12 @@ export interface AppConfigStoreLike {
   defaultConfig?: Record<string, unknown>
   /** Batch-update multiple keys (Pinia store returns Promise<boolean>) */
   update?: (updates: Record<string, unknown>) => Promise<unknown> | void
+  /**
+   * Last persistence error, set when `update`/`set` was rejected (e.g. a
+   * non-writable key). Callers use it to turn a `false` return into a
+   * descriptive throw — see `SettingsService.saveSettings`.
+   */
+  error?: string | null
   /** Reset store to defaults */
   reset?: () => Promise<unknown> | void
   /** Atomically replace the entire config object */

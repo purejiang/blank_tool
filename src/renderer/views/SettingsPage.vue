@@ -176,7 +176,7 @@
           <div class="section-header" style="margin-bottom:0">
             <n-icon size="18" color="#8B5CF6"><HardDrive /></n-icon>
             <span class="section-title">{{ t('settings.storage') }}</span>
-            <span class="storage-total-text">{{ formatFileSize(cacheInfo.total.size) }}</span>
+            <span class="storage-total-text">{{ formatBytes(cacheInfo.total.size) }}</span>
           </div>
           <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
@@ -190,7 +190,7 @@
             :key="cat.key"
             class="storage-bar-seg"
             :style="{ width: barWidth(cat.key), background: cat.color }"
-            :title="t(cat.label) + ' ' + formatFileSize(getCatSize(cat.key))"
+            :title="t(cat.label) + ' ' + formatBytes(getCatSize(cat.key))"
           />
         </div>
 
@@ -202,7 +202,7 @@
             </div>
             <div class="storage-row-info">
               <div class="storage-row-label">{{ t(cat.label) }}</div>
-              <div class="storage-row-sub">{{ formatFileSize(getCatSize(cat.key)) }} · {{ getCatFiles(cat.key) }} {{ t('settings.filesUnit') }}</div>
+              <div class="storage-row-sub">{{ formatBytes(getCatSize(cat.key)) }} · {{ getCatFiles(cat.key) }} {{ t('settings.filesUnit') }}</div>
             </div>
             <n-button
               size="tiny"
@@ -247,6 +247,7 @@ import { NIcon, NButton, useDialog } from 'naive-ui'
 import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
+import { formatBytes } from '@utils/format'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { storeToRefs } from 'pinia'
@@ -255,7 +256,7 @@ import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 import { setMaxConcurrent } from '@services/TaskExecutionService'
 
 const { t } = useI18n()
-const { showSuccess, showError } = useNotification()
+const { showSuccess, showError, showWarning } = useNotification()
 const dialog = useDialog()
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
 const setTheme = inject<(mode: string) => Promise<void>>('setTheme', async () => {})
@@ -365,12 +366,8 @@ const cpuText = computed(() => {
   return `${count} ${t('device.cores', { count: Number(count) || 0 })}`
 })
 
-const formatFileSize = (bytes: number) => {
-  if (!bytes) return '0 B'
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`
-}
+// 文件大小格式化统一走 @utils/format（原先这里 toFixed(2) 会输出 "1.50 MB"，
+// 与 ApkService / systemStore 的 "1.5 MB" 不一致）
 
 const loadSettings = async () => {
   try {
@@ -434,14 +431,19 @@ const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
   try {
     const svc = await serviceManager.getService('system')
     const result = await svc.selectDirectory({ title: t('settings.selectDir') })
-    if (result?.directoryPath) {
-      pathSettings[target] = result.directoryPath
-      const settingsSvc = await serviceManager.getService('settings')
-      const paths = await settingsSvc.resolveDisplayPaths(pathSettings)
-      displayPaths.runtime = paths.runtime || ''
-      displayPaths.server = paths.server || ''
-      await savePaths()
-    }
+    // dialog.showOpenDialog returns { canceled, filePaths }. Some builds also
+    // surface the picked folder as `directoryPath`, so accept both shapes.
+    const dir = result?.filePaths?.[0] || result?.directoryPath
+    if (!dir) return
+    pathSettings[target] = dir
+    const settingsSvc = await serviceManager.getService('settings')
+    const paths = await settingsSvc.resolveDisplayPaths(pathSettings)
+    displayPaths.runtime = paths.runtime || ''
+    displayPaths.server = paths.server || ''
+    await savePaths()
+    // BT_RUNTIME_DIR / BT_SERVER_DIR are injected when the Python backend is
+    // spawned, so a new path only takes effect after restarting the app.
+    showWarning(t('settings.pathRestartHint'))
   } catch (e) { showError(t('settings.selectDirFailed')) }
 }
 

@@ -1,9 +1,11 @@
-import { ipcMain, BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, WebContents, IpcMainInvokeEvent } from 'electron';
 import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
 import { getConfigValue } from '../stores/appStore';
+import { broadcastToAllWindows } from '../utils/broadcast';
+import { isProcessWritable } from '../python/processHealth';
 
 interface CallbackInfo {
     resolve: (value: unknown) => void;
@@ -35,18 +37,6 @@ export function setupCommandHandlers(
     const requestCallbacks = new Map<string | number, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
 
-    const isBackendWritable = (pythonProcess: ChildProcessWithoutNullStreams | null): boolean => {
-        return Boolean(
-            pythonProcess &&
-            !pythonProcess.killed &&
-            pythonProcess.exitCode === null &&
-            pythonProcess.stdin &&
-            !pythonProcess.stdin.destroyed &&
-            !pythonProcess.stdin.writableEnded &&
-            pythonProcess.stdin.writable
-        );
-    };
-
     const bindProcess = (pythonProcess: ChildProcessWithoutNullStreams | null): void => {
         if (!pythonProcess || attachedProcesses.has(pythonProcess)) {
             return;
@@ -67,14 +57,7 @@ export function setupCommandHandlers(
                     const response = JSON.parse(msg) as BackendStdioMessage;
 
                     if (isBackendEventMessage(response)) {
-                        const broadcast = (channel: string, payload: unknown) => {
-                            BrowserWindow.getAllWindows().forEach(win => {
-                                if (!win.isDestroyed()) {
-                                    win.webContents.send(channel, payload);
-                                }
-                            });
-                        };
-                        broadcast(response.event, response.data);
+                        broadcastToAllWindows(response.event, response.data);
                         return;
                     }
 
@@ -171,13 +154,13 @@ export function setupCommandHandlers(
     const getWritableProcess = async (): Promise<ChildProcessWithoutNullStreams | null> => {
         const current = getPythonProcess();
         bindProcess(current);
-        if (isBackendWritable(current)) {
+        if (isProcessWritable(current)) {
             return current;
         }
         if (ensurePythonProcess) {
             const ensured = await ensurePythonProcess();
             bindProcess(ensured);
-            if (isBackendWritable(ensured)) {
+            if (isProcessWritable(ensured)) {
                 return ensured;
             }
         }

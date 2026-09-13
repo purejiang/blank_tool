@@ -1,7 +1,7 @@
 import { log } from '@utils/logger'
 import { useUpdateStore } from '@stores/updateStore'
 import type { UpdateStatus } from '@stores/updateStore'
-import unifiedApi from '../api/unifiedApi'
+import { optionalApiMethod, requireApiMethod } from '../api/apiAccess'
 import NotificationService from './NotificationService'
 import type { NotificationAction } from './NotificationService'
 import i18n from '../i18n'
@@ -35,7 +35,6 @@ class UpdateService {
     this.initialized = true
 
     const store = this.getStore()
-    const api = unifiedApi.getAPI()
 
     // DEV: expose test helper to window for manual testing
     if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__testUpdate) {
@@ -43,9 +42,10 @@ class UpdateService {
     }
 
     // Fetch current version from electron
-    if (api && typeof api.getAppInfo === 'function') {
+    const getAppInfo = optionalApiMethod('getAppInfo')
+    if (getAppInfo) {
       try {
-        const info = await api.getAppInfo()
+        const info = await getAppInfo()
         if (info && typeof info === 'object' && 'version' in info) {
           store.setCurrentVersion(String((info as Record<string, unknown>).version))
         }
@@ -54,8 +54,9 @@ class UpdateService {
 
     // Listen for main process events via specific preload methods
     let lastNotifiedVersion = ''
-    if (api && typeof api.onUpdateAvailable === 'function') {
-      this.unsubscribers.push(api.onUpdateAvailable((data: any) => {
+    const onUpdateAvailable = optionalApiMethod('onUpdateAvailable')
+    if (onUpdateAvailable) {
+      this.unsubscribers.push(onUpdateAvailable((data: any) => {
         const version = data.version || ''
         // Deduplicate — don't show the same notification twice
         if (version && version === lastNotifiedVersion) return
@@ -70,14 +71,16 @@ class UpdateService {
       }))
     }
 
-    if (api && typeof api.onUpdateNotAvailable === 'function') {
-      this.unsubscribers.push(api.onUpdateNotAvailable((_data: any) => {
+    const onUpdateNotAvailable = optionalApiMethod('onUpdateNotAvailable')
+    if (onUpdateNotAvailable) {
+      this.unsubscribers.push(onUpdateNotAvailable((_data: any) => {
         store.setStatus('not-available')
       }))
     }
 
-    if (api && typeof api.onDownloadProgress === 'function') {
-      this.unsubscribers.push(api.onDownloadProgress((data: any) => {
+    const onDownloadProgress = optionalApiMethod('onDownloadProgress')
+    if (onDownloadProgress) {
+      this.unsubscribers.push(onDownloadProgress((data: any) => {
         if (store.status !== 'downloading') {
           store.setStatus('downloading')
         }
@@ -86,8 +89,9 @@ class UpdateService {
       }))
     }
 
-    if (api && typeof api.onUpdateDownloaded === 'function') {
-      this.unsubscribers.push(api.onUpdateDownloaded((data: any) => {
+    const onUpdateDownloaded = optionalApiMethod('onUpdateDownloaded')
+    if (onUpdateDownloaded) {
+      this.unsubscribers.push(onUpdateDownloaded((data: any) => {
         store.setStatus('downloaded')
         if (data.version) {
           store.setUpdateInfo({ version: data.version })
@@ -96,8 +100,9 @@ class UpdateService {
       }))
     }
 
-    if (api && typeof api.onUpdateError === 'function') {
-      this.unsubscribers.push(api.onUpdateError((data: any) => {
+    const onUpdateError = optionalApiMethod('onUpdateError')
+    if (onUpdateError) {
+      this.unsubscribers.push(onUpdateError((data: any) => {
         // Only show error UI for manual checks; auto-check failures are silent
         if (this.manualCheckInProgress) {
           store.setError(data.message || 'Update failed')
@@ -228,32 +233,28 @@ class UpdateService {
     store.setStatus('checking')
     store.setError(null)
 
-    const api = unifiedApi.getAPI()
     try {
-      if (api && typeof api.checkForUpdates === 'function') {
-        const result = await api.checkForUpdates()
-        const typed = result as { updateAvailable: boolean; version?: string; releaseNotes?: string; error?: string }
-        if (typed.updateAvailable) {
-          store.setUpdateInfo({
-            version: typed.version || '',
-            releaseNotes: typed.releaseNotes,
-          })
-          store.setStatus('available')
-          this.manualCheckInProgress = false
-          return typed
-        } else if (typed.error) {
-          store.setError(typed.error)
-          store.setStatus('error')
-          this.manualCheckInProgress = false
-          this.showErrorNotification(typed.error)
-          return { updateAvailable: false }
-        } else {
-          store.setStatus('not-available')
-          this.manualCheckInProgress = false
-          return typed
-        }
+      const result = await requireApiMethod('checkForUpdates')()
+      const typed = result as { updateAvailable: boolean; version?: string; releaseNotes?: string; error?: string }
+      if (typed.updateAvailable) {
+        store.setUpdateInfo({
+          version: typed.version || '',
+          releaseNotes: typed.releaseNotes,
+        })
+        store.setStatus('available')
+        this.manualCheckInProgress = false
+        return typed
+      } else if (typed.error) {
+        store.setError(typed.error)
+        store.setStatus('error')
+        this.manualCheckInProgress = false
+        this.showErrorNotification(typed.error)
+        return { updateAvailable: false }
+      } else {
+        store.setStatus('not-available')
+        this.manualCheckInProgress = false
+        return typed
       }
-      throw new Error('checkForUpdates not available')
     } catch (err: any) {
       store.setError(err.message || 'Check failed')
       store.setStatus('error')
@@ -334,13 +335,8 @@ class UpdateService {
       } as any)
     }
 
-    const api = unifiedApi.getAPI()
     try {
-      if (api && typeof api.downloadUpdate === 'function') {
-        await api.downloadUpdate()
-      } else {
-        throw new Error('downloadUpdate not available')
-      }
+      await requireApiMethod('downloadUpdate')()
     } catch (err: any) {
       store.setError(err.message || 'Download failed')
       store.setStatus('error')
@@ -349,11 +345,9 @@ class UpdateService {
   }
 
   async quitAndInstall(): Promise<void> {
-    const api = unifiedApi.getAPI()
     try {
-      if (api && typeof api.quitAndInstall === 'function') {
-        await api.quitAndInstall()
-      }
+      const quitAndInstall = optionalApiMethod('quitAndInstall')
+      if (quitAndInstall) await quitAndInstall()
     } catch (err: any) {
       log.error('quitAndInstall failed:', err)
     }

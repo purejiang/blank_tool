@@ -454,6 +454,7 @@ export default {
     browse: 'Browse',
     selectDir: 'Select directory',
     selectDirFailed: 'Failed to select directory',
+    pathRestartHint: 'Path saved. Restart the app to apply.',
     storage: 'Storage',
     tools: 'Bundled Tools',
     loading: 'Loading...',

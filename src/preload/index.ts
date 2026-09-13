@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ElectronApi } from '../shared/ipc/electronApi';
 import { IPC_CHANNEL_NAMES } from '../shared/ipc/channels';
 import { ipcInvoke } from './core/ipcInvoke';
 import { callBackendAPI, callBackendByRequest } from './core/callBackend';
@@ -61,6 +62,6 @@ const electronApi = {
   ...quitDialogApi,
 
   showSystemNotification: (title: string, body: string) => ipcInvoke(IPC_CHANNEL_NAMES.showSystemNotification, { title, body }),
-};
+} satisfies ElectronApi;
 
 contextBridge.exposeInMainWorld('electronAPI', electronApi);

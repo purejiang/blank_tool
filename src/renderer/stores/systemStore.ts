@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import serviceManager from '../services/ServiceManager'
 import { log } from '@utils/logger'
+import { formatBytes } from '@utils/format'
 
 export const useSystemStore = defineStore('system', () => {
   const systemInfo = reactive({
@@ -38,14 +39,7 @@ export const useSystemStore = defineStore('system', () => {
     return err instanceof Error ? err.message : String(err)
   }
 
-  // Helper to format file size
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+  // Helper to format file size — shared implementation, see @utils/format
 
   const fetchSystemInfo = async () => {
     try {
@@ -71,16 +65,16 @@ export const useSystemStore = defineStore('system', () => {
         const memoryUsed = sysInfo.memoryUsed || memory.used
         const memoryPercent = sysInfo.memoryPercent ?? memory.percent
 
-        if (memoryTotal) systemInfo.memoryTotal = formatFileSize(memoryTotal)
-        if (memoryUsed) systemInfo.memoryUsed = formatFileSize(memoryUsed)
+        if (memoryTotal) systemInfo.memoryTotal = formatBytes(memoryTotal)
+        if (memoryUsed) systemInfo.memoryUsed = formatBytes(memoryUsed)
         if (memoryPercent !== undefined && memoryPercent !== null && memoryPercent !== '') {
           const pct = typeof memoryPercent === 'number' ? memoryPercent : parseFloat(memoryPercent)
           if (!Number.isNaN(pct)) systemInfo.memoryPercent = `${pct.toFixed(1)}%`
         }
 
         // Disk info
-        if (sysInfo.diskTotal) systemInfo.diskTotal = formatFileSize(sysInfo.diskTotal)
-        if (sysInfo.diskUsed) systemInfo.diskUsed = formatFileSize(sysInfo.diskUsed)
+        if (sysInfo.diskTotal) systemInfo.diskTotal = formatBytes(sysInfo.diskTotal)
+        if (sysInfo.diskUsed) systemInfo.diskUsed = formatBytes(sysInfo.diskUsed)
         if (sysInfo.diskPercent !== undefined) systemInfo.diskPercent = `${sysInfo.diskPercent.toFixed(1)}%`
       }
     } catch (err: unknown) {

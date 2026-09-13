@@ -376,7 +376,7 @@ const viewingReport = ref<any | null>(null)
 async function fetchRuns() {
   runsLoading.value = true
   try {
-    const api = window.electronAPI as any
+    const api = window.electronAPI
     const res = await api.callBackendAPI('automation.list_runs', {})
     runs.value = res?.runs || []
   } catch {
@@ -390,7 +390,7 @@ onMounted(() => { void fetchRuns() })
 /** 点运行记录 → 把那次运行的报告恢复到页面里 */
 async function onSelectRun(taskId: string) {
   try {
-    const api = window.electronAPI as any
+    const api = window.electronAPI
     const res = await api.callBackendAPI('automation.read_run', { task_id: taskId })
     if (!res?.success || !res.report) {
       message.error(t('automation.reportLoadFailed'))
@@ -409,12 +409,16 @@ const liveTraffic = ref<any[]>([])
 
 async function loadFinishedTraffic(taskId: string) {
   try {
-    const api = window.electronAPI as any
+    const api = window.electronAPI
     const res = await api.callBackendAPI('automation.read_run', { task_id: taskId, traffic_limit: 500 })
     // 只有还是同一次运行的结果时才填充（防止慢返回覆盖掉新开跑的空态）
     if (res?.success && res.report
         && String(runner.runResult?.task_id || runner.taskId || '') === taskId) {
-      liveTraffic.value = res.report.traffic || []
+      // `report` is `Record<string, unknown>` per the IPC contract, so the
+      // traffic slice needs an explicit array narrowing before it can be
+      // assigned to the `any[]` ref.
+      const traffic = res.report.traffic
+      liveTraffic.value = Array.isArray(traffic) ? traffic : []
     }
   } catch { /* 明细拉不到就空着，计数（traffic_requests）还在 */ }
 }
@@ -460,7 +464,7 @@ function onDeleteRun(taskId: string) {
     positiveText: t('common.confirm'),
     negativeText: t('common.cancel'),
     onPositiveClick: async () => {
-      const api = window.electronAPI as any
+      const api = window.electronAPI
       try {
         const res = await api.callBackendAPI('automation.delete_run', { task_id: taskId })
         if (!res?.deleted) {
@@ -489,7 +493,7 @@ const exporting = ref(false)
 
 /** 内置 API：导出 HTML（始终在运行目录里留一份归档，返回其路径） */
 async function buildRunReportHtml(taskId: string, target = ''): Promise<string> {
-  const api = window.electronAPI as any
+  const api = window.electronAPI
   const r = await api.callBackendAPI('automation.export_run', { task_id: taskId, target })
   if (!r?.success) {
     message.error(r?.error || t('automation.reportExportFailed'))
@@ -526,7 +530,7 @@ async function downloadRunReport() {
     message.warning(t('automation.reportUnavailable'))
     return
   }
-  const api = window.electronAPI as any
+  const api = window.electronAPI
   let target = ''
   if (api?.showSaveDialog) {
     const now = new Date()
@@ -609,7 +613,7 @@ async function getElements() {
   // seconds and a silent button looks frozen.
   showElements.value = true
   try {
-    const api = window.electronAPI as any
+    const api = window.electronAPI
     const res = await api.callBackendAPI('device.ui_dump', {
       device_id: autoDeviceId.value,
       timeout_ms: 15000,

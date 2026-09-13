@@ -35,9 +35,6 @@ export const IPC_CHANNELS = {
   readClipboardText: { name: 'read-clipboard-text', direction: 'renderer-to-main' },
   writeClipboardText: { name: 'write-clipboard-text', direction: 'renderer-to-main', payload: 'string' },
   pathResolve: { name: 'path-resolve', direction: 'renderer-to-main', payload: 'string' },
-  getDiskUsage: { name: 'get-disk-usage', direction: 'renderer-to-main' },
-  openExternal: { name: 'open-external', direction: 'renderer-to-main', payload: 'string' },
-  restart: { name: 'restart', direction: 'renderer-to-main' },
   // Main → Renderer (send/on)
   appConfigChanged: { name: 'app-config-changed', direction: 'main-to-renderer', payload: '{ key: string, value: unknown }' },
   userConfigChanged: { name: 'user-config-changed', direction: 'main-to-renderer', payload: '{ key: string, value: unknown }' },

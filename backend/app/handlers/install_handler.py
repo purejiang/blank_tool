@@ -10,7 +10,7 @@ from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
 from app.common.decorators import streaming, logs_errors
-from app.common.exceptions import ToolNotFoundError, ToolException
+from app.common.exceptions import ToolNotFoundError, ToolException, error_payload
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
 
@@ -106,7 +106,7 @@ def device_install_apk(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
         logger.error(f"APK installation failed: {e}")
-        stream_handler({"type": "error", "payload": {"message": str(e)}})
+        stream_handler(error_payload(e))
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -210,7 +210,7 @@ def device_install_apks(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
         logger.error(f"APKS installation failed: {e}")
-        stream_handler({"type": "error", "payload": {"message": str(e)}})
+        stream_handler(error_payload(e))
     finally:
         if task_id:
             task_manager.unregister(task_id)

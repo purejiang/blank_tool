@@ -1,8 +1,9 @@
 /**
  * APK服务 - 处理APK相关操作
  */
-import unifiedApi from '../api/unifiedApi';
+import { requireApiMethod } from '../api/apiAccess';
 import { log } from '@utils/logger'
+import { formatBytes } from '@utils/format'
 
 type ApkListener = (event: string, data: unknown) => void;
 
@@ -43,19 +44,16 @@ class ApkService {
      */
     async analyzeApk(apkPath: string, taskId: string | Record<string, any> = '') {
         try {
-            const api = unifiedApi.getAPI()
-            if (!api || typeof api.analyzeApk !== 'function') {
-                throw new Error('analyzeApk API not implemented')
-            }
+            const analyzeApk = requireApiMethod('analyzeApk')
 
             // Normalize: accept both string taskId and { task_id: string } options objects
             const tid = typeof taskId === 'object' && taskId !== null
               ? String((taskId as any).task_id || '')
               : String(taskId || '')
 
-            const rawResult = tid
-              ? await (api as any).callBackendAPI('apk.analyze', { apk_path: apkPath, task_id: tid })
-              : await (api as any).analyzeApk(apkPath)
+            const rawResult: any = tid
+              ? await requireApiMethod('callBackendAPI')('apk.analyze', { apk_path: apkPath, task_id: tid })
+              : await analyzeApk(apkPath)
 
             // Normalize response - preload.js 已解包，rawResult 即为 payload
             let analysis = null;
@@ -226,15 +224,12 @@ class ApkService {
 
     /**
      * 格式化文件大小
+     *
+     * Kept as a method (public API + contract test), but the implementation now
+     * lives in `@utils/format` so views and stores share one behaviour.
      */
     formatFileSize(bytes: number) {
-        if (bytes === 0) return '0 B';
-        
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        return formatBytes(bytes);
     }
 
     /**
@@ -310,12 +305,7 @@ class ApkService {
                     throw new Error('不支持的导出格式');
             }
 
-            const api = unifiedApi.getAPI()
-            if (api && typeof api.writeFile === 'function') {
-                await api.writeFile(filePath, content)
-            } else {
-                throw new Error('File system API not available')
-            }
+            await requireApiMethod('writeFile')(filePath, content)
             
             return true;
         } catch (error) {
@@ -361,22 +351,17 @@ class ApkService {
      */
     async decompileApk(filePath: string, options: any = {}) {
         try {
-            const api = unifiedApi.getAPI()
+            const payload = await requireApiMethod('decompileApk')(filePath, options)
 
-            if (api && typeof api.decompileApk === 'function') {
-                const payload = await api.decompileApk(filePath, options)
+            const normalizedResult = {
+                success: !!(payload && payload.output_dir && !payload.cancelled),
+                outputPath: payload ? payload.output_dir : null,
+                cancelled: !!(payload && payload.cancelled),
+                error: null
+            };
 
-                const normalizedResult = {
-                    success: !!(payload && payload.output_dir && !payload.cancelled),
-                    outputPath: payload ? payload.output_dir : null,
-                    cancelled: !!(payload && payload.cancelled),
-                    error: null
-                };
-
-                this.notifyListeners('decompile-progress', normalizedResult);
-                return normalizedResult;
-            }
-            throw new Error('decompileApk API not implemented');
+            this.notifyListeners('decompile-progress', normalizedResult);
+            return normalizedResult;
         } catch (error) {
             log.error('反编译APK失败:', error);
             throw error;
@@ -388,20 +373,15 @@ class ApkService {
      */
     async recompileApk(projectPath: string, options: any = {}) {
         try {
-            const api = unifiedApi.getAPI()
-            
-            if (api && typeof api.recompileApk === 'function') {
-                const payload = await api.recompileApk(projectPath, options)
-                const result = {
-                    success: !!(payload && payload.output_apk && !payload.cancelled),
-                    outputPath: payload ? payload.output_apk : null,
-                    cancelled: !!(payload && payload.cancelled),
-                    error: null
-                }
-                this.notifyListeners('recompile-progress', result);
-                return result;
+            const payload = await requireApiMethod('recompileApk')(projectPath, options)
+            const result = {
+                success: !!(payload && payload.output_apk && !payload.cancelled),
+                outputPath: payload ? payload.output_apk : null,
+                cancelled: !!(payload && payload.cancelled),
+                error: null
             }
-            throw new Error('recompileApk API not implemented');
+            this.notifyListeners('recompile-progress', result);
+            return result;
         } catch (error) {
             log.error('回编译APK失败:', error);
             throw error;
@@ -413,20 +393,15 @@ class ApkService {
      */
     async signApk(apkPath: string, keystore: any, options: any = {}) {
         try {
-            const api = unifiedApi.getAPI()
-
-            if (api && typeof api.signApk === 'function') {
-                const payload = await api.signApk(apkPath, keystore, options)
-                const result = {
-                    success: !!(payload && payload.apk_path && !payload.cancelled),
-                    outputPath: payload ? payload.apk_path : null,
-                    cancelled: !!(payload && payload.cancelled),
-                    error: null
-                }
-                this.notifyListeners('sign-progress', result);
-                return result;
+            const payload = await requireApiMethod('signApk')(apkPath, keystore, options)
+            const result = {
+                success: !!(payload && payload.apk_path && !payload.cancelled),
+                outputPath: payload ? payload.apk_path : null,
+                cancelled: !!(payload && payload.cancelled),
+                error: null
             }
-            throw new Error('signApk API not implemented');
+            this.notifyListeners('sign-progress', result);
+            return result;
         } catch (error) {
             log.error('签名APK失败:', error);
             throw error;
@@ -438,11 +413,7 @@ class ApkService {
      */
     async getDecompileProgress(taskId: string) {
         try {
-            const api = unifiedApi.getAPI()
-            if (api && typeof api.getApkProgress === 'function') {
-                return await api.getApkProgress(taskId)
-            }
-            throw new Error('getApkProgress API not implemented');
+            return await requireApiMethod('getApkProgress')(taskId)
         } catch (error) {
             log.error('获取反编译进度失败:', error);
             throw error;
@@ -454,11 +425,7 @@ class ApkService {
      */
     async cancelDecompileTask(taskId: string) {
         try {
-            const api = unifiedApi.getAPI()
-            if (api && typeof api.cancelApkTask === 'function') {
-                return await api.cancelApkTask(taskId)
-            }
-            throw new Error('cancelApkTask API not implemented');
+            return await requireApiMethod('cancelApkTask')(taskId)
         } catch (error) {
             log.error('取消反编译任务失败:', error);
             throw error;

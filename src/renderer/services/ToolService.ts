@@ -1,7 +1,7 @@
 /**
  * 工具服务 - 管理工具状态和操作
  */
-import unifiedApi from '../api/unifiedApi';
+import { requireApiMethod } from '../api/apiAccess';
 import { log } from '@utils/logger'
 
 type ToolStatus = 'available' | 'unknown' | string;
@@ -65,50 +65,43 @@ class ToolService {
     async checkTools(params: ToolCheckParams = {}) {
         try {
             const { toolName, refresh } = params || {};
-            const api = unifiedApi.getAPI() as Record<string, unknown> | null;
 
             if (toolName) {
-                if (api && typeof api.checkTool === 'function') {
-                    const data = await (api.checkTool as (name: string, refresh?: boolean) => Promise<Record<string, unknown>>)(toolName, refresh);
-                    const status = typeof data.status === 'string' ? data.status : 'unknown';
-                    const info: ToolInfo = {
-                        name: typeof data.name === 'string' ? data.name : toolName,
-                        status,
-                        version: typeof data.version === 'string' ? data.version : 'unknown',
-                        path: typeof data.path === 'string' ? data.path : '',
-                        source: typeof data.source === 'string' ? data.source : 'none',
-                        lastChecked: new Date(),
-                        available: status === 'available',
-                        ...data
-                    };
-                    this.tools.set(info.name, info);
-                    this.notifyListeners('tool_updated', info);
-                    return info;
-                }
-                throw new Error('checkTool API not implemented');
+                const data = await requireApiMethod('checkTool')(toolName, refresh) as Record<string, unknown>;
+                const status = typeof data.status === 'string' ? data.status : 'unknown';
+                const info: ToolInfo = {
+                    name: typeof data.name === 'string' ? data.name : toolName,
+                    status,
+                    version: typeof data.version === 'string' ? data.version : 'unknown',
+                    path: typeof data.path === 'string' ? data.path : '',
+                    source: typeof data.source === 'string' ? data.source : 'none',
+                    lastChecked: new Date(),
+                    available: status === 'available',
+                    ...data
+                };
+                this.tools.set(info.name, info);
+                this.notifyListeners('tool_updated', info);
+                return info;
             }
-            
-            if (api && typeof api.getTools === 'function') {
-                const toolsData = await (api.getTools as (params: { refresh?: boolean }) => Promise<Record<string, Record<string, unknown>>> )({ refresh });
-                
-                this.tools.clear();
-                for (const [name, info] of Object.entries(toolsData || {})) {
-                    const status = typeof info.status === 'string' ? info.status : 'unknown';
-                    this.tools.set(name, {
-                        name,
-                        status,
-                        version: typeof info.version === 'string' ? info.version : 'unknown',
-                        path: typeof info.path === 'string' ? info.path : '',
-                        source: typeof info.source === 'string' ? info.source : 'none',
-                        lastChecked: new Date(),
-                        available: status === 'available',
-                        ...info
-                    });
-                }
-                this.notifyListeners('tools_refreshed', this.tools);
-                return Array.from(this.tools.values());
+
+            const toolsData = await requireApiMethod('getTools')({ refresh }) as Record<string, Record<string, unknown>>;
+
+            this.tools.clear();
+            for (const [name, info] of Object.entries(toolsData || {})) {
+                const status = typeof info.status === 'string' ? info.status : 'unknown';
+                this.tools.set(name, {
+                    name,
+                    status,
+                    version: typeof info.version === 'string' ? info.version : 'unknown',
+                    path: typeof info.path === 'string' ? info.path : '',
+                    source: typeof info.source === 'string' ? info.source : 'none',
+                    lastChecked: new Date(),
+                    available: status === 'available',
+                    ...info
+                });
             }
-            throw new Error('getTools API not implemented');
+            this.notifyListeners('tools_refreshed', this.tools);
+            return Array.from(this.tools.values());
         } catch (error) {
             this.notifyListeners('tools_error', error);
             throw error;
@@ -215,17 +208,8 @@ class ToolService {
     }
 
     async setSystemSearchMode(systemSearch: boolean) {
-        try {
-            const api = unifiedApi.getAPI() as Record<string, unknown> | null
-            if (api && typeof api.setToolSearchMode === 'function') {
-                const resp = await (api.setToolSearchMode as (enabled: boolean) => Promise<unknown>)(systemSearch)
-                // preload.js 已解包
-                return resp;
-            }
-            throw new Error('setToolSearchMode API not implemented');
-        } catch (error) {
-            throw error;
-        }
+        // preload.js 已解包
+        return await requireApiMethod('setToolSearchMode')(systemSearch);
     }
 
     /**

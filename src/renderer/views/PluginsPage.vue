@@ -163,6 +163,7 @@ import { NButton, NCheckbox, NIcon, NInput, NInputNumber, NScrollbar, NTag, NToo
 import { FolderOpen, Play, RefreshCw, RotateCcw, Square } from 'lucide-vue-next'
 import pluginService, { type PluginInfo } from '@services/PluginService'
 import serviceManager from '@services/ServiceManager'
+import { genId } from '@utils/id'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -278,19 +279,11 @@ function buildParams(): Record<string, unknown> {
   return {}
 }
 
-function genId(): string {
-  try {
-    return (crypto as any).randomUUID()
-  } catch {
-    return 'pl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
-  }
-}
-
 async function runPlugin() {
   if (running.value || !selected.value) return
   const name = selected.value.name
   const params = buildParams()
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   const taskStream = (await serviceManager.getService('taskStream')) as any
 
   running.value = true
@@ -331,7 +324,7 @@ async function runPlugin() {
 
 async function stopRun() {
   if (!taskId.value) return
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   if (api && typeof api.cancelRequest === 'function') {
     try { await api.cancelRequest(taskId.value) } catch { /* ignore */ }
   }

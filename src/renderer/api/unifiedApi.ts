@@ -22,7 +22,7 @@ function isFailedCallResult(value: unknown): value is FailedCallResult {
 }
 
 class UnifiedApi {
-  private api: ElectronApi | null
+  private api: Partial<ElectronApi> | null
   private isAvailable: boolean
 
   constructor() {
@@ -48,7 +48,13 @@ class UnifiedApi {
     }
   }
 
-  createMockAPI(): ElectronApi {
+  /**
+   * Browser-mode stand-in. It only implements the handful of methods the
+   * renderer can reasonably exercise without Electron, hence `Partial` — every
+   * call site is expected to feature-detect (`typeof api.x === 'function'`)
+   * before invoking, which is exactly what the services already do.
+   */
+  createMockAPI(): Partial<ElectronApi> {
     return {
       callBackendAPI: async () => ({}),
       callBackendByRequest: async () => ({}),

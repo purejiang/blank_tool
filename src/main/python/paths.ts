@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import log from 'electron-log';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathConfig';
+import { toNonEmptyString } from '../utils/strings';
 
 type AppStoreLike = { get(key: string): unknown };
 
@@ -16,14 +17,14 @@ export function getBaseDir(): string {
     : process.resourcesPath;
 }
 
-export function toNonEmptyString(value: unknown, fallback: string): string {
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim();
-  }
-  return fallback;
-}
-
+/**
+ * Resolve a configured (usually relative) path against `baseDir`.
+ * Absolute paths are returned untouched; a leading `./` or `.\` is stripped
+ * before joining. An empty input short-circuits to an empty string so that
+ * "path not configured" stays distinguishable from "resolved to baseDir".
+ */
 export function resolvePathFromBase(baseDir: string, targetPath: string): string {
+  if (!targetPath) return targetPath;
   if (path.isAbsolute(targetPath)) return targetPath;
   const cleanPath = targetPath.replace(/^\.[\\/]/, '');
   return path.join(baseDir, cleanPath);

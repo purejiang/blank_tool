@@ -67,16 +67,15 @@ class SettingsService {
 
   async saveSettings(updates: Record<string, unknown>) {
     const appStore = await this.storeService.ensureAppConfigStore()
-    const appConfigApi = this.getAppConfigApi()
-    if (appConfigApi) {
-      // Surface persistence failures instead of silently keeping the
-      // renderer-only value (previously a rejected key looked like a save).
-      const res = await appConfigApi.setMany(updates || {}) as { success?: boolean; error?: string } | undefined
-      if (res && typeof res === 'object' && res.success === false) {
-        throw new Error(res.error || 'Failed to save settings')
-      }
+    // Single write path. This used to call `appConfigApi.setMany(updates)` and
+    // then `appStore.update(updates)` — the latter looped one IPC per key, so the
+    // same batch was persisted twice (1 + N invokes). `update()` now issues one
+    // `set-app-config-batch`, and still surfaces rejected keys as `false`.
+    const saved = await appStore.update(updates || {})
+    if (saved === false) {
+      // Keep the old behaviour: a rejected key must not look like a save.
+      throw new Error(appStore.error || 'Failed to save settings')
     }
-    await appStore.update(updates)
     return await this.loadSettingsModel()
   }
 
