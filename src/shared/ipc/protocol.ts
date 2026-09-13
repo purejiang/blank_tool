@@ -491,6 +491,18 @@ export interface ApiMethodMap {
     result: void
   }
 
+  // --- automation_handler.py (read-only capability probes) ---
+  // Back the settings page's "automation capabilities" card and the
+  // automation page's non-blocking run hints.
+  'automation.traffic_status': {
+    params: Record<string, never>
+    result: { installed: boolean; ready: boolean; lib_path: string; python_mismatch: string | null }
+  }
+  'automation.ime_status': {
+    params: { device_id: string }
+    result: { device_id: string; package: string; installed: boolean; active: boolean }
+  }
+
   // --- automation_runs_handler.py ---
   // Run history / report viewer. Consumed by OtherToolsPage.vue; shaped after
   // the handlers' actual return dicts (they never raise — they return a

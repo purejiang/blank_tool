@@ -487,6 +487,20 @@ export default {
     reset: 'Reset',
     refreshToolsFailed: 'Failed to refresh tools',
     pathsSaved: 'Paths saved',
+    // Automation capabilities (read-only mitmproxy / ADBKeyBoard status)
+    automationCapabilities: 'Automation Capabilities',
+    trafficCaptureRow: 'Traffic Capture (mitmproxy)',
+    trafficReady: 'Ready',
+    trafficPythonMismatch: 'Python version mismatch',
+    trafficNotInstalled: 'Not installed',
+    trafficInstallHint: 'Install mitmproxy into runtime/mitmproxy/lib to enable capture',
+    trafficFetchFailed: 'Status unavailable',
+    imeRow: 'Chinese Input (ADBKeyBoard)',
+    imeInstalled: 'Installed',
+    imeNotInstalled: 'Not installed',
+    imeActive: 'active IME',
+    imeNoDevice: 'No device connected',
+    imeInstallHint: 'Device needs ADBKeyBoard.apk (github.com/senzhk/ADBKeyBoard)',
   },
   // Automation page (ADB UI automation)
   plugins: {
@@ -579,6 +593,8 @@ export default {
     trafficFile: 'Traffic file',
     packageLabel: 'Package',
     captureTrafficShort: 'Capture',
+    captureTrafficUnavailable: 'Traffic capture unavailable (mitmproxy missing or Python version mismatch); this run will not capture. See Settings for install steps',
+    imeUnavailable: 'Selected device lacks ADBKeyBoard and the script contains non-ASCII input steps; those steps will fail. See Settings for install steps',
     noSelection: 'Select a project and script on the left',
     // Element picker
     elements: 'Current Screen Elements',

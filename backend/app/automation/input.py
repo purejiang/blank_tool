@@ -151,6 +151,22 @@ def _current_ime(device_id: str) -> str:
     return (r.get("stdout") or "").strip()
 
 
+def ime_status(device_id: str) -> Dict[str, Any]:
+    """ADBKeyBoard availability on one device (settings UI / preflight).
+
+    Read-only: unlike :func:`ensure_adb_ime` this never switches anything.
+    Non-ASCII ``input_text`` steps silently fail without ADBKeyBoard, so the
+    UI surfaces this before a run instead of mid-run.
+    """
+    installed = adb_ime_installed(device_id)
+    return {
+        "device_id": device_id,
+        "package": ADB_IME_ID,
+        "installed": installed,
+        "active": installed and _current_ime(device_id) == ADB_IME_ID,
+    }
+
+
 _KEYEVENT_ALIASES = {
     "BACK": "KEYCODE_BACK",
     "HOME": "KEYCODE_HOME",

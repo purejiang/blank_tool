@@ -490,6 +490,20 @@ export default {
     reset: '重置',
     refreshToolsFailed: '刷新工具失败',
     pathsSaved: '路径已保存',
+    // 自动化能力（mitmproxy / ADBKeyBoard 只读状态）
+    automationCapabilities: '自动化能力',
+    trafficCaptureRow: '流量抓取（mitmproxy）',
+    trafficReady: '就绪',
+    trafficPythonMismatch: 'Python 版本不匹配',
+    trafficNotInstalled: '未安装',
+    trafficInstallHint: '将 mitmproxy 安装到 runtime/mitmproxy/lib 后即可抓包',
+    trafficFetchFailed: '状态获取失败',
+    imeRow: '中文输入（ADBKeyBoard）',
+    imeInstalled: '已安装',
+    imeNotInstalled: '未安装',
+    imeActive: '当前输入法',
+    imeNoDevice: '未连接设备',
+    imeInstallHint: '设备需安装 ADBKeyBoard.apk（github.com/senzhk/ADBKeyBoard）',
   },
   // Automation page (ADB UI automation)
   plugins: {
@@ -582,6 +596,8 @@ export default {
     trafficFile: '抓包文件',
     packageLabel: '包名',
     captureTrafficShort: '抓包',
+    captureTrafficUnavailable: '流量抓取不可用（mitmproxy 未安装或 Python 版本不匹配），本次运行将不抓包；安装方法见设置页',
+    imeUnavailable: '所选设备未安装 ADBKeyBoard，脚本包含非 ASCII 输入步骤，运行时会失败；安装方法见设置页',
     noSelection: '请选择左侧的项目与脚本',
     // 元素选择器
     elements: '当前界面元素',

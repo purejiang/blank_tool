@@ -124,6 +124,7 @@
           v-model:capture-traffic="captureTraffic"
           :running="runner.running"
           :can-run="canRun"
+          :hints="runHints"
           @run="runScript"
           @stop="runner.stopRun"
         />
@@ -207,6 +208,8 @@ import {
 } from 'naive-ui'
 
 import { useDeviceStore } from '@stores/deviceStore'
+import serviceManager from '@services/ServiceManager'
+import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
 import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
 import ProjectTree from '@components/automation/ProjectTree.vue'
@@ -285,6 +288,59 @@ watch(autoDeviceId, (v) => {
 // Traffic capture (mitmdump) — opt-in per run; the backend restores the
 // device proxy in a finally block on every exit path.
 const captureTraffic = ref(false)
+
+// ---------------- preflight capability probes (read-only) ----------------
+// mitmproxy is PC-side (global); ADBKeyBoard is device-side (per device).
+// Both surface as non-blocking hints under the run controls — they never
+// block a run, the backend error messages carry the final word.
+const trafficStatus = ref<TrafficStatus | null>(null)
+const imeStatus = ref<ImeStatus | null>(null)
+
+async function refreshTrafficStatus(force = false) {
+  try {
+    const svc = await serviceManager.getService('automation')
+    trafficStatus.value = await svc.getTrafficStatus(force)
+  } catch { /* 探测失败 = 未知态，不给提示（设置页有完整状态展示） */ }
+}
+
+async function refreshImeStatus(deviceId: string) {
+  imeStatus.value = null
+  if (!deviceId) return
+  try {
+    const svc = await serviceManager.getService('automation')
+    imeStatus.value = await svc.getImeStatus(deviceId)
+  } catch { /* best-effort */ }
+}
+
+// Mirrors backend input.py: `any(ord(c) > 0x7F for c in text)` — the exact
+// condition that makes the backend require ADBKeyBoard. Kept char-by-char
+// equivalent on purpose; changing one side without the other desyncs the hint.
+function hasNonAsciiInput(steps: Step[]): boolean {
+  return steps.some(s => {
+    if (s.action !== 'input' || !s.text) return false
+    for (const c of s.text) {
+      if (c.charCodeAt(0) > 0x7F) return true
+    }
+    return false
+  })
+}
+
+const runHints = computed(() => {
+  const hints: string[] = []
+  if (captureTraffic.value && trafficStatus.value && !trafficStatus.value.ready) {
+    hints.push(t('automation.captureTrafficUnavailable'))
+  }
+  if (autoDeviceId.value && imeStatus.value && !imeStatus.value.installed
+      && hasNonAsciiInput(store.editor.steps)) {
+    hints.push(t('automation.imeUnavailable'))
+  }
+  return hints
+})
+
+// Probes: traffic status once (service caches), IME per device selection.
+// Toggling capture on re-checks (cached) so a just-installed mitmproxy is seen.
+watch(captureTraffic, (on) => { if (on) void refreshTrafficStatus() })
+watch(autoDeviceId, (id) => { void refreshImeStatus(id) }, { immediate: true })
 // Default element-poll timeout (ms): applied when a step switches to
 // element mode / picks an element; editable in the right column.
 const elementTimeoutMs = ref(

@@ -234,6 +234,55 @@
         </div>
       </n-card>
 
+      <!-- Automation capabilities -->
+      <n-card :bordered="false" class="settings-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="section-header" style="margin-bottom:0">
+            <n-icon size="18" color="#8B5CF6"><Globe /></n-icon>
+            <span class="section-title">{{ t('settings.automationCapabilities') }}</span>
+          </div>
+          <n-button size="tiny" quaternary @click="refreshCapabilities" :loading="isLoadingCapabilities">
+            <template #icon><n-icon><RefreshCw /></n-icon></template>
+          </n-button>
+        </div>
+
+        <!-- Traffic capture (PC side: mitmproxy) -->
+        <div class="cap-row">
+          <div class="cap-status-icon" :style="{ color: trafficReady ? '#22C55E' : '#F59E0B' }">
+            <n-icon size="16"><CheckCircle v-if="trafficReady" /><AlertCircle v-else /></n-icon>
+          </div>
+          <div class="cap-info">
+            <div class="cap-label">{{ t('settings.trafficCaptureRow') }}</div>
+            <div class="cap-sub">{{ trafficStateText }}</div>
+            <div class="cap-sub cap-mono" v-if="trafficStatus?.lib_path">{{ trafficStatus.lib_path }}</div>
+            <div class="cap-hint" v-if="trafficStatus && !trafficStatus.ready">{{ trafficHintText }}</div>
+          </div>
+        </div>
+
+        <!-- Chinese input (device side: ADBKeyBoard) -->
+        <div class="cap-row">
+          <div class="cap-status-icon" :style="{ color: imeAllReady ? '#22C55E' : '#F59E0B' }">
+            <n-icon size="16"><CheckCircle v-if="imeAllReady" /><AlertCircle v-else /></n-icon>
+          </div>
+          <div class="cap-info">
+            <div class="cap-label">{{ t('settings.imeRow') }}</div>
+            <template v-if="!deviceStore.sortedDevices.length">
+              <div class="cap-sub">{{ t('settings.imeNoDevice') }}</div>
+            </template>
+            <template v-else>
+              <div v-for="st in imeStatuses" :key="st.device_id" class="cap-sub">
+                <n-icon size="12" :style="{ color: st.installed ? '#22C55E' : '#F59E0B' }">
+                  <CheckCircle v-if="st.installed" /><AlertCircle v-else />
+                </n-icon>
+                {{ st.device_id }} · {{ st.installed ? t('settings.imeInstalled') : t('settings.imeNotInstalled') }}
+                <span v-if="st.active"> · {{ t('settings.imeActive') }}</span>
+              </div>
+              <div class="cap-hint" v-if="imeStatuses.some(s => !s.installed)">{{ t('settings.imeInstallHint') }}</div>
+            </template>
+          </div>
+        </div>
+      </n-card>
+
     </div>
 
     <SignatureEditModal :visible="sigModalVisible" :data="sigEditing" @update:visible="(v: boolean) => sigModalVisible = v" @save="handleSignatureSave" />
@@ -244,16 +293,18 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History } from 'lucide-vue-next'
+import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History, Globe } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { formatBytes } from '@utils/format'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
+import { useDeviceStore } from '@stores/deviceStore'
 import { storeToRefs } from 'pinia'
 import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 import { setMaxConcurrent } from '@services/TaskExecutionService'
+import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
 
 const { t } = useI18n()
 const { showSuccess, showError, showWarning } = useNotification()
@@ -336,6 +387,47 @@ const isLoadingCacheInfo = ref(false)
 const clearingTarget = ref<string | null>(null)
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
+
+// ---------------- automation capabilities ----------------
+const deviceStore = useDeviceStore()
+const trafficStatus = ref<TrafficStatus | null>(null)
+const imeStatuses = ref<ImeStatus[]>([])
+const isLoadingCapabilities = ref(false)
+
+const trafficReady = computed(() => trafficStatus.value?.ready === true)
+const trafficStateText = computed(() => {
+  const s = trafficStatus.value
+  if (!s) return t('settings.trafficFetchFailed')
+  if (s.ready) return t('settings.trafficReady')
+  if (s.python_mismatch) return t('settings.trafficPythonMismatch')
+  return t('settings.trafficNotInstalled')
+})
+const trafficHintText = computed(() => {
+  const s = trafficStatus.value
+  if (s?.python_mismatch) return s.python_mismatch
+  return t('settings.trafficInstallHint')
+})
+const imeAllReady = computed(() =>
+  deviceStore.sortedDevices.length > 0 &&
+  imeStatuses.value.length > 0 &&
+  imeStatuses.value.every(s => s.installed)
+)
+
+const refreshCapabilities = async () => {
+  isLoadingCapabilities.value = true
+  try {
+    const svc = await serviceManager.getService('automation')
+    trafficStatus.value = await svc.getTrafficStatus(true)
+    const devices = deviceStore.sortedDevices
+    if (!devices.length) {
+      imeStatuses.value = []
+      return
+    }
+    const probed = await Promise.all(devices.map(d => svc.getImeStatus(d.id)))
+    imeStatuses.value = probed.filter((s): s is ImeStatus => s !== null)
+  } catch (e) { log.error('Failed to refresh automation capabilities:', e) }
+  finally { isLoadingCapabilities.value = false }
+}
 
 const langOptions = computed(() => [
   { label: t('settings.simplifiedChinese'), value: 'zh-CN' },
@@ -531,6 +623,7 @@ onMounted(() => {
   log.debug('设置页面已挂载')
   loadSettings()
   refreshCache()
+  refreshCapabilities()
   sigStore.loadConfigs()
   toolStore.fetchCustomPaths().then(() => {
     Object.assign(customPathOverrides, toolStore.customPaths)
@@ -557,6 +650,14 @@ onMounted(() => {
 .storage-row:hover { background: var(--app-storage-bg); }
 .storage-row-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--app-storage-bg); flex-shrink: 0; }
 .storage-row-info { flex: 1; min-width: 0; }
+.cap-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px; border-radius: 6px; }
+.cap-row:hover { background: var(--app-storage-bg); }
+.cap-status-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--app-storage-bg); flex-shrink: 0; }
+.cap-info { flex: 1; min-width: 0; }
+.cap-label { font-size: 13px; font-weight: 500; color: var(--app-text-primary); }
+.cap-sub { font-size: 12px; color: var(--app-text-muted); margin-top: 2px; }
+.cap-mono { font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; }
+.cap-hint { font-size: 12px; color: var(--app-text-muted); margin-top: 4px; }
 .storage-row-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
 .storage-row-sub { font-size: 11px; color: var(--app-text-muted); margin-top: 1px; }
 .info-grid { display: flex; flex-direction: column; gap: 10px; }

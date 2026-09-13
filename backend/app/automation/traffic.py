@@ -83,6 +83,23 @@ def mitmdump_python_compatible() -> Optional[str]:
     return None
 
 
+def status() -> Dict[str, Any]:
+    """One-shot capability report for the settings UI / preflight checks.
+
+    ``ready`` is what the automation page hints on; ``installed`` alone only
+    means the package directory exists — compiled wheels can still mismatch
+    the running interpreter (see :func:`mitmdump_python_compatible`).
+    """
+    installed = mitmdump_available()
+    mismatch = mitmdump_python_compatible()
+    return {
+        "installed": installed,
+        "ready": installed and mismatch is None,
+        "lib_path": _mitmproxy_lib(),
+        "python_mismatch": mismatch,
+    }
+
+
 def ca_cert_path() -> str:
     return os.path.join(_mitmproxy_conf(), "mitmproxy-ca-cert.pem")
 
