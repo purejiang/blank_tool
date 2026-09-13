@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 
 from app.common.base_executor import CommandExecutor, CommandExecutionContext
 from app.utils.logger import Logger
-from app.utils.env import get_java_bin, get_python_bin, get_node_bin
+from app.utils.env import get_java_bin
 
 
 class BaseTool(ABC):
@@ -329,25 +329,5 @@ class JavaTool(ScriptTool):
         
     def _get_interpreter_args(self) -> List[str]:
         return ["-jar"]
-
-
-class PythonTool(ScriptTool):
-    """Python 脚本工具"""
-    
-    def _get_interpreter(self) -> str:
-        return get_python_bin()
-    
-    def _get_script_extensions(self) -> List[str]:
-        return [".py"]
-
-
-class NodeTool(ScriptTool):
-    """Node.js 脚本工具"""
-    
-    def _get_interpreter(self) -> str:
-        return get_node_bin()
-    
-    def _get_script_extensions(self) -> List[str]:
-        return [".js"]
 
 

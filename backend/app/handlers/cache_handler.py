@@ -19,7 +19,6 @@ import shutil
 
 from app.utils.logger import Logger
 from app.utils.env import get_auto_tasks_root, get_cache_dir, get_output_dir, get_tasks_root
-from app.common.exceptions import ToolException
 from app.common.decorators import logs_errors
 
 logger = Logger.get_logger("StorageHandler")
@@ -132,12 +131,16 @@ def _clear_directory(path):
 def cache_clear(params, stream_handler):
     """Clear the standalone cache directory (``BT_CACHE_DIR``).
 
-    This is the route behind the renderer's ``CacheService.clearCache()``.
     It never touches tasks/auto_tasks/output — user work products are only
     removed by the explicit ``storage.clear`` targets.
 
-    Legacy callers pass ``cache_types`` (a list of sub-caches) and ``confirm``;
-    the cache root is cleared as a whole regardless, so both are ignored.
+    The historical preload wrapper forwarded ``cache_types`` (a list of
+    sub-caches) and ``confirm``; the cache root is cleared as a whole
+    regardless, so both are ignored.
+
+    No current renderer code calls this route (``src/preload/api/cache.ts``
+    exposes ``cache.info`` / ``output.clear`` / ``storage.clear``); it is kept
+    because ``tests/contracts/test_cache_handler.py`` locks its shape.
     """
     root = _cache_root()
     _clear_directory(root)
@@ -188,36 +191,10 @@ def storage_clear(params, stream_handler):
     return {"success": True, "cleared_paths": cleared_paths}
 
 
-@logs_errors("StorageHandler")
-def tasks_clear(params, stream_handler):
-    root = _tasks_root()
-    _clear_directory(root)
-    return {"path": root, "size": 0, "files": 0}
-
-
-@logs_errors("StorageHandler")
-def auto_tasks_clear(params, stream_handler):
-    root = _auto_tasks_root()
-    _clear_directory(root)
-    return {"path": root, "size": 0, "files": 0}
-
-
-@logs_errors("StorageHandler")
-def logs_clear(params, stream_handler):
-    root = _logs_root()
-    if not root:
-        raise ToolException("Log directory not available")
-    _clear_directory(root)
-    return {"path": root, "size": 0, "files": 0}
-
-
 API_MAP = {
     "cache.get_info": cache_info,
     "cache.info": cache_info,
     "cache.clear": cache_clear,
     "output.clear": output_clear,
-    "tasks.clear": tasks_clear,
-    "auto_tasks.clear": auto_tasks_clear,
-    "logs.clear": logs_clear,
     "storage.clear": storage_clear,
 }

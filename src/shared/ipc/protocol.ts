@@ -268,7 +268,7 @@ export interface ConvertAabToApksResult {
   task_id?: string
 }
 
-/** Return type of storage.clear / output.clear / tasks.clear / auto_tasks.clear / logs.clear */
+/** Return type of storage.clear / output.clear / cache.clear */
 export interface ClearResult {
   path?: string
   size?: number
@@ -426,12 +426,13 @@ export interface ApiMethodMap {
   'build.info': { params: Record<string, never>; result: BuildInfoResult }
 
   // --- cache_handler.py ---
+  // `tasks.clear` / `auto_tasks.clear` / `logs.clear` are gone: every one of
+  // them was a thin wrapper over `_clear_directory`, and `storage.clear`
+  // already accepts `target: 'tasks' | 'auto_tasks' | 'logs'` — nothing in
+  // src/, tests/ or cli/ ever called the standalone routes.
   'cache.get_info': { params: Record<string, never>; result: CacheInfoResult }
   'cache.info': { params: Record<string, never>; result: CacheInfoResult }
   'output.clear': { params: Record<string, never>; result: ClearResult }
-  'tasks.clear': { params: Record<string, never>; result: ClearResult }
-  'auto_tasks.clear': { params: Record<string, never>; result: ClearResult }
-  'logs.clear': { params: Record<string, never>; result: ClearResult }
   'storage.clear': { params: { target?: string }; result: ClearResult }
 
   // --- download_handler.py ---

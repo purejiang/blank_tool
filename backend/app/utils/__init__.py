@@ -6,8 +6,11 @@
 """
 
 from .file_utils import *
-from .validation_utils import *
 
+# NOTE: the old `validation_utils` wildcard import is gone with the module. Its
+# eight `__all__` entries were also dead weight — six were never called, and
+# `sanitize_filename` / `sanitize_input` never existed at all, so any
+# `from app.utils import *` raised AttributeError.
 __all__ = [
     # file_utils
     'ensure_directory',
@@ -20,14 +23,4 @@ __all__ = [
     'find_files',
     'compress_directory',
     'extract_archive',
-    
-    # validation_utils
-    'validate_file_path',
-    'validate_device_id',
-    'validate_package_name',
-    'validate_version_string',
-    'validate_url',
-    'validate_email',
-    'sanitize_filename',
-    'sanitize_input'
 ]
