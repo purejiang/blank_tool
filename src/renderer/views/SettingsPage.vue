@@ -74,40 +74,102 @@
         </n-form>
       </n-card>
 
-      <!-- Paths -->
+      <!-- Local runtimes: Java / Python / Node (version + path, path editable) -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="#F59E0B"><FolderOpen /></n-icon>
-          <span class="section-title">{{ t('settings.environmentPaths') }}</span>
+          <n-icon size="18" color="#F59E0B"><Cpu /></n-icon>
+          <span class="section-title">{{ t('settings.localRuntimes') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
-          <n-form-item :label="t('settings.runtime')">
-            <div class="environ-path-input" style="display:flex;align-items:center;gap:8px">
-              <n-input :value="displayPaths.runtime" readonly style="width: 320px" placeholder=".\runtime" />
-              <n-button size="small" @click="handleBrowseDirectory('runtime')">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
-                {{ t('settings.browse') }}
-              </n-button>
+        <div class="runtime-list">
+          <div v-for="row in runtimeRows" :key="row.key" class="runtime-row">
+            <div class="runtime-info">
+              <div class="runtime-label">
+                {{ row.label }}
+                <span class="runtime-version" :class="{ 'is-missing': !row.version }">
+                  {{ row.version || t('settings.runtimeUnknown') }}
+                </span>
+              </div>
+              <div class="runtime-path" :title="row.path">{{ row.path || t('settings.runtimeUnknown') }}</div>
+              <!-- Node has no consumer in the backend today — say so instead of
+                   implying an override would change anything. -->
+              <div v-if="row.hint" class="runtime-hint">{{ row.hint }}</div>
             </div>
-          </n-form-item>
-          <n-form-item :label="t('settings.backend')">
-            <div class="environ-path-input" style="display:flex;align-items:center;gap:8px">
-              <n-input :value="displayPaths.server" readonly style="width: 320px" placeholder=".\backend" />
-              <n-button size="small" @click="handleBrowseDirectory('server')">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
-                {{ t('settings.browse') }}
-              </n-button>
-            </div>
-          </n-form-item>
-        </n-form>
+            <n-button size="tiny" @click="handleBrowseRuntime(row)">
+              <template #icon><n-icon><FolderOpen /></n-icon></template>
+              {{ t('settings.browse') }}
+            </n-button>
+            <n-button
+              v-if="row.overridden"
+              size="tiny"
+              quaternary
+              type="warning"
+              @click="handleResetRuntime(row)"
+            >
+              {{ t('settings.runtimeReset') }}
+            </n-button>
+          </div>
+        </div>
       </n-card>
 
-      <!-- Tool Paths -->
+      <!-- Local service (the spawned Python backend) -->
+      <n-card :bordered="false" class="settings-card">
+        <div class="section-header">
+          <n-icon size="18" color="#8B5CF6"><Server /></n-icon>
+          <span class="section-title">{{ t('settings.localService') }}</span>
+        </div>
+        <div class="svc-row">
+          <span class="svc-label">{{ t('settings.serviceVersion') }}</span>
+          <span class="svc-value">{{ serviceVersion || t('settings.runtimeUnknown') }}</span>
+        </div>
+        <div class="svc-row">
+          <span class="svc-label">{{ t('settings.serviceStatus') }}</span>
+          <span class="svc-value">
+            <n-icon size="14" :style="{ color: serviceHealthy ? '#22C55E' : '#F59E0B' }" class="svc-dot">
+              <CheckCircle v-if="serviceHealthy" /><AlertCircle v-else />
+            </n-icon>
+            {{ serviceStatusText }}
+          </span>
+        </div>
+        <div class="svc-row">
+          <span class="svc-label">{{ t('settings.serviceDir') }}</span>
+          <div class="svc-path-wrap">
+            <n-input :value="displayPaths.server" readonly size="small" style="width: 320px" placeholder=".\backend" />
+            <n-button size="small" @click="handleBrowseDirectory('server')">
+              <template #icon><n-icon><FolderOpen /></n-icon></template>
+              {{ t('settings.browse') }}
+            </n-button>
+          </div>
+        </div>
+      </n-card>
+
+      <!-- Tools & dependencies: runtime dir + built-in tools + automation components -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
           <n-icon size="18" color="#22C55E"><Wrench /></n-icon>
-          <span class="section-title">{{ t('settings.toolPaths') }}</span>
+          <span class="section-title">{{ t('settings.dependencies') }}</span>
         </div>
+
+        <!-- runtime dir = the container of the built-in tools + the embedded
+             python interpreter; it is a *tool* root, not a runtime version. -->
+        <div class="dep-sub-head">{{ t('settings.runtimeDir') }}</div>
+        <div class="tool-path-row">
+          <span class="tool-path-name">runtime</span>
+          <div class="tool-path-input-wrap">
+            <n-input
+              size="small"
+              :value="displayPaths.runtime"
+              readonly
+              style="width: 320px"
+              placeholder=".\runtime"
+            />
+            <n-button size="small" @click="handleBrowseDirectory('runtime')">
+              <template #icon><n-icon><FolderOpen /></n-icon></template>
+              {{ t('settings.browse') }}
+            </n-button>
+          </div>
+        </div>
+
+        <div class="dep-sub-head">{{ t('settings.builtinTools') }}</div>
         <div class="tool-path-list">
           <div v-for="tool in toolList" :key="tool.name" class="tool-path-row">
             <span class="tool-path-name">{{ tool.name }}</span>
@@ -137,6 +199,51 @@
             <n-icon v-if="validatingTool === tool.name" size="16"><Loader2 class="spin" /></n-icon>
             <n-icon v-else-if="tool.status === 'available'" size="16" color="#22C55E"><CheckCircle /></n-icon>
             <n-icon v-else size="16" color="#F59E0B"><AlertCircle /></n-icon>
+          </div>
+        </div>
+
+        <!-- Automation components: tools the automation feature reaches for
+             (mitmproxy on the PC, ADBKeyBoard on the device) -->
+        <div class="dep-sub-head dep-sub-head-with-action">
+          {{ t('settings.automationComponents') }}
+          <n-button size="tiny" quaternary @click="refreshCapabilities" :loading="isLoadingCapabilities">
+            <template #icon><n-icon><RefreshCw /></n-icon></template>
+          </n-button>
+        </div>
+
+        <!-- Traffic capture (PC side: mitmproxy) -->
+        <div class="cap-row">
+          <div class="cap-status-icon" :style="{ color: trafficReady ? '#22C55E' : '#F59E0B' }">
+            <n-icon size="16"><CheckCircle v-if="trafficReady" /><AlertCircle v-else /></n-icon>
+          </div>
+          <div class="cap-info">
+            <div class="cap-label">{{ t('settings.trafficCaptureRow') }}</div>
+            <div class="cap-sub">{{ trafficStateText }}</div>
+            <div class="cap-sub cap-mono" v-if="trafficStatus?.lib_path">{{ trafficStatus.lib_path }}</div>
+            <div class="cap-hint" v-if="trafficStatus && !trafficStatus.ready">{{ trafficHintText }}</div>
+          </div>
+        </div>
+
+        <!-- Chinese input (device side: ADBKeyBoard) -->
+        <div class="cap-row">
+          <div class="cap-status-icon" :style="{ color: imeAllReady ? '#22C55E' : '#F59E0B' }">
+            <n-icon size="16"><CheckCircle v-if="imeAllReady" /><AlertCircle v-else /></n-icon>
+          </div>
+          <div class="cap-info">
+            <div class="cap-label">{{ t('settings.imeRow') }}</div>
+            <template v-if="!deviceStore.sortedDevices.length">
+              <div class="cap-sub">{{ t('settings.imeNoDevice') }}</div>
+            </template>
+            <template v-else>
+              <div v-for="st in imeStatuses" :key="st.device_id" class="cap-sub">
+                <n-icon size="12" :style="{ color: st.installed ? '#22C55E' : '#F59E0B' }">
+                  <CheckCircle v-if="st.installed" /><AlertCircle v-else />
+                </n-icon>
+                {{ st.device_id }} · {{ st.installed ? t('settings.imeInstalled') : t('settings.imeNotInstalled') }}
+                <span v-if="st.active"> · {{ t('settings.imeActive') }}</span>
+              </div>
+              <div class="cap-hint" v-if="imeStatuses.some(s => !s.installed)">{{ t('settings.imeInstallHint') }}</div>
+            </template>
           </div>
         </div>
       </n-card>
@@ -234,55 +341,6 @@
         </div>
       </n-card>
 
-      <!-- Automation capabilities -->
-      <n-card :bordered="false" class="settings-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div class="section-header" style="margin-bottom:0">
-            <n-icon size="18" color="#8B5CF6"><Globe /></n-icon>
-            <span class="section-title">{{ t('settings.automationCapabilities') }}</span>
-          </div>
-          <n-button size="tiny" quaternary @click="refreshCapabilities" :loading="isLoadingCapabilities">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-          </n-button>
-        </div>
-
-        <!-- Traffic capture (PC side: mitmproxy) -->
-        <div class="cap-row">
-          <div class="cap-status-icon" :style="{ color: trafficReady ? '#22C55E' : '#F59E0B' }">
-            <n-icon size="16"><CheckCircle v-if="trafficReady" /><AlertCircle v-else /></n-icon>
-          </div>
-          <div class="cap-info">
-            <div class="cap-label">{{ t('settings.trafficCaptureRow') }}</div>
-            <div class="cap-sub">{{ trafficStateText }}</div>
-            <div class="cap-sub cap-mono" v-if="trafficStatus?.lib_path">{{ trafficStatus.lib_path }}</div>
-            <div class="cap-hint" v-if="trafficStatus && !trafficStatus.ready">{{ trafficHintText }}</div>
-          </div>
-        </div>
-
-        <!-- Chinese input (device side: ADBKeyBoard) -->
-        <div class="cap-row">
-          <div class="cap-status-icon" :style="{ color: imeAllReady ? '#22C55E' : '#F59E0B' }">
-            <n-icon size="16"><CheckCircle v-if="imeAllReady" /><AlertCircle v-else /></n-icon>
-          </div>
-          <div class="cap-info">
-            <div class="cap-label">{{ t('settings.imeRow') }}</div>
-            <template v-if="!deviceStore.sortedDevices.length">
-              <div class="cap-sub">{{ t('settings.imeNoDevice') }}</div>
-            </template>
-            <template v-else>
-              <div v-for="st in imeStatuses" :key="st.device_id" class="cap-sub">
-                <n-icon size="12" :style="{ color: st.installed ? '#22C55E' : '#F59E0B' }">
-                  <CheckCircle v-if="st.installed" /><AlertCircle v-else />
-                </n-icon>
-                {{ st.device_id }} · {{ st.installed ? t('settings.imeInstalled') : t('settings.imeNotInstalled') }}
-                <span v-if="st.active"> · {{ t('settings.imeActive') }}</span>
-              </div>
-              <div class="cap-hint" v-if="imeStatuses.some(s => !s.installed)">{{ t('settings.imeInstallHint') }}</div>
-            </template>
-          </div>
-        </div>
-      </n-card>
-
     </div>
 
     <SignatureEditModal :visible="sigModalVisible" :data="sigEditing" @update:visible="(v: boolean) => sigModalVisible = v" @save="handleSignatureSave" />
@@ -293,13 +351,14 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History, Globe } from 'lucide-vue-next'
+import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History, Server } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { formatBytes } from '@utils/format'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { useDeviceStore } from '@stores/deviceStore'
+import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { storeToRefs } from 'pinia'
 import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
@@ -376,7 +435,7 @@ const logLevelOptions = [
   { label: 'Error', value: 'error' },
 ]
 const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
-const displayPaths = reactive({ runtime: '', server: '' })
+const displayPaths = reactive({ runtime: '', server: '', runtimeExecutable: '' })
 const cacheInfo = ref({
   tasks: { size: 0, files: 0 },
   output: { size: 0, files: 0 },
@@ -412,6 +471,106 @@ const imeAllReady = computed(() =>
   imeStatuses.value.length > 0 &&
   imeStatuses.value.every(s => s.installed)
 )
+
+// ---------------- local runtimes (Java / Python / Node) ----------------
+// A path counts as "overridden" only when the user picked one; otherwise the
+// backend (java) / Electron (node) discovery chain decides and we just report
+// what it actually found.
+const runtimeOverrides = reactive<Record<string, string>>({
+  javaPath: '',
+  runtimeExecutable: '',
+  nodePath: ''
+})
+
+// ---------------- local service (the spawned Python backend) ----------------
+const healthStore = useBackendHealthStore()
+const serviceVersion = ref('')
+const serviceHealthy = computed(() => healthStore.isHealthy === true)
+const serviceStatusText = computed(() => {
+  if (healthStore.isHealthy === null) return t('settings.serviceUnknown')
+  return healthStore.isHealthy ? t('settings.serviceRunning') : t('settings.serviceStopped')
+})
+
+interface RuntimeRow {
+  key: string
+  label: string
+  version: string
+  path: string
+  configKey: string
+  overridden: boolean
+  hint: string
+}
+
+const runtimeRows = computed<RuntimeRow[]>(() => [
+  {
+    key: 'java',
+    label: t('settings.runtimeJava'),
+    version: buildInfo.javaVersion,
+    path: buildInfo.javaPath,
+    configKey: 'javaPath',
+    overridden: !!runtimeOverrides.javaPath,
+    hint: ''
+  },
+  {
+    // Python: the editable key is `runtimeExecutable` — that IS the
+    // interpreter we spawn, so changing it really swaps the runtime.
+    key: 'python',
+    label: t('settings.runtimePython'),
+    version: buildInfo.pythonVersion,
+    path: displayPaths.runtimeExecutable || buildInfo.pythonPath,
+    configKey: 'runtimeExecutable',
+    overridden: !!runtimeOverrides.runtimeExecutable,
+    hint: ''
+  },
+  {
+    // Node is displayed honestly: the backend has no Node consumer today
+    // (env.get_node_bin has zero callers), so an override is recorded but
+    // changes nothing yet.
+    key: 'node',
+    label: t('settings.runtimeNode'),
+    version: buildInfo.nodeVersion,
+    path: runtimeOverrides.nodePath || buildInfo.nodePath,
+    configKey: 'nodePath',
+    overridden: !!runtimeOverrides.nodePath,
+    hint: t('settings.runtimeRecordOnly')
+  }
+])
+
+async function handleBrowseRuntime(row: RuntimeRow) {
+  try {
+    const svc = await serviceManager.getService('system')
+    const result = await svc.selectFile({ title: `${t('settings.runtimePath')} - ${row.label}` })
+    const file = result?.filePaths?.[0]
+    if (!file) return
+    await saveRuntimeOverride(row, file)
+  } catch { /* user cancelled */ }
+}
+
+function handleResetRuntime(row: RuntimeRow) {
+  return saveRuntimeOverride(row, '')
+}
+
+async function saveRuntimeOverride(row: RuntimeRow, value: string) {
+  try {
+    const svc = await serviceManager.getService('settings')
+    await svc.saveSettings({ [row.configKey]: value })
+    runtimeOverrides[row.configKey] = value
+    // Runtime overrides ride in the env the backend is spawned with, so a new
+    // path only takes effect after an app restart.
+    showWarning(t('settings.pathRestartHint'))
+  } catch (e: any) {
+    showError(t('settings.saveFailed'), e?.message || String(e))
+  }
+}
+
+async function loadServiceInfo() {
+  try {
+    void healthStore.check()
+    const svc = await serviceManager.getService('system')
+    const info = await svc.getBackendInfo()
+    if (info?.version) serviceVersion.value = String(info.version)
+  } catch { /* best-effort: the card renders an unknown state instead */ }
+}
 
 const refreshCapabilities = async () => {
   isLoadingCapabilities.value = true
@@ -472,10 +631,15 @@ const loadSettings = async () => {
       }
       if (s.runtime) pathSettings.runtime = s.runtime as string
       if (s.server) pathSettings.server = s.server as string
+      // Runtime overrides: empty means "let the discovery chain decide".
+      for (const key of Object.keys(runtimeOverrides)) {
+        runtimeOverrides[key] = typeof s[key] === 'string' ? s[key] as string : ''
+      }
     }
     if (model?.displayPaths) {
       displayPaths.runtime = model.displayPaths.runtime || ''
       displayPaths.server = model.displayPaths.server || ''
+      displayPaths.runtimeExecutable = model.displayPaths.runtimeExecutable || ''
     }
     // Load log level from appConfig (logs.level)
     try {
@@ -624,6 +788,10 @@ onMounted(() => {
   loadSettings()
   refreshCache()
   refreshCapabilities()
+  // Runtime versions/paths and the service version are cached in the system
+  // store, but a direct landing on this page can race the bootstrap — refetch.
+  void systemStore.fetchBuildInfo()
+  void loadServiceInfo()
   sigStore.loadConfigs()
   toolStore.fetchCustomPaths().then(() => {
     Object.assign(customPathOverrides, toolStore.customPaths)
@@ -658,6 +826,25 @@ onMounted(() => {
 .cap-sub { font-size: 12px; color: var(--app-text-muted); margin-top: 2px; }
 .cap-mono { font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; }
 .cap-hint { font-size: 12px; color: var(--app-text-muted); margin-top: 4px; }
+/* local runtimes (Java / Python / Node) */
+.runtime-list { display: flex; flex-direction: column; gap: 2px; }
+.runtime-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: 6px; }
+.runtime-row:hover { background: var(--app-storage-bg); }
+.runtime-info { flex: 1; min-width: 0; }
+.runtime-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
+.runtime-version { font-size: 11px; font-weight: 500; color: #22C55E; }
+.runtime-version.is-missing { color: #F59E0B; }
+.runtime-path { font-size: 11px; color: var(--app-text-muted); font-family: ui-monospace, Consolas, monospace; word-break: break-all; margin-top: 2px; }
+.runtime-hint { font-size: 11.5px; color: var(--app-text-muted); margin-top: 4px; }
+/* local service (version / status / directory) */
+.svc-row { display: flex; align-items: center; gap: 12px; padding: 6px 4px; }
+.svc-label { font-size: 13px; color: var(--app-text-muted); min-width: 88px; }
+.svc-value { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--app-text-secondary); }
+.svc-dot { display: flex; align-items: center; }
+.svc-path-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+/* tools & dependencies: sub-group headings */
+.dep-sub-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--app-text-secondary); margin: 10px 0 4px; }
+.dep-sub-head-with-action { justify-content: space-between; }
 .storage-row-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
 .storage-row-sub { font-size: 11px; color: var(--app-text-muted); margin-top: 1px; }
 .info-grid { display: flex; flex-direction: column; gap: 10px; }

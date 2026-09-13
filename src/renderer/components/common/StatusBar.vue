@@ -20,7 +20,7 @@
         </div>
       </div>
       <div class="status-version">
-        <span class="version-text">v{{ frontendVersion }} | backend {{ backendVersion || 'N/A' }}</span>
+        <span class="version-text">{{ t('statusBar.versionLine', { app: frontendVersion, service: backendVersion || 'N/A' }) }}</span>
         <span class="health-dot" :class="healthClass" :title="healthTitle"></span>
       </div>
     </template>
@@ -82,8 +82,8 @@ const healthClass = computed(() =>
   healthStore.isHealthy ? 'dot-healthy' : 'dot-unhealthy'
 )
 const healthTitle = computed(() =>
-  healthStore.isHealthy === null ? 'Backend status unknown' :
-  healthStore.isHealthy ? 'Backend healthy' : 'Backend down'
+  healthStore.isHealthy === null ? t('statusBar.healthUnknown') :
+  healthStore.isHealthy ? t('statusBar.healthHealthy') : t('statusBar.healthDown')
 )
 </script>
 
