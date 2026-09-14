@@ -1,9 +1,9 @@
 <template>
-  <div class="about-page">
-    <div class="page-header">
+  <div class="app-page">
+    <div class="app-page-header">
       <div>
-        <h1 class="page-title">{{ t('about.title') }}</h1>
-        <p class="page-subtitle">{{ t('about.subtitle') }}</p>
+        <h1 class="app-page-title">{{ t('about.title') }}</h1>
+        <p class="app-page-sub">{{ t('about.subtitle') }}</p>
       </div>
     </div>
 
@@ -11,9 +11,9 @@
 
       <!-- Build Info -->
       <n-card :bordered="false" class="about-card">
-        <div class="section-header">
-          <n-icon size="18" color="#22C55E"><Layers /></n-icon>
-          <span class="section-title">{{ t('settings.buildInfo') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-green)"><Layers /></n-icon>
+          <span class="app-section-title">{{ t('settings.buildInfo') }}</span>
         </div>
         <div class="info-grid">
           <div class="info-row">
@@ -38,9 +38,9 @@
 
       <!-- System Info -->
       <n-card :bordered="false" class="about-card">
-        <div class="section-header">
-          <n-icon size="18" color="#64748B"><Cpu /></n-icon>
-          <span class="section-title">{{ t('settings.systemInfo') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-text-dim)"><Cpu /></n-icon>
+          <span class="app-section-title">{{ t('settings.systemInfo') }}</span>
         </div>
         <div class="info-grid">
           <div class="info-row"><span class="info-label">{{ t('settings.os') }}</span><span class="info-val">{{ systemInfo.platform || t('common.unknown') }}</span></div>
@@ -129,18 +129,12 @@ const cpuText = computed(() => {
 </script>
 
 <style scoped>
-.about-page { max-width: var(--page-max-width); margin: 0 auto; }
-.page-header { margin-bottom: 20px; text-align: left; display: block; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .about-content { display: flex; flex-direction: column; gap: 16px; }
 .about-card { background: var(--app-card-bg); border-radius: 10px; text-align: left; }
-.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: flex-start; }
-.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .info-grid { display: flex; flex-direction: column; gap: 6px; }
 .info-row { display: flex; align-items: baseline; justify-content: flex-start; gap: 12px; padding: 5px 0; text-align: left; }
 .info-row:last-child { border-bottom: none; }
 .info-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; text-align: left; }
-.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
-.update-status-inline { font-size: 12px; color: #22C55E; white-space: nowrap; }
+.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: var(--app-font-mono); min-width: 80px; }
+.update-status-inline { font-size: 12px; color: var(--app-green); white-space: nowrap; }
 </style>

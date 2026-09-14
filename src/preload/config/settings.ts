@@ -4,7 +4,7 @@ import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 
 const settings = {
   getViewModel: () => ipcRenderer.invoke(IPC_CHANNEL_NAMES.getSettingsViewModel),
-  resolvePaths: (paths: { runtime?: string; server?: string }) =>
+  resolvePaths: (paths: { server?: string }) =>
     ipcRenderer.invoke(IPC_CHANNEL_NAMES.resolveSettingsPaths, paths),
 };
 

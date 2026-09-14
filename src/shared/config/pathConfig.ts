@@ -1,4 +1,8 @@
 export const PATH_CONFIG_DEFAULTS = {
+  // `runtime/` is the container of the bundled tools + the embedded Python
+  // interpreter. It ships with the app, so it is deliberately NOT
+  // user-configurable (it has no APP_CONFIG_KEYS entry) — this default is the
+  // single source of truth.
   runtime: '.\\runtime',
   server: '.\\backend',
   serverEntry: 'main.py',
@@ -18,7 +22,6 @@ export const PATH_CONFIG_DEFAULTS = {
 } as const
 
 export const APP_CONFIG_KEYS = {
-  runtime: 'runtime',
   server: 'server',
   serverEntry: 'serverEntry',
   runtimeExecutable: 'runtimeExecutable',
@@ -30,7 +33,6 @@ export const APP_CONFIG_KEYS = {
 
 export type WritableAppConfigKey =
   | 'app'
-  | 'runtime'
   | 'server'
   | 'serverEntry'
   | 'runtimeExecutable'

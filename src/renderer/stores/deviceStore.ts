@@ -20,6 +20,9 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
   const devices = ref<Device[]>([])
   const selectedDeviceId = ref('')
   const apps = ref<InstalledApp[]>([])
+  // 本次会话是否真的拉取过应用列表。区分「还没点获取」和「获取到了 0 条」——
+  // 光看 apps.length === 0 分不出来，空态文案会指错方向。
+  const appsLoaded = ref(false)
   const appType = ref('all')
   const isLogcatRunning = ref(false)
   const logcatOutput = ref<string[]>([])
@@ -156,14 +159,15 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     }
   }
 
-  // 监听设备选择变化，自动刷新详情
-  watch(selectedDeviceId, async (id) => {
+  // 监听设备选择变化：上一台设备的应用列表立即作废，详情清空。
+  // 关键是 apps 也要清——否则切到「应用」页签时会直接回显上一台的列表，
+  // 看起来就是"还没点任何按钮就自动列出了所有应用"。
+  watch(selectedDeviceId, (id) => {
+    apps.value = []
+    appsLoaded.value = false
     if (!id) {
       Object.keys(deviceInfo).forEach(key => deviceInfo[key] = '')
-      apps.value = []
-      return
     }
-
   })
 
   return {
@@ -179,6 +183,7 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     deviceCount,
     shellOutput,
     apps,
+    appsLoaded,
     appType,
     isLogcatRunning,
     logcatOutput,
@@ -196,6 +201,10 @@ export const useDeviceStore = defineStore('deviceConfig', () => {
     isPinned,
     togglePinDevice
   }
-}, { persist: true })
+}, {
+  // apps / appsLoaded 不落盘：应用列表体积大（几百条）且每台设备不同，
+  // 每次启动都应重新点「获取」，不能拿上次的缓存自动回显。
+  persist: { omit: ['apps', 'appsLoaded'] }
+})
 
 // 导出 store 定义，实例化应该在组件中或 Pinia 初始化后进行

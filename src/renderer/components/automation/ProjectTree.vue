@@ -19,7 +19,7 @@
 
     <n-empty v-if="!store.projects.length" :description="t('automation.noProject')" size="small" class="col-empty">
       <template #extra>
-        <span class="muted">{{ t('automation.noProjectDesc') }}</span>
+        <span class="app-muted">{{ t('automation.noProjectDesc') }}</span>
       </template>
     </n-empty>
 
@@ -104,6 +104,7 @@ import { NButton, NDropdown, NEmpty, NIcon, NTooltip, useDialog, useMessage } fr
 import type { DropdownOption } from 'naive-ui'
 import { Download, FolderPlus, FilePlus, FileText, MoreHorizontal, Pencil, Trash2, Box, Upload } from 'lucide-vue-next'
 import type { AutomationStore } from '@composables/automation/useAutomationStore'
+import { readTextFile } from '@utils/readTextFile'
 
 const props = defineProps<{
   store: AutomationStore
@@ -195,7 +196,9 @@ async function readProjectsFile(): Promise<any[] | null> {
   if (!res || res.canceled || !res.filePaths || !res.filePaths.length) return null
   let text = ''
   try {
-    text = await api.readFile(res.filePaths[0])
+    // unwraps the { success, data } IPC envelope — raw readFile would land
+    // JSON.parse on "[object Object]"
+    text = await readTextFile(res.filePaths[0])
   } catch (e: any) {
     message.error(t('automation.importFailed', { msg: e?.message || String(e) }))
     return null
@@ -351,7 +354,6 @@ async function importScriptsTo(p: { id: string; scripts: any[] }) {
 }
 .head-actions { display: flex; align-items: center; gap: 4px; }
 .col-empty { margin: auto; text-align: center; }
-.muted { color: var(--app-text-muted); font-size: 12px; }
 
 .tree { overflow: auto; flex: 1; }
 .proj { margin-bottom: 2px; }

@@ -72,8 +72,8 @@ class UnifiedApi {
         reset: async () => undefined,
       },
       settings: {
-        getViewModel: async () => ({ settings: {}, displayPaths: { runtime: '', server: '', runtimeExecutable: '' } }),
-        resolvePaths: async () => ({ runtime: '', server: '', runtimeExecutable: '' }),
+        getViewModel: async () => ({ settings: {}, displayPaths: { server: '', runtimeExecutable: '' } }),
+        resolvePaths: async () => ({ server: '', runtimeExecutable: '' }),
       },
       onDeviceChange: () => () => {},
       onLogcatOutput: () => () => {},

@@ -9,12 +9,12 @@ import router from './router';
 
 // Fonts are loaded via Google Fonts in index.html
 
-// Import app styles
+// Import app styles. Order = tokens → reset/base → 通用类 → 第三方覆盖
+// （变量在计算期解析，顺序只影响同优先级冲突，后加载者胜）。
+import './assets/styles/variables.css';
+import './assets/styles/themes.css';
 import './assets/styles/main.css';
 import './assets/styles/common/components.css';
-import './assets/styles/themes.css';
-import './assets/styles/common/responsive.css';
-import './assets/variables.css';
 import './assets/styles/naive-overrides.css';
 
 // Create Vue app
@@ -23,7 +23,7 @@ const app = createApp(App);
 // Use Naive UI
 app.use(naive);
 
-type PersistOption = boolean | { key?: string };
+type PersistOption = boolean | { key?: string; omit?: string[] };
 
 const persistPlugin = ({ store, options }: PiniaPluginContext) => {
   const persist = (options as { persist?: PersistOption }).persist;
@@ -33,10 +33,24 @@ const persistPlugin = ({ store, options }: PiniaPluginContext) => {
     ? persist.key
     : `pinia:${store.$id}`;
 
+  // omit：这些键只在内存里存在，不进 localStorage。用于「每次启动应该重新
+  // 检测」的大列表（如设备页的已安装应用），否则刷新后会拿旧数据自动回显。
+  const omit = typeof persist === 'object' && Array.isArray(persist.omit)
+    ? persist.omit
+    : [];
+  const withoutOmitted = (state: Record<string, any>): Record<string, any> => {
+    if (!omit.length) return state;
+    const out: Record<string, any> = {};
+    for (const k of Object.keys(state)) {
+      if (!omit.includes(k)) out[k] = state[k];
+    }
+    return out;
+  };
+
   const raw = localStorage.getItem(key);
   if (raw) {
     try {
-      store.$patch(JSON.parse(raw));
+      store.$patch(withoutOmitted(JSON.parse(raw)));
     } catch {
       localStorage.removeItem(key);
     }
@@ -44,7 +58,7 @@ const persistPlugin = ({ store, options }: PiniaPluginContext) => {
 
   store.$subscribe(
     (_mutation, state) => {
-      localStorage.setItem(key, JSON.stringify(state));
+      localStorage.setItem(key, JSON.stringify(withoutOmitted(state as unknown as Record<string, any>)));
     },
     { detached: true }
   );

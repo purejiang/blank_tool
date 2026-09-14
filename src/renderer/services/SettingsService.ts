@@ -9,7 +9,6 @@ interface StoreServiceLike {
 const EMPTY_SETTINGS_MODEL: SettingsViewModel = {
   settings: {},
   displayPaths: {
-    runtime: '',
     server: '',
     runtimeExecutable: ''
   }
@@ -95,7 +94,6 @@ class SettingsService {
     if (settingsApi) {
       try {
         return await settingsApi.resolvePaths({
-          runtime: source.runtime,
           server: source.server,
           runtimeExecutable: source.runtimeExecutable
         })
@@ -103,15 +101,13 @@ class SettingsService {
     }
     const api = unifiedApi.getAPI()
     if (api && typeof api.resolvePath === 'function') {
-      const runtimeInput = typeof source.runtime === 'string' ? source.runtime : ''
       const serverInput = typeof source.server === 'string' ? source.server : ''
       const execInput = typeof source.runtimeExecutable === 'string' ? source.runtimeExecutable : ''
-      const [runtime, server, runtimeExecutable] = await Promise.all([
-        runtimeInput ? api.resolvePath(runtimeInput) : Promise.resolve(''),
+      const [server, runtimeExecutable] = await Promise.all([
         serverInput ? api.resolvePath(serverInput) : Promise.resolve(''),
         execInput ? api.resolvePath(execInput) : Promise.resolve('')
       ])
-      return { runtime, server, runtimeExecutable }
+      return { server, runtimeExecutable }
     }
     return { ...EMPTY_SETTINGS_MODEL.displayPaths }
   }

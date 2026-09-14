@@ -1,9 +1,9 @@
 <template>
-  <div class="diagnostics-page">
-    <div class="page-header">
+  <div class="app-page">
+    <div class="app-page-header">
       <div>
-        <h1 class="page-title">{{ t('diagnostics.title') }}</h1>
-        <p class="page-subtitle">{{ t('diagnostics.subtitle') }}</p>
+        <h1 class="app-page-title">{{ t('diagnostics.title') }}</h1>
+        <p class="app-page-sub">{{ t('diagnostics.subtitle') }}</p>
       </div>
     </div>
 
@@ -11,9 +11,9 @@
 
       <!-- Card 1: Backend Health -->
       <n-card :bordered="false" class="diag-card">
-        <div class="section-header">
+        <div class="app-section-header">
           <n-icon size="18" :color="healthColor"><HeartPulse /></n-icon>
-          <span class="section-title">{{ t('diagnostics.backendHealth') }}</span>
+          <span class="app-section-title">{{ t('diagnostics.backendHealth') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshHealth">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
             {{ t('diagnostics.refresh') }}
@@ -22,16 +22,16 @@
         <div class="health-row">
           <span class="health-dot" :class="healthClass"></span>
           <span class="health-label">{{ healthLabel }}</span>
-          <span class="muted">{{ t('diagnostics.lastChecked') }}: {{ formattedLastChecked }}</span>
-          <span class="muted">{{ t('diagnostics.uptime') }}: {{ formattedUptime }}</span>
+          <span class="app-muted">{{ t('diagnostics.lastChecked') }}: {{ formattedLastChecked }}</span>
+          <span class="app-muted">{{ t('diagnostics.uptime') }}: {{ formattedUptime }}</span>
         </div>
       </n-card>
 
       <!-- Card 2: Running Tasks -->
       <n-card :bordered="false" class="diag-card">
-        <div class="section-header">
-          <n-icon size="18" color="#64748B"><ListChecks /></n-icon>
-          <span class="section-title">{{ t('diagnostics.runningTasks') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-text-dim)"><ListChecks /></n-icon>
+          <span class="app-section-title">{{ t('diagnostics.runningTasks') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshTasks">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
             {{ t('diagnostics.refresh') }}
@@ -43,9 +43,9 @@
 
       <!-- Card 3: Log Tail (3 tabs) -->
       <n-card :bordered="false" class="diag-card">
-        <div class="section-header">
-          <n-icon size="18" color="#64748B"><ScrollText /></n-icon>
-          <span class="section-title">{{ t('diagnostics.logTail') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-text-dim)"><ScrollText /></n-icon>
+          <span class="app-section-title">{{ t('diagnostics.logTail') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshLogTail()">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
             {{ t('diagnostics.refresh') }}
@@ -76,26 +76,63 @@
         </n-tabs>
       </n-card>
 
-      <!-- Card 4: Resolved Paths -->
+      <!-- Card 4: System self-check -->
       <n-card :bordered="false" class="diag-card">
-        <div class="section-header">
-          <n-icon size="18" color="#64748B"><FolderTree /></n-icon>
-          <span class="section-title">{{ t('diagnostics.resolvedPaths') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshPaths">
+        <div class="app-section-header">
+          <n-icon size="18" :color="selfCheckColor"><ShieldCheck /></n-icon>
+          <span class="app-section-title">{{ t('diagnostics.selfCheck') }}</span>
+          <n-button size="tiny" quaternary class="header-action" :loading="selfChecking" @click="runSelfCheck">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
-            {{ t('diagnostics.refresh') }}
+            {{ t('diagnostics.selfCheckRun') }}
           </n-button>
         </div>
-        <div class="path-grid">
-          <div class="path-row">
-            <span class="path-label">{{ t('diagnostics.runtime') }}</span>
-            <span class="path-val" :title="resolvedPaths.runtime">{{ resolvedPaths.runtime || '—' }}</span>
-          </div>
-          <div class="path-row">
-            <span class="path-label">{{ t('diagnostics.server') }}</span>
-            <span class="path-val" :title="resolvedPaths.server">{{ resolvedPaths.server || '—' }}</span>
-          </div>
+
+        <div v-if="selfChecking && selfCheckItems.length === 0" class="empty-hint">
+          {{ t('diagnostics.selfCheckRunning') }}
         </div>
+
+        <template v-else>
+          <div class="sc-summary">
+            <span class="sc-count"><span class="sc-dot sc-dot-ok"></span>{{ t('diagnostics.scPass') }} {{ selfCheckCounts.ok }}</span>
+            <span class="sc-count"><span class="sc-dot sc-dot-warn"></span>{{ t('diagnostics.scWarn') }} {{ selfCheckCounts.warn }}</span>
+            <span class="sc-count"><span class="sc-dot sc-dot-fail"></span>{{ t('diagnostics.scFail') }} {{ selfCheckCounts.fail }}</span>
+            <span class="app-muted sc-stamp">{{ t('diagnostics.lastChecked') }}: {{ selfCheckTimeText }}</span>
+          </div>
+
+          <!-- Risk items float to the top: the whole point of a self-check -->
+          <div class="sc-section">
+            <div class="sc-section-title">{{ t('diagnostics.scRisks') }}</div>
+            <div v-if="riskItems.length === 0" class="sc-clean">
+              <n-icon size="14" color="var(--app-green)"><CheckCircle2 /></n-icon>
+              {{ t('diagnostics.scNoRisk') }}
+            </div>
+            <div v-else class="sc-list">
+              <div v-for="item in riskItems" :key="item.id" class="sc-row">
+                <n-icon class="sc-icon" size="14" :color="statusColor(item.status)">
+                  <component :is="statusIcon(item.status)" />
+                </n-icon>
+                <span class="sc-label" :title="checkLabel(item)">{{ checkLabel(item) }}</span>
+                <span class="sc-value">{{ checkValue(item) }}</span>
+                <span v-if="checkHint(item)" class="sc-hint">{{ checkHint(item) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Full inventory, grouped -->
+          <div v-for="group in selfCheckGroups" :key="group.key" class="sc-section">
+            <div class="sc-section-title">{{ t(group.titleKey) }}</div>
+            <div class="sc-list">
+              <div v-for="item in group.items" :key="item.id" class="sc-row">
+                <n-icon class="sc-icon" size="14" :color="statusColor(item.status)">
+                  <component :is="statusIcon(item.status)" />
+                </n-icon>
+                <span class="sc-label" :title="checkLabel(item)">{{ checkLabel(item) }}</span>
+                <span class="sc-value">{{ checkValue(item) }}</span>
+                <span v-if="checkHint(item)" class="sc-hint">{{ checkHint(item) }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
       </n-card>
 
     </div>
@@ -106,12 +143,19 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NTag, useDialog, useMessage } from 'naive-ui'
-import { HeartPulse, ListChecks, ScrollText, FolderTree, RefreshCw } from 'lucide-vue-next'
+import {
+  HeartPulse, ListChecks, ScrollText, RefreshCw, ShieldCheck,
+  CheckCircle2, AlertTriangle, XCircle,
+} from 'lucide-vue-next'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { useRendererLogStore } from '@stores/rendererLogStore'
+import type { TrafficStatus } from '@services/AutomationService'
 import unifiedApi from '../api/unifiedApi'
 import { log } from '@utils/logger'
-import type { TaskListItem, TaskListResult, CancelRequestResult, LogTailResult } from '../../shared/ipc/protocol'
+import type {
+  TaskListItem, TaskListResult, CancelRequestResult, LogTailResult,
+  SelfCheckItem, SelfCheckResult, SelfCheckStatus, ToolDetail,
+} from '../../shared/ipc/protocol'
 
 const { t } = useI18n()
 const dialog = useDialog()
@@ -120,17 +164,21 @@ const healthStore = useBackendHealthStore()
 const rendererLogStore = useRendererLogStore()
 
 const LOG_TAIL_LINES = 200
-const TASK_POLL_MS = 5000
+// 任务列表轮询：有存活任务时快，空闲时慢——空闲时 `task.list` 只是遍历一个空/小
+// 字典，但没人希望后台每 5 秒戳一次后端。健康检查的节奏由 backendHealthStore 管，
+// 与本轮询相互独立。
+const TASK_POLL_ACTIVE_MS = 5000
+const TASK_POLL_IDLE_MS = 15000
 
 // ---- Card 1: Backend health -------------------------------------------------
-const uptimeS = ref<number | null>(null)
+// 运行时间直接读全局健康 store（StatusBar 也在用它轮询），这里不再单独打 IPC。
 
 const healthClass = computed(() =>
   healthStore.isHealthy === null ? 'dot-unknown' :
   healthStore.isHealthy ? 'dot-healthy' : 'dot-unhealthy'
 )
 const healthColor = computed(() =>
-  healthStore.isHealthy === null ? '#64748B' :
+  healthStore.isHealthy === null ? 'var(--app-text-dim)' :
   healthStore.isHealthy ? 'var(--app-green)' : 'var(--app-red)'
 )
 const healthLabel = computed(() =>
@@ -141,7 +189,7 @@ const formattedLastChecked = computed(() =>
   healthStore.lastCheckedAt ? new Date(healthStore.lastCheckedAt).toLocaleTimeString() : '—'
 )
 const formattedUptime = computed(() => {
-  const s = uptimeS.value
+  const s = healthStore.uptimeS
   if (s === null || s === undefined) return '—'
   const hh = Math.floor(s / 3600)
   const mm = Math.floor((s % 3600) / 60)
@@ -151,21 +199,22 @@ const formattedUptime = computed(() => {
   return `${ss}s`
 })
 
-async function refreshHealth(): Promise<void> {
-  healthStore.check()
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await window.electronAPI?.getBackendHealth?.()
-    uptimeS.value = typeof result?.uptime_s === 'number' ? result.uptime_s : null
-  } catch {
-    uptimeS.value = null
-  }
+function refreshHealth(): void {
+  // force=true：手动点刷新时立即补一次，不等自适应定时器。运行时间随同回包更新。
+  void healthStore.check(true)
 }
 
 // ---- Card 2: Running tasks --------------------------------------------------
 const tasks = ref<TaskListItem[]>([])
-let taskPoll: ReturnType<typeof setInterval> | null = null
+let taskPoll: ReturnType<typeof setTimeout> | null = null
+let taskPollStopped = false
 const taskRowKey = (row: TaskListItem) => row.task_id
+
+function scheduleTaskPoll(): void {
+  if (taskPollStopped) return
+  if (taskPoll) clearTimeout(taskPoll)
+  taskPoll = setTimeout(() => { void refreshTasks() }, tasks.value.length > 0 ? TASK_POLL_ACTIVE_MS : TASK_POLL_IDLE_MS)
+}
 
 async function refreshTasks(): Promise<void> {
   try {
@@ -174,6 +223,7 @@ async function refreshTasks(): Promise<void> {
   } catch (e) {
     log.error('Diagnostics: failed to fetch task list', e)
   }
+  scheduleTaskPoll()
 }
 
 function cancelTask(taskId: string): void {
@@ -282,44 +332,308 @@ function onTabChange(name: string): void {
   refreshLogTail(name as LogTab)
 }
 
-// ---- Card 4: Resolved paths -------------------------------------------------
-const resolvedPaths = ref<{ runtime?: string; server?: string }>({})
+// ---- Card 4: System self-check ---------------------------------------------
+// The backend answers only for the world *it* can see: are the directories
+// usable, where did java/python resolve to, what proxy would a download use.
+// Facts that live on the Electron side (app version, local-service health) or
+// in the tool registry (built-in tool resolution) are composed here. Every
+// probe carries a stable id and raw values — all wording stays in i18n, so no
+// sentence ever crosses the wire.
 
-async function refreshPaths(): Promise<void> {
+const SELF_CHECK_ORDER = [
+  'env.selfcheck', 'env.os', 'env.python', 'env.java', 'env.proxy', 'env.app',
+  'tool.adb', 'tool.aapt', 'tool.apktool', 'tool.bundletool',
+  'tool.zipalign', 'tool.apksigner', 'tool.jarsigner', 'tool.mitmproxy',
+  'config.dir.runtime', 'config.dir.backend', 'config.dir.cache',
+  'config.dir.tasks', 'config.dir.auto_tasks', 'config.dir.output',
+  'config.tool_search', 'config.tool_overrides', 'config.proxy_download',
+]
+
+const CHECK_LABELS: Record<string, string> = {
+  'env.selfcheck': 'diagnostics.ckSelfCheck',
+  'env.os': 'diagnostics.ckOs',
+  'env.python': 'diagnostics.ckPython',
+  'env.java': 'diagnostics.ckJava',
+  'env.proxy': 'diagnostics.ckProxy',
+  'env.app': 'diagnostics.ckApp',
+  'config.dir.runtime': 'diagnostics.ckDirRuntime',
+  'config.dir.backend': 'diagnostics.ckDirBackend',
+  'config.dir.cache': 'diagnostics.ckDirCache',
+  'config.dir.tasks': 'diagnostics.ckDirTasks',
+  'config.dir.auto_tasks': 'diagnostics.ckDirAutoTasks',
+  'config.dir.output': 'diagnostics.ckDirOutput',
+  'config.tool_search': 'diagnostics.ckToolSearch',
+  'config.tool_overrides': 'diagnostics.ckToolOverrides',
+  'config.proxy_download': 'diagnostics.ckProxyDownload',
+  'tool.mitmproxy': 'diagnostics.ckMitmproxy',
+  'run.backend': 'diagnostics.ckBackend',
+}
+
+const BUILTIN_TOOLS = ['adb', 'aapt', 'apktool', 'bundletool', 'zipalign', 'apksigner', 'jarsigner']
+
+const GROUP_DEFS = [
+  { key: 'env', titleKey: 'diagnostics.catEnv', cat: 'env' },
+  { key: 'tool', titleKey: 'diagnostics.catTool', cat: 'tool' },
+  { key: 'config', titleKey: 'diagnostics.catConfig', cat: 'config' },
+  { key: 'runtime', titleKey: 'diagnostics.catRuntime', cat: 'runtime' },
+] as const
+
+const selfChecking = ref(false)
+const selfCheckBase = ref<SelfCheckItem[]>([])
+const selfCheckAt = ref<number | null>(null)
+
+async function safeAsync<T>(fn: () => Promise<T> | undefined): Promise<T | null> {
   try {
-    const api = unifiedApi.getAPI()
-    if (api?.settings?.resolvePaths) {
-      resolvedPaths.value = (await api.settings.resolvePaths({})) || {}
+    return (await fn()) ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Local-service health is polled globally, so it follows the store instead of
+ *  freezing into the self-check snapshot. */
+const backendSelfCheckItem = computed<SelfCheckItem>(() => {
+  const healthy = healthStore.isHealthy
+  return {
+    id: 'run.backend',
+    category: 'runtime',
+    status: healthy === false ? 'fail' : healthy ? 'ok' : 'warn',
+    value: healthy ? formattedUptime.value : '',
+    facts: { healthy },
+  }
+})
+
+const selfCheckItems = computed<SelfCheckItem[]>(() => [
+  ...selfCheckBase.value,
+  backendSelfCheckItem.value,
+])
+
+const selfCheckCounts = computed(() => {
+  const counts = { ok: 0, warn: 0, fail: 0 }
+  for (const item of selfCheckItems.value) counts[item.status] += 1
+  return counts
+})
+
+const riskItems = computed(() => selfCheckItems.value.filter(i => i.status !== 'ok'))
+
+const selfCheckGroups = computed(() =>
+  GROUP_DEFS
+    .map(g => ({ ...g, items: selfCheckItems.value.filter(i => i.category === g.cat) }))
+    .filter(g => g.items.length > 0)
+)
+
+const selfCheckColor = computed(() =>
+  selfCheckCounts.value.fail > 0 ? 'var(--app-red)'
+  : selfCheckCounts.value.warn > 0 ? 'var(--app-yellow)'
+  : 'var(--app-green)'
+)
+
+const selfCheckTimeText = computed(() =>
+  selfCheckAt.value ? new Date(selfCheckAt.value).toLocaleTimeString() : '—'
+)
+
+function statusIcon(status: SelfCheckStatus) {
+  if (status === 'fail') return XCircle
+  if (status === 'warn') return AlertTriangle
+  return CheckCircle2
+}
+
+function statusColor(status: SelfCheckStatus): string {
+  if (status === 'fail') return 'var(--app-red)'
+  if (status === 'warn') return 'var(--app-yellow)'
+  return 'var(--app-green)'
+}
+
+function checkLabel(item: SelfCheckItem): string {
+  const key = CHECK_LABELS[item.id]
+  if (key) return t(key)
+  // A tool probe's id *is* the tool name (adb / aapt / ...) — never translated.
+  if (item.id.startsWith('tool.')) return item.id.slice(5)
+  return item.id
+}
+
+function checkValue(item: SelfCheckItem): string {
+  if (item.value) return item.value
+  const facts = item.facts || {}
+  if (facts.configured === false) return t('diagnostics.stateDirect')
+  if (typeof facts.enabled === 'boolean') {
+    return facts.enabled ? t('diagnostics.stateOn') : t('diagnostics.stateOff')
+  }
+  if (facts.count === 0 || facts.state === 'none') return t('diagnostics.stateNone')
+  if (facts.source === 'none') return t('diagnostics.stateNotFound')
+  switch (facts.reason) {
+    case 'unresolved': return t('diagnostics.stateUnresolved')
+    case 'missing': return t('diagnostics.stateMissing')
+    case 'readonly': return t('diagnostics.stateReadonly')
+    case 'not_runnable': return t('diagnostics.stateNotRunnable')
+    case 'unavailable': return t('diagnostics.stateUnavailable')
+    default: return '—'
+  }
+}
+
+function checkHint(item: SelfCheckItem): string {
+  if (item.status === 'ok') return ''
+  const facts = item.facts || {}
+
+  // A built-in tool's two failure modes read differently: "not usable at all"
+  // versus "usable but the version is whatever happens to be on PATH".
+  if (item.id.startsWith('tool.') && item.id !== 'tool.mitmproxy') {
+    return item.status === 'fail' ? t('diagnostics.hintToolMissing') : t('diagnostics.hintToolSystem')
+  }
+
+  switch (item.id) {
+    case 'env.selfcheck':
+      return t('diagnostics.hintSelfCheck')
+    case 'env.java':
+      if (facts.source === 'none') return t('diagnostics.hintJavaMissing')
+      if (facts.reason === 'not_runnable') return t('diagnostics.hintJavaNotRunnable')
+      return t('diagnostics.hintJavaSystem')
+    case 'env.proxy':
+      return t('diagnostics.hintProxy')
+    case 'config.proxy_download':
+      return t('diagnostics.hintProxyDownload')
+    case 'config.dir.output':
+      return t('diagnostics.hintDirOutput')
+    case 'config.tool_search':
+      return t('diagnostics.hintToolSearch')
+    case 'config.tool_overrides':
+      return t('diagnostics.hintToolOverrides')
+    case 'tool.mitmproxy':
+      return t('diagnostics.hintMitmproxy')
+    case 'run.backend':
+      return facts.healthy === false ? t('diagnostics.hintBackend') : t('diagnostics.hintBackendUnknown')
+    default:
+      return ''
+  }
+}
+
+async function runSelfCheck(): Promise<void> {
+  selfChecking.value = true
+  try {
+    // Each probe stands alone: one failing source must not blank the whole card.
+    const [backend, tools, traffic, overrides, viewModel, build] = await Promise.all([
+      safeAsync(() => unifiedApi.call<SelfCheckResult>('system.selfcheck')),
+      safeAsync(() => unifiedApi.call<Record<string, ToolDetail>>('tool.get_tools')),
+      safeAsync(() => unifiedApi.call<TrafficStatus>('automation.traffic_status')),
+      safeAsync(() => unifiedApi.call<Record<string, string>>('tool.get_custom_paths')),
+      safeAsync(() => window.electronAPI?.settings?.getViewModel?.()),
+      safeAsync(() => window.electronAPI?.getFontendBuildInfo?.()),
+    ])
+
+    const pool = new Map<string, SelfCheckItem>()
+    if (backend) {
+      for (const item of backend.checks || []) pool.set(item.id, item)
+    } else {
+      // Without the backend's own probes the card would silently lose half its
+      // sections — say so explicitly instead.
+      pool.set('env.selfcheck', {
+        id: 'env.selfcheck',
+        category: 'env',
+        status: 'fail',
+        value: '',
+        facts: { reason: 'unavailable' },
+      })
     }
+
+    for (const name of BUILTIN_TOOLS) {
+      const info = tools?.[name]
+      const source = String(info?.source || 'none')
+      pool.set(`tool.${name}`, {
+        id: `tool.${name}`,
+        category: 'tool',
+        status: !info?.is_valid ? 'fail' : source === 'system' ? 'warn' : 'ok',
+        value: [info?.version, info?.path].filter(Boolean).join(' · '),
+        facts: { source },
+      })
+    }
+
+    if (traffic) {
+      const facts: Record<string, unknown> = {
+        installed: traffic.installed,
+        ready: traffic.ready,
+        mismatch: traffic.python_mismatch,
+      }
+      if (!traffic.installed) facts.reason = 'missing'
+      else if (!traffic.ready) facts.reason = 'not_runnable'
+      pool.set('tool.mitmproxy', {
+        id: 'tool.mitmproxy',
+        category: 'tool',
+        status: traffic.ready ? 'ok' : 'warn',
+        value: traffic.installed ? traffic.lib_path : '',
+        facts,
+      })
+    }
+
+    const overrideNames = Object.keys(overrides || {})
+    pool.set('config.tool_overrides', {
+      id: 'config.tool_overrides',
+      category: 'config',
+      status: overrideNames.length ? 'warn' : 'ok',
+      value: overrideNames.join(', '),
+      facts: { count: overrideNames.length },
+    })
+
+    const useProxyForDownload = viewModel?.settings?.useProxyForDownload === true
+    const envProxyFacts = (pool.get('env.proxy')?.facts || {}) as Record<string, unknown>
+    pool.set('config.proxy_download', {
+      id: 'config.proxy_download',
+      category: 'config',
+      // Downloading through a dead proxy always fails — that is a defect, not a
+      // caveat, which is exactly the [WinError 10061] case.
+      status: useProxyForDownload && envProxyFacts.reachable === false ? 'fail' : 'ok',
+      value: '',
+      facts: { enabled: useProxyForDownload },
+    })
+
+    pool.set('env.app', {
+      id: 'env.app',
+      category: 'env',
+      status: 'ok',
+      value: [
+        build?.appVersion ? `v${build.appVersion}` : '',
+        build?.electronVersion ? `Electron ${build.electronVersion}` : '',
+      ].filter(Boolean).join(' · '),
+    })
+
+    const ordered: SelfCheckItem[] = []
+    const seen = new Set<string>()
+    for (const id of SELF_CHECK_ORDER) {
+      const item = pool.get(id)
+      if (item) {
+        ordered.push(item)
+        seen.add(id)
+      }
+    }
+    // Probes a future backend adds must still show up rather than vanish.
+    for (const [id, item] of pool) if (!seen.has(id)) ordered.push(item)
+
+    selfCheckBase.value = ordered
+    selfCheckAt.value = Date.now()
   } catch (e) {
-    log.error('Diagnostics: path resolve failed', e)
+    log.error('Diagnostics: self-check failed', e)
+  } finally {
+    selfChecking.value = false
   }
 }
 
 // ---- Lifecycle --------------------------------------------------------------
 onMounted(() => {
   refreshHealth()
-  refreshTasks()
+  refreshTasks() // 首次拉取后由 scheduleTaskPoll 自续期
   refreshLogTail()
-  refreshPaths()
-  taskPoll = setInterval(refreshTasks, TASK_POLL_MS)
+  void runSelfCheck()
 })
 
 onUnmounted(() => {
-  if (taskPoll) clearInterval(taskPoll)
+  taskPollStopped = true
+  if (taskPoll) clearTimeout(taskPoll)
 })
 </script>
 
 <style scoped>
-.diagnostics-page { max-width: var(--page-max-width); margin: 0 auto; }
-.page-header { margin-bottom: 20px; text-align: left; display: block; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .diagnostics-content { display: flex; flex-direction: column; gap: 16px; }
 .diag-card { background: var(--app-card-bg); border-radius: 10px; text-align: left; transition: box-shadow 0.2s ease; }
 .diag-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08); }
-.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: flex-start; }
-.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .header-action { margin-left: auto; }
 
 /* Health */
@@ -335,7 +649,6 @@ onUnmounted(() => {
 }
 
 /* Tasks / logs shared */
-.muted { color: var(--app-text-muted); font-size: 12px; }
 .empty-hint { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
 
 /* Log viewer */
@@ -348,7 +661,7 @@ onUnmounted(() => {
   border: 1px solid var(--app-card-border);
   padding: 12px;
   border-radius: 6px;
-  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-family: var(--app-font-mono);
   font-size: 12px;
   line-height: 1.6;
   color: var(--app-text-secondary);
@@ -358,9 +671,32 @@ onUnmounted(() => {
 .log-meta { display: flex; align-items: center; gap: 8px; }
 .log-meta-tag { margin-left: 4px; }
 
-/* Resolved paths */
-.path-grid { display: flex; flex-direction: column; gap: 6px; }
-.path-row { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; }
-.path-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; }
-.path-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; word-break: break-all; flex: 1; }
+/* Self-check */
+.sc-summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 2px 0 10px; border-bottom: 1px solid var(--app-card-border); }
+.sc-count { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--app-text-secondary); }
+.sc-stamp { margin-left: auto; font-size: 12px; }
+.sc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.sc-dot-ok { background: var(--app-green); }
+.sc-dot-warn { background: var(--app-yellow); }
+.sc-dot-fail { background: var(--app-red); }
+
+.sc-section { padding-top: 12px; }
+.sc-section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--app-text-dim); margin-bottom: 4px; }
+.sc-clean { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--app-text-dim); padding: 4px 0; }
+.sc-list { display: flex; flex-direction: column; }
+
+/* icon | label | value, with the hint wrapping onto a second row */
+.sc-row {
+  display: grid;
+  grid-template-columns: 16px minmax(104px, 168px) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.sc-row + .sc-row { border-top: 1px solid var(--app-card-border); }
+.sc-icon { justify-self: center; align-self: start; margin-top: 3px; }
+.sc-label { color: var(--app-text-primary); }
+.sc-value { color: var(--app-text-secondary); font-family: var(--app-font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.sc-hint { grid-column: 2 / -1; font-size: 12px; color: var(--app-text-dim); }
 </style>

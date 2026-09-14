@@ -43,7 +43,7 @@
         :percentage="store.downloadPercent"
         :height="6"
         :border-radius="3"
-        color="#22C55E"
+        color="var(--app-green)"
         rail-color="rgba(0,0,0,0.06)"
       />
     </div>
@@ -152,8 +152,8 @@ function handleRetry(): void {
   gap: 8px;
   margin-bottom: 16px;
 }
-.ver-old { font-size: 13px; color: var(--app-text-muted); font-family: monospace; }
-.ver-new { font-size: 15px; font-weight: 700; color: #22C55E; font-family: monospace; }
+.ver-old { font-size: 13px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
+.ver-new { font-size: 15px; font-weight: 700; color: var(--app-green); font-family: var(--app-font-mono); }
 .release-notes {
   background: var(--app-hover);
   border-radius: 8px;

@@ -207,6 +207,32 @@ export interface BuildInfoResult {
   java_path: string
 }
 
+/** One probe's verdict in the diagnostics self-check. */
+export type SelfCheckStatus = 'ok' | 'warn' | 'fail'
+
+/** Section a self-check probe is grouped under. */
+export type SelfCheckCategory = 'env' | 'tool' | 'config' | 'runtime'
+
+/** A single self-check probe (backend/app/utils/selfcheck.py).
+ *
+ *  `id` is stable and doubles as the i18n key source — wording never travels
+ *  over the wire, so the report stays translatable. `value` is raw (a path, a
+ *  version, a URL), never a sentence; `facts` carries the few extra fields the
+ *  renderer needs to pick a hint. */
+export interface SelfCheckItem {
+  id: string
+  category: SelfCheckCategory
+  status: SelfCheckStatus
+  value: string
+  facts?: Record<string, unknown>
+}
+
+/** Return type of system.selfcheck */
+export interface SelfCheckResult {
+  generated_at: number
+  checks: SelfCheckItem[]
+}
+
 /** Return type of apk.get_progress / apk.getProgress */
 export interface ApkProgressResult {
   task_id: string
@@ -424,6 +450,7 @@ export interface ApiMethodMap {
   // --- app_handler.py ---
   'system.info': { params: Record<string, never>; result: SystemInfoResult }
   'build.info': { params: Record<string, never>; result: BuildInfoResult }
+  'system.selfcheck': { params: Record<string, never>; result: SelfCheckResult }
 
   // --- cache_handler.py ---
   // `tasks.clear` / `auto_tasks.clear` / `logs.clear` are gone: every one of
@@ -467,6 +494,13 @@ export interface ApiMethodMap {
   'plugin.list': { params: Record<string, never>; result: Record<string, unknown>[] }
   'plugin.run': { params: { name: string; params?: Record<string, unknown>; task_id?: string }; result: Record<string, unknown> }
   'plugin.reload': { params: Record<string, never>; result: Record<string, unknown>[] }
+  'plugin.delete': { params: { name: string }; result: Record<string, unknown>[] }
+
+  // --- plugin_package_handler.py ---
+  // import returns the refreshed list, or { needs_overwrite: true, id }
+  // when the target already exists and overwrite was not requested.
+  'plugin.import': { params: { zip_path: string; overwrite?: boolean }; result: Record<string, unknown>[] | { needs_overwrite: boolean; id: string } }
+  'plugin.export': { params: { name: string; target_path: string }; result: { path: string } }
 
   // --- automation_record_handler.py ---
   // record_start is a @streaming handler: the envelope init resolves to

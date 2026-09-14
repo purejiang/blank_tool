@@ -2,6 +2,6 @@ import 'pinia'
 
 declare module 'pinia' {
   export interface DefineStoreOptionsBase<S, Store> {
-    persist?: boolean | { key?: string }
+    persist?: boolean | { key?: string; omit?: string[] }
   }
 }

@@ -2,7 +2,7 @@
   <div class="status-bar" :class="{ collapsed }">
     <!-- Minimal mode: icon + dot only when sidebar collapsed -->
     <template v-if="collapsed">
-      <n-icon size="18" :color="hasOnlineDevice ? '#22C55E' : '#64748B'"><Smartphone /></n-icon>
+      <n-icon size="18" :color="hasOnlineDevice ? 'var(--app-green)' : 'var(--app-text-dim)'"><Smartphone /></n-icon>
       <span class="status-dot" :class="hasOnlineDevice ? 'online' : 'offline'"></span>
     </template>
     <!-- Full mode -->
@@ -14,7 +14,7 @@
           <span class="status-dot online"></span>
         </div>
         <div class="device-badge off" v-else>
-          <n-icon size="14" color="#64748B"><Smartphone /></n-icon>
+          <n-icon size="14" color="var(--app-text-dim)"><Smartphone /></n-icon>
           <span class="dim">{{ t('device.noDevices') }}</span>
           <span class="status-dot offline"></span>
         </div>
@@ -91,13 +91,15 @@ const healthTitle = computed(() =>
 .status-bar {
   display: flex;
   flex-direction: column;
+  /* 两行都相对侧栏居中（列方向的主轴居中 → 交叉轴 align-items 决定水平） */
+  align-items: center;
   gap: 4px;
   padding: 10px 18px;
   height: auto;
   background: var(--app-sidebar-bg);
   border-top: 1px solid var(--app-sidebar-border);
   font-size: 11px;
-  font-family: Inter, sans-serif;
+  font-family: var(--app-font);
   flex-shrink: 0;
 }
 .status-bar.collapsed {
@@ -141,10 +143,9 @@ const healthTitle = computed(() =>
   flex-shrink: 0;
 }
 .status-dot.online { background: var(--app-green); }
-.status-dot.connecting { background: var(--app-yellow); animation: pulse 1.5s infinite; }
 .status-dot.offline { background: var(--app-red); }
 .version-text {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--app-font-mono);
   color: var(--app-text-dim);
   font-size: 10px;
 }
@@ -160,8 +161,4 @@ const healthTitle = computed(() =>
 .health-dot.dot-healthy { background: var(--app-green); }
 .health-dot.dot-unhealthy { background: var(--app-red); }
 .health-dot.dot-unknown { background: var(--app-text-dim); }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
 </style>

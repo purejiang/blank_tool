@@ -25,7 +25,8 @@ test('共享路径配置包含主进程关键键名', async () => {
   const content = await readFile(pathConfigPath, 'utf8')
   assert.match(content, /export const PATH_CONFIG_DEFAULTS/)
   assert.match(content, /export const APP_CONFIG_KEYS/)
-  assert.match(content, /runtime:\s*'runtime'/)
+  // `runtime` is no longer a configurable key — only the shared default exists.
+  assert.match(content, /runtime:\s*'\.\\\\runtime'/)
   assert.match(content, /rendererEntry:\s*'rendererEntry'/)
 })
 

@@ -55,3 +55,20 @@
   font-size: 13px;
   font-weight: 600;
 }
+
+/* 以下两段原先住在 themes.css（那是纯 token 表，不该管元素样式），
+   2026-09-14 挪过来，集中放第三方覆盖。 */
+
+/* Naive UI 深色下 modal / drawer 的底色跟卡片一致 */
+[data-theme="dark"] .n-modal,
+[data-theme="dark"] .n-drawer {
+  --n-color: var(--app-card-bg);
+}
+
+/* 主题切换时的过渡，避免整屏硬闪 */
+.n-config-provider,
+.n-layout,
+.n-card,
+.n-layout-sider {
+  transition: background-color .25s ease, color .25s ease;
+}

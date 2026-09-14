@@ -56,22 +56,21 @@ export async function resolvePythonExecutable(
   appStore: AppStoreLike,
   baseDir: string
 ): Promise<{ pythonExecutable: string; absRuntimeDir: string }> {
-  const runtimeDir = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.runtime), PATH_CONFIG_DEFAULTS.runtime);
   const runtimeExecutable = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.runtimeExecutable), PATH_CONFIG_DEFAULTS.runtimeExecutable);
 
+  // The runtime dir is not configurable — runtime/ is the container of the
+  // bundled tools and always resolves from the shared default.
   let pythonExecutable = 'python';
-  let absRuntimeDir = resolvePathFromBase(baseDir, runtimeDir);
+  const absRuntimeDir = resolvePathFromBase(baseDir, PATH_CONFIG_DEFAULTS.runtime);
   const candidate = path.join(absRuntimeDir, runtimeExecutable);
   try {
     await fs.access(candidate);
     pythonExecutable = candidate;
     log.info(`Using Python Runtime: ${pythonExecutable}`);
   } catch {
-    const defaultRuntimeDir = resolvePathFromBase(baseDir, PATH_CONFIG_DEFAULTS.runtime);
-    const defaultCandidate = path.join(defaultRuntimeDir, PATH_CONFIG_DEFAULTS.runtimeExecutable);
+    const defaultCandidate = path.join(absRuntimeDir, PATH_CONFIG_DEFAULTS.runtimeExecutable);
     try {
       await fs.access(defaultCandidate);
-      absRuntimeDir = defaultRuntimeDir;
       pythonExecutable = defaultCandidate;
       log.warn(`Configured runtime path invalid, fallback to: ${pythonExecutable}`);
     } catch {

@@ -28,7 +28,6 @@ function resolvePathFromAppBase(targetPath: string): string {
 
 function getSettingsViewModel() {
     const settings = getConfigValue() as Record<string, unknown>;
-    const runtime = toNonEmptyString(settings[APP_CONFIG_KEYS.runtime], PATH_CONFIG_DEFAULTS.runtime);
     const server = toNonEmptyString(settings[APP_CONFIG_KEYS.server], PATH_CONFIG_DEFAULTS.server);
     const runtimeExecutable = toNonEmptyString(
         settings[APP_CONFIG_KEYS.runtimeExecutable],
@@ -37,7 +36,6 @@ function getSettingsViewModel() {
     return {
         settings,
         displayPaths: {
-            runtime: resolvePathFromAppBase(runtime),
             server: resolvePathFromAppBase(server),
             runtimeExecutable: resolvePathFromAppBase(runtimeExecutable)
         }
@@ -129,15 +127,13 @@ export function setupAppConfigHandlers(): void {
         return getSettingsViewModel();
     });
 
-    ipcMain.handle(IPC_CHANNEL_NAMES.resolveSettingsPaths, (event: IpcMainInvokeEvent, paths: { runtime?: unknown; server?: unknown; runtimeExecutable?: unknown } = {}) => {
-        const runtime = toNonEmptyString(paths.runtime, PATH_CONFIG_DEFAULTS.runtime);
+    ipcMain.handle(IPC_CHANNEL_NAMES.resolveSettingsPaths, (event: IpcMainInvokeEvent, paths: { server?: unknown; runtimeExecutable?: unknown } = {}) => {
         const server = toNonEmptyString(paths.server, PATH_CONFIG_DEFAULTS.server);
         const runtimeExecutable = toNonEmptyString(
             paths.runtimeExecutable,
             PATH_CONFIG_DEFAULTS.runtimeExecutable
         );
         return {
-            runtime: resolvePathFromAppBase(runtime),
             server: resolvePathFromAppBase(server),
             runtimeExecutable: resolvePathFromAppBase(runtimeExecutable)
         };

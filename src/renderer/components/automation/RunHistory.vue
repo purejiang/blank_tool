@@ -99,16 +99,16 @@ function fmtDur(ms: number): string {
   border: 1px solid transparent;
 }
 .run-row:hover { background: var(--app-blue-bg); }
-.run-row.active { background: var(--app-blue-bg); border-color: #2080f0; }
+.run-row.active { background: var(--app-blue-bg); border-color: var(--app-blue); }
 .run-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--app-text-muted); }
-.run-row.ok .run-dot { background: #18a058; }
-.run-row.bad .run-dot { background: #d03050; }
-.run-row.warn .run-dot { background: #f0a020; }
+.run-row.ok .run-dot { background: var(--app-green); }
+.run-row.bad .run-dot { background: var(--app-red); }
+.run-row.warn .run-dot { background: var(--app-yellow); }
 .run-time { color: var(--app-text-primary); flex: none; font-variant-numeric: tabular-nums; font-size: 11.5px; }
 .run-counts { flex: 1; text-align: right; font-variant-numeric: tabular-nums; font-size: 11.5px; }
-.run-row.ok .run-counts { color: #18a058; }
-.run-row.bad .run-counts { color: #d03050; }
-.run-row.warn .run-counts { color: #f0a020; }
+.run-row.ok .run-counts { color: var(--app-green); }
+.run-row.bad .run-counts { color: var(--app-red); }
+.run-row.warn .run-counts { color: var(--app-yellow); }
 .run-dur { color: var(--app-text-muted); flex: none; font-variant-numeric: tabular-nums; font-size: 11px; }
 /* the delete affordance only appears on hover — it was crowding the row */
 .run-del { flex: none; opacity: 0; transition: opacity 0.12s; }

@@ -51,8 +51,26 @@ def reload_plugins(params, stream_handler):
         raise
 
 
+def delete_plugin(params, stream_handler):
+    """Delete an installed plugin (removes it from its scan dir), then reload.
+
+    Returns the refreshed plugin list. Builtin plugins live in the app dir —
+    deleting them works in a dev checkout but will fail on a read-only
+    packaged install, in which case the error is surfaced to the caller.
+    """
+    name = str(params.get("name") or "").strip()
+    if not name:
+        raise ToolException("Plugin name not specified")
+    try:
+        return manager.delete_plugin(name)
+    except Exception as e:
+        logger.error(f"Failed to delete plugin {name}: {e}")
+        raise
+
+
 API_MAP = {
     "plugin.list": list_plugins,
     "plugin.run": run_plugin,
     "plugin.reload": reload_plugins,
+    "plugin.delete": delete_plugin,
 }

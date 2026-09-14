@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { PATH_CONFIG_DEFAULTS, type WritableAppConfigKey } from '../../shared/config/pathConfig';
 
-export const APP_CONFIG_VERSION = 5;
+export const APP_CONFIG_VERSION = 6;
 export { PATH_CONFIG_DEFAULTS };
 
 const LEGACY_SETTINGS_DEFAULTS = {
@@ -300,6 +300,12 @@ const MIGRATIONS: Record<number, () => void> = {
     4: () => {
         appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
         appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
+    },
+    5: () => {
+        // `runtime` stopped being a configurable path: runtime/ is just the
+        // container of the bundled tools, always resolved from
+        // PATH_CONFIG_DEFAULTS.runtime. Drop any stored override.
+        appStore.delete('runtime');
     }
 };
 

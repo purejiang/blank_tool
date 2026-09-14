@@ -1,11 +1,11 @@
 <template>
   <n-modal :show="show" :title="t('automation.elements')" preset="card" style="width: 520px" @update:show="emit('update:show', $event)">
-    <p class="muted">{{ t('automation.pickHint') }}</p>
+    <p class="app-muted">{{ t('automation.pickHint') }}</p>
 
     <!-- dumping in progress: show a spinner instead of looking frozen -->
     <div v-if="dumping" class="dumping">
       <n-spin size="medium" />
-      <p class="muted dumping-hint">{{ t('automation.dumpingHint') }}</p>
+      <p class="app-muted dumping-hint">{{ t('automation.dumpingHint') }}</p>
     </div>
 
     <template v-else>
@@ -47,7 +47,6 @@ const { t } = useI18n()
 </script>
 
 <style scoped>
-.muted { color: var(--app-text-muted); font-size: 12px; }
 .dumping { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 0; }
 .dumping-hint { margin: 0; }
 .elem-list { max-height: 360px; overflow: auto; }
@@ -57,7 +56,7 @@ const { t } = useI18n()
 .elem-label-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .elem-label { font-size: 13px; color: var(--app-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-click { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-green); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
-.elem-multi { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-warning, #d97706); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.elem-multi { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-yellow); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .elem-by { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-bounds { font-size: 10.5px; color: var(--app-text-muted); flex: 0 0 auto; }
 </style>

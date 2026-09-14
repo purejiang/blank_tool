@@ -1,10 +1,10 @@
 <template>
-  <div class="device-page">
+  <div class="app-page">
     <!-- Page Header -->
-    <div class="page-header">
+    <div class="app-page-header">
       <div>
-        <h1 class="page-title">{{ t('device.title') }}</h1>
-        <p class="page-subtitle">{{ t('device.subtitle') }}</p>
+        <h1 class="app-page-title">{{ t('device.title') }}</h1>
+        <p class="app-page-sub">{{ t('device.subtitle') }}</p>
       </div>
     </div>
 
@@ -19,7 +19,7 @@
         <!-- No device selected -->
         <n-card v-if="!selectedDevice" :bordered="false" class="placeholder-card" size="small">
           <div class="placeholder-state">
-            <n-icon size="48" color="#475569"><Smartphone /></n-icon>
+            <n-icon size="48" color="var(--app-text-muted)"><Smartphone /></n-icon>
             <p class="placeholder-title">{{ t('device.noDeviceSelected') }}</p>
             <p class="placeholder-desc">{{ t('device.noDeviceSelectedDesc') }}</p>
           </div>
@@ -141,106 +141,134 @@
             </n-tab-pane>
 
             <!-- Tab 3: Apps -->
+            <!-- 列表只在点「刷新」时才拉取：不做自动加载，也不回显上次的缓存
+                 （deviceStore 已把 apps / appsLoaded 排除出持久化）。 -->
             <n-tab-pane name="apps" :tab="t('device.appsTab')">
               <div class="tab-content">
-                <!-- Filters -->
-                <div class="filter-row">
-                  <n-select
-                    v-model:value="appType"
-                    :options="appTypeOptions"
-                    size="small"
-                    :placeholder="t('appManager.appType')"
-                    @update:value="refreshAppList"
-                    style="width: 140px"
-                  />
-                  <n-input
-                    v-model:value="appSearchQuery"
-                    :placeholder="t('appManager.searchPlaceholder')"
-                    size="small"
-                    clearable
-                  >
-                    <template #prefix>
-                      <n-icon size="14"><Search /></n-icon>
-                    </template>
-                  </n-input>
-                  <n-button size="tiny" secondary @click="refreshAppList">
-                    <template #icon><n-icon><RefreshCw /></n-icon></template>
-                  </n-button>
-                  <n-button
-                    size="tiny"
-                    secondary
-                    :disabled="apps.length === 0"
-                    @click="exportAppList"
-                  >
-                    <template #icon><n-icon><FileDown /></n-icon></template>
-                  </n-button>
+                <!-- Toolbar: type + search + actions
+                     分成「可自由收缩的筛选组」+「不收缩的按钮组」并允许换行：
+                     容器变窄时由筛选组让位，按钮组要么留在同一行右端、要么整体
+                     掉到第二行，绝不会被挤出容器右缘裁掉。 -->
+                <div class="apps-toolbar">
+                  <div class="apps-filters">
+                    <n-select
+                      v-model:value="appType"
+                      :options="appTypeOptions"
+                      size="small"
+                      :placeholder="t('appManager.appType')"
+                      class="apps-type"
+                    />
+                    <n-input
+                      v-model:value="appSearchQuery"
+                      :placeholder="t('appManager.searchPlaceholder')"
+                      size="small"
+                      clearable
+                      class="apps-search"
+                    >
+                      <template #prefix>
+                        <n-icon size="14"><Search /></n-icon>
+                      </template>
+                    </n-input>
+                  </div>
+                  <div class="apps-buttons">
+                    <n-button
+                      class="apps-action"
+                      size="small"
+                      secondary
+                      type="primary"
+                      :loading="appsLoading"
+                      @click="refreshAppList"
+                    >
+                      <template #icon><n-icon><RefreshCw /></n-icon></template>
+                      {{ t('appManager.refresh') }}
+                    </n-button>
+                  </div>
+                </div>
+
+                <!-- Result counter -->
+                <div v-if="appsLoaded" class="apps-meta">
+                  <span>{{ t('appManager.totalApps', { count: apps.length }) }}</span>
+                  <template v-if="appSearchQuery.trim()">
+                    <span class="apps-meta-dot">·</span>
+                    <span>{{ t('appManager.matchedApps', { count: filteredApps.length }) }}</span>
+                  </template>
                 </div>
 
                 <!-- App List -->
                 <n-spin :show="appsLoading">
-                  <div v-if="apps.length === 0" class="empty-state small">
-                    <n-icon size="24" color="#475569"><Inbox /></n-icon>
+                  <div v-if="!appsLoaded" class="empty-state small">
+                    <n-icon size="28" color="var(--app-text-muted)"><PackageSearch /></n-icon>
+                    <p class="empty-title">{{ t('appManager.notLoaded') }}</p>
+                    <p class="empty-desc">{{ t('appManager.notLoadedDesc') }}</p>
+                  </div>
+                  <div v-else-if="apps.length === 0" class="empty-state small">
+                    <n-icon size="28" color="var(--app-text-muted)"><Inbox /></n-icon>
                     <p class="empty-title">{{ t('appManager.noApps') }}</p>
                     <p class="empty-desc">{{ t('appManager.noAppsDesc') }}</p>
                   </div>
                   <div v-else-if="filteredApps.length === 0" class="empty-state small">
-                    <n-icon size="24" color="#475569"><Search /></n-icon>
+                    <n-icon size="28" color="var(--app-text-muted)"><Search /></n-icon>
                     <p class="empty-title">{{ t('appManager.noMatches') }}</p>
                     <p class="empty-desc">{{ t('appManager.noMatchesDesc') }}</p>
                   </div>
-                  <n-scrollbar v-else style="max-height: 280px">
-                    <n-list hoverable clickable class="app-list">
-                      <n-list-item v-for="app in filteredApps" :key="app.packageName">
-                        <template #prefix>
-                          <n-icon size="16" color="#64748B"><Box /></n-icon>
-                        </template>
-                        <span class="app-package-name" :title="app.packageName">
-                          {{ app.packageName }}
+                  <!-- 虚拟滚动：几百个包名若整表渲染会阻塞主线程 ~1.5s -->
+                  <n-virtual-list
+                    v-else
+                    class="app-vlist"
+                    :items="filteredApps"
+                    :item-size="38"
+                    :item-resizable="true"
+                    key-field="packageName"
+                    :style="{ maxHeight: 'min(54vh, 400px)' }"
+                  >
+                    <template #default="{ item }">
+                      <div class="app-row">
+                        <n-icon size="16" class="app-row-icon"><Box /></n-icon>
+                        <span class="app-package-name" :title="item.packageName">
+                          {{ item.packageName }}
                         </span>
-                        <template #suffix>
-                          <n-space :size="4">
-                            <n-button
-                              size="tiny"
-                              secondary
-                              type="info"
-                              :title="t('device.launchApp')"
-                              @click="launchApp(app.packageName)"
-                            >
-                              <template #icon><n-icon><Play /></n-icon></template>
-                            </n-button>
-                            <n-button
-                              size="tiny"
-                              secondary
-                              type="success"
-                              :loading="isExportingPkg(app.packageName)"
-                              :title="t('appManager.export')"
-                              @click="exportApp(app.packageName)"
-                            >
-                              <template #icon><n-icon><Download /></n-icon></template>
-                            </n-button>
-                            <n-button
-                              size="tiny"
-                              secondary
-                              type="warning"
-                              :title="t('device.clearData')"
-                              @click="clearAppData(app.packageName)"
-                            >
-                              <template #icon><n-icon><Eraser /></n-icon></template>
-                            </n-button>
-                            <n-button
-                              size="tiny"
-                              secondary
-                              type="error"
-                              :title="t('device.uninstall')"
-                              @click="uninstallApp(app.packageName)"
-                            >
-                              <template #icon><n-icon><Trash2 /></n-icon></template>
-                            </n-button>
-                          </n-space>
-                        </template>
-                      </n-list-item>
-                    </n-list>
-                  </n-scrollbar>
+                        <div class="app-row-actions">
+                          <n-button
+                            size="tiny"
+                            secondary
+                            type="info"
+                            :title="t('device.launchApp')"
+                            @click="launchApp(item.packageName)"
+                          >
+                            <template #icon><n-icon><Play /></n-icon></template>
+                          </n-button>
+                          <n-button
+                            size="tiny"
+                            secondary
+                            type="success"
+                            :loading="isExportingPkg(item.packageName)"
+                            :title="t('appManager.export')"
+                            @click="exportApp(item.packageName)"
+                          >
+                            <template #icon><n-icon><Download /></n-icon></template>
+                          </n-button>
+                          <n-button
+                            size="tiny"
+                            secondary
+                            type="warning"
+                            :title="t('device.clearData')"
+                            @click="clearAppData(item.packageName)"
+                          >
+                            <template #icon><n-icon><Eraser /></n-icon></template>
+                          </n-button>
+                          <n-button
+                            size="tiny"
+                            secondary
+                            type="error"
+                            :title="t('device.uninstall')"
+                            @click="uninstallApp(item.packageName)"
+                          >
+                            <template #icon><n-icon><Trash2 /></n-icon></template>
+                          </n-button>
+                        </div>
+                      </div>
+                    </template>
+                  </n-virtual-list>
                 </n-spin>
               </div>
             </n-tab-pane>
@@ -285,7 +313,7 @@
                 </div>
 
                 <div v-if="!isLogcatRunning && logcatOutput.length === 0" class="empty-state small">
-                  <n-icon size="32" color="#475569"><Terminal /></n-icon>
+                  <n-icon size="32" color="var(--app-text-muted)"><Terminal /></n-icon>
                   <p class="empty-title">{{ t('device.logcatNotRunning') }}</p>
                   <p class="empty-desc">{{ t('device.logcatNotRunningHint') }}</p>
                 </div>
@@ -317,7 +345,7 @@ import {
   Smartphone, RefreshCw, Activity, Link, Link2Off, Circle,
   Terminal, RotateCw, Wrench, Zap,
   Play, PauseCircle, Trash2, FileDown, Eye, Search, Inbox,
-  Box, Download, Settings2, Eraser, Camera
+  Box, Download, Settings2, Eraser, Camera, PackageSearch
 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
@@ -340,6 +368,7 @@ const {
   connectionStatus,
   logcatOutput,
   apps,
+  appsLoaded,
   appType,
   shellOutput
 } = storeToRefs(deviceStore)
@@ -356,6 +385,13 @@ const appSearchQuery = ref('')
 const appsLoading = ref(false)
 const deviceSvcRef = ref<any>(null)
 const exportingPackages = ref(new Set<string>())
+
+// 改了应用类型，现有列表就不再对应这个筛选了：作废并回到「未加载」空态，
+// 由用户点「获取」重新拉。这里刻意不自动拉取。
+watch(appType, () => {
+  apps.value = []
+  appsLoaded.value = false
+})
 
 const appTypeOptions = computed(() => [
   { label: t('appManager.allApps'), value: 'all' },
@@ -494,7 +530,10 @@ const executeShellCommand = async () => {
 }
 
 // --- App Manager ---
+// 「刷新」是唯一入口：首次加载和重新拉取都走它，所以不做未加载即禁用的处理。
+// 不自动拉取（切页签、切设备、改类型都不会触发），避免几百个包名一次性渲染卡住界面。
 const refreshAppList = async () => {
+  if (appsLoading.value) return
   appsLoading.value = true
   try {
     const svc = deviceSvcRef.value || await serviceManager.getService('device')
@@ -503,12 +542,6 @@ const refreshAppList = async () => {
   } finally {
     appsLoading.value = false
   }
-}
-
-const exportAppList = async () => {
-  const svc = deviceSvcRef.value || await serviceManager.getService('device')
-  deviceSvcRef.value = svc
-  await svc.exportAppList()
 }
 
 const exportApp = async (packageName: string) => {
@@ -578,36 +611,12 @@ const takeScreenshot = async () => {
 </script>
 
 <style scoped>
-.device-page {
-  max-width: var(--page-max-width);
-  margin: 0 auto;
-}
-
-/* Page Header */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-.page-title {
-  font-family: Inter, sans-serif;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-text-primary);
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-.page-subtitle {
-  font-size: 13px;
-  color: var(--app-text-muted);
-  margin: 4px 0 0;
-}
-
 /* Layout */
 .page-content {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  /* 第二列写 minmax(0, 1fr) 而不是 1fr：1fr 的最小值是 auto，列内任何
+     有最小宽度的内容（工具栏那一行就是）都能把整列撑破页面右缘。 */
+  grid-template-columns: 380px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -615,9 +624,11 @@ const takeScreenshot = async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 .right-panel {
   min-height: 400px;
+  min-width: 0;
 }
 
 @media (max-width: 1100px) {
@@ -627,13 +638,6 @@ const takeScreenshot = async () => {
 }
 
 /* Cards */
-.card-title {
-  font-family: Inter, sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--app-text-primary);
-}
-
 /* Placeholder */
 .placeholder-card {
   background: var(--app-card-bg);
@@ -670,12 +674,15 @@ const takeScreenshot = async () => {
   background: var(--app-card-bg);
   border-radius: 10px;
   min-height: 400px;
+  min-width: 0;
 }
 .panel-tabs {
   margin: -8px 0 0;
+  min-width: 0;
 }
 .tab-content {
   padding-top: 4px;
+  min-width: 0;
 }
 
 /* Device Info */
@@ -690,7 +697,7 @@ const takeScreenshot = async () => {
   color: var(--app-text-primary);
 }
 .info-value.mono {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--app-font-mono);
   font-size: 12px;
   color: var(--app-blue);
 }
@@ -725,7 +732,7 @@ const takeScreenshot = async () => {
 .shell-output-text {
   margin: 0;
   padding: 10px 12px;
-  font-family: 'Fira Code', monospace;
+  font-family: var(--app-font-mono);
   font-size: 12px;
   color: var(--app-text-secondary);
   line-height: 1.6;
@@ -736,25 +743,94 @@ const takeScreenshot = async () => {
 }
 
 /* Apps */
-.filter-row {
+.apps-toolbar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  min-width: 0;
 }
-.app-list {
-  margin: -4px 0;
+/* 筛选组：吸收所有收缩量（min-width:0 让它能一直退到 0）。
+   基准 320 而非 auto：小于 320+8+按钮宽 时整组独占一行、按钮换行，
+   不会把搜索框压成一条缝。 */
+.apps-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+/* 类型选择固定宽（shrink 0），「全部应用」标签永远不会被压掉 */
+.apps-type {
+  flex: 0 0 132px;
+}
+/* 搜索框独自承担收缩，基准给小值以免组内提前触发收缩 */
+.apps-search {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+/* 按钮组：不收缩，靠 margin-left:auto 贴右；放不下时整组换到下一行 */
+.apps-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-left: auto;
+}
+.apps-action {
+  flex: none;
+}
+.apps-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 8px;
+  font-size: 12px;
+  color: var(--app-text-dim);
+}
+.apps-meta-dot {
+  color: var(--app-text-muted);
+}
+
+/* 虚拟列表：行高必须与 item-size(=38) 一致，否则滚动位置会漂。
+   （旧版是 n-list + n-list-item__suffix，naive-ui 给后缀设了 flex:0，
+   里面的 n-space 默认 wrap 会把 4 个按钮竖排成 4 行、每行 134px。） */
+.app-vlist {
+  overflow-x: hidden;
+}
+.app-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 8px;
+  border-radius: 8px;
+  transition: background-color 0.16s ease;
+}
+.app-row:hover {
+  background: var(--app-hover);
+}
+.app-row-icon {
+  flex: none;
+  color: var(--app-text-dim);
 }
 .app-package-name {
-  font-family: 'Fira Code', monospace;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--app-font-mono);
   font-size: 12px;
+  line-height: 1.4;
   color: var(--app-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:deep(.app-list .n-list-item) {
-  border-radius: 8px;
-  margin: 2px 0;
+.app-row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Logcat tab */
@@ -770,7 +846,7 @@ const takeScreenshot = async () => {
   padding: 10px 12px;
   max-height: 480px;
   overflow-y: auto;
-  font-family: 'Fira Code', monospace;
+  font-family: var(--app-font-mono);
   font-size: 11px;
   line-height: 1.5;
 }

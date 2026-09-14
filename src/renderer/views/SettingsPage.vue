@@ -1,9 +1,9 @@
 <template>
-  <div class="settings-page">
-    <div class="page-header">
+  <div class="app-page">
+    <div class="app-page-header">
       <div>
-        <h1 class="page-title">{{ t('settings.title') }}</h1>
-        <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
+        <h1 class="app-page-title">{{ t('settings.title') }}</h1>
+        <p class="app-page-sub">{{ t('settings.subtitle') }}</p>
       </div>
       <n-tag v-if="showSaved" type="success" size="small" :bordered="false" class="saved-tag">
         <template #icon><n-icon><CheckCircle /></n-icon></template>
@@ -15,9 +15,9 @@
 
       <!-- Appearance -->
       <n-card :bordered="false" class="settings-card">
-        <div class="section-header">
-          <n-icon size="18" color="#22C55E"><Monitor /></n-icon>
-          <span class="section-title">{{ t('settings.appearance') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-green)"><Monitor /></n-icon>
+          <span class="app-section-title">{{ t('settings.appearance') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
           <n-form-item :label="t('settings.language')">
@@ -33,9 +33,9 @@
 
       <!-- Behavior -->
       <n-card :bordered="false" class="settings-card">
-        <div class="section-header">
-          <n-icon size="18" color="#3B82F6"><Settings2 /></n-icon>
-          <span class="section-title">{{ t('settings.behavior') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-blue)"><Settings2 /></n-icon>
+          <span class="app-section-title">{{ t('settings.behavior') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
           <n-form-item :label="t('settings.notifications')">
@@ -62,9 +62,9 @@
 
       <!-- Logging -->
       <n-card :bordered="false" class="settings-card">
-        <div class="section-header">
-          <n-icon size="18" color="#10B981"><FileText /></n-icon>
-          <span class="section-title">{{ t('settings.logging') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-green)"><FileText /></n-icon>
+          <span class="app-section-title">{{ t('settings.logging') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
           <n-form-item :label="t('settings.loggingLevel')">
@@ -76,9 +76,9 @@
 
       <!-- Local runtimes: Java / Python / Node (version + path, path editable) -->
       <n-card :bordered="false" class="settings-card">
-        <div class="section-header">
-          <n-icon size="18" color="#F59E0B"><Cpu /></n-icon>
-          <span class="section-title">{{ t('settings.localRuntimes') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-yellow)"><Cpu /></n-icon>
+          <span class="app-section-title">{{ t('settings.localRuntimes') }}</span>
         </div>
         <div class="runtime-list">
           <div v-for="row in runtimeRows" :key="row.key" class="runtime-row">
@@ -113,9 +113,9 @@
 
       <!-- Local service (the spawned Python backend) -->
       <n-card :bordered="false" class="settings-card">
-        <div class="section-header">
-          <n-icon size="18" color="#8B5CF6"><Server /></n-icon>
-          <span class="section-title">{{ t('settings.localService') }}</span>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-purple)"><Server /></n-icon>
+          <span class="app-section-title">{{ t('settings.localService') }}</span>
         </div>
         <div class="svc-row">
           <span class="svc-label">{{ t('settings.serviceVersion') }}</span>
@@ -124,7 +124,7 @@
         <div class="svc-row">
           <span class="svc-label">{{ t('settings.serviceStatus') }}</span>
           <span class="svc-value">
-            <n-icon size="14" :style="{ color: serviceHealthy ? '#22C55E' : '#F59E0B' }" class="svc-dot">
+            <n-icon size="14" :style="{ color: serviceHealthy ? 'var(--app-green)' : 'var(--app-yellow)' }" class="svc-dot">
               <CheckCircle v-if="serviceHealthy" /><AlertCircle v-else />
             </n-icon>
             {{ serviceStatusText }}
@@ -142,31 +142,11 @@
         </div>
       </n-card>
 
-      <!-- Tools & dependencies: runtime dir + built-in tools + automation components -->
+      <!-- Tools & dependencies: built-in tools + automation components -->
       <n-card :bordered="false" class="settings-card">
-        <div class="section-header">
-          <n-icon size="18" color="#22C55E"><Wrench /></n-icon>
-          <span class="section-title">{{ t('settings.dependencies') }}</span>
-        </div>
-
-        <!-- runtime dir = the container of the built-in tools + the embedded
-             python interpreter; it is a *tool* root, not a runtime version. -->
-        <div class="dep-sub-head">{{ t('settings.runtimeDir') }}</div>
-        <div class="tool-path-row">
-          <span class="tool-path-name">runtime</span>
-          <div class="tool-path-input-wrap">
-            <n-input
-              size="small"
-              :value="displayPaths.runtime"
-              readonly
-              style="width: 320px"
-              placeholder=".\runtime"
-            />
-            <n-button size="small" @click="handleBrowseDirectory('runtime')">
-              <template #icon><n-icon><FolderOpen /></n-icon></template>
-              {{ t('settings.browse') }}
-            </n-button>
-          </div>
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-green)"><Wrench /></n-icon>
+          <span class="app-section-title">{{ t('settings.dependencies') }}</span>
         </div>
 
         <div class="dep-sub-head">{{ t('settings.builtinTools') }}</div>
@@ -204,8 +184,8 @@
               {{ t('settings.reset') }}
             </n-button>
             <n-icon v-if="validatingTool === tool.name" size="16"><Loader2 class="spin" /></n-icon>
-            <n-icon v-else-if="tool.status === 'available'" size="16" color="#22C55E"><CheckCircle /></n-icon>
-            <n-icon v-else size="16" color="#F59E0B"><AlertCircle /></n-icon>
+            <n-icon v-else-if="tool.status === 'available'" size="16" color="var(--app-green)"><CheckCircle /></n-icon>
+            <n-icon v-else size="16" color="var(--app-yellow)"><AlertCircle /></n-icon>
           </div>
         </div>
 
@@ -220,7 +200,7 @@
 
         <!-- Traffic capture (PC side: mitmproxy) -->
         <div class="cap-row">
-          <div class="cap-status-icon" :style="{ color: trafficReady ? '#22C55E' : '#F59E0B' }">
+          <div class="cap-status-icon" :style="{ color: trafficReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
             <n-icon size="16"><CheckCircle v-if="trafficReady" /><AlertCircle v-else /></n-icon>
           </div>
           <div class="cap-info">
@@ -233,7 +213,7 @@
 
         <!-- Chinese input (device side: ADBKeyBoard) -->
         <div class="cap-row">
-          <div class="cap-status-icon" :style="{ color: imeAllReady ? '#22C55E' : '#F59E0B' }">
+          <div class="cap-status-icon" :style="{ color: imeAllReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
             <n-icon size="16"><CheckCircle v-if="imeAllReady" /><AlertCircle v-else /></n-icon>
           </div>
           <div class="cap-info">
@@ -243,7 +223,7 @@
             </template>
             <template v-else>
               <div v-for="st in imeStatuses" :key="st.device_id" class="cap-sub">
-                <n-icon size="12" :style="{ color: st.installed ? '#22C55E' : '#F59E0B' }">
+                <n-icon size="12" :style="{ color: st.installed ? 'var(--app-green)' : 'var(--app-yellow)' }">
                   <CheckCircle v-if="st.installed" /><AlertCircle v-else />
                 </n-icon>
                 {{ st.device_id }} · {{ st.installed ? t('settings.imeInstalled') : t('settings.imeNotInstalled') }}
@@ -257,9 +237,9 @@
 
       <!-- Signature Configs -->
       <n-card :bordered="false" class="settings-card">
-        <div class="section-header" style="margin-bottom:12px">
-          <n-icon size="18" color="#F59E0B"><Key /></n-icon>
-          <span class="section-title">{{ t('signature.title') }}</span>
+        <div class="app-section-header" style="margin-bottom:12px">
+          <n-icon size="18" color="var(--app-yellow)"><Key /></n-icon>
+          <span class="app-section-title">{{ t('signature.title') }}</span>
           <n-button size="tiny" type="primary" secondary style="margin-left:auto" @click="openAddSignature">
             <template #icon><n-icon size="14"><Plus /></n-icon></template>
           </n-button>
@@ -287,9 +267,9 @@
       <!-- Storage -->
       <n-card :bordered="false" class="settings-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div class="section-header" style="margin-bottom:0">
-            <n-icon size="18" color="#8B5CF6"><HardDrive /></n-icon>
-            <span class="section-title">{{ t('settings.storage') }}</span>
+          <div class="app-section-header" style="margin-bottom:0">
+            <n-icon size="18" color="var(--app-purple)"><HardDrive /></n-icon>
+            <span class="app-section-title">{{ t('settings.storage') }}</span>
             <span class="storage-total-text">{{ formatBytes(cacheInfo.total.size) }}</span>
           </div>
           <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
@@ -441,8 +421,8 @@ const logLevelOptions = [
   { label: 'Warn', value: 'warn' },
   { label: 'Error', value: 'error' },
 ]
-const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
-const displayPaths = reactive({ runtime: '', server: '', runtimeExecutable: '' })
+const pathSettings = reactive({ server: '.\\backend' })
+const displayPaths = reactive({ server: '', runtimeExecutable: '' })
 const cacheInfo = ref({
   tasks: { size: 0, files: 0 },
   output: { size: 0, files: 0 },
@@ -572,7 +552,7 @@ async function saveRuntimeOverride(row: RuntimeRow, value: string) {
 
 async function loadServiceInfo() {
   try {
-    void healthStore.check()
+    void healthStore.check(true)
     const svc = await serviceManager.getService('system')
     const info = await svc.getBackendInfo()
     if (info?.version) serviceVersion.value = String(info.version)
@@ -606,10 +586,10 @@ const themeOptions = computed(() => [
 ])
 // Storage categories: key → label, icon, color
 const storageCategories = [
-  { key: 'tasks',      label: 'settings.tasks',      icon: Archive,       color: '#F59E0B' },
-  { key: 'auto_tasks', label: 'settings.auto_tasks', icon: History,       color: '#8B5CF6' },
-  { key: 'output',     label: 'settings.output',     icon: FolderArchive, color: '#3B82F6' },
-  { key: 'logs',       label: 'settings.logs',       icon: FileText,      color: '#10B981' },
+  { key: 'tasks',      label: 'settings.tasks',      icon: Archive,       color: 'var(--app-yellow)' },
+  { key: 'auto_tasks', label: 'settings.auto_tasks', icon: History,       color: 'var(--app-purple)' },
+  { key: 'output',     label: 'settings.output',     icon: FolderArchive, color: 'var(--app-blue)' },
+  { key: 'logs',       label: 'settings.logs',       icon: FileText,      color: 'var(--app-green)' },
 ] as const
 
 const getCatSize = (key: string) => (cacheInfo.value as any)[key]?.size || 0
@@ -636,7 +616,6 @@ const loadSettings = async () => {
       for (const key of Object.keys(general)) {
         if (Object.prototype.hasOwnProperty.call(s, key)) (general as any)[key] = s[key]
       }
-      if (s.runtime) pathSettings.runtime = s.runtime as string
       if (s.server) pathSettings.server = s.server as string
       // Runtime overrides: empty means "let the discovery chain decide".
       for (const key of Object.keys(runtimeOverrides)) {
@@ -644,7 +623,6 @@ const loadSettings = async () => {
       }
     }
     if (model?.displayPaths) {
-      displayPaths.runtime = model.displayPaths.runtime || ''
       displayPaths.server = model.displayPaths.server || ''
       displayPaths.runtimeExecutable = model.displayPaths.runtimeExecutable || ''
     }
@@ -685,12 +663,12 @@ const saveLogLevel = async (value: string) => {
 const savePaths = async () => {
   try {
     const svc = await serviceManager.getService('settings')
-    await svc.saveSettings({ runtime: pathSettings.runtime, server: pathSettings.server })
+    await svc.saveSettings({ server: pathSettings.server })
     triggerSaved()
   } catch (e: any) { showError(t('settings.pathsFailed'), e.message) }
 }
 
-const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
+const handleBrowseDirectory = async (target: 'server') => {
   try {
     const svc = await serviceManager.getService('system')
     const result = await svc.selectDirectory({ title: t('settings.selectDir') })
@@ -701,11 +679,10 @@ const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
     pathSettings[target] = dir
     const settingsSvc = await serviceManager.getService('settings')
     const paths = await settingsSvc.resolveDisplayPaths(pathSettings)
-    displayPaths.runtime = paths.runtime || ''
     displayPaths.server = paths.server || ''
     await savePaths()
-    // BT_RUNTIME_DIR / BT_SERVER_DIR are injected when the Python backend is
-    // spawned, so a new path only takes effect after restarting the app.
+    // BT_SERVER_DIR is injected when the Python backend is spawned, so a new
+    // path only takes effect after restarting the app.
     showWarning(t('settings.pathRestartHint'))
   } catch (e) { showError(t('settings.selectDirFailed')) }
 }
@@ -808,15 +785,9 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.settings-page { max-width: var(--page-max-width); margin: 0 auto; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 .settings-content { display: flex; flex-direction: column; gap: 16px; }
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
-.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; justify-content: flex-start; }
-.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .storage-total-text { font-size: 16px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 12px; }
 .storage-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }
 .storage-bar-seg { height: 100%; transition: width 0.3s ease; }
@@ -831,7 +802,7 @@ onMounted(() => {
 .cap-info { flex: 1; min-width: 0; }
 .cap-label { font-size: 13px; font-weight: 500; color: var(--app-text-primary); }
 .cap-sub { font-size: 12px; color: var(--app-text-muted); margin-top: 2px; }
-.cap-mono { font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; }
+.cap-mono { font-family: var(--app-font-mono); font-size: 11px; word-break: break-all; }
 .cap-hint { font-size: 12px; color: var(--app-text-muted); margin-top: 4px; }
 /* local runtimes (Java / Python / Node) */
 .runtime-list { display: flex; flex-direction: column; gap: 2px; }
@@ -839,9 +810,9 @@ onMounted(() => {
 .runtime-row:hover { background: var(--app-storage-bg); }
 .runtime-info { flex: 1; min-width: 0; }
 .runtime-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
-.runtime-version { font-size: 11px; font-weight: 500; color: #22C55E; }
-.runtime-version.is-missing { color: #F59E0B; }
-.runtime-path { font-size: 11px; color: var(--app-text-muted); font-family: ui-monospace, Consolas, monospace; word-break: break-all; margin-top: 2px; }
+.runtime-version { font-size: 11px; font-weight: 500; color: var(--app-green); }
+.runtime-version.is-missing { color: var(--app-yellow); }
+.runtime-path { font-size: 11px; color: var(--app-text-muted); font-family: var(--app-font-mono); word-break: break-all; margin-top: 2px; }
 .runtime-hint { font-size: 11.5px; color: var(--app-text-muted); margin-top: 4px; }
 /* local service (version / status / directory) */
 .svc-row { display: flex; align-items: center; gap: 12px; padding: 6px 4px; }
@@ -854,12 +825,6 @@ onMounted(() => {
 .dep-sub-head-with-action { justify-content: space-between; }
 .storage-row-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
 .storage-row-sub { font-size: 11px; color: var(--app-text-muted); margin-top: 1px; }
-.info-grid { display: flex; flex-direction: column; gap: 10px; }
-.info-row { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(51,65,85,0.3); }
-.info-row:last-child { border-bottom: none; }
-.info-label { font-size: 13px; color: var(--app-text-muted); min-width: 100px; }
-.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
-.info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
 .info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
 
 .sig-list { display: flex; flex-direction: column; gap: 6px; }
@@ -867,16 +832,15 @@ onMounted(() => {
 .sig-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
 .sig-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); white-space: nowrap; }
 .sig-detail { font-size: 12px; color: var(--app-text-dim); white-space: nowrap; }
-.sig-path { font-size: 11px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sig-path { font-size: 11px; color: var(--app-text-dim); font-family: var(--app-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 
 .tool-path-list { display: flex; flex-direction: column; gap: 8px; }
 .tool-path-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-.tool-path-name { display: inline-flex; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 110px; font-family: 'Fira Code', monospace; padding-left: 4px; }
+.tool-path-name { display: inline-flex; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 110px; font-family: var(--app-font-mono); padding-left: 4px; }
 .tool-version { font-size: 11px; font-weight: 400; color: var(--app-text-muted); }
-.tool-version.is-missing { color: #F59E0B; }
+.tool-version.is-missing { color: var(--app-yellow); }
 .tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
 .tool-path-input-wrap :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
-.environ-path-input :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

@@ -26,16 +26,15 @@ export interface UserConfigApi {
 
 export interface SettingsViewModel {
   settings: Record<string, unknown>
-  displayPaths: { runtime: string; server: string; runtimeExecutable: string }
+  displayPaths: { server: string; runtimeExecutable: string }
 }
 
 export interface SettingsApi {
   getViewModel: () => Promise<SettingsViewModel>
   resolvePaths: (paths: {
-    runtime?: unknown
     server?: unknown
     runtimeExecutable?: unknown
-  }) => Promise<{ runtime: string; server: string; runtimeExecutable: string }>
+  }) => Promise<{ server: string; runtimeExecutable: string }>
 }
 
 /**

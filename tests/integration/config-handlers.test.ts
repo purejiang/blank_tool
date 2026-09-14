@@ -36,8 +36,11 @@ describe('Config Handler Integration', () => {
 
   describe('app config key constants', () => {
     it('APP_CONFIG_KEYS has expected keys', () => {
-      expect(APP_CONFIG_KEYS).toHaveProperty('runtime')
+      // `runtime` is deliberately absent: runtime/ is the shipped container of
+      // the bundled tools, always resolved from PATH_CONFIG_DEFAULTS.runtime.
+      expect(APP_CONFIG_KEYS).not.toHaveProperty('runtime')
       expect(APP_CONFIG_KEYS).toHaveProperty('server')
+      expect(APP_CONFIG_KEYS).toHaveProperty('runtimeExecutable')
     })
 
     it('APP_CONFIG_KEYS values are strings', () => {

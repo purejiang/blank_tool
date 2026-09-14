@@ -11,7 +11,7 @@
         :percentage="progress"
         :height="6"
         :border-radius="3"
-        color="#22C55E"
+        color="var(--app-green)"
         rail-color="rgba(255,255,255,0.1)"
       />
       <div class="loading-info">
@@ -70,14 +70,14 @@ const emit = defineEmits<{
   margin: 0 auto;
 }
 .loading-title {
-  font-family: Inter, sans-serif;
+  font-family: var(--app-font);
   font-size: 24px;
   font-weight: 700;
   color: var(--app-text-primary);
   margin: 12px 0 0;
 }
 .loading-subtitle {
-  font-family: Inter, sans-serif;
+  font-family: var(--app-font);
   font-size: 13px;
   color: var(--app-text-muted);
   margin: 4px 0 0;

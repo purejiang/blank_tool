@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
-import { getPythonProcess } from '../state'
+import { getPythonProcess, getPythonStartedAt } from '../state'
 import { getAppLocalDataPath } from '../utils/appPaths'
 import { getBaseDir, resolvePathFromBase } from '../python/paths'
 
@@ -198,7 +198,13 @@ export function setupElectronHandlers(): void {
   ipcMain.handle(IPC_CHANNEL_NAMES.getBackendHealth, async () => {
     const proc = getPythonProcess()
     const healthy = Boolean(proc && !proc.killed && proc.exitCode === null)
-    return { healthy, uptime_s: null, pending_requests: null }
+    // 运行时间在本地按 spawn 时刻算（不为了它发一次 JSON-RPC 往返）。
+    // 进程不健康时给 null，前端显示「—」而不是一个没意义的时间。
+    const startedAt = getPythonStartedAt()
+    const uptimeS = healthy && startedAt
+      ? Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+      : null
+    return { healthy, uptime_s: uptimeS }
   })
 
   // Electron log tail — reads last N lines of electron.log

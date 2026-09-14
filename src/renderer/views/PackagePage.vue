@@ -1,9 +1,9 @@
 <template>
-  <div class="package-page">
-    <div class="page-header">
+  <div class="package-page app-page">
+    <div class="app-page-header">
       <div>
-        <h1 class="page-title">{{ t('package.title') }}</h1>
-        <p class="page-subtitle">{{ t('package.subtitle') }}</p>
+        <h1 class="app-page-title">{{ t('package.title') }}</h1>
+        <p class="app-page-sub">{{ t('package.subtitle') }}</p>
       </div>
     </div>
 
@@ -192,7 +192,7 @@
         <!-- Progress bar: downloading = real %; running = indeterminate
              (operations emit no progress events — fake progress removed) -->
         <div v-if="task.status === 'downloading'" class="task-progress">
-          <n-progress type="line" :percentage="task.progress" :height="3" color="#22C55E" :indicator-placement="'none'" />
+          <n-progress type="line" :percentage="task.progress" :height="3" color="var(--app-green)" :indicator-placement="'none'" />
         </div>
         <div v-else-if="task.status === 'running'" class="task-progress">
           <div class="indeterminate-bar"><div class="indeterminate-fill" /></div>
@@ -559,19 +559,29 @@ async function exportTaskLog(task: Task) {
 // REPORT_DOC_CSS must stay a superset of the selectors the report HTML uses.
 const REPORT_DOC_CSS = `
 :root {
+  --app-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --app-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   --app-card-bg: #ffffff; --app-card-border: #e2e8f0;
   --app-text-secondary: #1e293b; --app-text-dim: #64748b; --app-text-muted: #94a3b8;
-  --app-red: #dc2626; --app-green: #16a34a; --app-warning: #d97706; --apk-accent: #3b82f6;
+  --app-hover: rgba(0,0,0,0.04); --app-storage-bg: rgba(0,0,0,0.06);
+  --app-red: #dc2626; --app-red-bg: rgba(220,38,38,0.12);
+  --app-green: #16a34a; --app-green-bg: rgba(22,163,74,0.12);
+  --app-yellow: #d97706; --app-yellow-bg: rgba(217,119,6,0.12);
+  --apk-accent: #3b82f6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --app-card-bg: #16202f; --app-card-border: #27354a;
     --app-text-secondary: #e2e8f0; --app-text-dim: #94a3b8; --app-text-muted: #64748b;
-    --app-red: #f87171; --app-green: #4ade80; --app-warning: #fbbf24; --apk-accent: #60a5fa;
+    --app-hover: rgba(255,255,255,0.05); --app-storage-bg: rgba(255,255,255,0.08);
+    --app-red: #f87171; --app-red-bg: rgba(248,113,113,0.14);
+    --app-green: #4ade80; --app-green-bg: rgba(74,222,128,0.14);
+    --app-yellow: #fbbf24; --app-yellow-bg: rgba(251,191,36,0.14);
+    --apk-accent: #60a5fa;
   }
 }
 body { margin: 0; padding: 16px; background: #f4f6f8; color: var(--app-text-secondary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  font-family: var(--app-font); }
 @media (prefers-color-scheme: dark) { body { background: #0d141f; } }
 .apk-info { display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.6; }
 .apk-card { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-radius: 10px; padding: 10px 14px; }
@@ -594,18 +604,18 @@ body { margin: 0; padding: 16px; background: #f4f6f8; color: var(--app-text-seco
 .apk-table th { text-align: left; color: var(--app-text-dim); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--app-card-border); padding: 5px 8px; white-space: nowrap; }
 .apk-table td { padding: 5px 8px; border-bottom: 1px solid var(--app-card-border); color: var(--app-text-secondary); vertical-align: top; word-break: break-word; }
 .apk-table tr:last-child td { border-bottom: none; }
-.apk-table tbody tr:hover { background: rgba(128,128,128,0.07); }
-.apk-table .mono { font-family: monospace; }
+.apk-table tbody tr:hover { background: var(--app-hover); }
+.apk-table .mono { font-family: var(--app-font-mono); }
 .apk-table .nowrap { white-space: nowrap; }
-.apk-parent { font-family: monospace; font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
-.apk-res { font-size: 11px; color: var(--app-text-muted); font-family: monospace; }
+.apk-parent { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
+.apk-res { font-size: 11px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
 .apk-archchip { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; margin: 1px 3px 1px 0; }
 .apk-lv { display: inline-block; font-size: 11px; border-radius: 4px; padding: 1px 7px; font-weight: 600; white-space: nowrap; }
-.apk-lv--danger { background: rgba(239,68,68,0.12); color: var(--app-red); }
-.apk-lv--normal { background: rgba(128,128,128,0.12); color: var(--app-text-dim); }
-.apk-lv--ok { background: rgba(34,197,94,0.12); color: var(--app-green); }
-.apk-mini { display: inline-block; font-family: monospace; font-size: 11px; background: rgba(217,119,6,0.12); color: var(--app-warning, #d97706); border-radius: 3px; padding: 0 5px; margin: 0 2px; }
-.apk-warn { background: rgba(217,119,6,0.1); border: 1px solid rgba(217,119,6,0.25); color: var(--app-warning, #d97706); border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
+.apk-lv--danger { background: var(--app-red-bg); color: var(--app-red); }
+.apk-lv--normal { background: var(--app-storage-bg); color: var(--app-text-dim); }
+.apk-lv--ok { background: var(--app-green-bg); color: var(--app-green); }
+.apk-mini { display: inline-block; font-family: var(--app-font-mono); font-size: 11px; background: var(--app-yellow-bg); color: var(--app-yellow); border-radius: 3px; padding: 0 5px; margin: 0 2px; }
+.apk-warn { background: var(--app-yellow-bg); border: 1px solid var(--app-yellow); color: var(--app-yellow); border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
 .apk-muted { color: var(--app-text-dim); font-size: 12px; }
 .apk-copy { color: var(--app-text-dim); opacity: 0.4; margin-left: 6px; display: inline-flex; align-items: center; vertical-align: middle; }
 .apk-copy svg { display: block; }
@@ -1548,11 +1558,11 @@ function renderApkInfo(data: any) {
 </script>
 
 <style scoped>
-.package-page { max-width: var(--page-max-width); margin: 0 auto; height: calc(100vh - 48px); display: flex; flex-direction: column; }
+/* height:100% = .main-content 的内容盒高（100vh - 24px 下边距）。
+   原来写的是 calc(100vh - 48px)，把外壳的上下 24px 内边距硬编进来了——
+   外壳 padding 一改这页就悄悄短一截。顶部留白现在归 .app-page-header 管。 */
+.package-page { height: 100%; display: flex; flex-direction: column; }
 .task-list-area { flex: 1; overflow-y: auto; min-height: 0; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 
 /* New Task Bar */
 .new-task-bar {
@@ -1623,7 +1633,7 @@ function renderApkInfo(data: any) {
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .task-time { font-size: 11px; color: var(--app-text-dim); }
-.task-duration { font-size: 11px; color: var(--app-text-muted); font-family: monospace; }
+.task-duration { font-size: 11px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
 /* Bottom-left meta line: creation time + duration, always visible on the card */
 .task-meta-row {
   display: flex; align-items: center; gap: 6px;
@@ -1638,7 +1648,7 @@ function renderApkInfo(data: any) {
   position: relative;
   height: 3px;
   border-radius: 2px;
-  background: rgba(128, 128, 128, 0.18);
+  background: var(--app-storage-bg);
   overflow: hidden;
 }
 .indeterminate-fill {
@@ -1647,7 +1657,7 @@ function renderApkInfo(data: any) {
   bottom: 0;
   width: 40%;
   border-radius: 2px;
-  background: #22C55E;
+  background: var(--app-green);
   animation: indeterminate-slide 1.4s ease-in-out infinite;
 }
 @keyframes indeterminate-slide {
@@ -1662,7 +1672,7 @@ function renderApkInfo(data: any) {
 }
 .task-error {
   font-size: 12px; color: var(--app-red);
-  padding: 8px 10px; background: rgba(239,68,68,0.08); border-radius: 6px;
+  padding: 8px 10px; background: var(--app-red-bg); border-radius: 6px;
 }
 .task-output {
   display: flex; align-items: center; gap: 6px;
@@ -1675,7 +1685,7 @@ function renderApkInfo(data: any) {
   background: var(--app-code-bg);
   border-radius: 6px;
   padding: 8px 10px;
-  font-family: 'Fira Code', monospace;
+  font-family: var(--app-font-mono);
   font-size: 11px;
   line-height: 1.6;
 }
@@ -1687,7 +1697,7 @@ function renderApkInfo(data: any) {
   margin: 0 0 6px;
   font-family: var(--app-font, system-ui);
   font-size: 11px;
-  color: var(--app-text-tertiary, #888);
+  color: var(--app-text-dim);
   line-height: 1.5;
 }
 
@@ -1738,24 +1748,24 @@ function renderApkInfo(data: any) {
 .apk-table td { padding: 5px 8px; border-bottom: 1px solid var(--app-card-border); color: var(--app-text-secondary); vertical-align: top; word-break: break-word; }
 .apk-table tr:last-child td { border-bottom: none; }
 /* hover affordance so long tables (permissions / metadata) stay scannable */
-.apk-table tbody tr:hover { background: rgba(128,128,128,0.07); }
-.apk-table .mono { font-family: monospace; }
+.apk-table tbody tr:hover { background: var(--app-hover); }
+.apk-table .mono { font-family: var(--app-font-mono); }
 .apk-table .nowrap { white-space: nowrap; }
 
 /* metadata parent column stays on one line */
-.apk-parent { font-family: monospace; font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
-.apk-res { font-size: 11px; color: var(--app-text-muted); font-family: monospace; }
+.apk-parent { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text-dim); white-space: nowrap; }
+.apk-res { font-size: 11px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
 
 .apk-archchip { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; margin: 1px 3px 1px 0; }
 
 .apk-lv { display: inline-block; font-size: 11px; border-radius: 4px; padding: 1px 7px; font-weight: 600; white-space: nowrap; }
-.apk-lv--danger { background: rgba(239,68,68,0.12); color: var(--app-red); }
-.apk-lv--normal { background: rgba(128,128,128,0.12); color: var(--app-text-dim); }
-.apk-lv--ok { background: rgba(34,197,94,0.12); color: var(--app-green); }
+.apk-lv--danger { background: var(--app-red-bg); color: var(--app-red); }
+.apk-lv--normal { background: var(--app-storage-bg); color: var(--app-text-dim); }
+.apk-lv--ok { background: var(--app-green-bg); color: var(--app-green); }
 
-.apk-mini { display: inline-block; font-family: monospace; font-size: 11px; background: rgba(217,119,6,0.12); color: var(--app-warning, #d97706); border-radius: 3px; padding: 0 5px; margin: 0 2px; }
+.apk-mini { display: inline-block; font-family: var(--app-font-mono); font-size: 11px; background: var(--app-yellow-bg); color: var(--app-yellow); border-radius: 3px; padding: 0 5px; margin: 0 2px; }
 
-.apk-warn { background: rgba(217,119,6,0.1); border: 1px solid rgba(217,119,6,0.25); color: var(--app-warning, #d97706); border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
+.apk-warn { background: var(--app-yellow-bg); border: 1px solid var(--app-yellow); color: var(--app-yellow); border-radius: 6px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
 .apk-muted { color: var(--app-text-dim); font-size: 12px; }
 
 .apk-copy { color: var(--app-text-dim); opacity: 0.4; cursor: pointer; margin-left: 6px; display: inline-flex; align-items: center; vertical-align: middle; transition: opacity .15s, color .15s; }

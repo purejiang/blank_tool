@@ -1,9 +1,9 @@
 <template>
-  <div class="auto-page">
-    <div class="page-header">
+  <div class="auto-page app-page">
+    <div class="app-page-header">
       <div>
-        <h1 class="page-title">{{ t('automation.title') }}</h1>
-        <p class="page-subtitle">{{ t('automation.subtitle') }}</p>
+        <h1 class="app-page-title">{{ t('automation.title') }}</h1>
+        <p class="app-page-sub">{{ t('automation.subtitle') }}</p>
       </div>
     </div>
 
@@ -745,13 +745,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.auto-page { max-width: var(--page-max-width); margin: 0 auto; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex: none; }
-.page-title {
-  font-family: Inter, sans-serif; font-size: 22px; font-weight: 700;
-  color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em;
-}
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
+.auto-page { height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .three-cols {
   flex: 1; display: grid;
   /* 列宽由 gridStyle 内联给定：两侧列可拖拽调宽（localStorage 持久化），
@@ -787,7 +781,6 @@ onMounted(() => {
    underlying `elementTimeoutMs` state is KEPT (it is still the fallback used
    when building steps), only the control is removed. */
 .col-empty { margin: auto; text-align: center; }
-.muted { color: var(--app-text-muted); font-size: 12px; }
 
 /* center editor */
 .editor-title {
@@ -819,17 +812,17 @@ onMounted(() => {
   font-size: 11px;
   color: var(--app-text-muted);
 }
-.autosave-hint.saved { color: #18a058; }
+.autosave-hint.saved { color: var(--app-green); }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 /* right run console: controls / panel / history stacked with a uniform gap
    (the panel itself absorbs the slack) */
 .col-right { gap: 8px; }
-.steps-json { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
+.steps-json { font-family: var(--app-font-mono); font-size: 12px; }
 .json-status { font-size: 11.5px; margin-top: 4px; }
-.json-status.ok { color: #18a058; }
-.json-status.bad { color: #d03050; }
+.json-status.ok { color: var(--app-green); }
+.json-status.bad { color: var(--app-red); }
 .editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; color: var(--app-text-muted); }

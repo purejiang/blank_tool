@@ -1,7 +1,7 @@
 <template>
   <div class="run-panel">
-    <!-- ============ status bar (one line, replaces the old title + summary
-         + report-button + run-dir rows) ============ -->
+    <!-- ============ status bar (one line: status + summary + 详情 + report
+         actions; replaces the old title + summary + run-dir rows) ============ -->
     <!-- NOTE: this bar is `.run-status`, deliberately NOT `.status-bar` —
          main.css styles `.status-bar` globally for the app footer
          (height:100% + space-between). A scoped rule only wins for the
@@ -9,21 +9,26 @@
          stretched this bar across the whole panel and pushed the tabs +
          steps/logs out of the clipped area. -->
     <div class="run-status" :class="statusClass">
-      <span class="dot" />
-      <span class="st-label">{{ statusLabel }}</span>
-      <span class="st-meta" v-if="!idle">
-        <span>{{ src.passed }}/{{ src.total }}</span>
-        <span class="sep">·</span>
-        <span>{{ fmtDur(src.durationMs) }}</span>
-        <template v-if="shotCount">
+      <!-- left half: status + summary. It may wrap internally (the summary
+           drops to a second line as ONE block), which keeps the actions
+           pinned to the right instead of being pushed off the edge. -->
+      <div class="st-main">
+        <span class="dot" />
+        <span class="st-label">{{ statusLabel }}</span>
+        <span class="st-meta" v-if="!idle">
+          <span>{{ src.passed }}/{{ src.total }}</span>
           <span class="sep">·</span>
-          <span>{{ t('automation.shotCountLabel', { n: shotCount }) }}</span>
-        </template>
-        <template v-if="src.trafficTotal">
-          <span class="sep">·</span>
-          <span>{{ t('automation.fRequests') }} {{ src.trafficTotal }}</span>
-        </template>
-      </span>
+          <span>{{ fmtDur(src.durationMs) }}</span>
+          <template v-if="shotCount">
+            <span class="sep">·</span>
+            <span>{{ t('automation.shotCountLabel', { n: shotCount }) }}</span>
+          </template>
+          <template v-if="src.trafficTotal">
+            <span class="sep">·</span>
+            <span>{{ t('automation.fRequests') }} {{ src.trafficTotal }}</span>
+          </template>
+        </span>
+      </div>
 
       <div class="st-acts">
         <n-popover v-if="hasDetails" trigger="click" placement="bottom-end" :show-arrow="false">
@@ -63,6 +68,16 @@
             </div>
           </div>
         </n-popover>
+        <!-- Report actions live here (status bar, right end) so the tabs row
+             keeps only the log filter + the report-view close button. -->
+        <n-button v-if="src.taskId && !running" size="tiny" :loading="exporting" @click="emit('open-file')">
+          <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
+          {{ t('automation.openInBrowser') }}
+        </n-button>
+        <n-button v-if="src.taskId && !running" size="tiny" @click="emit('download-report')">
+          <template #icon><n-icon size="13"><Download /></n-icon></template>
+          {{ t('automation.downloadReport') }}
+        </n-button>
       </div>
     </div>
 
@@ -72,9 +87,9 @@
       <span v-if="src.crashLog" class="crash-log">{{ src.crashLog }}</span>
     </div>
 
-    <!-- ============ tabs: steps / requests / logs share ONE block;
-         report actions live on the right of this row so the status
-         bar stays a single calm line ============ -->
+    <!-- ============ tabs: steps / requests / logs share ONE block; only the
+         log filter + the report-view close button sit on this row — the
+         report actions live up in the status bar ============ -->
     <div class="tabs">
       <button
         v-for="tb in tabs" :key="tb.key" type="button"
@@ -87,14 +102,6 @@
         <span v-if="tab === 'logs' && logs.length" class="only-err">
           <n-checkbox v-model:checked="onlyErrors" size="small">{{ t('automation.onlyErrors') }}</n-checkbox>
         </span>
-        <n-button v-if="src.taskId && !running" size="tiny" :loading="exporting" @click="emit('open-file')">
-          <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
-          {{ t('automation.openInBrowser') }}
-        </n-button>
-        <n-button v-if="src.taskId && !running" size="tiny" @click="emit('download-report')">
-          <template #icon><n-icon size="13"><Download /></n-icon></template>
-          {{ t('automation.downloadReport') }}
-        </n-button>
         <n-button v-if="isReport" size="tiny" text :title="t('common.close')" @click="emit('close-report')">
           <template #icon><n-icon size="13"><X /></n-icon></template>
         </n-button>
@@ -466,26 +473,32 @@ watch(visibleLogs, async () => {
 
 /* ---- status bar ---- */
 .run-status {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  display: flex; align-items: center; gap: 8px;
   padding: 7px 9px; border-radius: 8px;
   border: 1px solid var(--app-card-border);
   background: var(--app-card-bg);
   flex: none;
 }
+/* left half: status + summary — absorbs the slack and wraps internally
+   (summary moves to a second line as ONE block, so numbers never split) */
+.st-main { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; flex: 1 1 auto; min-width: 0; }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--app-text-muted); }
 .run-status.idle .st-label { color: var(--app-text-muted); font-weight: 400; }
-.run-status.ok .dot { background: #18a058; }
-.run-status.bad .dot { background: #d03050; }
-.run-status.warn .dot { background: #f0a020; }
-.run-status.run .dot { background: #2080f0; }
+.run-status.ok .dot { background: var(--app-green); }
+.run-status.bad .dot { background: var(--app-red); }
+.run-status.warn .dot { background: var(--app-yellow); }
+.run-status.run .dot { background: var(--app-blue); }
 .st-label { font-size: 12px; font-weight: 600; flex: none; }
-.run-status.ok .st-label { color: #18a058; }
-.run-status.bad .st-label { color: #d03050; }
-.run-status.warn .st-label { color: #f0a020; }
-.run-status.run .st-label { color: #2080f0; }
-.st-meta { font-size: 11.5px; color: var(--app-text-secondary); flex: 1; min-width: 0; }
+.run-status.ok .st-label { color: var(--app-green); }
+.run-status.bad .st-label { color: var(--app-red); }
+.run-status.warn .st-label { color: var(--app-yellow); }
+.run-status.run .st-label { color: var(--app-blue); }
+/* min-width stays auto: the summary must keep its min-content width so it
+   wraps to the next line as a whole instead of breaking between numbers */
+.st-meta { font-size: 11.5px; color: var(--app-text-secondary); flex: 1 1 auto; }
 .st-meta .sep { color: var(--app-text-muted); margin: 0 3px; }
-.st-acts { display: flex; align-items: center; gap: 4px; flex: none; margin-left: auto; }
+/* right half: 详情 + report actions — never wraps, always flush right */
+.st-acts { display: flex; align-items: center; gap: 5px; flex: none; }
 
 /* ---- details popover ---- */
 .detail-pop { display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
@@ -493,10 +506,10 @@ watch(visibleLogs, async () => {
 .dp-k { flex: none; color: var(--app-text-muted); min-width: 62px; }
 .dp-v { color: var(--app-text-secondary); word-break: break-all; }
 .dp-v.path { cursor: copy; }
-.dp-v.path:hover { color: #2080f0; }
+.dp-v.path:hover { color: var(--app-blue); }
 
 .crash-note { display: flex; flex-direction: column; gap: 2px; font-size: 12px; margin-top: 6px; flex: none; }
-.crash-text { color: #d03050; font-weight: 600; }
+.crash-text { color: var(--app-red); font-weight: 600; }
 .crash-log { color: var(--app-text-muted); word-break: break-all; }
 
 /* ---- tabs ---- */
@@ -512,14 +525,14 @@ watch(visibleLogs, async () => {
   font-family: inherit; display: flex; align-items: center; gap: 5px;
 }
 .tab:hover { color: var(--app-text-primary); }
-.tab.on { color: #2080f0; font-weight: 600; border-bottom-color: #2080f0; }
+.tab.on { color: var(--app-blue); font-weight: 600; border-bottom-color: var(--app-blue); }
 .tab-n {
   font-size: 10.5px; font-weight: 400; color: var(--app-text-muted);
   background: var(--app-blue-bg); border-radius: 8px; padding: 0 5px; line-height: 15px;
 }
 .only-err { display: flex; align-items: center; padding-bottom: 2px; }
-/* report actions live on the tabs row, right-aligned; bottom padding
-   keeps their hit area above the tab underline */
+/* log filter + report-view close, right-aligned; bottom padding keeps their
+   hit area above the tab underline */
 .tabs-acts {
   margin-left: auto; display: flex; align-items: center; gap: 5px;
   padding-bottom: 3px; flex: none;
@@ -541,12 +554,12 @@ watch(visibleLogs, async () => {
 .srow:hover { background: var(--app-blue-bg); }
 .s-rel { flex: none; width: 48px; font-size: 10.5px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
 .s-idx { flex: none; font-weight: 600; color: var(--app-text-muted); }
-.srow.ok .s-idx { color: #18a058; }
-.srow.bad .s-idx { color: #d03050; }
-.srow.pending .s-idx { color: #2080f0; }
+.srow.ok .s-idx { color: var(--app-green); }
+.srow.bad .s-idx { color: var(--app-red); }
+.srow.pending .s-idx { color: var(--app-blue); }
 .s-act { flex: none; color: var(--app-text-primary); font-weight: 500; }
 .s-msg { flex: 1; min-width: 0; color: var(--app-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.srow.pending .s-msg { color: #2080f0; font-style: italic; }
+.srow.pending .s-msg { color: var(--app-blue); font-style: italic; }
 .s-shots {
   flex: none; display: flex; align-items: center; gap: 2px;
   font-size: 10.5px; color: var(--app-text-muted);
@@ -564,22 +577,22 @@ watch(visibleLogs, async () => {
 /* ---- requests ---- */
 .req-list { display: flex; flex-direction: column; }
 .req-row { display: flex; gap: 7px; align-items: baseline; font-size: 11.5px; padding: 2px 0; }
-.req-row.ok .req-s { color: #18a058; }
-.req-row.warn .req-s { color: #f0a020; }
-.req-row.bad .req-s { color: #d03050; }
+.req-row.ok .req-s { color: var(--app-green); }
+.req-row.warn .req-s { color: var(--app-yellow); }
+.req-row.bad .req-s { color: var(--app-red); }
 .req-t { flex: none; width: 50px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; font-size: 10.5px; }
 .req-m { flex: none; width: 48px; font-weight: 600; color: var(--app-text-primary); }
 .req-s { flex: none; width: 32px; }
 .req-u { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--app-text-muted); }
-.trunc-note { font-size: 11px; color: #f0a020; padding: 6px 0; }
+.trunc-note { font-size: 11px; color: var(--app-yellow); padding: 6px 0; }
 
 /* ---- logs ---- */
-.log-scroll { background: #0f1115; border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px 8px; }
-.log-line { display: flex; gap: 8px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11.5px; line-height: 1.55; }
-.ll-ts { flex: none; width: 46px; color: #5c6672; font-variant-numeric: tabular-nums; }
-.ll-text { flex: 1; min-width: 0; color: #c8d0da; white-space: pre-wrap; word-break: break-all; }
-.log-line.error .ll-text { color: #ff7a85; }
-.log-line.error .ll-ts { color: #8a4a52; }
-.log-line.warn .ll-text { color: #f0c060; }
-.log-scroll .empty { color: #5c6672; }
+.log-scroll { background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px 8px; }
+.log-line { display: flex; gap: 8px; font-family: var(--app-font-mono); font-size: 11.5px; line-height: 1.55; }
+.ll-ts { flex: none; width: 46px; color: var(--app-console-dim); font-variant-numeric: tabular-nums; }
+.ll-text { flex: 1; min-width: 0; color: var(--app-console-fg); white-space: pre-wrap; word-break: break-all; }
+.log-line.error .ll-text { color: var(--app-console-err); }
+.log-line.error .ll-ts { color: var(--app-console-err-dim); }
+.log-line.warn .ll-text { color: var(--app-console-warn); }
+.log-scroll .empty { color: var(--app-console-dim); }
 </style>

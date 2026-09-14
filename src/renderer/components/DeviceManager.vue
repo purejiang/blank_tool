@@ -2,7 +2,7 @@
   <n-card :bordered="false" class="device-card" size="small">
     <div class="dm-header">
       <div class="dm-header-left">
-        <n-icon size="18" color="#22C55E"><Smartphone /></n-icon>
+        <n-icon size="18" color="var(--app-green)"><Smartphone /></n-icon>
         <span class="dm-title">{{ t('device.devices') }}</span>
       </div>
       <div class="dm-header-right">
@@ -14,7 +14,7 @@
     </div>
     <n-spin :show="loading">
       <div v-if="devices.length === 0" class="empty-state">
-        <n-icon size="36" color="#475569"><Smartphone /></n-icon>
+        <n-icon size="36" color="var(--app-text-muted)"><Smartphone /></n-icon>
         <p class="empty-title">{{ t('device.noDevices') }}</p>
         <p class="empty-desc">{{ t('device.noDevicesDesc') }}</p>
       </div>
@@ -27,7 +27,7 @@
         >
           <template #prefix>
             <div class="device-icon-wrap">
-              <n-icon size="20" :color="device.status === 'device' ? '#22C55E' : '#F59E0B'">
+              <n-icon size="20" :color="device.status === 'device' ? 'var(--app-green)' : 'var(--app-yellow)'">
                 <Smartphone />
               </n-icon>
             </div>
@@ -47,7 +47,7 @@
                 @click.stop="handleTogglePin(device.id)"
               >
                 <template #icon>
-                  <n-icon size="14" :color="deviceStore.isPinned(device.id) ? '#22C55E' : undefined">
+                  <n-icon size="14" :color="deviceStore.isPinned(device.id) ? 'var(--app-green)' : undefined">
                     <component :is="deviceStore.isPinned(device.id) ? PinOff : Pin" />
                   </n-icon>
                 </template>
@@ -328,7 +328,7 @@ const handleDeviceSelection = async (id: string) => {
   border: none;
   background: transparent;
   color: var(--app-text-muted);
-  font-family: 'Fira Code', monospace;
+  font-family: var(--app-font-mono);
   font-size: 11px;
   padding: 4px 6px 4px 10px;
   cursor: pointer;
@@ -350,7 +350,7 @@ const handleDeviceSelection = async (id: string) => {
   color: var(--app-red);
 }
 .dm-title {
-  font-family: Inter, sans-serif;
+  font-family: var(--app-font);
   font-size: 15px;
   font-weight: 600;
   color: var(--app-text-primary);
@@ -374,7 +374,7 @@ const handleDeviceSelection = async (id: string) => {
 .device-model { font-size: 14px; font-weight: 600; color: var(--app-text-primary); display: inline-flex; align-items: center; gap: 4px; }
 .device-pin-flag { color: var(--app-green); flex-shrink: 0; }
 .device-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.device-serial { font-family: 'Fira Code', monospace; font-size: 11px; color: var(--app-text-dim); }
+.device-serial { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text-dim); }
 :deep(.device-list .n-list-item) { background: transparent !important; }
 :deep(.device-list .n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
 :deep(.device-list .n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }

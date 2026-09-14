@@ -24,6 +24,7 @@ interface DeviceStoreLike {
   selectedDevice: DeviceLike | null
   shellOutput: string
   apps: InstalledApp[]
+  appsLoaded: boolean
   appType: string
   isMonitoring: boolean
   updateDevices: (devices: unknown[]) => void
@@ -250,10 +251,11 @@ class DeviceService {
 
   async refreshAppList() {
     const store = getDeviceStore()
-    store.apps = []
     const dev = store.selectedDevice
     if (!dev || !dev.id) return
 
+    // 先不动 store.apps：拉取期间保留旧列表 + loading 遮罩，比先清空再填好，
+    // 不会闪一下空态。换设备的作废由 deviceStore 的 watch 负责。
     try {
       const resp = await requireApiMethod('getInstalledApps')(dev.id, store.appType)
       const list: unknown[] = Array.isArray(resp) ? (resp as unknown[]) : []
@@ -275,6 +277,10 @@ class DeviceService {
     } catch (e) {
       log.error('Failed to refresh app list:', e)
       store.apps = []
+    } finally {
+      // 成功、失败都算「已尝试过获取」——空态文案据此区分
+      // 「还没点获取」和「获取到了 0 条」。
+      store.appsLoaded = true
     }
   }
 
