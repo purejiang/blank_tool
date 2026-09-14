@@ -71,21 +71,28 @@ window.pluginBridge.log(text, level)       // 直接往前端控制台写一行
 window.pluginBridge.getMeta()              // 请求插件元数据
 window.pluginBridge.getDevices()           // 请求设备列表快照（只读）
 window.pluginBridge.pickFile(options)      // 弹原生文件选择框（Electron DialogOptions：title/filters/properties）
+window.pluginBridge.pickDirectory(options) // 弹原生目录选择框（同上）
+window.pluginBridge.openPath(path, reveal) // 用系统打开文件/目录；reveal=true 资源管理器定位
+window.pluginBridge.toast(text, level)     // 宿主轻提示（info/success/warning/error）
+window.pluginBridge.confirm(title, content)// 应用内确认框（naive dialog），结果经 onConfirm 回调
 window.pluginBridge.onLog(cb)              // cb(text, level) 后端/自身日志
 window.pluginBridge.onResult(cb)           // cb(payload) 运行完成
 window.pluginBridge.onError(cb)            // cb(message) 运行出错
 window.pluginBridge.onMeta(cb)             // cb({name, display_name, version, author, description, params})
 window.pluginBridge.onDevices(cb)          // cb([{id, name, status}]) 设备列表快照
 window.pluginBridge.onFile(cb)             // cb(canceled, filePath) 选中的文件路径（取消时 filePath 为空串）
+window.pluginBridge.onDir(cb)              // cb(canceled, dirPath) 选中的目录路径
+window.pluginBridge.onConfirm(cb)          // cb(ok) 确认框结果
 ```
 
 iframe → 宿主消息类型（桥接脚本封装，一般不用手写）：
 `plugin.ready` / `plugin.getMeta` / `plugin.run{params}` / `plugin.cancel` / `plugin.log{text,level}` /
-`plugin.getDevices` / `plugin.pickFile{options}`
+`plugin.getDevices` / `plugin.pickFile{options}` / `plugin.pickDirectory{options}` /
+`plugin.openPath{path,reveal}` / `plugin.toast{text,level}` / `plugin.confirm{title,content}`
 
 宿主 → iframe 消息类型：`__bridge.meta{info}` / `__bridge.log{text,level}` /
 `__bridge.result{payload}` / `__bridge.error{message}` / `__bridge.devices{devices}` /
-`__bridge.file{canceled, filePath}`
+`__bridge.file{canceled, filePath}` / `__bridge.dir{canceled, dirPath}` / `__bridge.confirm{ok}`
 
 宿主侧只接受 `event.source === iframe.contentWindow` 且 `type` 以 `plugin.` 开头的消息（动作白名单）。
 
@@ -122,15 +129,15 @@ iframe → 宿主消息类型（桥接脚本封装，一般不用手写）：
 | 插件元数据 | `getMeta()` + `onMeta` | name/display_name/version/author/description/params |
 | 设备列表 | `getDevices()` + `onDevices` | 只读快照 `[{id,name,status}]`，自己渲染下拉框 |
 | 文件选择 | `pickFile(options)` + `onFile` | 原生文件管理器对话框（Electron DialogOptions），只回传 `{canceled, filePath}` |
+| 目录选择 | `pickDirectory(options)` + `onDir` | 同文件选择，目录模式，回传 `{canceled, dirPath}` |
+| 打开文件/目录 | `openPath(path, reveal?)` | 系统打开；`reveal=true` 资源管理器定位；失败写插件控制台 |
+| 轻提示 | `toast(text, level)` | 宿主代发 naive message（info/success/warning/error） |
+| 确认框 | `confirm(title, content)` + `onConfirm` | 应用内 naive dialog（**别用原生 showMessageBox**，不跟主题），回传 `ok` |
 
 **建议新增（按实用度排序，均走白名单桥）：**
 
 | 能力 | 形态 | 备注 |
 |---|---|---|
-| 目录选择 | `pickDirectory()` + `onDir` | `electronAPI.selectDirectory` 已有，照 pickFile 抄 |
-| 打开文件/所在目录 | `openPath(filePath, reveal?)` | `electronAPI.openPath` 已有（reveal = 资源管理器定位） |
-| 轻提示 toast | `toast(text, level)` | 宿主代发 message.success/error/warning |
-| 应用内确认框 | `confirm(title, content) → bool` | Naive dialog（原生 showMessageBox 不跟主题，别用） |
 | 主题/语言 | 并入 `getMeta` 返回 | `theme: 'light'\|'dark'`、`locale`，供插件 UI 适配 |
 | 插件本地存储 | `kv.get/set(key)` | **iframe 是 opaque origin，localStorage 直接抛 SecurityError**，必须宿主代理；按插件 id 隔离命名空间 |
 

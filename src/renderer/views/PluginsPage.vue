@@ -243,7 +243,7 @@ const uiFrameEl = ref<HTMLIFrameElement | null>(null)
  */
 const BRIDGE_SCRIPT = `<script>
 (function () {
-  var handlers = { log: [], result: [], error: [], meta: [], devices: [], file: [] };
+  var handlers = { log: [], result: [], error: [], meta: [], devices: [], file: [], dir: [], confirm: [] };
   window.addEventListener('message', function (e) {
     var d = e.data || {};
     if (d.type === '__bridge.log') handlers.log.forEach(function (f) { f(d.text, d.level); });
@@ -252,6 +252,8 @@ const BRIDGE_SCRIPT = `<script>
     else if (d.type === '__bridge.meta') handlers.meta.forEach(function (f) { f(d.info); });
     else if (d.type === '__bridge.devices') handlers.devices.forEach(function (f) { f(d.devices); });
     else if (d.type === '__bridge.file') handlers.file.forEach(function (f) { f(d.canceled, d.filePath); });
+    else if (d.type === '__bridge.dir') handlers.dir.forEach(function (f) { f(d.canceled, d.dirPath); });
+    else if (d.type === '__bridge.confirm') handlers.confirm.forEach(function (f) { f(d.ok); });
   });
   window.pluginBridge = {
     run: function (params) { parent.postMessage({ type: 'plugin.run', params: params || {} }, '*'); },
@@ -260,12 +262,18 @@ const BRIDGE_SCRIPT = `<script>
     getMeta: function () { parent.postMessage({ type: 'plugin.getMeta' }, '*'); },
     getDevices: function () { parent.postMessage({ type: 'plugin.getDevices' }, '*'); },
     pickFile: function (options) { parent.postMessage({ type: 'plugin.pickFile', options: options || {} }, '*'); },
+    pickDirectory: function (options) { parent.postMessage({ type: 'plugin.pickDirectory', options: options || {} }, '*'); },
+    openPath: function (path, reveal) { parent.postMessage({ type: 'plugin.openPath', path: String(path == null ? '' : path), reveal: !!reveal }, '*'); },
+    toast: function (text, level) { parent.postMessage({ type: 'plugin.toast', text: String(text == null ? '' : text), level: level || 'info' }, '*'); },
+    confirm: function (title, content) { parent.postMessage({ type: 'plugin.confirm', title: String(title == null ? '' : title), content: String(content == null ? '' : content) }, '*'); },
     onLog: function (f) { handlers.log.push(f); },
     onResult: function (f) { handlers.result.push(f); },
     onError: function (f) { handlers.error.push(f); },
     onMeta: function (f) { handlers.meta.push(f); },
     onDevices: function (f) { handlers.devices.push(f); },
-    onFile: function (f) { handlers.file.push(f); }
+    onFile: function (f) { handlers.file.push(f); },
+    onDir: function (f) { handlers.dir.push(f); },
+    onConfirm: function (f) { handlers.confirm.push(f); }
   };
   parent.postMessage({ type: 'plugin.ready' }, '*');
 })();
@@ -355,6 +363,65 @@ function onWindowMessage(e: MessageEvent) {
           pushLog(`pickFile failed: ${err?.message || String(err)}`, 'error')
         }
       })()
+      break
+    }
+    case 'plugin.pickDirectory': {
+      // directory flavor of pickFile — same native dialog, directory mode
+      const api = window.electronAPI as any
+      void (async () => {
+        try {
+          const res = await api.selectDirectory({
+            properties: ['openDirectory'],
+            ...(typeof d.options === 'object' && d.options ? d.options : {}),
+          })
+          postToUi('__bridge.dir', {
+            canceled: !res || res.canceled || !res.filePaths?.length,
+            dirPath: res?.filePaths?.[0] || '',
+          })
+        } catch (err: any) {
+          postToUi('__bridge.dir', { canceled: true, dirPath: '' })
+          pushLog(`pickDirectory failed: ${err?.message || String(err)}`, 'error')
+        }
+      })()
+      break
+    }
+    case 'plugin.openPath': {
+      // open a file/dir via the OS (reveal=true → explorer selects it);
+      // failures surface in the plugin console, no reply message
+      const api = window.electronAPI as any
+      void (async () => {
+        try {
+          const res = await api.openPath(String(d.path ?? ''), d.reveal ? { reveal: true } : null)
+          if (res && res.success === false) {
+            pushLog(`openPath failed: ${res.error || 'unknown'}`, 'error')
+          }
+        } catch (err: any) {
+          pushLog(`openPath failed: ${err?.message || String(err)}`, 'error')
+        }
+      })()
+      break
+    }
+    case 'plugin.toast': {
+      // host-side light toast; level → naive message variant
+      const text = String(d.text ?? '')
+      if (d.level === 'success') message.success(text)
+      else if (d.level === 'error') message.error(text)
+      else if (d.level === 'warning') message.warning(text)
+      else message.info(text)
+      break
+    }
+    case 'plugin.confirm': {
+      // in-app confirm (naive dialog); resolves via __bridge.confirm{ok}
+      dialog.warning({
+        title: String(d.title ?? ''),
+        content: String(d.content ?? ''),
+        positiveText: t('common.confirm'),
+        negativeText: t('common.cancel'),
+        onPositiveClick: () => postToUi('__bridge.confirm', { ok: true }),
+        onNegativeClick: () => postToUi('__bridge.confirm', { ok: false }),
+        onMaskClick: () => postToUi('__bridge.confirm', { ok: false }),
+        onEsc: () => postToUi('__bridge.confirm', { ok: false }),
+      })
       break
     }
   }
