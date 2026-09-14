@@ -209,6 +209,10 @@ import {
   useDialog,
 } from 'naive-ui'
 
+// 「添加步骤」的 + 号 —— 之前漏了这行 import，模板里的 <Plus /> 解析不到
+// 组件，图标槽渲染成空（按钮看起来没有图标）
+import { Plus } from 'lucide-vue-next'
+
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
