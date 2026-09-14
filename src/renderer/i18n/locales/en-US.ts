@@ -605,6 +605,8 @@ export default {
     runDir: 'Run folder',
     clickToOpen: 'Click to open',
     captureTrafficHint: 'Also capture network requests for this run (mitmdump; device proxy is restored afterwards)',
+    captureFilterPlaceholder: 'Domain/IP filter, comma-separated',
+    captureFilterHint: 'Only requests whose host contains ANY entry are recorded (substring match; empty = all). IP entries only match literal-IP connections; for domains type part of the hostname (e.g. example.com)',
     reportUnavailable: 'No run report available',
     reportExportFailed: 'Report export failed',
     streamSilentHint: 'No live logs/steps arrived for this run — replayed the persisted report instead',

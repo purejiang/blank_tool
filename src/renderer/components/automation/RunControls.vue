@@ -21,6 +21,19 @@
         </template>
         {{ t('automation.captureTrafficHint') }}
       </n-tooltip>
+      <n-tooltip v-if="captureTraffic" placement="top">
+        <template #trigger>
+          <n-input
+            :value="trafficHostFilter"
+            size="small"
+            class="capture-filter"
+            :placeholder="t('automation.captureFilterPlaceholder')"
+            clearable
+            @update:value="emit('update:trafficHostFilter', $event)"
+          />
+        </template>
+        {{ t('automation.captureFilterHint') }}
+      </n-tooltip>
       <n-tooltip v-if="!running" :disabled="canRun" placement="top">
         <template #trigger>
           <n-button type="primary" size="small" :disabled="!canRun" class="run-btn" @click="emit('run')">
@@ -45,7 +58,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NCheckbox, NSelect, NIcon, NTooltip } from 'naive-ui'
+import { NButton, NCheckbox, NInput, NSelect, NIcon, NTooltip } from 'naive-ui'
 import { Play, Square } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 
@@ -53,6 +66,8 @@ const props = defineProps<{
   autoDeviceId: string
   /** Run-time option: capture network traffic for this run. */
   captureTraffic: boolean
+  /** Comma-separated host substrings; only matching hosts are recorded. */
+  trafficHostFilter: string
   running: boolean
   canRun: boolean
   /** Non-blocking preflight warnings rendered under the controls row. */
@@ -62,6 +77,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:autoDeviceId', v: string): void
   (e: 'update:captureTraffic', v: boolean): void
+  (e: 'update:trafficHostFilter', v: string): void
   (e: 'run'): void
   (e: 'stop'): void
 }>()
@@ -85,6 +101,9 @@ const hints = computed(() => props.hints ?? [])
 .run-controls-row { display: flex; align-items: center; gap: 8px; }
 .run-controls-row :deep(.n-select) { flex: 1; min-width: 0; }
 .capture-toggle { flex: none; }
+/* fixed-width filter input: the device select (flex:1, min-width:0) absorbs
+   the slack, so the row never clips the trailing run button */
+.capture-filter { flex: none; width: 180px; }
 .run-controls-row :deep(.capture-toggle .n-checkbox__label) { font-size: 12px; padding-left: 6px; }
 .run-btn { flex: none; }
 .run-hints { display: flex; flex-direction: column; gap: 2px; }

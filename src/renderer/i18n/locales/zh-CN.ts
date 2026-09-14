@@ -608,6 +608,8 @@ export default {
     runDir: '运行目录',
     clickToOpen: '点击打开',
     captureTrafficHint: '本次运行同时抓取网络请求（mitmdump，结束后自动恢复设备代理）',
+    captureFilterPlaceholder: '域名/IP 过滤，逗号分隔',
+    captureFilterHint: '只记录 host 包含任一条件的请求（子串匹配，留空 = 全部）。按 IP 过滤只对直连 IP 的请求有效；按域名过滤填写域名的一部分即可（如 example.com）',
     reportUnavailable: '暂无可导出的运行报告',
     reportExportFailed: '报告导出失败',
     streamSilentHint: '本次运行没有收到实时日志/步骤，已用落盘报告回放',

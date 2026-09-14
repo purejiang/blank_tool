@@ -122,6 +122,7 @@
         <RunControls
           v-model:auto-device-id="autoDeviceId"
           v-model:capture-traffic="captureTraffic"
+          v-model:traffic-host-filter="trafficHostFilter"
           :running="runner.running"
           :can-run="canRun"
           :hints="runHints"
@@ -288,6 +289,9 @@ watch(autoDeviceId, (v) => {
 // Traffic capture (mitmdump) — opt-in per run; the backend restores the
 // device proxy in a finally block on every exit path.
 const captureTraffic = ref(false)
+// Comma-separated host substrings; only matching hosts are recorded
+// (empty = record everything). Not persisted — capture is per-run anyway.
+const trafficHostFilter = ref('')
 
 // ---------------- preflight capability probes (read-only) ----------------
 // mitmproxy is PC-side (global); ADBKeyBoard is device-side (per device).
@@ -639,6 +643,7 @@ async function runScript() {
       package_name: store.selectedProject?.package_name || '',
       steps: s.steps,
       capture_traffic: captureTraffic.value,
+      traffic_host_filter: trafficHostFilter.value.trim(),
     })
   } catch (e: any) {
     message.error(e?.message || String(e))

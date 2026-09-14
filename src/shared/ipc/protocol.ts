@@ -520,6 +520,8 @@ export interface ApiMethodMap {
       steps?: Array<Record<string, unknown>>
       continue_on_error?: boolean
       capture_traffic?: boolean
+      /** Comma-separated host substrings; only matching hosts are recorded. */
+      traffic_host_filter?: string
       task_id: string
     }
     result: void

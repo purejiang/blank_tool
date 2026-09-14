@@ -7,8 +7,10 @@ Runs INSIDE mitmdump (passed via ``mitmdump -s <this file>``), so importing
 stdlib-only. Configuration comes from environment variables:
 
   TRAFFIC_JSONL       output file, one JSON object per line (required)
-  TRAFFIC_HOST_FILTER optional substring; only flows whose host contains it
-                      are recorded (empty = record everything)
+  TRAFFIC_HOST_FILTER optional comma-separated substrings; only flows whose
+                      host contains ANY of them are recorded (empty = record
+                      everything). Whitespace around entries and empty
+                      segments are ignored.
   TRAFFIC_MAX_BODY    bodies larger than this are replaced by a
                       ``{"truncated": true, "size": N}`` marker (default 16 KiB)
 
@@ -29,7 +31,11 @@ import time
 from mitmproxy import http
 
 _OUT = os.environ.get("TRAFFIC_JSONL", "")
-_HOST_FILTER = os.environ.get("TRAFFIC_HOST_FILTER", "")
+# Comma-separated substring allowlist, evaluated as OR: a flow is recorded
+# when its host contains ANY entry. Note the host is what the client sent in
+# CONNECT / Host — for domain traffic it is the DOMAIN, never the resolved
+# IP, so IP entries only match connections made to a literal IP.
+_FILTERS = [s.strip() for s in os.environ.get("TRAFFIC_HOST_FILTER", "").split(",") if s.strip()]
 try:
     _MAX_BODY = int(os.environ.get("TRAFFIC_MAX_BODY", "16384"))
 except ValueError:
@@ -54,7 +60,7 @@ def response(flow: http.HTTPFlow) -> None:
     global _fh, _count
     if not _OUT:
         return
-    if _HOST_FILTER and _HOST_FILTER not in flow.request.pretty_host:
+    if _FILTERS and not any(s in flow.request.pretty_host for s in _FILTERS):
         return
     rec = {
         "ts": time.time(),

@@ -13,6 +13,8 @@ export interface RunPayload {
   package_name: string
   steps: unknown[]
   capture_traffic: boolean
+  /** Comma-separated host substrings; empty string = record everything. */
+  traffic_host_filter?: string
 }
 
 /** One console line. `ts` is epoch **seconds** (renderer clock on receipt,
@@ -106,6 +108,7 @@ export function useScriptRunner() {
         steps: plainSteps,
         continue_on_error: false,
         capture_traffic: payload.capture_traffic,
+        traffic_host_filter: payload.traffic_host_filter || '',
         task_id: id,
       })
       await taskStream.waitForPhase(id, 'operation')
