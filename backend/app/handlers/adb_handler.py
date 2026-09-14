@@ -14,6 +14,7 @@ from app.common.exceptions import ToolNotFoundError, ToolException
 from app.utils.logger import Logger
 from app.tools.adb import Adb
 from app.utils.env import get_output_dir
+from app.utils.png import recompress_png_lossless_async
 from app.automation.input import (
     input_text,
     keyevent,
@@ -486,6 +487,10 @@ def device_screenshot(params, stream_handler):
     if pull.get("returncode", 1) != 0:
         raise ToolException(pull.get("stderr", "Pull screenshot failed"))
 
+    # Same lossless shrink automation screenshots get (~10% on screencap
+    # PNGs), on a background thread — seconds of deflate must not delay
+    # the handler's response.
+    recompress_png_lossless_async(file_path)
     return {"success": True, "file_path": file_path}
 
 

@@ -10,6 +10,10 @@ from typing import Any, Dict, Optional
 
 from app.automation.adb import run_adb
 from app.utils.env import get_output_dir
+from app.utils.logger import Logger
+from app.utils.png import recompress_png_lossless_async
+
+logger = Logger.get_logger("Automation")
 
 
 def launch_app(device_id: str, package_name: str) -> Dict[str, Any]:
@@ -69,6 +73,10 @@ def take_screenshot(
     if pull.get("returncode", 1) != 0:
         return {"success": False, "file_path": "",
                 "error": pull.get("stderr", "pull failed")}
+    # Lossless shrink in place (~10% on screencap PNGs) on a background
+    # thread — level-9 deflate takes seconds, which must not delay the
+    # step. Atomic replace + never-raises, so this cannot fail the step.
+    recompress_png_lossless_async(file_path, logger)
     return {"success": True, "file_path": file_path, "error": ""}
 
 
