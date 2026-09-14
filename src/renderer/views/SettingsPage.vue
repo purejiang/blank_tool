@@ -336,9 +336,22 @@
             <span class="app-section-title">{{ t('settings.storage') }}</span>
             <span class="storage-total-text">{{ formatBytes(cacheInfo.total.size) }}</span>
           </div>
-          <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-          </n-button>
+          <div class="hdr-actions">
+            <n-button
+              size="tiny"
+              quaternary
+              type="error"
+              :title="t('settings.clearAllStorage')"
+              :loading="clearingTarget === 'all'"
+              :disabled="cacheInfo.total.size === 0"
+              @click="confirmClear('all')"
+            >
+              <template #icon><n-icon><Trash2 /></n-icon></template>
+            </n-button>
+            <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
+              <template #icon><n-icon><RefreshCw /></n-icon></template>
+            </n-button>
+          </div>
         </div>
 
         <!-- Proportional bar -->
@@ -373,22 +386,6 @@
               <template #icon><n-icon size="13"><Trash2 /></n-icon></template>
             </n-button>
           </div>
-        </div>
-
-        <!-- Clear all -->
-        <div style="margin-top:12px">
-          <n-button
-            size="small"
-            type="error"
-            ghost
-            block
-            :loading="clearingTarget === 'all'"
-            :disabled="cacheInfo.total.size === 0"
-            @click="confirmClear('all')"
-          >
-            <template #icon><n-icon><Trash2 /></n-icon></template>
-            {{ t('settings.clearAllStorage') }}
-          </n-button>
         </div>
       </n-card>
       </section>
@@ -991,6 +988,7 @@ onMounted(() => {
 .set-control { flex: none; }
 .set-w200 { width: 200px; }
 .set-w140 { width: 140px; }
+.hdr-actions { display: flex; align-items: center; gap: 4px; }
 .info-grid { display: flex; flex-direction: column; gap: 6px; }
 .info-row { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; }
 .info-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; }
