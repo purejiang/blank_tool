@@ -17,7 +17,7 @@
         <div
           v-for="item in navItems"
           :key="item.key"
-          class="nav-item"
+          class="app-nav-item"
           :class="{ active: activePanel === item.key }"
           @click="activePanel = item.key"
         >
@@ -955,9 +955,6 @@ onMounted(() => {
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 .settings-body { display: flex; gap: 16px; align-items: flex-start; }
 .settings-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
-.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border-left: 2px solid transparent; font-size: 13px; color: var(--app-text-secondary); cursor: pointer; user-select: none; }
-.nav-item:hover { background: var(--app-storage-bg); }
-.nav-item.active { background: var(--app-storage-bg); border-left-color: var(--app-blue); color: var(--app-blue); font-weight: 600; }
 .settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .panel-title { font-size: 16px; font-weight: 600; color: var(--app-text-primary); margin-bottom: 2px; }
 .panel-sec { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--app-text-dim); margin-bottom: -6px; }

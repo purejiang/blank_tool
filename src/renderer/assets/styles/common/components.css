@@ -119,3 +119,26 @@
 .app-mono {
   font-family: var(--app-font-mono);
 }
+
+/* 垂直导航 / 菜单项（图标 + 文字）：悬停与选中态统一走主题 token，
+   设置页、诊断页等左侧列表共用；选中态由使用方加 .active */
+.app-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--app-radius-sm);
+  font-size: 13px;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.app-nav-item:hover {
+  background: var(--app-hover);
+}
+.app-nav-item.active {
+  background: var(--app-blue-bg);
+  color: var(--app-blue);
+  font-weight: 600;
+}
