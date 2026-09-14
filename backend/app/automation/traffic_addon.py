@@ -14,7 +14,10 @@ stdlib-only. Configuration comes from environment variables:
   TRAFFIC_MAX_BODY    bodies larger than this are replaced by a
                       ``{"truncated": true, "size": N}`` marker (default 16 KiB)
 
-One record per response::
+One record per completed response, plus one record (``status: null``,
+``error`` set) per FAILED flow via the ``error`` hook — TLS handshake
+failures, timeouts, CONNECT refusals — so missing requests are visible
+with their reason instead of silently dropped::
 
   {ts, method, url, host, port, status, req_headers, req_body,
    resp_headers, resp_body, client_addr, error}
@@ -56,8 +59,20 @@ def _encode_body(data: bytes):
         return {"b64": base64.b64encode(data).decode("ascii")}
 
 
-def response(flow: http.HTTPFlow) -> None:
+def _write(rec: dict) -> None:
     global _fh, _count
+    try:
+        if _fh is None:
+            _fh = open(_OUT, "a", encoding="utf-8")
+        _fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        _fh.flush()
+        _count += 1
+    except Exception:
+        # never let a write failure kill the proxy
+        pass
+
+
+def response(flow: http.HTTPFlow) -> None:
     if not _OUT:
         return
     if _FILTERS and not any(s in flow.request.pretty_host for s in _FILTERS):
@@ -76,15 +91,36 @@ def response(flow: http.HTTPFlow) -> None:
         "client_addr": flow.client_conn.peername[0] if flow.client_conn.peername else "",
         "error": str(flow.error.msg) if flow.error else None,
     }
-    try:
-        if _fh is None:
-            _fh = open(_OUT, "a", encoding="utf-8")
-        _fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        _fh.flush()
-        _count += 1
-    except Exception:
-        # never let a write failure kill the proxy
-        pass
+    _write(rec)
+
+
+def error(flow: http.HTTPFlow) -> None:
+    """Flows that never complete — upstream TLS handshake failure, timeout,
+    client abort, CONNECT refused — never reach ``response()``, so without
+    this hook they vanish from the capture entirely (the "some requests are
+    missing" incident: HMS grs.dbankcloud.* failed upstream cert verify and
+    left no trace). Record them with the reason instead."""
+    if not _OUT:
+        return
+    if flow.response is not None:
+        return  # response() already recorded it
+    if _FILTERS and not any(s in flow.request.pretty_host for s in _FILTERS):
+        return
+    rec = {
+        "ts": time.time(),
+        "method": flow.request.method,
+        "url": flow.request.pretty_url,
+        "host": flow.request.pretty_host,
+        "port": flow.request.port,
+        "status": None,
+        "req_headers": dict(flow.request.headers),
+        "req_body": _encode_body(flow.request.raw_content),
+        "resp_headers": {},
+        "resp_body": None,
+        "client_addr": flow.client_conn.peername[0] if flow.client_conn.peername else "",
+        "error": str(flow.error.msg) if flow.error else "unknown error",
+    }
+    _write(rec)
 
 
 def done():

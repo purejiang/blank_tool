@@ -306,6 +306,15 @@ def start_capture(
         "--listen-host", "127.0.0.1",
         "--listen-port", str(port),
         "--set", f"confdir={_mitmproxy_conf()}",
+        # Capture tool: do NOT verify the upstream (real server) certificate.
+        # Default verification caused silent misses — e.g. HMS grs.dbankcloud.*
+        # failed with "unable to get local issuer certificate" (chain the
+        # bundled trust store lacks), the flow errored out and the addon's
+        # response() hook never fired, so those requests vanished from the
+        # jsonl. Client-side trust is what matters for decryption and is
+        # handled by the device CA (install_ca); upstream verification only
+        # decides whether we can READ the response.
+        "--set", "ssl_insecure=true",
         "--set", "termlog_verbosity=warn",
         "-s", _addon_path(),
     ]
