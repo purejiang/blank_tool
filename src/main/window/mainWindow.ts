@@ -1,6 +1,5 @@
 import { BrowserWindow, Menu, app } from 'electron';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { appStore } from '../stores/index';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathConfig';
@@ -9,11 +8,10 @@ import { createTray } from './tray';
 import { setupQuitDialog } from './quitDialog';
 import { toNonEmptyString } from '../utils/strings';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// electron-vite 的 ESM shim 注入 __dirname/__filename（指向 bundle 所在的 dist/main/）
 const __iconPath = path.join(__dirname, 'assets', 'images', 'icon.png');
 
-// At runtime (vite-plugin-electron bundle) __dirname is dist/main/; the '..' ascends to dist/,
+// At runtime (electron-vite bundle) __dirname is dist/main/; the '..' ascends to dist/,
 // so candidates like 'preload\index.mjs' resolve to dist/preload/index.mjs.
 function resolvePathFromMainDir(targetPath: string): string {
   if (path.isAbsolute(targetPath)) return targetPath;
@@ -53,8 +51,8 @@ export function createMainWindow(): BrowserWindow {
 
   Menu.setApplicationMenu(null);
 
-  if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
-    window.loadURL(process.env.VITE_DEV_SERVER_URL);
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
+    window.loadURL(process.env.ELECTRON_RENDERER_URL);
     window.webContents.openDevTools();
   } else if (!app.isPackaged) {
     const devServerUrl = toNonEmptyString(appStore.get(APP_CONFIG_KEYS.devServerUrl), PATH_CONFIG_DEFAULTS.devServerUrl);

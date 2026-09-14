@@ -18,9 +18,9 @@ async function main() {
   console.log(`[build] Version: ${pkg.version}`);
   console.log(`[build] Platform: ${platform}`);
 
-  // Step 1: Build Vite (main + preload + renderer)
+  // Step 1: Build main + preload + renderer (electron-vite)
   console.log('[build] Building Vite...');
-  execSync('npx vite build', { cwd: root, stdio: 'inherit' });
+  execSync('npx electron-vite build', { cwd: root, stdio: 'inherit' });
 
   // Step 2: Package with electron-builder
   const cmd = `npx electron-builder --${platform}${extraArgs ? ' ' + extraArgs : ''}`;

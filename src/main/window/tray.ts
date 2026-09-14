@@ -1,10 +1,8 @@
 import { Tray, Menu, nativeImage, app } from 'electron';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { getMainWindow, setTray } from '../state';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// electron-vite 的 ESM shim 注入 __dirname（指向 bundle 所在的 dist/main/）
 const __iconPath = path.join(__dirname, 'assets', 'images', 'icon.png');
 
 export function createTray(): Tray {

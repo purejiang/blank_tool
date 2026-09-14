@@ -5,7 +5,7 @@
 ## 常用命令
 
 ```bash
-npm run dev          # 启动开发模式（仅运行 vite；vite-plugin-electron 自动拉起 Electron 主进程/preload）
+npm run dev          # 启动开发模式（electron-vite dev：构建 main/preload + renderer dev server + 自动拉起 Electron）
 npm run lint         # vue-tsc --noEmit --pretty false（非 ESLint，是 Vue 类型检查）
 npm run typecheck    # vue-tsc --noEmit（带详细输出）
 npm run test         # vitest run（仅跑 TS 单测 + 集成测试）
@@ -16,7 +16,7 @@ npm run build:win    # node scripts/build.mjs --win（mac/linux 同理）
 npm run release     # 一键发版（流程见下方"发版流程"）
 ```
 
-Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。Vite 的 `root` 是 `src/`，不是项目根。
+Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。构建工具是 `electron-vite`（配置在 `electron.vite.config.ts`，分 main/preload/renderer 三段），renderer 的 `root` 是 `src/`，不是项目根；输出仍为 `dist/{main,preload,renderer}`，`package.json` 的 `main` 指向 `dist/main/main.js`。注意：electron-vite 对 main/preload 强制 `copyPublicDir = false`，`src/main/public` 的图标靠配置里的内联插件 `copy-main-public-assets` 拷入 `dist/main/`。
 
 ## 测试有三套，分别由不同运行器驱动（最容易踩坑）
 
@@ -35,7 +35,7 @@ Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接�
 
 `tsconfig.json` 显式关闭了 `strict`、`noImplicitAny`、`strictNullChecks`、`noUnusedLocals`、`noUnusedParameters`。**不要**按默认严格模式去"修复"已有代码，也不要在 PR review 时把 nullable 误判为 bug。新增代码可以写得严格些，但不要大面积重构老代码。
 
-路径别名（在 `tsconfig.json` 和 `vite.config.ts` 都有定义）：`@/` → `src/renderer/`，另有 `@components`、`@views`、`@services`、`@stores`、`@composables`、`@utils`、`@assets`。
+路径别名（在 `tsconfig.json` 和 `electron.vite.config.ts` 的 renderer 段都有定义）：`@/` → `src/renderer/`，另有 `@components`、`@views`、`@services`、`@stores`、`@composables`、`@utils`、`@assets`。
 
 ## 架构（三进程桌面应用）
 

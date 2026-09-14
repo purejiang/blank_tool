@@ -1,15 +1,11 @@
 import { app } from 'electron';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import log from 'electron-log';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathConfig';
 import { toNonEmptyString } from '../utils/strings';
 
 type AppStoreLike = { get(key: string): unknown };
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export function getBaseDir(): string {
   return !app.isPackaged
