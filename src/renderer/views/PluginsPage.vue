@@ -91,14 +91,17 @@
 
           <!-- 自定义 UI 模式：整块右侧交给插件自己的界面（运行按钮 / 日志 / 结果
                都由它渲染，宿主只负责转发日志与结果，否则会出现「里面一个运行按钮、
-               外面又一个」和两套日志）。 -->
-          <template v-if="uiHtml">
+               外面又一个」和两套日志）。按 ui_path 声明切模式（而非 html 是否已
+               加载），加载间隙显示占位——否则表单+运行按钮会闪出来一帧。 -->
+          <template v-if="isUiPlugin">
             <iframe
+              v-if="uiHtmlFor === selected!.name"
               ref="uiFrameEl"
               class="pl-ui-frame"
               sandbox="allow-scripts"
               :srcdoc="uiHtml"
             ></iframe>
+            <div v-else class="pl-ui-loading">{{ t('plugins.uiLoading') }}</div>
           </template>
 
           <!-- 无自定义 UI：宿主渲染 参数表单 + 运行/停止 + 日志 + 结果 -->
@@ -233,6 +236,12 @@ const onlyErrors = ref(false)
 const consoleEl = ref<HTMLElement | null>(null)
 // custom UI mode (package plugins with manifest ui)
 const uiHtml = ref('')
+/** which plugin's html uiHtml currently holds — the iframe renders only when
+ *  it equals the selected plugin's name (prevents cross-plugin bleed-through) */
+const uiHtmlFor = ref('')
+/** mode is decided by the DECLARATION (ui_path), not by load state — otherwise
+ *  the form+run-button branch flashes during the async ui load on every switch */
+const isUiPlugin = computed(() => !!selected.value?.ui_path)
 const uiFrameEl = ref<HTMLIFrameElement | null>(null)
 
 /**
@@ -303,13 +312,22 @@ function metaFor(p: PluginInfo | null) {
 }
 
 async function loadCustomUi(p: PluginInfo) {
-  uiHtml.value = ''
-  if (!p.ui_path) return
+  // uiHtmlFor tracks which plugin uiHtml belongs to: the iframe only renders
+  // when it matches the current selection, so switching plugins shows the
+  // loading placeholder instead of the PREVIOUS plugin's UI (or the form).
+  if (!p.ui_path) {
+    uiHtml.value = ''
+    uiHtmlFor.value = ''
+    return
+  }
   try {
     // readTextFile unwraps the { success, data } IPC envelope — passing the
     // raw result to srcdoc would render the string "[object Object]"
     uiHtml.value = injectBridge(await readTextFile(p.ui_path))
+    uiHtmlFor.value = p.name
   } catch (e: any) {
+    uiHtml.value = ''
+    uiHtmlFor.value = ''
     message.error(`${t('plugins.uiReadFail')}: ${e?.message || String(e)}`)
   }
 }
@@ -797,6 +815,18 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   width: 100%;
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  background: var(--app-card-bg);
+}
+.pl-ui-loading {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--app-text-muted);
   border: 1px solid var(--app-card-border);
   border-radius: 8px;
   background: var(--app-card-bg);

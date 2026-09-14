@@ -555,6 +555,7 @@ export default {
     overwriteMsg: '插件「{id}」已安装，覆盖将删除旧版本的全部文件，是否继续？',
     cancelled: '已取消',
     uiReadFail: '读取插件自定义 UI 失败',
+    uiLoading: '插件 UI 加载中…',
     listLabel: '插件列表',
     builtin: '内建',
     idLabel: 'ID',

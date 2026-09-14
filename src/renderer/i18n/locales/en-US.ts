@@ -552,6 +552,7 @@ export default {
     overwriteMsg: 'Plugin "{id}" is already installed. Overwriting deletes all files of the old version. Continue?',
     cancelled: 'Cancelled',
     uiReadFail: 'Failed to read the plugin custom UI',
+    uiLoading: 'Loading plugin UI…',
     listLabel: 'Plugins',
     builtin: 'Builtin',
     idLabel: 'ID',
