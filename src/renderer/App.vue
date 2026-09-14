@@ -57,7 +57,18 @@ import { persistLocale } from './i18n'
 const router = useRouter()
 const route = useRoute()
 const { t, locale: i18nLocale } = useI18n()
-const currentTheme = ref<GlobalTheme | null>(darkTheme)
+// 首帧主题与 index.html 的防闪烁脚本同源（bt:theme 优先，matchMedia 兜底），
+// 否则亮色用户冷启动会先渲染一帧暗色（Naive 默认 darkTheme）。
+const resolveInitialTheme = (): GlobalTheme | null => {
+  try {
+    const saved = localStorage.getItem('bt:theme')
+    if (saved) return saved === 'dark' ? darkTheme : null
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? darkTheme : null
+  } catch {
+    return null
+  }
+}
+const currentTheme = ref<GlobalTheme | null>(resolveInitialTheme())
 const { isLoading, progress, step, time, error, retryCount, maxRetries, retry } = useAppBootstrap(currentTheme)
 const themeOverrides = computed(() => selectOverrides(currentTheme.value))
 const sidebarCollapsed = ref(false)

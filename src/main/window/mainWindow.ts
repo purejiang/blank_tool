@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app } from 'electron';
+import { BrowserWindow, Menu, app, nativeTheme } from 'electron';
 import path from 'path';
 import { existsSync } from 'fs';
 import { appStore } from '../stores/index';
@@ -10,6 +10,16 @@ import { toNonEmptyString } from '../utils/strings';
 
 // electron-vite 的 ESM shim 注入 __dirname/__filename（指向 bundle 所在的 dist/main/）
 const __iconPath = path.join(__dirname, 'assets', 'images', 'icon.png');
+
+// 原生窗口底色，必须与 themes.css 的 --app-body-bg 一致：不设置时 Electron 用默认
+// 白色，暗色用户冷启动会看到一帧白闪（renderer 的 data-theme 尚未生效时）。
+const WINDOW_BG = { light: '#F1F5F9', dark: '#0F172A' } as const;
+
+function resolveWindowBackground(): string {
+  const mode = appStore.get('theme') || 'auto';
+  const dark = mode === 'dark' || (mode === 'auto' && nativeTheme.shouldUseDarkColors);
+  return dark ? WINDOW_BG.dark : WINDOW_BG.light;
+}
 
 // At runtime (electron-vite bundle) __dirname is dist/main/; the '..' ascends to dist/,
 // so candidates like 'preload\index.mjs' resolve to dist/preload/index.mjs.
@@ -38,6 +48,7 @@ export function createMainWindow(): BrowserWindow {
     // 三栏布局（minmax 栅格）的最小可用宽度；低于该值列会互相挤压
     minWidth: 960,
     minHeight: 640,
+    backgroundColor: resolveWindowBackground(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
