@@ -107,3 +107,57 @@ iframe → 宿主消息类型（桥接脚本封装，一般不用手写）：
 | 对话框 IPC | 复用既有 `showOpenDialog` / `showSaveDialog` / `readFile` |
 | 插件页 UI + 桥 | `src/renderer/views/PluginsPage.vue`、`src/renderer/services/PluginService.ts` |
 | 契约测试 | `tests/contracts/test_plugin_manager.py`、`tests/contracts/test_plugin_package.py` |
+
+## 六、插件能力清单
+
+### UI 侧（iframe 桥，`window.pluginBridge`）
+
+**现状：**
+
+| 能力 | 方法 | 说明 |
+|---|---|---|
+| 触发运行 | `run(params)` | 触发后端 `plugin.run`（流式） |
+| 取消 | `cancel()` | |
+| 写控制台 | `log(text, level)` | 宿主插件页控制台 |
+| 插件元数据 | `getMeta()` + `onMeta` | name/display_name/version/author/description/params |
+| 设备列表 | `getDevices()` + `onDevices` | 只读快照 `[{id,name,status}]`，自己渲染下拉框 |
+| 文件选择 | `pickFile(options)` + `onFile` | 原生文件管理器对话框（Electron DialogOptions），只回传 `{canceled, filePath}` |
+
+**建议新增（按实用度排序，均走白名单桥）：**
+
+| 能力 | 形态 | 备注 |
+|---|---|---|
+| 目录选择 | `pickDirectory()` + `onDir` | `electronAPI.selectDirectory` 已有，照 pickFile 抄 |
+| 打开文件/所在目录 | `openPath(filePath, reveal?)` | `electronAPI.openPath` 已有（reveal = 资源管理器定位） |
+| 轻提示 toast | `toast(text, level)` | 宿主代发 message.success/error/warning |
+| 应用内确认框 | `confirm(title, content) → bool` | Naive dialog（原生 showMessageBox 不跟主题，别用） |
+| 主题/语言 | 并入 `getMeta` 返回 | `theme: 'light'\|'dark'`、`locale`，供插件 UI 适配 |
+| 插件本地存储 | `kv.get/set(key)` | **iframe 是 opaque origin，localStorage 直接抛 SecurityError**，必须宿主代理；按插件 id 隔离命名空间 |
+
+### 后端侧（`run(context, **params)` 的 PluginContext）
+
+**现状：**
+
+| 能力 | API | 说明 |
+|---|---|---|
+| 内建工具 | `context.get_tool(name)` / `context.adb` 等 | adb/apktool/aapt/apksigner/zipalign（runtime/ 内） |
+| 找外部可执行文件 | `context.which(name)` | `BT_TOOL_<NAME>` env → `runtime/<name>/` → PATH |
+| 跑外部命令 | `context.run_command(cmd, ...)` | 行级流式输出 + 超时 + 协作式取消 |
+| 产物目录 | `context.work_dir(task_id, sub)` | 每次运行的落盘目录 |
+| 结束 | `return context.finish(result)` | 保证 complete 恰好一次 |
+| 流式事件 | `context.log/error/step_start/step/complete/is_cancelled` | 日志与进度 |
+
+**建议新增：**
+
+| 能力 | 形态 | 备注 |
+|---|---|---|
+| 插件安装目录 | `context.plugin_dir` | 现在靠 `os.path.dirname(__file__)` 自己拼；正式暴露后打包带工具的插件不依赖 CWD 与入口文件名 |
+| 标准路径 | `context.paths` | output/cache/tasks 等，避免插件自己 import env |
+| 插件配置存储 | `context.kv.get/set` | 与 UI 侧 kv 同一条链路（后端落盘，按 id 隔离） |
+
+### 带外部工具的打包约定（如 scrcpy / jadx）
+
+- zip 可带整个工具目录，导入时解压到 `<用户插件目录>/<id>/`（zip-slip 有防护）。
+- **manifest 不管路径**：相对路径定位写在 `main.py` 里——`os.path.dirname(os.path.abspath(__file__))` 即安装目录，拼出工具绝对路径后交给 `context.run_command`。manifest 只声明 `entry`。
+- 不想打包进 zip 的工具走 `context.which(name)`（放 `runtime/<name>/` 或 PATH，或 `BT_TOOL_<NAME>` env 指定）。
+- 自带 adb 的工具（如 scrcpy）注意：通过 `env={"ADB": context.adb.tool_path}` 指向 runtime 的 adb，避免双 adb server 版本打架。
