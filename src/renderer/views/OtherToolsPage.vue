@@ -287,12 +287,20 @@ const autoDeviceId = ref(localStorage.getItem('bt:automationDeviceId') || '')
 watch(autoDeviceId, (v) => {
   try { localStorage.setItem('bt:automationDeviceId', v) } catch {}
 })
-// Traffic capture (mitmdump) — opt-in per run; the backend restores the
-// device proxy in a finally block on every exit path.
-const captureTraffic = ref(false)
-// Comma-separated host substrings; only matching hosts are recorded
-// (empty = record everything). Not persisted — capture is per-run anyway.
-const trafficHostFilter = ref('')
+// Traffic capture (mitmdump) — persisted like the device selection so the
+// run-settings dialog doesn't reset on every session (the settings button's
+// tooltip + the hints keep an active capture visible). The backend still
+// restores the device proxy in a finally block on every exit path.
+const captureTraffic = ref(localStorage.getItem('bt:autoCaptureTraffic') === '1')
+watch(captureTraffic, (v) => {
+  try { localStorage.setItem('bt:autoCaptureTraffic', v ? '1' : '0') } catch {}
+})
+// Filter conditions, comma-joined (the tags input in the run settings dialog
+// edits this string). Persisted alongside the switch.
+const trafficHostFilter = ref(localStorage.getItem('bt:autoTrafficHostFilter') || '')
+watch(trafficHostFilter, (v) => {
+  try { localStorage.setItem('bt:autoTrafficHostFilter', v) } catch {}
+})
 
 // ---------------- preflight capability probes (read-only) ----------------
 // mitmproxy is PC-side (global); ADBKeyBoard is device-side (per device).
