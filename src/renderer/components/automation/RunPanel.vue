@@ -143,12 +143,28 @@
           {{ running ? t('automation.requestsLiveHint') : t('automation.noRequests') }}
         </div>
         <div v-else class="req-list">
-          <div v-for="(rq, i) in requests" :key="i" class="req-row" :class="reqClass(rq)">
-            <span class="req-t">{{ reqRel(rq.ts) }}</span>
-            <span class="req-m">{{ rq.method }}</span>
-            <span class="req-s">{{ rq.status ?? (rq.error ? 'ERR' : '-') }}</span>
-            <span class="req-u" :title="rq.url">{{ rq.url }}</span>
-          </div>
+          <template v-for="(rq, i) in requests" :key="i">
+            <div class="req-row" :class="[reqClass(rq), { open: expandedReq === i }]" @click="toggleReq(i)">
+              <span class="req-t">{{ reqRel(rq.ts) }}</span>
+              <span class="req-m">{{ rq.method }}</span>
+              <span class="req-s">{{ rq.status ?? (rq.error ? 'ERR' : '-') }}</span>
+              <span class="req-u" :title="rq.url">{{ rq.url }}</span>
+            </div>
+            <div v-if="expandedReq === i" class="req-detail">
+              <template v-if="reqDetail[i]">
+                <div class="rd-sec">{{ t('automation.reqHeaders') }}</div>
+                <pre class="rd-pre">{{ headersText(reqDetail[i].req_headers) || t('automation.reqEmpty') }}</pre>
+                <div class="rd-sec">{{ t('automation.reqBody') }}</div>
+                <pre class="rd-pre">{{ bodyText(reqDetail[i].req_body) || t('automation.reqEmpty') }}</pre>
+                <div class="rd-sec">{{ t('automation.respHeaders') }}</div>
+                <pre class="rd-pre">{{ headersText(reqDetail[i].resp_headers) || t('automation.reqEmpty') }}</pre>
+                <div class="rd-sec">{{ t('automation.respBody') }}</div>
+                <pre class="rd-pre">{{ bodyText(reqDetail[i].resp_body) || t('automation.reqEmpty') }}</pre>
+              </template>
+              <div v-else-if="reqDetailLoading === i" class="rd-note">{{ t('automation.reqDetailLoading') }}</div>
+              <div v-else class="rd-note">{{ reqDetailError[i] || t('automation.reqDetailFail') }}</div>
+            </div>
+          </template>
           <div v-if="src.truncated" class="trunc-note">
             {{ t('automation.trafficTruncated', { n: src.trafficTotal }) }}
           </div>
@@ -302,6 +318,72 @@ function rel(ts: any): string {
 
 function reqRel(ts: any): string {
   return rel(ts)
+}
+
+// ------------------------------------------------------- request detail --
+// The report payload only carries summaries (ts/method/status/url) — bodies
+// and headers stay in the capture jsonl on disk (a run can log thousands of
+// requests, 16 KiB per body). Clicking a row lazily fetches ONE full record
+// via automation.traffic_detail and caches it for re-expansion.
+const expandedReq = ref<number | null>(null)
+const reqDetail = ref<Record<number, any>>({})
+const reqDetailLoading = ref<number | null>(null)
+const reqDetailError = ref<Record<number, string>>({})
+
+async function toggleReq(i: number) {
+  if (expandedReq.value === i) {
+    expandedReq.value = null
+    return
+  }
+  expandedReq.value = i
+  if (reqDetail.value[i] || reqDetailLoading.value === i) return
+  const taskId = src.value.taskId
+  if (!taskId) {
+    reqDetailError.value = { ...reqDetailError.value, [i]: t('automation.reqDetailFail') }
+    return
+  }
+  reqDetailLoading.value = i
+  try {
+    const res = await (window.electronAPI as any)?.callBackendAPI?.(
+      'automation.traffic_detail', { task_id: taskId, index: i })
+    if (res?.success && res.record) {
+      reqDetail.value = { ...reqDetail.value, [i]: res.record }
+    } else {
+      reqDetailError.value = {
+        ...reqDetailError.value,
+        [i]: res?.error || t('automation.reqDetailFail'),
+      }
+    }
+  } catch {
+    reqDetailError.value = { ...reqDetailError.value, [i]: t('automation.reqDetailFail') }
+  } finally {
+    reqDetailLoading.value = null
+  }
+}
+
+/** headers dict → "name: value" lines (sorted, stable order for reading) */
+function headersText(h: any): string {
+  if (!h || typeof h !== 'object') return ''
+  return Object.entries(h)
+    .map(([k, v]) => `${k}: ${String(v)}`)
+    .sort()
+    .join('\n')
+}
+
+/** addon wire shape → displayable text: {"text"} | {"b64"} | {"truncated",size} */
+function bodyText(b: any): string {
+  if (b == null) return ''
+  if (typeof b === 'string') return b
+  if (typeof b !== 'object') return String(b)
+  if (typeof b.text === 'string') return b.text
+  if (b.truncated) {
+    return t('automation.bodyTruncated', { n: Number(b.size) || 0 })
+  }
+  if (typeof b.b64 === 'string') {
+    const bytes = Math.floor((b.b64.length * 3) / 4)
+    return t('automation.bodyBinary', { n: bytes })
+  }
+  return ''
 }
 
 // ------------------------------------------------------------------ shots --
@@ -576,7 +658,9 @@ watch(visibleLogs, async () => {
 
 /* ---- requests ---- */
 .req-list { display: flex; flex-direction: column; }
-.req-row { display: flex; gap: 7px; align-items: baseline; font-size: 11.5px; padding: 2px 0; }
+.req-row { display: flex; gap: 7px; align-items: baseline; font-size: 11.5px; padding: 2px 0; cursor: pointer; }
+.req-row:hover .req-u { color: var(--app-text-primary); }
+.req-row.open .req-u { color: var(--app-blue); }
 .req-row.ok .req-s { color: var(--app-green); }
 .req-row.warn .req-s { color: var(--app-yellow); }
 .req-row.bad .req-s { color: var(--app-red); }
@@ -584,6 +668,19 @@ watch(visibleLogs, async () => {
 .req-m { flex: none; width: 48px; font-weight: 600; color: var(--app-text-primary); }
 .req-s { flex: none; width: 32px; }
 .req-u { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--app-text-muted); }
+.req-detail {
+  margin: 2px 0 6px 55px; padding: 6px 8px;
+  background: var(--app-blue-bg); border-radius: 6px;
+}
+.rd-sec { font-size: 10.5px; font-weight: 600; color: var(--app-text-secondary); margin: 6px 0 2px; }
+.rd-sec:first-child { margin-top: 0; }
+.rd-pre {
+  margin: 0; padding: 5px 7px; max-height: 180px; overflow: auto;
+  background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 5px;
+  font-family: var(--app-font-mono); font-size: 11px; line-height: 1.5;
+  color: var(--app-console-fg); white-space: pre-wrap; word-break: break-all;
+}
+.rd-note { font-size: 11px; color: var(--app-text-muted); padding: 2px 0; }
 .trunc-note { font-size: 11px; color: var(--app-yellow); padding: 6px 0; }
 
 /* ---- logs ---- */

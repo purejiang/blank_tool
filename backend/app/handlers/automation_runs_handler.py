@@ -128,6 +128,39 @@ def _read_traffic(jsonl_path: str, limit: int) -> dict:
     return {"entries": entries, "total": total, "truncated": total > len(entries)}
 
 
+def _read_traffic_full(jsonl_path: str, limit: int) -> dict:
+    """Parse the capture jsonl into FULL records (headers + bodies).
+
+    Companion to ``_read_traffic`` — same file, same order, same limit
+    semantics — but keeps every field. Used ONLY by the HTML export, which
+    embeds per-request detail into a self-contained document; ``read_run``
+    keeps serving lightweight summaries so IPC payloads stay small.
+    """
+    entries = []
+    total = 0
+    if not jsonl_path or not os.path.isfile(jsonl_path):
+        return {"entries": [], "total": 0, "truncated": False}
+    try:
+        with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                total += 1
+                if len(entries) >= limit:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                entries.append(rec)
+    except OSError as e:
+        return {"entries": entries, "total": total, "truncated": False, "error": str(e)}
+    return {"entries": entries, "total": total, "truncated": total > len(entries)}
+
+
 def handle_read_run(params, stream_handler):
     """Full report.json of one run (+ lightweight request log by default).
 
@@ -160,6 +193,57 @@ def handle_read_run(params, stream_handler):
 
 
 
+def handle_traffic_detail(params, stream_handler):
+    """Full jsonl record (headers + bodies) for ONE captured request.
+
+    ``index`` is the 0-based line number in the capture jsonl — the same
+    order ``read_run`` returns request summaries in, so the viewer can map
+    a summary row straight to its record. Bodies/headers are deliberately
+    NOT inlined into ``read_run`` (a run with thousands of requests would
+    blow up the IPC payload); the viewer pulls one record at a time.
+
+    Body fields keep the addon's wire shapes: ``{"text": ...}`` when
+    UTF-8, ``{"b64": ...}`` for binary, ``{"truncated": true, "size": N}``
+    past the 16 KiB per-body cap.
+    """
+    try:
+        run_dir = _run_dir_for(params.get("task_id", ""))
+    except ValueError as e:
+        return {"success": False, "record": None, "error": str(e)}
+    traffic_log = ""
+    try:
+        traffic_log = _read_report(run_dir).get("traffic_log") or ""
+    except (OSError, ValueError):
+        pass
+    if not traffic_log or not os.path.isfile(traffic_log):
+        return {"success": False, "record": None, "error": "traffic log not found"}
+    try:
+        index = int(params.get("index", -1))
+    except (TypeError, ValueError):
+        index = -1
+    if index < 0:
+        return {"success": False, "record": None, "error": "invalid index"}
+    try:
+        with open(traffic_log, "r", encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if i < index:
+                    continue
+                line = line.strip()
+                if not line:
+                    return {"success": False, "record": None,
+                            "error": f"record {index} is empty"}
+                try:
+                    rec = json.loads(line)
+                except ValueError as e:
+                    return {"success": False, "record": None,
+                            "error": f"record {index} is corrupt: {e}"}
+                return {"success": True,
+                        "record": rec if isinstance(rec, dict) else None}
+        return {"success": False, "record": None, "error": "index out of range"}
+    except OSError as e:
+        return {"success": False, "record": None, "error": str(e)}
+
+
 def handle_delete_run(params, stream_handler):
     """Delete the WHOLE run directory (artifacts + report)."""
     try:
@@ -180,9 +264,11 @@ def handle_delete_run(params, stream_handler):
 
 # ---------------------------------------------------------------- export --
 # The exported document is a single self-contained HTML file: screenshots are
-# inlined as base64 and the request log is embedded as a table, so the report
-# can be moved anywhere (mail, ticket, shared drive) without breaking.
+# inlined as base64, and every captured request embeds its headers + bodies in
+# a collapsible detail row (budget-capped, see MAX_BODY_EMBED_BYTES), so the
+# report can be moved anywhere (mail, ticket, shared drive) without breaking.
 MAX_EMBED_BYTES = 32 * 1024 * 1024  # cap on inlined screenshot payload
+MAX_BODY_EMBED_BYTES = 16 * 1024 * 1024  # cap on inlined req/resp bodies
 
 
 def _esc(v) -> str:
@@ -226,6 +312,66 @@ def _fmt_dur(ms) -> str:
     return f"{n / 1000:.1f}s" if n >= 1000 else f"{n}ms"
 
 
+def _pretty_json(text: str) -> str:
+    """Re-indent a JSON body for readability; non-JSON passes through."""
+    try:
+        return json.dumps(json.loads(text), ensure_ascii=False, indent=2)
+    except Exception:
+        return text
+
+
+def _headers_pre(headers) -> str:
+    if not isinstance(headers, dict) or not headers:
+        return '<pre class="empty">（无）</pre>'
+    text = "\n".join(f"{k}: {v}" for k, v in headers.items())
+    return f"<pre>{_esc(text)}</pre>"
+
+
+def _body_html(body, budget: dict) -> str:
+    """Render one captured body for the exported HTML, honouring the budget.
+
+    Body fields keep the addon's wire shapes: ``{"text": ...}`` (pretty-
+    printed when it parses as JSON), ``{"b64": ...}`` (inline download
+    link), or the truncation marker. Payload counts against
+    MAX_BODY_EMBED_BYTES; over-budget bodies become a pointer to the run
+    directory instead of silently bloating the file.
+    """
+    if not isinstance(body, dict) or not body:
+        return '<pre class="empty">（无）</pre>'
+    if "text" in body:
+        text = str(body["text"])
+        if budget["used"] + len(text) > MAX_BODY_EMBED_BYTES:
+            budget["dropped"] += 1
+            return '<pre class="empty">（超出内嵌体积上限，未包含 —— 完整数据见运行目录 traffic/*.jsonl）</pre>'
+        budget["used"] += len(text)
+        return f"<pre>{_esc(_pretty_json(text))}</pre>"
+    if "b64" in body:
+        b64 = str(body["b64"])
+        size = len(b64) * 3 // 4
+        if budget["used"] + len(b64) > MAX_BODY_EMBED_BYTES:
+            budget["dropped"] += 1
+            return '<pre class="empty">（二进制体，超出内嵌体积上限，未包含 —— 完整数据见运行目录 traffic/*.jsonl）</pre>'
+        budget["used"] += len(b64)
+        return (f'<pre class="empty">二进制内容（约 {size} 字节）：'
+                f'<a href="data:application/octet-stream;base64,{b64}" download="body.bin">点此下载</a></pre>')
+    if body.get("truncated"):
+        return (f'<pre class="empty">（捕获时已截断 —— 原始大小 {body.get("size", 0)} 字节，'
+                f'完整数据见运行目录 traffic/*.jsonl）</pre>')
+    return '<pre class="empty">（无）</pre>'
+
+
+def _req_detail_html(rec: dict, budget: dict) -> str:
+    """Hidden <tr> under a request row: headers + bodies, toggled by click."""
+    sections = [
+        ('<div class="lb">请求头</div>' + _headers_pre(rec.get("req_headers"))),
+        ('<div class="lb">请求体</div>' + _body_html(rec.get("req_body"), budget)),
+        ('<div class="lb">响应头</div>' + _headers_pre(rec.get("resp_headers"))),
+        ('<div class="lb">响应体</div>' + _body_html(rec.get("resp_body"), budget)),
+    ]
+    return ('<tr class="rdet" data-kind="req" style="display:none">'
+            f'<td colspan="3">{"".join(sections)}</td></tr>')
+
+
 def build_report_html(report: dict, traffic: list) -> str:
     """Render the whole run as one standalone HTML document."""
     shots_meta = report.get("shots_meta") or []
@@ -235,6 +381,8 @@ def build_report_html(report: dict, traffic: list) -> str:
             shot_by_path[m["path"]] = m
 
     budget = {"used": 0, "skipped": 0}
+    # inlined req/resp bodies have their own budget, separate from screenshots
+    body_budget = {"used": 0, "dropped": 0}
     data_uris = {}
     for p in report.get("screenshots") or []:
         uri = _data_uri(p, budget)
@@ -291,6 +439,9 @@ def build_report_html(report: dict, traffic: list) -> str:
             "url": rq.get("url") or "",
             "status": rq.get("status"),
             "error": rq.get("error"),
+            # full record (headers + bodies) for the collapsible detail row;
+            # absent when the caller passed lightweight summaries
+            "_full": rq,
         })
     # Steps with no timestamp stay in script order at the head of the list.
     items.sort(key=lambda it: (it["rel"] if it["rel"] is not None else -1))
@@ -325,12 +476,15 @@ def build_report_html(report: dict, traffic: list) -> str:
             cls = "ok" if isinstance(code, int) and code < 400 else (
                 "warn" if isinstance(code, int) else "bad")
             rows.append(
-                f'<tr class="row req {cls}" data-kind="req">'
+                f'<tr class="row req {cls}" data-kind="req" title="点击展开请求/响应明细">'
                 f'<td class="t">{rel_txt}<span class="clock">{clock}</span></td>'
                 f'<td class="k"><span class="pill {cls}">{_esc(it["method"])}</span></td>'
                 f'<td class="b"><div class="ttl">{_esc(it["url"])}</div>'
                 f'<div class="d">{_esc(code)}{" · " + _esc(it["error"]) if it.get("error") else ""}</div></td></tr>'
             )
+            full = it.get("_full")
+            if isinstance(full, dict):
+                rows.append(_req_detail_html(full, body_budget))
 
     gallery = "".join(
         f'<figure><img src="{data_uris[p]}" alt="{_esc(os.path.basename(p))}">'
@@ -351,6 +505,9 @@ def build_report_html(report: dict, traffic: list) -> str:
     if report.get("traffic_truncated"):
         traffic_note = (f'<p class="note">请求列表已截断（共 {report.get("traffic_total")} 条），'
                         f'完整记录见运行目录下的 traffic/*.jsonl</p>')
+    if body_budget["dropped"]:
+        traffic_note += (f'<p class="note">（{body_budget["dropped"]} 个请求/响应体超出内嵌体积上限，'
+                         f'未包含在本文件中，请查看运行目录下的 traffic/*.jsonl）</p>')
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -399,6 +556,13 @@ table {{ width: 100%; border-collapse: collapse; background: #fff;
 pre.crash {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
   padding: 12px; font-size: 11.5px; overflow: auto; max-height: 320px; white-space: pre-wrap; }}
 .note {{ color: #b26a00; font-size: 12px; }}
+.row.req {{ cursor: pointer; }}
+.rdet td {{ background: #fafbfc; padding: 4px 10px 12px; }}
+.rdet .lb {{ color: #4b5563; font-size: 11px; font-weight: 600; margin: 10px 0 3px; }}
+.rdet pre {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;
+  padding: 8px 10px; margin: 0; font: 11.5px/1.5 ui-monospace, Consolas, monospace;
+  overflow: auto; max-height: 260px; white-space: pre-wrap; word-break: break-all; }}
+.rdet pre.empty {{ color: #9ca3af; border-style: dashed; }}
 table.filter-steps tr.req {{ display: none; }}
 table.filter-reqs tr.step {{ display: none; }}
 </style></head>
@@ -431,8 +595,20 @@ table.filter-reqs tr.step {{ display: none; }}
 <script>
 function toggleKind(kind, on) {{
   document.querySelectorAll('#tl tr[data-kind="' + kind + '"]')
-    .forEach(function(tr) {{ tr.style.display = on ? '' : 'none'; }});
+    .forEach(function(tr) {{
+      // detail rows (.rdet) stay hidden through kind toggles — re-expand by
+      // clicking the request row again
+      tr.style.display = (on && !tr.classList.contains('rdet')) ? '' : 'none';
+    }});
 }}
+document.querySelectorAll('#tl tr.req').forEach(function(tr) {{
+  tr.addEventListener('click', function() {{
+    var d = tr.nextElementSibling;
+    if (d && d.classList.contains('rdet')) {{
+      d.style.display = d.style.display === 'none' ? '' : 'none';
+    }}
+  }});
+}});
 document.addEventListener('click', function(e) {{
   if (e.target.tagName === 'IMG') {{
     window.open(e.target.src, '_blank');
@@ -462,7 +638,7 @@ def handle_export_run(params, stream_handler):
             limit = max(0, min(int(limit), 100000)) if limit is not None else 100000
         except (TypeError, ValueError):
             limit = 100000
-        traffic = _read_traffic(report.get("traffic_log") or "", limit)
+        traffic = _read_traffic_full(report.get("traffic_log") or "", limit)
         report["traffic_total"] = traffic["total"]
         report["traffic_truncated"] = traffic["truncated"]
         doc = build_report_html(report, traffic["entries"])
@@ -506,6 +682,7 @@ def handle_export_run(params, stream_handler):
 API_MAP = {
     "automation.list_runs": handle_list_runs,
     "automation.read_run": handle_read_run,
+    "automation.traffic_detail": handle_traffic_detail,
     "automation.delete_run": handle_delete_run,
     "automation.export_run": handle_export_run,
 }

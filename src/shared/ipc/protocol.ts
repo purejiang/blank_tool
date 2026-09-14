@@ -551,6 +551,10 @@ export interface ApiMethodMap {
     params: { task_id: string; traffic_limit?: number }
     result: { success: boolean; report: Record<string, unknown> | null; error?: string }
   }
+  'automation.traffic_detail': {
+    params: { task_id: string; index: number }
+    result: { success: boolean; record: Record<string, unknown> | null; error?: string }
+  }
   'automation.delete_run': {
     params: { task_id: string }
     result: { deleted: boolean; error?: string }
