@@ -138,7 +138,7 @@
   background: var(--app-hover);
 }
 .app-nav-item.active {
-  background: var(--app-blue-bg);
-  color: var(--app-blue);
+  background: var(--app-green-bg);
+  color: var(--app-green);
   font-weight: 600;
 }
