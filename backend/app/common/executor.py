@@ -65,6 +65,9 @@ class ProcessExecutor:
             cwd=cwd,
             env=env,
             shell=shell,
+            # never let a child share our stdin (JSON-RPC pipe) — see
+            # base_executor.execute() for the stolen-request incident
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=text,

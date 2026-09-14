@@ -312,6 +312,7 @@ def start_capture(
     log_fh = open(log_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen(
         argv, env=env, stdout=log_fh, stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 

@@ -188,6 +188,15 @@ class CommandExecutor(BaseCommandExecutor):
         if context.stream:
             proc = subprocess.Popen(
                 command,
+                # DEVNULL is REQUIRED here. Without it the child inherits
+                # THIS process's stdin — the JSON-RPC pipe Electron writes
+                # requests into. `adb shell -tt ...` runs a stdin-forwarding
+                # thread that races us for that pipe: request lines get
+                # stolen or torn mid-line, the dispatcher never sees them
+                # and the renderer waits on a response that never comes
+                # (record_stop hang, 09-14). Long-lived children must never
+                # share our stdin.
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=context.text,

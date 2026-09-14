@@ -123,6 +123,9 @@ class PluginContext(StreamContext):
             cmd,
             cwd=cwd,
             env=env,
+            # plugin tools can be long-lived (scrcpy GUI...) — a child that
+            # inherited our stdin could steal JSON-RPC request lines
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
