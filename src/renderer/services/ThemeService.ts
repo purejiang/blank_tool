@@ -26,7 +26,10 @@ export class ThemeService {
       this.mediaQueryListener = (e) => {
         this.systemDark = e.matches
         if (this.mode === 'auto') {
-          this.notifyListeners()
+          // 系统主题翻转时必须重新 apply：只 notifyListeners() 会更新 Naive UI
+          // 却让 data-theme（自定义 CSS 变量）停在旧值，出现「Naive 变暗、
+          // 自定义区域还亮着」的割裂。applyTheme 内部无 await，属同步生效。
+          void this.applyTheme()
         }
       }
       this.mediaQuery.addEventListener('change', this.mediaQueryListener)
