@@ -12,32 +12,30 @@
     </div>
 
     <div class="settings-body">
-      <!-- 左侧分组导航：点击切换右侧面板（activePanel 持久化） -->
+      <!-- 左侧导航：组级切换，组内所有设置卡一起展示 -->
       <aside class="settings-nav">
-        <div v-for="group in navGroups" :key="group.title" class="nav-group">
-          <div class="nav-group-title">{{ group.title }}</div>
-          <div
-            v-for="item in group.items"
-            :key="item.key"
-            class="nav-item"
-            :class="{ active: activePanel === item.key }"
-            @click="activePanel = item.key"
-          >
-            <n-icon size="15"><component :is="item.icon" /></n-icon>
-            <span>{{ item.label }}</span>
-          </div>
+        <div
+          v-for="item in navItems"
+          :key="item.key"
+          class="nav-item"
+          :class="{ active: activePanel === item.key }"
+          @click="activePanel = item.key"
+        >
+          <n-icon size="15"><component :is="item.icon" /></n-icon>
+          <span>{{ item.label }}</span>
         </div>
       </aside>
 
       <div class="settings-panel">
+      <div class="panel-title">{{ panelTitle }}</div>
       <!-- Appearance -->
-      <section v-show="activePanel === 'appearance'">
+      <section v-show="activePanel === 'general'">
+      <div class="panel-sec">
+        <n-icon size="14"><Monitor /></n-icon>
+        <span>{{ t('settings.appearance') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-green)"><Monitor /></n-icon>
-          <span class="app-section-title">{{ t('settings.appearance') }}</span>
-        </div>
-        <div class="set-rows">
+      <div class="set-rows">
           <div class="set-row">
             <div class="set-info">
               <div class="set-label">{{ t('settings.language') }}</div>
@@ -59,13 +57,13 @@
       </section>
 
       <!-- Behavior -->
-      <section v-show="activePanel === 'behavior'">
+      <section v-show="activePanel === 'general'">
+      <div class="panel-sec">
+        <n-icon size="14"><Settings2 /></n-icon>
+        <span>{{ t('settings.behavior') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-blue)"><Settings2 /></n-icon>
-          <span class="app-section-title">{{ t('settings.behavior') }}</span>
-        </div>
-        <div class="set-rows">
+      <div class="set-rows">
           <div class="set-row">
             <div class="set-info">
               <div class="set-label">{{ t('settings.notifications') }}</div>
@@ -110,13 +108,13 @@
       </section>
 
       <!-- Logging -->
-      <section v-show="activePanel === 'logging'">
+      <section v-show="activePanel === 'general'">
+      <div class="panel-sec">
+        <n-icon size="14"><FileText /></n-icon>
+        <span>{{ t('settings.logging') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-green)"><FileText /></n-icon>
-          <span class="app-section-title">{{ t('settings.logging') }}</span>
-        </div>
-        <div class="set-rows">
+      <div class="set-rows">
           <div class="set-row">
             <div class="set-info">
               <div class="set-label">{{ t('settings.loggingLevel') }}</div>
@@ -130,12 +128,12 @@
       </section>
 
       <!-- Local runtimes: Java / Python / Node (version + path, path editable) -->
-      <section v-show="activePanel === 'runtimes'">
+      <section v-show="activePanel === 'runtime'">
+      <div class="panel-sec">
+        <n-icon size="14"><Cpu /></n-icon>
+        <span>{{ t('settings.localRuntimes') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-yellow)"><Cpu /></n-icon>
-          <span class="app-section-title">{{ t('settings.localRuntimes') }}</span>
-        </div>
         <div class="runtime-list">
           <div v-for="row in runtimeRows" :key="row.key" class="runtime-row">
             <div class="runtime-info">
@@ -169,12 +167,12 @@
       </section>
 
       <!-- Local service (the spawned Python backend) -->
-      <section v-show="activePanel === 'service'">
+      <section v-show="activePanel === 'runtime'">
+      <div class="panel-sec">
+        <n-icon size="14"><Server /></n-icon>
+        <span>{{ t('settings.localService') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-purple)"><Server /></n-icon>
-          <span class="app-section-title">{{ t('settings.localService') }}</span>
-        </div>
         <div class="svc-row">
           <span class="svc-label">{{ t('settings.serviceVersion') }}</span>
           <span class="svc-value">{{ serviceVersion || t('settings.runtimeUnknown') }}</span>
@@ -202,12 +200,12 @@
       </section>
 
       <!-- Tools & dependencies: built-in tools + automation components -->
-      <section v-show="activePanel === 'dependencies'">
+      <section v-show="activePanel === 'runtime'">
+      <div class="panel-sec">
+        <n-icon size="14"><Wrench /></n-icon>
+        <span>{{ t('settings.dependencies') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-green)"><Wrench /></n-icon>
-          <span class="app-section-title">{{ t('settings.dependencies') }}</span>
-        </div>
 
         <div class="dep-sub-head">{{ t('settings.builtinTools') }}</div>
         <div class="tool-path-list">
@@ -297,15 +295,15 @@
       </section>
 
       <!-- Signature Configs -->
-      <section v-show="activePanel === 'signature'">
+      <section v-show="activePanel === 'general'">
+      <div class="panel-sec">
+        <n-icon size="14"><Key /></n-icon>
+        <span>{{ t('signature.title') }}</span>
+        <n-button size="tiny" type="primary" secondary class="panel-sec-action" @click="openAddSignature">
+          <template #icon><n-icon size="14"><Plus /></n-icon></template>
+        </n-button>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header" style="margin-bottom:12px">
-          <n-icon size="18" color="var(--app-yellow)"><Key /></n-icon>
-          <span class="app-section-title">{{ t('signature.title') }}</span>
-          <n-button size="tiny" type="primary" secondary style="margin-left:auto" @click="openAddSignature">
-            <template #icon><n-icon size="14"><Plus /></n-icon></template>
-          </n-button>
-        </div>
         <div v-if="sigConfigs.length === 0" class="info-empty">{{ t('signature.empty') }}</div>
         <div v-else class="sig-list">
           <div v-for="cfg in sigConfigs" :key="cfg.id" class="sig-item">
@@ -328,31 +326,29 @@
       </section>
 
       <!-- Storage -->
-      <section v-show="activePanel === 'storage'">
-      <n-card :bordered="false" class="settings-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div class="app-section-header" style="margin-bottom:0">
-            <n-icon size="18" color="var(--app-purple)"><HardDrive /></n-icon>
-            <span class="app-section-title">{{ t('settings.storage') }}</span>
-            <span class="storage-total-text">{{ formatBytes(cacheInfo.total.size) }}</span>
-          </div>
-          <div class="hdr-actions">
-            <n-button
-              size="tiny"
-              quaternary
-              type="error"
-              :title="t('settings.clearAllStorage')"
-              :loading="clearingTarget === 'all'"
-              :disabled="cacheInfo.total.size === 0"
-              @click="confirmClear('all')"
-            >
-              <template #icon><n-icon><Trash2 /></n-icon></template>
-            </n-button>
-            <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
-              <template #icon><n-icon><RefreshCw /></n-icon></template>
-            </n-button>
-          </div>
+      <section v-show="activePanel === 'runtime'">
+      <div class="panel-sec">
+        <n-icon size="14"><HardDrive /></n-icon>
+        <span>{{ t('settings.storage') }}</span>
+        <span class="storage-total-text">{{ formatBytes(cacheInfo.total.size) }}</span>
+        <div class="hdr-actions">
+          <n-button
+            size="tiny"
+            quaternary
+            type="error"
+            :title="t('settings.clearAllStorage')"
+            :loading="clearingTarget === 'all'"
+            :disabled="cacheInfo.total.size === 0"
+            @click="confirmClear('all')"
+          >
+            <template #icon><n-icon><Trash2 /></n-icon></template>
+          </n-button>
+          <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
+            <template #icon><n-icon><RefreshCw /></n-icon></template>
+          </n-button>
         </div>
+      </div>
+      <n-card :bordered="false" class="settings-card">
 
         <!-- Proportional bar -->
         <div class="storage-bar" v-if="cacheInfo.total.size > 0">
@@ -392,11 +388,11 @@
 
       <!-- About（原独立关于页并入） -->
       <section v-show="activePanel === 'about'">
+      <div class="panel-sec">
+        <n-icon size="14"><Layers /></n-icon>
+        <span>{{ t('settings.buildInfo') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-green)"><Layers /></n-icon>
-          <span class="app-section-title">{{ t('settings.buildInfo') }}</span>
-        </div>
         <div class="info-grid">
           <div class="info-row">
             <span class="info-label">{{ t('settings.appVersion') }}</span>
@@ -418,11 +414,11 @@
         </div>
       </n-card>
 
+      <div class="panel-sec">
+        <n-icon size="14"><Cpu /></n-icon>
+        <span>{{ t('settings.systemInfo') }}</span>
+      </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="app-section-header">
-          <n-icon size="18" color="var(--app-text-dim)"><Cpu /></n-icon>
-          <span class="app-section-title">{{ t('settings.systemInfo') }}</span>
-        </div>
         <div class="info-grid">
           <div class="info-row"><span class="info-label">{{ t('settings.os') }}</span><span class="info-val">{{ systemInfo.platform || t('common.unknown') }}</span></div>
           <div class="info-row"><span class="info-label">{{ t('settings.architecture') }}</span><span class="info-val">{{ systemInfo.architecture || t('common.unknown') }}</span></div>
@@ -540,33 +536,20 @@ const clearingTarget = ref<string | null>(null)
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
 
-// ---------------- settings nav（左侧分组导航，面板切换，选择持久化） ----------------
-const activePanel = ref(localStorage.getItem('bt:settingsPanel') || 'appearance')
+// ---------------- settings nav（左侧导航，组级面板切换，选择持久化） ----------------
+// 旧版存的是细粒度 key（appearance/behavior/…），不匹配新组级 key 时回退 general
+const _PANEL_KEYS = ['general', 'runtime', 'about']
+const _storedPanel = localStorage.getItem('bt:settingsPanel')
+const activePanel = ref(_storedPanel && _PANEL_KEYS.includes(_storedPanel) ? _storedPanel : 'general')
 watch(activePanel, (v) => { try { localStorage.setItem('bt:settingsPanel', v) } catch {} })
-const navGroups = computed(() => [
-  {
-    title: t('settings.navGeneral'),
-    items: [
-      { key: 'appearance', label: t('settings.appearance'), icon: Palette },
-      { key: 'behavior', label: t('settings.behavior'), icon: Settings2 },
-      { key: 'logging', label: t('settings.logging'), icon: FileText },
-      { key: 'signature', label: t('signature.title'), icon: Key },
-    ],
-  },
-  {
-    title: t('settings.navRuntime'),
-    items: [
-      { key: 'runtimes', label: t('settings.localRuntimes'), icon: Wrench },
-      { key: 'service', label: t('settings.localService'), icon: Server },
-      { key: 'dependencies', label: t('settings.dependencies'), icon: Cpu },
-      { key: 'storage', label: t('settings.storage'), icon: HardDrive },
-    ],
-  },
-  {
-    title: t('about.title'),
-    items: [{ key: 'about', label: t('about.title'), icon: Info }],
-  },
+const navItems = computed(() => [
+  { key: 'general', label: t('settings.navGeneral'), icon: Palette },
+  { key: 'runtime', label: t('settings.navRuntime'), icon: Wrench },
+  { key: 'about', label: t('about.title'), icon: Info },
 ])
+const panelTitle = computed(() =>
+  navItems.value.find(i => i.key === activePanel.value)?.label || ''
+)
 
 // ---------------- about（原独立关于页并入；构建信息 + 检查更新） ----------------
 const updateStore = useUpdateStore()
@@ -971,13 +954,15 @@ onMounted(() => {
 <style scoped>
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 .settings-body { display: flex; gap: 16px; align-items: flex-start; }
-.settings-nav { width: 172px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
-.nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
-.nav-group-title { font-size: 11px; color: var(--app-text-dim); padding: 6px 10px 4px; }
-.nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; font-size: 13px; color: var(--app-text-secondary); cursor: pointer; user-select: none; }
+.settings-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border-left: 2px solid transparent; font-size: 13px; color: var(--app-text-secondary); cursor: pointer; user-select: none; }
 .nav-item:hover { background: var(--app-storage-bg); }
-.nav-item.active { background: var(--app-storage-bg); color: var(--app-text-primary); font-weight: 600; }
-.settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.nav-item.active { background: var(--app-storage-bg); border-left-color: var(--app-blue); color: var(--app-blue); font-weight: 600; }
+.settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.panel-title { font-size: 16px; font-weight: 600; color: var(--app-text-primary); margin-bottom: 2px; }
+.panel-sec { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--app-text-dim); margin-bottom: -6px; }
+.panel-sec .storage-total-text { margin-left: 0; margin-right: auto; }
+.panel-sec-action { margin-left: auto; }
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
 .set-rows { display: flex; flex-direction: column; margin-top: 6px; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 0; }
@@ -988,7 +973,7 @@ onMounted(() => {
 .set-control { flex: none; }
 .set-w200 { width: 200px; }
 .set-w140 { width: 140px; }
-.hdr-actions { display: flex; align-items: center; gap: 4px; }
+.hdr-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .info-grid { display: flex; flex-direction: column; gap: 6px; }
 .info-row { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; }
 .info-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; }
