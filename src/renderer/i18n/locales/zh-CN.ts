@@ -456,8 +456,6 @@ export default {
     selectDirFailed: '选择目录失败',
     pathRestartHint: '路径已保存，重启应用后生效',
     storage: '存储',
-    tools: '捆绑工具',
-    loading: '加载中...',
     tasks: '任务',
     auto_tasks: '自动化运行',
     output: '输出',

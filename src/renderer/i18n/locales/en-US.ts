@@ -456,8 +456,6 @@ export default {
     selectDirFailed: 'Failed to select directory',
     pathRestartHint: 'Path saved. Restart the app to apply.',
     storage: 'Storage',
-    tools: 'Bundled Tools',
-    loading: 'Loading...',
     tasks: 'Tasks',
     auto_tasks: 'Automation runs',
     output: 'Output',

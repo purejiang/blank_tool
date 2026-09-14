@@ -36,22 +36,6 @@
         </div>
       </n-card>
 
-      <!-- Bundled Tools -->
-      <n-card :bordered="false" class="about-card">
-        <div class="section-header">
-          <n-icon size="18" color="#64748B"><Wrench /></n-icon>
-          <span class="section-title">{{ t('settings.tools') }}</span>
-        </div>
-        <div class="info-grid">
-          <div v-for="tool in tools" :key="tool.name" class="info-row">
-            <span class="info-label">{{ tool.name }}</span>
-            <span class="info-val">{{ tool.version || t('common.unknown') }}</span>
-            <span class="info-path" :title="tool.path">{{ tool.path || t('common.unknown') }}</span>
-          </div>
-          <div v-if="tools.length === 0" class="info-empty">{{ t('settings.loading') }}</div>
-        </div>
-      </n-card>
-
       <!-- System Info -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
@@ -74,16 +58,14 @@
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, useMessage } from 'naive-ui'
-import { Wrench, Cpu, Layers } from 'lucide-vue-next'
-import { useSystemStore, useToolStore } from '@stores/index'
+import { Cpu, Layers } from 'lucide-vue-next'
+import { useSystemStore } from '@stores/index'
 import { useUpdateStore } from '@stores/updateStore'
 import serviceManager from '@services/ServiceManager'
 import type UpdateService from '@services/UpdateService'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
-const toolStore = useToolStore()
-const tools = toolStore.tools
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
 
@@ -160,7 +142,5 @@ const cpuText = computed(() => {
 .info-row:last-child { border-bottom: none; }
 .info-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; text-align: left; }
 .info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
-.info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
-.info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
 .update-status-inline { font-size: 12px; color: #22C55E; white-space: nowrap; }
 </style>

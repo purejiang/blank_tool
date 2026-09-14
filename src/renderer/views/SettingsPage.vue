@@ -172,7 +172,14 @@
         <div class="dep-sub-head">{{ t('settings.builtinTools') }}</div>
         <div class="tool-path-list">
           <div v-for="tool in toolList" :key="tool.name" class="tool-path-row">
-            <span class="tool-path-name">{{ tool.name }}</span>
+            <span class="tool-path-name">
+              {{ tool.name }}
+              <!-- version comes from the tool check (tool.version); the About
+                   page used to be the only place it was shown -->
+              <span class="tool-version" :class="{ 'is-missing': !tool.version }">
+                {{ tool.version || t('common.unknown') }}
+              </span>
+            </span>
             <div class="tool-path-input-wrap">
               <n-input
                 size="small"
@@ -864,7 +871,9 @@ onMounted(() => {
 
 .tool-path-list { display: flex; flex-direction: column; gap: 8px; }
 .tool-path-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-.tool-path-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 90px; font-family: 'Fira Code', monospace; padding-left: 4px; }
+.tool-path-name { display: inline-flex; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 110px; font-family: 'Fira Code', monospace; padding-left: 4px; }
+.tool-version { font-size: 11px; font-weight: 400; color: var(--app-text-muted); }
+.tool-version.is-missing { color: #F59E0B; }
 .tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
 .tool-path-input-wrap :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
 .environ-path-input :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
