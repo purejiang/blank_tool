@@ -126,6 +126,7 @@
           :running="runner.running"
           :can-run="canRun"
           :hints="runHints"
+          :capture-unavailable="captureUnavailable"
           @run="runScript"
           @stop="runner.stopRun"
         />
@@ -329,9 +330,18 @@ function hasNonAsciiInput(steps: Step[]): boolean {
   })
 }
 
+// Capture requested but this machine can't do it (mitmproxy missing / Python
+// version mismatch). Surfaced twice on purpose: under the run row (visible
+// when the dialog is closed) and inside the run settings dialog itself —
+// that's where the capture switch lives now, so the warning must be visible
+// while the user is toggling it (the row is masked then).
+const captureUnavailable = computed(
+  () => !!captureTraffic.value && !!trafficStatus.value && !trafficStatus.value.ready,
+)
+
 const runHints = computed(() => {
   const hints: string[] = []
-  if (captureTraffic.value && trafficStatus.value && !trafficStatus.value.ready) {
+  if (captureUnavailable.value) {
     hints.push(t('automation.captureTrafficUnavailable'))
   }
   if (autoDeviceId.value && imeStatus.value && !imeStatus.value.installed
