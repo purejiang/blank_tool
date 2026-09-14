@@ -11,9 +11,27 @@
       </n-tag>
     </div>
 
-    <div class="settings-content">
+    <div class="settings-body">
+      <!-- 左侧分组导航：点击切换右侧面板（activePanel 持久化） -->
+      <aside class="settings-nav">
+        <div v-for="group in navGroups" :key="group.title" class="nav-group">
+          <div class="nav-group-title">{{ group.title }}</div>
+          <div
+            v-for="item in group.items"
+            :key="item.key"
+            class="nav-item"
+            :class="{ active: activePanel === item.key }"
+            @click="activePanel = item.key"
+          >
+            <n-icon size="15"><component :is="item.icon" /></n-icon>
+            <span>{{ item.label }}</span>
+          </div>
+        </div>
+      </aside>
 
+      <div class="settings-panel">
       <!-- Appearance -->
+      <section v-show="activePanel === 'appearance'">
       <n-card :bordered="false" class="settings-card">
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-green)"><Monitor /></n-icon>
@@ -30,8 +48,10 @@
           </n-form-item>
         </n-form>
       </n-card>
+      </section>
 
       <!-- Behavior -->
+      <section v-show="activePanel === 'behavior'">
       <n-card :bordered="false" class="settings-card">
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-blue)"><Settings2 /></n-icon>
@@ -59,8 +79,10 @@
           </n-form-item>
         </n-form>
       </n-card>
+      </section>
 
       <!-- Logging -->
+      <section v-show="activePanel === 'logging'">
       <n-card :bordered="false" class="settings-card">
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-green)"><FileText /></n-icon>
@@ -73,8 +95,10 @@
           </n-form-item>
         </n-form>
       </n-card>
+      </section>
 
       <!-- Local runtimes: Java / Python / Node (version + path, path editable) -->
+      <section v-show="activePanel === 'runtimes'">
       <n-card :bordered="false" class="settings-card">
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-yellow)"><Cpu /></n-icon>
@@ -110,8 +134,10 @@
           </div>
         </div>
       </n-card>
+      </section>
 
       <!-- Local service (the spawned Python backend) -->
+      <section v-show="activePanel === 'service'">
       <n-card :bordered="false" class="settings-card">
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-purple)"><Server /></n-icon>
@@ -141,8 +167,10 @@
           </div>
         </div>
       </n-card>
+      </section>
 
       <!-- Tools & dependencies: built-in tools + automation components -->
+      <section v-show="activePanel === 'dependencies'">
       <n-card :bordered="false" class="settings-card">
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-green)"><Wrench /></n-icon>
@@ -234,8 +262,10 @@
           </div>
         </div>
       </n-card>
+      </section>
 
       <!-- Signature Configs -->
+      <section v-show="activePanel === 'signature'">
       <n-card :bordered="false" class="settings-card">
         <div class="app-section-header" style="margin-bottom:12px">
           <n-icon size="18" color="var(--app-yellow)"><Key /></n-icon>
@@ -263,8 +293,10 @@
           </div>
         </div>
       </n-card>
+      </section>
 
       <!-- Storage -->
+      <section v-show="activePanel === 'storage'">
       <n-card :bordered="false" class="settings-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="app-section-header" style="margin-bottom:0">
@@ -327,7 +359,51 @@
           </n-button>
         </div>
       </n-card>
+      </section>
 
+      <!-- About（原独立关于页并入） -->
+      <section v-show="activePanel === 'about'">
+      <n-card :bordered="false" class="settings-card">
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-green)"><Layers /></n-icon>
+          <span class="app-section-title">{{ t('settings.buildInfo') }}</span>
+        </div>
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">{{ t('settings.appVersion') }}</span>
+            <span class="info-val">{{ buildInfo.appVersion || t('common.unknown') }}</span>
+            <n-button
+              size="tiny"
+              :disabled="updateButtonDisabled"
+              :loading="updateStore.status === 'checking'"
+              @click="checkForUpdate"
+            >
+              {{ updateButtonText }}
+            </n-button>
+            <span v-if="updateStatusText" class="update-status-inline">{{ updateStatusText }}</span>
+          </div>
+          <div class="info-row"><span class="info-label">{{ t('settings.electron') }}</span><span class="info-val">{{ buildInfo.electronVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.nodeJs') }}</span><span class="info-val">{{ buildInfo.nodeVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.python') }}</span><span class="info-val">{{ buildInfo.pythonVersion || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.chrome') }}</span><span class="info-val">{{ buildInfo.chromeVersion || t('common.unknown') }}</span></div>
+        </div>
+      </n-card>
+
+      <n-card :bordered="false" class="settings-card">
+        <div class="app-section-header">
+          <n-icon size="18" color="var(--app-text-dim)"><Cpu /></n-icon>
+          <span class="app-section-title">{{ t('settings.systemInfo') }}</span>
+        </div>
+        <div class="info-grid">
+          <div class="info-row"><span class="info-label">{{ t('settings.os') }}</span><span class="info-val">{{ systemInfo.platform || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.architecture') }}</span><span class="info-val">{{ systemInfo.architecture || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.hostname') }}</span><span class="info-val">{{ systemInfo.hostname || t('common.unknown') }}</span></div>
+          <div class="info-row"><span class="info-label">{{ t('settings.cpu') }}</span><span class="info-val">{{ cpuText }}</span></div>
+        </div>
+      </n-card>
+      </section>
+
+      </div>
     </div>
 
     <SignatureEditModal :visible="sigModalVisible" :data="sigEditing" @update:visible="(v: boolean) => sigModalVisible = v" @save="handleSignatureSave" />
@@ -335,15 +411,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, inject } from 'vue'
+import { ref, reactive, computed, onMounted, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History, Server } from 'lucide-vue-next'
+import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History, Server, Palette, Info } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { formatBytes } from '@utils/format'
 import { useNotification } from '@composables/useNotification'
-import { useSystemStore, useToolStore } from '@stores/index'
+import { useSystemStore, useToolStore, useUpdateStore } from '@stores/index'
 import { useDeviceStore } from '@stores/deviceStore'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { storeToRefs } from 'pinia'
@@ -351,6 +427,7 @@ import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 import { setMaxConcurrent } from '@services/TaskExecutionService'
 import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
+import type UpdateService from '@services/UpdateService'
 
 const { t } = useI18n()
 const { showSuccess, showError, showWarning } = useNotification()
@@ -433,6 +510,84 @@ const isLoadingCacheInfo = ref(false)
 const clearingTarget = ref<string | null>(null)
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
+
+// ---------------- settings nav（左侧分组导航，面板切换，选择持久化） ----------------
+const activePanel = ref(localStorage.getItem('bt:settingsPanel') || 'appearance')
+watch(activePanel, (v) => { try { localStorage.setItem('bt:settingsPanel', v) } catch {} })
+const navGroups = computed(() => [
+  {
+    title: t('settings.navGeneral'),
+    items: [
+      { key: 'appearance', label: t('settings.appearance'), icon: Palette },
+      { key: 'behavior', label: t('settings.behavior'), icon: Settings2 },
+      { key: 'logging', label: t('settings.logging'), icon: FileText },
+      { key: 'signature', label: t('signature.title'), icon: Key },
+    ],
+  },
+  {
+    title: t('settings.navRuntime'),
+    items: [
+      { key: 'runtimes', label: t('settings.localRuntimes'), icon: Wrench },
+      { key: 'service', label: t('settings.localService'), icon: Server },
+      { key: 'dependencies', label: t('settings.dependencies'), icon: Cpu },
+      { key: 'storage', label: t('settings.storage'), icon: HardDrive },
+    ],
+  },
+  {
+    title: t('about.title'),
+    items: [{ key: 'about', label: t('about.title'), icon: Info }],
+  },
+])
+
+// ---------------- about（原独立关于页并入；构建信息 + 检查更新） ----------------
+const updateStore = useUpdateStore()
+let updateService: UpdateService | null = null
+
+onMounted(async () => {
+  try {
+    updateService = await serviceManager.getService('update') as UpdateService
+  } catch {
+    updateService = null
+  }
+})
+
+const updateButtonText = computed(() => {
+  if (updateStore.status === 'checking') return t('update.checking')
+  if (updateStore.status === 'available') return t('update.download')
+  if (updateStore.status === 'downloaded') return t('update.restartNow')
+  return t('update.checkUpdate')
+})
+const updateButtonDisabled = computed(() =>
+  updateStore.status === 'checking' || updateStore.status === 'downloading'
+)
+const updateStatusText = computed(() => {
+  if (updateStore.status === 'not-available') return t('update.upToDate')
+  if (updateStore.status === 'error') return updateStore.error || t('update.error')
+  if (updateStore.status === 'downloaded') return `${t('update.downloaded')} (v${updateStore.latestVersion})`
+  if (updateStore.status === 'available') return `${t('update.newVersion')}: v${updateStore.latestVersion}`
+  return ''
+})
+
+async function checkForUpdate(): Promise<void> {
+  if (!updateService) return
+  const status = updateStore.status
+  if (status === 'available') {
+    await updateService.downloadUpdate()
+    return
+  }
+  if (status === 'downloaded') {
+    await updateService.quitAndInstall()
+    return
+  }
+  try {
+    const result = await updateService.checkForUpdates()
+    if (result && !result.updateAvailable) {
+      showSuccess(t('update.upToDate'))
+    }
+  } catch (err: any) {
+    showError(t('update.error'), err.message || String(err))
+  }
+}
 
 // ---------------- automation capabilities ----------------
 const deviceStore = useDeviceStore()
@@ -786,8 +941,20 @@ onMounted(() => {
 
 <style scoped>
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
-.settings-content { display: flex; flex-direction: column; gap: 16px; }
+.settings-body { display: flex; gap: 16px; align-items: flex-start; }
+.settings-nav { width: 172px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.nav-group-title { font-size: 11px; color: var(--app-text-dim); padding: 6px 10px 4px; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; font-size: 13px; color: var(--app-text-secondary); cursor: pointer; user-select: none; }
+.nav-item:hover { background: var(--app-storage-bg); }
+.nav-item.active { background: var(--app-storage-bg); color: var(--app-text-primary); font-weight: 600; }
+.settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
+.info-grid { display: flex; flex-direction: column; gap: 6px; }
+.info-row { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; }
+.info-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; }
+.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: var(--app-font-mono); min-width: 80px; word-break: break-all; }
+.update-status-inline { font-size: 12px; color: var(--app-green); white-space: nowrap; }
 .storage-total-text { font-size: 16px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 12px; }
 .storage-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }
 .storage-bar-seg { height: 100%; transition: width 0.3s ease; }

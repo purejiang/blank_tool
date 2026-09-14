@@ -1,6 +1,5 @@
 import OtherToolsPage from '@views/OtherToolsPage.vue'
 import PluginsPage from '@views/PluginsPage.vue'
-import AboutPage from '@views/AboutPage.vue'
 
 const otherToolsRoutes = [
   {
@@ -14,11 +13,6 @@ const otherToolsRoutes = [
     name: 'plugins',
     component: PluginsPage,
   },
-  {
-    path: '/about',
-    name: 'about',
-    component: AboutPage,
-  }
 ]
 
 export default otherToolsRoutes
