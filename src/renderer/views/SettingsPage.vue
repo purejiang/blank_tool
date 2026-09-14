@@ -37,16 +37,24 @@
           <n-icon size="18" color="var(--app-green)"><Monitor /></n-icon>
           <span class="app-section-title">{{ t('settings.appearance') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
-          <n-form-item :label="t('settings.language')">
+        <div class="set-rows">
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.language') }}</div>
+              <div class="set-desc">{{ t('settings.languageDesc') }}</div>
+            </div>
             <n-select v-model:value="general.language" @update:value="saveGeneral"
-              :options="langOptions" style="width: 220px" />
-          </n-form-item>
-          <n-form-item :label="t('settings.theme')">
+              :options="langOptions" class="set-control set-w200" />
+          </div>
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.theme') }}</div>
+              <div class="set-desc">{{ t('settings.themeDesc') }}</div>
+            </div>
             <n-select v-model:value="general.theme" @update:value="saveGeneral"
-              :options="themeOptions" style="width: 220px" />
-          </n-form-item>
-        </n-form>
+              :options="themeOptions" class="set-control set-w200" />
+          </div>
+        </div>
       </n-card>
       </section>
 
@@ -57,27 +65,47 @@
           <n-icon size="18" color="var(--app-blue)"><Settings2 /></n-icon>
           <span class="app-section-title">{{ t('settings.behavior') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
-          <n-form-item :label="t('settings.notifications')">
+        <div class="set-rows">
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.notifications') }}</div>
+              <div class="set-desc">{{ t('settings.notificationsDesc') }}</div>
+            </div>
             <n-switch v-model:value="general.enableNotifications" @update:value="saveGeneral" />
-          </n-form-item>
-          <n-form-item :label="t('settings.autoDeleteOutput')">
+          </div>
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.autoDeleteOutput') }}</div>
+              <div class="set-desc">{{ t('settings.autoDeleteOutputDesc') }}</div>
+            </div>
             <n-switch v-model:value="general.autoDeleteOutputOnTaskRemove" @update:value="saveGeneral" />
-          </n-form-item>
-          <n-form-item :label="t('settings.useProxyForDownload')">
+          </div>
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.useProxyForDownload') }}</div>
+              <div class="set-desc">{{ t('settings.useProxyForDownloadDesc') }}</div>
+            </div>
             <n-switch v-model:value="general.useProxyForDownload" @update:value="saveGeneral" />
-          </n-form-item>
-          <n-form-item :label="t('settings.timeout')">
-            <n-input-number v-model:value="general.timeout" :min="10" :max="600" :step="10" @update:value="saveGeneral" style="width: 120px">
+          </div>
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.timeout') }}</div>
+              <div class="set-desc">{{ t('settings.timeoutDesc') }}</div>
+            </div>
+            <n-input-number v-model:value="general.timeout" :min="10" :max="600" :step="10" @update:value="saveGeneral" class="set-control set-w140">
               <template #suffix>{{ t('settings.seconds') }}</template>
             </n-input-number>
-          </n-form-item>
-          <n-form-item :label="t('settings.maxConcurrentTasks')">
-            <n-input-number v-model:value="general.maxConcurrentTasks" :min="1" :max="16" :step="1" @update:value="saveGeneral" style="width: 120px">
+          </div>
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.maxConcurrentTasks') }}</div>
+              <div class="set-desc">{{ t('settings.maxConcurrentTasksDesc') }}</div>
+            </div>
+            <n-input-number v-model:value="general.maxConcurrentTasks" :min="1" :max="16" :step="1" @update:value="saveGeneral" class="set-control set-w140">
               <template #suffix>{{ t('settings.tasksUnit') }}</template>
             </n-input-number>
-          </n-form-item>
-        </n-form>
+          </div>
+        </div>
       </n-card>
       </section>
 
@@ -88,12 +116,16 @@
           <n-icon size="18" color="var(--app-green)"><FileText /></n-icon>
           <span class="app-section-title">{{ t('settings.logging') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
-          <n-form-item :label="t('settings.loggingLevel')">
+        <div class="set-rows">
+          <div class="set-row">
+            <div class="set-info">
+              <div class="set-label">{{ t('settings.loggingLevel') }}</div>
+              <div class="set-desc">{{ t('settings.loggingLevelDesc') }}</div>
+            </div>
             <n-select v-model:value="logLevel" @update:value="saveLogLevel"
-              :options="logLevelOptions" style="width: 220px" />
-          </n-form-item>
-        </n-form>
+              :options="logLevelOptions" class="set-control set-w200" />
+          </div>
+        </div>
       </n-card>
       </section>
 
@@ -950,6 +982,15 @@ onMounted(() => {
 .nav-item.active { background: var(--app-storage-bg); color: var(--app-text-primary); font-weight: 600; }
 .settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
+.set-rows { display: flex; flex-direction: column; margin-top: 6px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 0; }
+.set-row + .set-row { border-top: 1px solid var(--app-card-border); }
+.set-info { min-width: 0; }
+.set-label { font-size: 13px; font-weight: 500; color: var(--app-text-primary); }
+.set-desc { font-size: 12px; color: var(--app-text-muted); margin-top: 2px; }
+.set-control { flex: none; }
+.set-w200 { width: 200px; }
+.set-w140 { width: 140px; }
 .info-grid { display: flex; flex-direction: column; gap: 6px; }
 .info-row { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; }
 .info-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; }
