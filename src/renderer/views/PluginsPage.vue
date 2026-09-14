@@ -207,6 +207,7 @@ import { NButton, NCheckbox, NIcon, NInput, NInputNumber, NScrollbar, NTag, useD
 import { Download, FolderOpen, Play, RotateCcw, Square, Trash2, Upload } from 'lucide-vue-next'
 import pluginService, { type PluginInfo } from '@services/PluginService'
 import serviceManager from '@services/ServiceManager'
+import { useDeviceStore } from '@stores/deviceStore'
 import { genId } from '@utils/id'
 import { readTextFile } from '@utils/readTextFile'
 
@@ -215,6 +216,8 @@ const message = useMessage()
 // in-app confirmations: the native dialog.showMessageBox ignores the app theme
 // and looks nothing like the rest of the UI → use Naive's dialog everywhere
 const dialog = useDialog()
+// device snapshot served to plugin UIs via the getDevices bridge message
+const deviceStore = useDeviceStore()
 
 const plugins = ref<PluginInfo[]>([])
 const loading = ref(false)
@@ -240,23 +243,29 @@ const uiFrameEl = ref<HTMLIFrameElement | null>(null)
  */
 const BRIDGE_SCRIPT = `<script>
 (function () {
-  var handlers = { log: [], result: [], error: [], meta: [] };
+  var handlers = { log: [], result: [], error: [], meta: [], devices: [], file: [] };
   window.addEventListener('message', function (e) {
     var d = e.data || {};
     if (d.type === '__bridge.log') handlers.log.forEach(function (f) { f(d.text, d.level); });
     else if (d.type === '__bridge.result') handlers.result.forEach(function (f) { f(d.payload); });
     else if (d.type === '__bridge.error') handlers.error.forEach(function (f) { f(d.message); });
     else if (d.type === '__bridge.meta') handlers.meta.forEach(function (f) { f(d.info); });
+    else if (d.type === '__bridge.devices') handlers.devices.forEach(function (f) { f(d.devices); });
+    else if (d.type === '__bridge.file') handlers.file.forEach(function (f) { f(d.canceled, d.filePath); });
   });
   window.pluginBridge = {
     run: function (params) { parent.postMessage({ type: 'plugin.run', params: params || {} }, '*'); },
     cancel: function () { parent.postMessage({ type: 'plugin.cancel' }, '*'); },
     log: function (text, level) { parent.postMessage({ type: 'plugin.log', text: String(text == null ? '' : text), level: level || 'info' }, '*'); },
     getMeta: function () { parent.postMessage({ type: 'plugin.getMeta' }, '*'); },
+    getDevices: function () { parent.postMessage({ type: 'plugin.getDevices' }, '*'); },
+    pickFile: function (options) { parent.postMessage({ type: 'plugin.pickFile', options: options || {} }, '*'); },
     onLog: function (f) { handlers.log.push(f); },
     onResult: function (f) { handlers.result.push(f); },
     onError: function (f) { handlers.error.push(f); },
-    onMeta: function (f) { handlers.meta.push(f); }
+    onMeta: function (f) { handlers.meta.push(f); },
+    onDevices: function (f) { handlers.devices.push(f); },
+    onFile: function (f) { handlers.file.push(f); }
   };
   parent.postMessage({ type: 'plugin.ready' }, '*');
 })();
@@ -317,6 +326,37 @@ function onWindowMessage(e: MessageEvent) {
     case 'plugin.log':
       pushLog(String(d.text ?? ''), d.level === 'warn' || d.level === 'error' ? d.level : 'info')
       break
+    case 'plugin.getDevices':
+      // read-only snapshot: id + display fields only, no device handles
+      postToUi('__bridge.devices', {
+        devices: deviceStore.devices.map((dev: any) => ({
+          id: String(dev.id ?? ''),
+          name: String(dev.name ?? ''),
+          status: String(dev.status ?? ''),
+        })),
+      })
+      break
+    case 'plugin.pickFile': {
+      // native open dialog via the existing IPC wrapper; only the picked
+      // path string ever crosses back into the sandbox
+      const api = window.electronAPI as any
+      void (async () => {
+        try {
+          const res = await api.selectFile({
+            properties: ['openFile'],
+            ...(typeof d.options === 'object' && d.options ? d.options : {}),
+          })
+          postToUi('__bridge.file', {
+            canceled: !res || res.canceled || !res.filePaths?.length,
+            filePath: res?.filePaths?.[0] || '',
+          })
+        } catch (err: any) {
+          postToUi('__bridge.file', { canceled: true, filePath: '' })
+          pushLog(`pickFile failed: ${err?.message || String(err)}`, 'error')
+        }
+      })()
+      break
+    }
   }
 }
 

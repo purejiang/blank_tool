@@ -69,17 +69,23 @@ window.pluginBridge.run(params)            // 触发后端 plugin.run（流式�
 window.pluginBridge.cancel()               // 取消运行
 window.pluginBridge.log(text, level)       // 直接往前端控制台写一行
 window.pluginBridge.getMeta()              // 请求插件元数据
+window.pluginBridge.getDevices()           // 请求设备列表快照（只读）
+window.pluginBridge.pickFile(options)      // 弹原生文件选择框（Electron DialogOptions：title/filters/properties）
 window.pluginBridge.onLog(cb)              // cb(text, level) 后端/自身日志
 window.pluginBridge.onResult(cb)           // cb(payload) 运行完成
 window.pluginBridge.onError(cb)            // cb(message) 运行出错
 window.pluginBridge.onMeta(cb)             // cb({name, display_name, version, author, description, params})
+window.pluginBridge.onDevices(cb)          // cb([{id, name, status}]) 设备列表快照
+window.pluginBridge.onFile(cb)             // cb(canceled, filePath) 选中的文件路径（取消时 filePath 为空串）
 ```
 
 iframe → 宿主消息类型（桥接脚本封装，一般不用手写）：
-`plugin.ready` / `plugin.getMeta` / `plugin.run{params}` / `plugin.cancel` / `plugin.log{text,level}`
+`plugin.ready` / `plugin.getMeta` / `plugin.run{params}` / `plugin.cancel` / `plugin.log{text,level}` /
+`plugin.getDevices` / `plugin.pickFile{options}`
 
 宿主 → iframe 消息类型：`__bridge.meta{info}` / `__bridge.log{text,level}` /
-`__bridge.result{payload}` / `__bridge.error{message}`
+`__bridge.result{payload}` / `__bridge.error{message}` / `__bridge.devices{devices}` /
+`__bridge.file{canceled, filePath}`
 
 宿主侧只接受 `event.source === iframe.contentWindow` 且 `type` 以 `plugin.` 开头的消息（动作白名单）。
 
