@@ -23,7 +23,9 @@ with their reason instead of silently dropped::
    resp_headers, resp_body, client_addr, error}
 
 ``req_body`` / ``resp_body`` are ``{"text": ...}`` when UTF-8 decodable,
-``{"b64": ...}`` for binary, or the truncation marker.
+``{"b64": ...}`` for binary, or the truncation marker. Bodies are taken from
+the **decoded** content (``Message.content``, i.e. Content-Encoding applied)
+so gzip/br responses are stored as readable text instead of binary blobs.
 """
 
 import base64
@@ -59,6 +61,24 @@ def _encode_body(data: bytes):
         return {"b64": base64.b64encode(data).decode("ascii")}
 
 
+def _decoded_content(msg) -> bytes:
+    """解压后的 body。mitmproxy 的 ``.content`` 会按 Content-Encoding 解压
+    （gzip/br/deflate…）；``.raw_content`` 是线上原始字节。
+
+    早期版本用 raw_content 落盘，导致 gzip 响应被存成二进制 blob（"响应体都是
+    二进制"的根因）。解码失败时回退原始字节——宁可退化成 b64，也不丢记录。
+    """
+    if msg is None:
+        return None
+    try:
+        return msg.content
+    except Exception:
+        try:
+            return msg.raw_content
+        except Exception:
+            return None
+
+
 def _write(rec: dict) -> None:
     global _fh, _count
     try:
@@ -85,9 +105,9 @@ def response(flow: http.HTTPFlow) -> None:
         "port": flow.request.port,
         "status": flow.response.status_code if flow.response else None,
         "req_headers": dict(flow.request.headers),
-        "req_body": _encode_body(flow.request.raw_content),
+        "req_body": _encode_body(_decoded_content(flow.request)),
         "resp_headers": dict(flow.response.headers) if flow.response else {},
-        "resp_body": _encode_body(flow.response.raw_content) if flow.response else None,
+        "resp_body": _encode_body(_decoded_content(flow.response)),
         "client_addr": flow.client_conn.peername[0] if flow.client_conn.peername else "",
         "error": str(flow.error.msg) if flow.error else None,
     }
@@ -114,7 +134,7 @@ def error(flow: http.HTTPFlow) -> None:
         "port": flow.request.port,
         "status": None,
         "req_headers": dict(flow.request.headers),
-        "req_body": _encode_body(flow.request.raw_content),
+        "req_body": _encode_body(_decoded_content(flow.request)),
         "resp_headers": {},
         "resp_body": None,
         "client_addr": flow.client_conn.peername[0] if flow.client_conn.peername else "",
