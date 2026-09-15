@@ -5,6 +5,12 @@
         <h1 class="app-page-title">{{ t('automation.title') }}</h1>
         <p class="app-page-sub">{{ t('automation.subtitle') }}</p>
       </div>
+      <div class="header-actions">
+        <n-button size="small" type="primary" secondary :aria-label="t('automation.toolsInstall')" @click="toolInstallVisible = true">
+          <template #icon><n-icon><Wrench /></n-icon></template>
+          {{ t('automation.toolsInstall') }}
+        </n-button>
+      </div>
     </div>
 
     <div class="three-cols" :style="gridStyle">
@@ -163,6 +169,13 @@
       @apply="applyElement"
     />
 
+    <!-- ============ Tool install modal (traffic capture / ADBKeyBoard) ============ -->
+    <ToolInstallModal
+      v-model:show="toolInstallVisible"
+      :device-id="autoDeviceId"
+      @changed="onToolInstallChanged"
+    />
+
     <!-- ============ Project / script meta editor modal ============ -->
     <n-modal v-model:show="store.showMeta" :title="t('automation.editInfo')" preset="card" style="width: 440px">
       <div class="field">
@@ -211,7 +224,7 @@ import {
 
 // 「添加步骤」的 + 号 —— 之前漏了这行 import，模板里的 <Plus /> 解析不到
 // 组件，图标槽渲染成空（按钮看起来没有图标）
-import { Plus } from 'lucide-vue-next'
+import { Plus, Wrench } from 'lucide-vue-next'
 
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
@@ -222,6 +235,7 @@ import ProjectTree from '@components/automation/ProjectTree.vue'
 import RunControls from '@components/automation/RunControls.vue'
 import RunPanel from '@components/automation/RunPanel.vue'
 import RunHistory from '@components/automation/RunHistory.vue'
+import ToolInstallModal from '@components/automation/ToolInstallModal.vue'
 import ElementPickerModal from '@components/automation/ElementPickerModal.vue'
 import { parseUiDump, boundsCenter, type UiNode } from '@components/automation/uiDump'
 import {
@@ -327,6 +341,19 @@ async function refreshImeStatus(deviceId: string) {
     const svc = await serviceManager.getService('automation')
     imeStatus.value = await svc.getImeStatus(deviceId)
   } catch { /* best-effort */ }
+}
+
+// ---------------- tool install entry (page header button) ----------------
+const toolInstallVisible = ref(false)
+
+/** 工具安装弹窗报成功：清探测缓存 → force 重探两侧，runHints 与状态行即时更新。 */
+async function onToolInstallChanged() {
+  try {
+    const svc = await serviceManager.getService('automation')
+    svc.clearTrafficCache()
+  } catch { /* best-effort */ }
+  await refreshTrafficStatus(true)
+  await refreshImeStatus(autoDeviceId.value)
 }
 
 // Mirrors backend input.py: `any(ord(c) > 0x7F for c in text)` — the exact
@@ -864,6 +891,8 @@ onMounted(() => {
 .steps-count { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
 .add-step-btn { flex: none; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
+/* 页头右侧动作区：.app-page-header 已是 flex + space-between，这里只补间距 */
+.header-actions { flex: none; display: flex; align-items: center; gap: 8px; }
 
 /* right run */
 .docked-record { flex: 0 0 auto; border-top: 1px solid var(--app-card-border); padding-top: 10px; }
