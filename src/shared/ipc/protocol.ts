@@ -539,6 +539,14 @@ export interface ApiMethodMap {
     result: { device_id: string; package: string; installed: boolean; active: boolean }
   }
 
+  // --- automation_handler.py (tool installs) ---
+  // install_mitmproxy / install_ime are @streaming (same envelope as
+  // automation.run): the init call resolves to undefined on the renderer
+  // side, hence result: void. install_ca is non-streaming.
+  'automation.install_ca': { params: { device_id: string }; result: { success: boolean; already_installed: boolean; error?: string } }
+  'automation.install_mitmproxy': { params: { task_id: string }; result: void }
+  'automation.install_ime': { params: { device_id: string; task_id: string; apk_path?: string }; result: void }
+
   // --- automation_runs_handler.py ---
   // Run history / report viewer. Consumed by OtherToolsPage.vue; shaped after
   // the handlers' actual return dicts (they never raise — they return a
