@@ -26,7 +26,7 @@ class TestTrafficStatus:
         payload = result["payload"]
         # Exact contract the renderer's AutomationService types against.
         assert set(payload.keys()) == {
-            "installed", "ready", "lib_path", "python_mismatch",
+            "installed", "ready", "lib_path", "python_mismatch", "ca_cert_exists",
         }
         assert isinstance(payload["installed"], bool)
         assert isinstance(payload["ready"], bool)
@@ -34,6 +34,7 @@ class TestTrafficStatus:
         assert payload["python_mismatch"] is None or isinstance(
             payload["python_mismatch"], str
         )
+        assert isinstance(payload["ca_cert_exists"], bool)
 
     def test_ready_consistent_with_components(self, api_handler):
         """ready == installed AND no python mismatch (UI hints key off this)."""
@@ -46,6 +47,35 @@ class TestTrafficStatus:
     def test_ignores_params(self, api_handler):
         data = _call(api_handler, "automation.traffic_status", {"x": 1}, 73)
         assert data["result"]["type"] == "success"
+
+    def test_probe_creates_no_directories(self, api_handler, monkeypatch, tmp_path):
+        """The status probe is a pure read: it must not create the conf dir.
+
+        A pytest run has no BT_RUNTIME_DIR, so a mkdir side effect here would
+        litter the CWD with ``mitmproxy/conf/`` (review finding M2).
+        """
+        import os
+
+        import app.automation.traffic as traffic
+        monkeypatch.setattr(traffic, "get_runtime_dir", lambda: str(tmp_path))
+
+        data = _call(api_handler, "automation.traffic_status", {}, 78)
+        payload = data["result"]["payload"]
+        # Probe works with the conf dir entirely absent.
+        assert payload["ca_cert_exists"] is False
+        # And it created nothing.
+        assert not os.path.isdir(os.path.join(str(tmp_path), "mitmproxy", "conf"))
+
+
+class TestAnyCaptureActive:
+    def test_reflects_active_capture_map(self, monkeypatch):
+        import app.automation.traffic as traffic
+
+        monkeypatch.setattr(traffic, "_ACTIVE", {})
+        assert traffic.any_capture_active() is False
+
+        monkeypatch.setattr(traffic, "_ACTIVE", {"emulator-5554": {"port": 18888}})
+        assert traffic.any_capture_active() is True
 
 
 class TestImeStatus:

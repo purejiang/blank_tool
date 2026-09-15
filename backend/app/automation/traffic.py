@@ -56,6 +56,11 @@ def _mitmproxy_conf() -> str:
     return d
 
 
+def any_capture_active() -> bool:
+    """True while any capture runs — refuse reinstall then (Windows locks mitmdump's .pyd/.dll)."""
+    return bool(_ACTIVE)
+
+
 def mitmdump_available() -> bool:
     """mitmdump is importable when runtime/mitmproxy/lib holds the package."""
     return os.path.isdir(os.path.join(_mitmproxy_lib(), "mitmproxy"))
@@ -97,11 +102,24 @@ def status() -> Dict[str, Any]:
         "ready": installed and mismatch is None,
         "lib_path": _mitmproxy_lib(),
         "python_mismatch": mismatch,
+        # Pure read probe — must never create directories (review M2).
+        "ca_cert_exists": os.path.isfile(ca_cert_path()),
     }
 
 
-def ca_cert_path() -> str:
-    return os.path.join(_mitmproxy_conf(), "mitmproxy-ca-cert.pem")
+def ca_cert_path(*, create: bool = False) -> str:
+    """Path of the mitmproxy CA cert in the runtime conf dir.
+
+    ``create=False`` (default) only builds the path — read-side callers
+    (status probes) must never create directories. Pass ``create=True``
+    where the conf dir is genuinely needed, e.g. when handing the path to
+    mitmdump, so the dir gets created via :func:`_mitmproxy_conf`.
+    """
+    if create:
+        conf = _mitmproxy_conf()
+    else:
+        conf = os.path.join(get_runtime_dir(), "mitmproxy", "conf")
+    return os.path.join(conf, "mitmproxy-ca-cert.pem")
 
 
 def _addon_path() -> str:
@@ -209,7 +227,7 @@ def install_ca(device_id: str) -> Dict[str, Any]:
     A failure here only means HTTPS stays encrypted — plain HTTP capture
     still works, so callers should degrade gracefully.
     """
-    cert = ca_cert_path()
+    cert = ca_cert_path(create=True)
     if not os.path.isfile(cert):
         return {"success": False, "error": f"CA cert not generated yet: {cert}"}
     try:
