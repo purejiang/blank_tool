@@ -9,8 +9,8 @@
   >
     <template #header>
       <div style="text-align: center; width: 100%">
-        <div style="font-size: 32px; margin-bottom: 4px">{{ statusIcon }}</div>
-        <div style="font-size: 16px; font-weight: 700">{{ dialogTitle }}</div>
+        <div style="font-size: var(--app-font-size-display); margin-bottom: 4px">{{ statusIcon }}</div>
+        <div style="font-size: var(--app-font-size-xl); font-weight: 700">{{ dialogTitle }}</div>
       </div>
     </template>
 
@@ -50,7 +50,7 @@
 
     <!-- Downloaded state -->
     <div v-else-if="store.status === 'downloaded'" class="update-body">
-      <p style="text-align: center; color: var(--app-text-secondary); font-size: 14px">
+      <p style="text-align: center; color: var(--app-text-secondary); font-size: var(--app-font-size-lg)">
         {{ $t('update.restartToInstall') }}
       </p>
       <div class="update-actions">
@@ -71,7 +71,7 @@
     <!-- Checking state -->
     <div v-else class="update-body" style="text-align: center; padding: 32px 0">
       <n-spin size="medium" />
-      <p style="margin-top: 12px; color: var(--app-text-muted); font-size: 13px">{{ $t('update.checking') }}</p>
+      <p style="margin-top: 12px; color: var(--app-text-muted); font-size: var(--app-font-size-md)">{{ $t('update.checking') }}</p>
     </div>
   </n-modal>
 </template>
@@ -152,16 +152,16 @@ function handleRetry(): void {
   gap: 8px;
   margin-bottom: 16px;
 }
-.ver-old { font-size: 13px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
-.ver-new { font-size: 15px; font-weight: 700; color: var(--app-green); font-family: var(--app-font-mono); }
+.ver-old { font-size: var(--app-font-size-md); color: var(--app-text-muted); font-family: var(--app-font-mono); }
+.ver-new { font-size: var(--app-font-size-xl); font-weight: 700; color: var(--app-green); font-family: var(--app-font-mono); }
 .release-notes {
   background: var(--app-hover);
   border-radius: 8px;
   padding: 14px;
   margin-bottom: 16px;
 }
-.rn-title { font-size: 12px; font-weight: 600; color: var(--app-text-muted); margin-bottom: 8px; }
-.rn-body { font-size: 13px; color: var(--app-text-secondary); white-space: pre-wrap; line-height: 1.6; }
+.rn-title { font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-muted); margin-bottom: 8px; }
+.rn-body { font-size: var(--app-font-size-md); color: var(--app-text-secondary); white-space: pre-wrap; line-height: 1.6; }
 .update-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.download-info { display: flex; justify-content: space-between; font-size: 13px; color: var(--app-text-secondary); margin-bottom: 8px; }
+.download-info { display: flex; justify-content: space-between; font-size: var(--app-font-size-md); color: var(--app-text-secondary); margin-bottom: 8px; }
 </style>

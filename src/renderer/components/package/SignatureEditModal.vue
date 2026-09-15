@@ -1,6 +1,6 @@
 <template>
   <n-modal :show="visible" @update:show="(v: boolean) => !v && close()">
-    <n-card :bordered="false" style="width:420px;max-width:90vw" title-style="font-size:16px;font-weight:600">
+    <n-card :bordered="false" style="width:420px;max-width:90vw" title-style="font-size: var(--app-font-size-xl);font-weight:600">
       <template #header>
         <span>{{ isEdit ? t('signature.editTitle') : t('signature.addTitle') }}</span>
       </template>

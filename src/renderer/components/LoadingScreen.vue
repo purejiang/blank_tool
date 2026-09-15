@@ -71,14 +71,14 @@ const emit = defineEmits<{
 }
 .loading-title {
   font-family: var(--app-font);
-  font-size: 24px;
+  font-size: var(--app-font-size-2xl);
   font-weight: 700;
   color: var(--app-text-primary);
   margin: 12px 0 0;
 }
 .loading-subtitle {
   font-family: var(--app-font);
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   color: var(--app-text-muted);
   margin: 4px 0 0;
 }
@@ -89,12 +89,12 @@ const emit = defineEmits<{
   margin-top: 12px;
 }
 .loading-step {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   color: var(--app-text-muted);
   margin: 0;
 }
 .loading-timer {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-muted);
   margin: 0;
   font-variant-numeric: tabular-nums;

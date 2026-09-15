@@ -244,7 +244,7 @@ defineExpose({
 }
 
 .notification-icon-symbol {
-  font-size: 16px;
+  font-size: var(--app-font-size-xl);
   font-weight: bold;
 }
 
@@ -275,7 +275,7 @@ defineExpose({
 }
 
 .notification-title {
-  font-size: 14px;
+  font-size: var(--app-font-size-lg);
   font-weight: 600;
   color: var(--app-text-primary);
   margin-bottom: 4px;
@@ -283,7 +283,7 @@ defineExpose({
 }
 
 .notification-message {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   color: var(--app-text-muted);
   line-height: 1.4;
   word-wrap: break-word;
@@ -319,7 +319,7 @@ defineExpose({
 
 .notification-action-btn {
   padding: 5px 14px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   border-radius: 4px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -369,7 +369,7 @@ defineExpose({
 }
 
 .close-icon {
-  font-size: 18px;
+  font-size: var(--app-font-size-title);
   line-height: 1;
 }
 

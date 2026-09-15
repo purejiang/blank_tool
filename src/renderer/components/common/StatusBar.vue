@@ -98,7 +98,7 @@ const healthTitle = computed(() =>
   height: auto;
   background: var(--app-sidebar-bg);
   border-top: 1px solid var(--app-sidebar-border);
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   font-family: var(--app-font);
   flex-shrink: 0;
 }

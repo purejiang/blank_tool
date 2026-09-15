@@ -265,7 +265,7 @@ const handleDeviceSelection = async (id: string) => {
   gap: 6px;
 }
 .dm-count {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -283,7 +283,7 @@ const handleDeviceSelection = async (id: string) => {
   border-top: 1px solid var(--app-card-border);
 }
 .dm-remote-title {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   font-weight: 600;
   color: var(--app-text-muted);
   margin-bottom: 8px;
@@ -299,7 +299,7 @@ const handleDeviceSelection = async (id: string) => {
   margin-top: 10px;
 }
 .dm-saved-label {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-dim);
   margin-bottom: 6px;
 }
@@ -329,7 +329,7 @@ const handleDeviceSelection = async (id: string) => {
   background: transparent;
   color: var(--app-text-muted);
   font-family: var(--app-font-mono);
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   padding: 4px 6px 4px 10px;
   cursor: pointer;
 }
@@ -351,7 +351,7 @@ const handleDeviceSelection = async (id: string) => {
 }
 .dm-title {
   font-family: var(--app-font);
-  font-size: 15px;
+  font-size: var(--app-font-size-xl);
   font-weight: 600;
   color: var(--app-text-primary);
 }
@@ -362,19 +362,19 @@ const handleDeviceSelection = async (id: string) => {
   gap: 8px;
   padding: 32px 16px;
   color: var(--app-text-dim);
-  font-size: 14px;
+  font-size: var(--app-font-size-lg);
 }
 .empty-state p { margin: 0; }
-.empty-title { font-size: 14px; font-weight: 600; color: var(--app-text-muted); margin-top: 4px !important; }
-.empty-desc { font-size: 12px; color: var(--app-text-dim); max-width: 220px; text-align: center; }
+.empty-title { font-size: var(--app-font-size-lg); font-weight: 600; color: var(--app-text-muted); margin-top: 4px !important; }
+.empty-desc { font-size: var(--app-font-size-sm); color: var(--app-text-dim); max-width: 220px; text-align: center; }
 
 .device-list { margin: -4px 0; }
 .device-icon-wrap { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .device-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.device-model { font-size: 14px; font-weight: 600; color: var(--app-text-primary); display: inline-flex; align-items: center; gap: 4px; }
+.device-model { font-size: var(--app-font-size-lg); font-weight: 600; color: var(--app-text-primary); display: inline-flex; align-items: center; gap: 4px; }
 .device-pin-flag { color: var(--app-green); flex-shrink: 0; }
 .device-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.device-serial { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text-dim); }
+.device-serial { font-family: var(--app-font-mono); font-size: var(--app-font-size-xs); color: var(--app-text-dim); }
 :deep(.device-list .n-list-item) { background: transparent !important; }
 :deep(.device-list .n-list-item:hover) { background: var(--app-hover) !important; }
 :deep(.device-list .n-list-item.selected) { background: var(--app-green-bg) !important; }

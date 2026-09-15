@@ -108,6 +108,6 @@ watch(() => route.path, (p) => { if (p !== '/') activeMenuKey.value = p }, { imm
 .brand-collapse { margin-left: auto; } .brand-logo { width: 28px; height: 28px; flex-shrink: 0; }
 .sider-brand.collapsed { justify-content: center; flex-direction: column; gap: 8px; padding: 16px 0 12px; }
 .sider-brand.collapsed .brand-collapse { margin-left: 0; }
-.brand-text { font-family: var(--app-font); font-size: 16px; font-weight: 700; color: var(--app-text-primary); letter-spacing: -0.02em; }
+.brand-text { font-family: var(--app-font); font-size: var(--app-font-size-xl); font-weight: 700; color: var(--app-text-primary); letter-spacing: -0.02em; }
 .sider-menu { flex: 1; overflow-y: auto; } .main-content { padding: 0 24px 24px; background: var(--app-body-bg); height: 100vh; overflow-y: auto; }
 </style>
