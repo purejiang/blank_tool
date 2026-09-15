@@ -46,6 +46,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
 })
 
 import ToolInstallModal from '@/renderer/components/automation/ToolInstallModal.vue'
+import { INSTALL_IDLE_TIMEOUT } from '@/renderer/services/AutomationService'
 
 const TRAFFIC_READY = {
   installed: true, ready: true, lib_path: 'D:/rt/mitmproxy/lib',
@@ -466,6 +467,77 @@ describe('ToolInstallModal — D8 accessibility', () => {
       expect(tip, testId).toBeTruthy()
       expect(tooltipContent(tip), testId).toBe(label)
     }
+  })
+})
+
+describe('ToolInstallModal — R2 idle-timeout sentinel & reopen reset', () => {
+  it('mitm idle-timeout sentinel → i18n text (not the raw sentinel), button re-enabled, no changed', async () => {
+    mockAutomation.getTrafficStatus.mockResolvedValue(TRAFFIC_MISSING)
+    mockAutomation.installMitmproxy.mockRejectedValue(new Error(INSTALL_IDLE_TIMEOUT))
+    const w = mountModal()
+    await open(w)
+
+    await w.get('[data-testid="install-mitmproxy-btn"]').trigger('click')
+    await flushPromises()
+
+    const err = w.get('[data-testid="mitm-error"]')
+    expect(err.text()).toContain('automation.tools.installIdleTimeout')
+    expect(err.text()).not.toContain(INSTALL_IDLE_TIMEOUT)
+    expect(isDisabled(w.get('[data-testid="install-mitmproxy-btn"]'))).toBe(false)
+    expect(w.emitted('changed')).toBeUndefined()
+  })
+
+  it('ime idle-timeout sentinel → i18n text in the ime error slot, button re-enabled, no changed', async () => {
+    mockAutomation.installIme.mockRejectedValue(new Error(INSTALL_IDLE_TIMEOUT))
+    const w = mountModal()
+    await open(w)
+
+    await w.get('[data-testid="install-ime-btn"]').trigger('click')
+    await flushPromises()
+
+    const err = w.get('[data-testid="ime-error"]')
+    expect(err.text()).toContain('automation.tools.installIdleTimeout')
+    expect(err.text()).not.toContain(INSTALL_IDLE_TIMEOUT)
+    expect(isDisabled(w.get('[data-testid="install-ime-btn"]'))).toBe(false)
+    expect(w.emitted('changed')).toBeUndefined()
+  })
+
+  it('closing and reopening resets all three installing* flags (un-wedges the buttons)', async () => {
+    let resolveMitm!: (v: unknown) => void
+    mockAutomation.installMitmproxy.mockImplementation(
+      () => new Promise((res) => { resolveMitm = res }))
+    let resolveIme!: (v: unknown) => void
+    mockAutomation.installIme.mockImplementation(
+      () => new Promise((res) => { resolveIme = res }))
+    let resolveCa!: (v: unknown) => void
+    mockAutomation.installCa.mockImplementation(
+      () => new Promise((res) => { resolveCa = res }))
+    const w = mountModal() // default TRAFFIC_READY: all three buttons enabled
+    await open(w)
+
+    await w.get('[data-testid="install-mitmproxy-btn"]').trigger('click')
+    await w.get('[data-testid="install-ime-btn"]').trigger('click')
+    await w.get('[data-testid="install-ca-btn"]').trigger('click')
+    await flushPromises()
+    // wedged: all three in-flight installs keep their buttons loading/disabled
+    expect(isDisabled(w.get('[data-testid="install-mitmproxy-btn"]'))).toBe(true)
+    expect(isDisabled(w.get('[data-testid="install-ime-btn"]'))).toBe(true)
+    expect(isDisabled(w.get('[data-testid="install-ca-btn"]'))).toBe(true)
+
+    // close + reopen → the show watcher must reset EVERY installing* flag
+    await w.setProps({ show: false })
+    await w.setProps({ show: true })
+    await flushPromises()
+
+    expect(isDisabled(w.get('[data-testid="install-mitmproxy-btn"]'))).toBe(false)
+    expect(isDisabled(w.get('[data-testid="install-ime-btn"]'))).toBe(false)
+    expect(isDisabled(w.get('[data-testid="install-ca-btn"]'))).toBe(false)
+    expect(isDisabled(w.get('[data-testid="local-apk-btn"]'))).toBe(false)
+
+    resolveMitm({ success: true })
+    resolveIme({ success: true })
+    resolveCa({ success: true })
+    await flushPromises()
   })
 })
 

@@ -33,6 +33,18 @@ export interface TrafficStatus {
     ca_cert_exists: boolean
 }
 
+/**
+ * Sentinel message the install watchdog rejects with when a stream has been
+ * totally silent for INSTALL_IDLE_TIMEOUT_MS. The main process deletes a
+ * request entry on its per-request timeout WITHOUT emitting a terminal
+ * event, so the stream's `complete` may never reach us — without the
+ * watchdog the returned Promise would never settle and the install modal's
+ * buttons would stay wedged until app reload.
+ */
+export const INSTALL_IDLE_TIMEOUT = 'install-idle-timeout'
+/** Total silence (no stream event for the task_id) before the watchdog fires. */
+export const INSTALL_IDLE_TIMEOUT_MS = 180_000
+
 export interface ImeStatus {
     device_id: string
     package: string
@@ -63,6 +75,8 @@ interface InstallSlot {
     onProgress?: (progress: any) => void
     resolve: (payload: TerminalPayload) => void
     reject: (reason: Error) => void
+    /** Inactivity watchdog — cleared and re-armed on every stream event. */
+    idleTimer?: ReturnType<typeof setTimeout>
 }
 
 class AutomationService {
@@ -128,17 +142,26 @@ class AutomationService {
         const promise = new Promise<TerminalPayload>((resolve, reject) => {
             // Slot registered synchronously BEFORE the backend call is issued
             // (subscription precedes launch — events emitted while the call is
-            // in flight stay routable).
-            this.handlers.set(taskId, {
+            // in flight stay routable). The inactivity watchdog is armed at the
+            // same moment: 180s of total silence for this task_id rejects.
+            const slot: InstallSlot = {
                 onLog: callbacks?.onLog,
                 resolve,
                 reject,
-            })
+            }
+            this.handlers.set(taskId, slot)
+            this.armIdleWatchdog(taskId, slot)
         })
+        // Fast-refusal paths (backend rejects before the stream starts) can
+        // settle the promise before the caller awaits — swallow that first
+        // settlement so it never surfaces as "Uncaught (in promise)". The
+        // caller still observes the rejection through the returned promise.
+        promise.catch(() => {})
         try {
             await requireApiMethod('callBackendAPI')('automation.install_mitmproxy', { task_id: taskId })
         } catch (err) {
             // Do not leak the slot (and its callback closures) for a failed start.
+            this.clearIdleWatchdog(taskId)
             this.handlers.delete(taskId)
             throw err
         }
@@ -161,16 +184,20 @@ class AutomationService {
             params.apk_path = apkPath
         }
         const promise = new Promise<TerminalPayload>((resolve, reject) => {
-            this.handlers.set(taskId, {
+            const slot: InstallSlot = {
                 onLog: callbacks?.onLog,
                 onProgress: callbacks?.onProgress,
                 resolve,
                 reject,
-            })
+            }
+            this.handlers.set(taskId, slot)
+            this.armIdleWatchdog(taskId, slot)
         })
+        promise.catch(() => {})
         try {
             await requireApiMethod('callBackendAPI')('automation.install_ime', params)
         } catch (err) {
+            this.clearIdleWatchdog(taskId)
             this.handlers.delete(taskId)
             throw err
         }
@@ -195,6 +222,35 @@ class AutomationService {
     // Internals
     // ----------------------------------------------------------------
 
+    /**
+     * Arm the per-slot inactivity watchdog. Fires only after
+     * INSTALL_IDLE_TIMEOUT_MS of TOTAL silence for the task_id (every routed
+     * stream event re-arms it): the terminal `complete` may have been dropped
+     * by the main process, so silence is the only detectable symptom.
+     */
+    private armIdleWatchdog(taskId: string, slot: InstallSlot): void {
+        slot.idleTimer = setTimeout(() => {
+            if (this.handlers.get(taskId) !== slot) return // already settled elsewhere
+            this.handlers.delete(taskId)
+            slot.reject(new Error(INSTALL_IDLE_TIMEOUT))
+        }, INSTALL_IDLE_TIMEOUT_MS)
+    }
+
+    /** Re-arm the watchdog on activity (log / progress / complete / error). */
+    private resetIdleWatchdog(taskId: string, slot: InstallSlot): void {
+        if (slot.idleTimer) clearTimeout(slot.idleTimer)
+        this.armIdleWatchdog(taskId, slot)
+    }
+
+    /** Drop the watchdog handle — every exit path must leave no live timer. */
+    private clearIdleWatchdog(taskId: string): void {
+        const slot = this.handlers.get(taskId)
+        if (slot?.idleTimer) {
+            clearTimeout(slot.idleTimer)
+            slot.idleTimer = undefined
+        }
+    }
+
     private handleStream(raw: any): void {
         if (!raw) return
 
@@ -213,23 +269,27 @@ class AutomationService {
 
             switch (data.type) {
                 case 'log': {
+                    this.resetIdleWatchdog(tid, slot)
                     slot.onLog?.(payload?.line ?? String(payload))
                     break
                 }
 
                 case 'progress': {
+                    this.resetIdleWatchdog(tid, slot)
                     slot.onProgress?.(payload)
                     break
                 }
 
                 case 'complete': {
                     // Degraded installs also arrive here — resolve, never reject.
+                    this.clearIdleWatchdog(tid)
                     this.handlers.delete(tid)
                     slot.resolve(payload)
                     break
                 }
 
                 case 'error': {
+                    this.clearIdleWatchdog(tid)
                     this.handlers.delete(tid)
                     slot.reject(new Error(payload?.message ?? String(payload)))
                     break

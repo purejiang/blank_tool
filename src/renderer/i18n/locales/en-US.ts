@@ -805,6 +805,7 @@ export default {
       imeDownloadInstall: 'Download & install',
       imeInstallLocal: 'Install from local APK…',
       installFailed: 'Install failed',
+      installIdleTimeout: 'No response for over 3 minutes — the install may still be running in the background; check the log and retry',
       imeRepo: 'GitHub repository',
       copyRepoUrl: 'Copy repository URL',
       tutorialTitle: 'New emulator setup',

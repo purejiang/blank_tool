@@ -228,7 +228,12 @@ import { useI18n } from 'vue-i18n'
 import { NButton, NIcon, NModal, NProgress, NSpin, NTooltip } from 'naive-ui'
 import { AlertCircle, CheckCircle, Copy } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
-import type { TerminalPayload, TrafficStatus, ImeStatus } from '@services/AutomationService'
+import {
+  INSTALL_IDLE_TIMEOUT,
+  type TerminalPayload,
+  type TrafficStatus,
+  type ImeStatus,
+} from '@services/AutomationService'
 
 const props = defineProps<{
   show: boolean
@@ -311,6 +316,12 @@ const caBlocked = computed(() =>
 // ----------------------------------------------------------------- open --
 watch(() => props.show, (v) => {
   if (!v) return
+  // Reset the installing flags too: an install whose stream went silent
+  // (watchdog) or a wedged previous session must never keep the buttons
+  // loading/disabled after the modal is reopened.
+  installingMitm.value = false
+  installingIme.value = false
+  installingCa.value = false
   mitmLogs.value = []
   imeLogs.value = []
   imeProgress.value = null
@@ -349,6 +360,13 @@ function pushLog(list: Ref<string[]>, line: string) {
   list.value = [...list.value, line].slice(-MAX_LOG_LINES)
 }
 
+/** Watchdog sentinel → the i18n idle-timeout text (the install may still be
+ *  running in the background); any other error keeps its raw message. */
+function errorMessage(e: unknown): string {
+  const msg = (e as any)?.message || String(e)
+  return msg === INSTALL_IDLE_TIMEOUT ? t('automation.tools.installIdleTimeout') : msg
+}
+
 async function installMitm() {
   if (installingMitm.value) return
   installingMitm.value = true
@@ -368,7 +386,7 @@ async function installMitm() {
       changed()
     }
   } catch (e: any) {
-    mitmError.value = e?.message || String(e)
+    mitmError.value = errorMessage(e)
   } finally {
     installingMitm.value = false
   }
@@ -392,7 +410,7 @@ async function installImeOnline() {
       changed()
     }
   } catch (e: any) {
-    imeError.value = e?.message || String(e)
+    imeError.value = errorMessage(e)
   } finally {
     installingIme.value = false
     imeProgress.value = null
@@ -420,7 +438,7 @@ async function installLocalApk() {
       changed()
     }
   } catch (e: any) {
-    imeError.value = e?.message || String(e)
+    imeError.value = errorMessage(e)
   } finally {
     installingIme.value = false
   }

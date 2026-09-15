@@ -808,6 +808,7 @@ export default {
       imeDownloadInstall: '下载并安装',
       imeInstallLocal: '从本地 APK 安装…',
       installFailed: '安装失败',
+      installIdleTimeout: '安装已超过 3 分钟无响应——安装可能仍在后台进行，可查看日志后重试',
       imeRepo: 'GitHub 仓库',
       copyRepoUrl: '复制仓库地址',
       tutorialTitle: '新模拟器配置教程',

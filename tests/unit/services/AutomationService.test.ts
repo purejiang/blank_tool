@@ -10,7 +10,10 @@ vi.mock('@utils/logger', () => ({
   log: { error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }))
 
-import AutomationService from '@/renderer/services/AutomationService'
+import AutomationService, {
+  INSTALL_IDLE_TIMEOUT,
+  INSTALL_IDLE_TIMEOUT_MS,
+} from '@/renderer/services/AutomationService'
 
 const mockCallBackendAPI = vi.fn()
 
@@ -295,6 +298,131 @@ describe('AutomationService', () => {
       const freshId = mockCallBackendAPI.mock.calls[1][1].task_id
       expect(freshId).toMatch(/^toolinstall-/)
       capturedCb!(envelope(freshId, 'complete', { success: true }))
+      await expect(p2).resolves.toEqual({ success: true })
+    })
+  })
+
+  // ------------------------------------------------------------------
+  // R2 install-stream watchdog: 180s of TOTAL SILENCE (no stream event
+  // for the task_id) rejects the promise with the sentinel message.
+  // The main-process per-request timeout deletes the request entry
+  // mid-stream, so the terminal `complete` may never arrive — without
+  // the watchdog the install promise never settles and the modal's
+  // buttons stay wedged until app reload.
+  // ------------------------------------------------------------------
+  describe('install stream watchdog (inactivity)', () => {
+    let capturedCb: ((raw: any) => void) | null
+
+    beforeEach(async () => {
+      capturedCb = null
+      ;(window as any).electronAPI = {
+        onStreamEvent: (cb: (raw: any) => void) => {
+          capturedCb = cb
+          return () => {}
+        },
+        callBackendAPI: mockCallBackendAPI,
+      }
+      mockCallBackendAPI.mockResolvedValue(undefined)
+      vi.useFakeTimers()
+      await service.initialize()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Attach settle-observation BEFORE advancing time (no unhandled rejection). */
+    function pendingFlag(promise: Promise<unknown>): { settled: boolean } {
+      const flag = { settled: false }
+      promise.then(() => { flag.settled = true }, () => { flag.settled = true })
+      return flag
+    }
+
+    it('rejects with the EXACT sentinel message after 180s of total silence and clears the slot', async () => {
+      const onLog = vi.fn()
+      const promise = service.installMitmproxy({ onLog })
+      const taskId = mockCallBackendAPI.mock.calls[0][1].task_id
+      const observation = expect(promise).rejects.toMatchObject({ message: INSTALL_IDLE_TIMEOUT })
+
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS)
+
+      await observation
+      // slot gone: late events for the same task_id fire nothing
+      capturedCb!(envelope(taskId, 'log', { line: 'late after watchdog' }))
+      capturedCb!(envelope(taskId, 'complete', { success: true }))
+      expect(onLog).not.toHaveBeenCalled()
+    })
+
+    it('resets on every routed stream event — inactivity, not total-duration semantics', async () => {
+      const promise = service.installMitmproxy()
+      const taskId = mockCallBackendAPI.mock.calls[0][1].task_id
+      const flag = pendingFlag(promise)
+
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS - 1000) // 179s silent
+      capturedCb!(envelope(taskId, 'log', { line: 'activity resets the watchdog' }))
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS - 1000) // another 179s
+      await Promise.resolve()
+
+      // 358s total elapsed, but never 180s IDLE — still pending
+      expect(flag.settled).toBe(false)
+
+      capturedCb!(envelope(taskId, 'complete', { success: true }))
+      await expect(promise).resolves.toEqual({ success: true })
+    })
+
+    it('clears the watchdog on the terminal complete — no timer left, no late effects', async () => {
+      const timersBefore = vi.getTimerCount()
+      const promise = service.installMitmproxy()
+      expect(vi.getTimerCount()).toBe(timersBefore + 1) // armed at slot registration
+
+      const taskId = mockCallBackendAPI.mock.calls[0][1].task_id
+      capturedCb!(envelope(taskId, 'complete', { success: true, ready: true }))
+      await expect(promise).resolves.toEqual({ success: true, ready: true })
+
+      expect(vi.getTimerCount()).toBe(timersBefore) // cleared on terminal
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS)
+      expect(vi.getTimerCount()).toBe(timersBefore) // nothing left to fire
+    })
+
+    it('disarms the watchdog when callBackendAPI itself rejects', async () => {
+      mockCallBackendAPI.mockRejectedValueOnce(new Error('backend down'))
+      await expect(service.installMitmproxy()).rejects.toThrow('backend down')
+
+      const timersAfterRejection = vi.getTimerCount()
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS)
+      expect(vi.getTimerCount()).toBe(timersAfterRejection)
+    })
+
+    it('ime install: progress resets the watchdog, then silence rejects with the sentinel', async () => {
+      const onProgress = vi.fn()
+      const promise = service.installIme('emulator-5554', { onProgress })
+      const taskId = mockCallBackendAPI.mock.calls[0][1].task_id
+      const observation = expect(promise).rejects.toMatchObject({ message: INSTALL_IDLE_TIMEOUT })
+
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS - 1000)
+      capturedCb!(envelope(taskId, 'progress', { progress: 10, downloaded: 1, total: 10, speed: '1B/s' }))
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS - 1000)
+      expect(onProgress).toHaveBeenCalledTimes(1)
+
+      // full silence from here on fires the watchdog
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS)
+      await observation
+    })
+
+    it('two successive installs get independent watchdogs — a fired one cannot affect the next', async () => {
+      const p1 = service.installMitmproxy()
+      const id1 = mockCallBackendAPI.mock.calls[0][1].task_id
+      const observation1 = expect(p1).rejects.toMatchObject({ message: INSTALL_IDLE_TIMEOUT })
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS)
+      await observation1
+
+      const p2 = service.installMitmproxy()
+      const id2 = mockCallBackendAPI.mock.calls[1][1].task_id
+      expect(id2).not.toBe(id1)
+      // stale event from the fired install 1 resets nothing
+      capturedCb!(envelope(id1, 'log', { line: 'stale from install 1' }))
+      await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS - 1000)
+      capturedCb!(envelope(id2, 'complete', { success: true }))
       await expect(p2).resolves.toEqual({ success: true })
     })
   })
