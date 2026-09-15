@@ -1,6 +1,6 @@
 <template>
   <div class="app-page">
-    <div class="app-page-header">
+    <div class="app-page-header" ref="headerRef">
       <div>
         <h1 class="app-page-title">{{ t('settings.title') }}</h1>
         <p class="app-page-sub">{{ t('settings.subtitle') }}</p>
@@ -13,7 +13,7 @@
 
     <div class="settings-body">
       <!-- 左侧导航：组级切换，组内所有设置卡一起展示 -->
-      <aside class="settings-nav">
+      <aside class="settings-nav" :style="{ top: navTop + 'px' }">
         <div
           v-for="item in navItems"
           :key="item.key"
@@ -436,7 +436,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, inject, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
 import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History, Server, Palette, Info } from 'lucide-vue-next'
@@ -550,6 +550,25 @@ const navItems = computed(() => [
 const panelTitle = computed(() =>
   navItems.value.find(i => i.key === activePanel.value)?.label || ''
 )
+
+// 左栏 sticky 的吸附位必须让开页头：页头自己也是 sticky top:0 + z-index:10，
+// 左栏若也贴 top:0 会钻到页头底下被盖住（表现为「列表跟着滚、小标题消失」）。
+// 页头高度随字号/是否换行变化，这里实测而非写死像素。
+const headerRef = ref<HTMLElement | null>(null)
+const navTop = ref(0)
+let headerRO: ResizeObserver | null = null
+onMounted(() => {
+  const el = headerRef.value
+  if (!el) return
+  const measure = () => { navTop.value = Math.ceil(el.getBoundingClientRect().height) }
+  measure()
+  headerRO = new ResizeObserver(measure)
+  headerRO.observe(el)
+})
+onBeforeUnmount(() => {
+  headerRO?.disconnect()
+  headerRO = null
+})
 
 // ---------------- about（原独立关于页并入；构建信息 + 检查更新） ----------------
 const updateStore = useUpdateStore()
@@ -954,10 +973,11 @@ onMounted(() => {
 <style scoped>
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 .settings-body { display: flex; gap: 16px; align-items: flex-start; }
-.settings-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
+.settings-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; z-index: 5; background: var(--app-body-bg); }
+  /* top 由 script 实测页头高度后注入（见 navTop）：不能与页头抢 top:0 */
 .settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .panel-title { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-text-primary); margin-bottom: 2px; }
-.panel-sec { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-dim); margin-bottom: -6px; }
+.panel-sec { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-dim); margin-bottom: 0; }
 .panel-sec .storage-total-text { margin-left: 0; margin-right: auto; }
 .panel-sec-action { margin-left: auto; }
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
