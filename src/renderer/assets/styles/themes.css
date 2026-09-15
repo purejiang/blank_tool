@@ -1,20 +1,16 @@
 /* ============================================================================
- * themes.css — 唯一的**颜色** token 表。
+ * themes.css — 【自动生成，请勿手改】
  *
- * 全局只有这一套命名空间：--app-*。
- *   · 颜色           → 本文件（按 data-theme 分浅/深两块）
- *   · 非颜色 token   → variables.css（间距/圆角/字体/阴影/页面宽/控制台）
- *   · 通用 UI 类     → common/components.css
- *   · 重置与基础元素 → main.css
- *   · 第三方覆盖     → naive-overrides.css
+ * 源：src/renderer/theme/tokens.ts（colorTokens：颜色 token）
+ * 生成：npm run theme:css（scripts/generate-theme-css.mjs）
+ * 守卫：tests/unit/theme/tokens-css-parity.test.ts
  *
- * 铁律：组件里禁止写死色值。新增色相必须 light / dark 两边都加，否则在另一
- * 主题下会静默落到别的颜色（历史上 .status-bar、StepListEditor 都因此出过错）。
+ * 铁律：组件里禁止写死色值；新增色相必须 light / dark 两边都加，否则另一主题下会静默落到别的颜色。
+ * 分组的语义注释见 tokens.ts；本文件只保证「token → CSS 变量」的逐一对应。
  * ========================================================================== */
 
 :root,
 [data-theme="light"] {
-  /* ---- 表面 / 边框 ---- */
   --app-body-bg: #F1F5F9;
   --app-sidebar-bg: #E2E8F0;
   --app-sidebar-border: #CBD5E1;
@@ -26,14 +22,10 @@
   --app-drop-zone-bg: #F8FAFC;
   --app-drop-zone-border: #94A3B8;
   --app-storage-bg: rgba(0, 0, 0, 0.04);
-
-  /* ---- 文字 ---- */
   --app-text-primary: #0F172A;
   --app-text-secondary: #334155;
   --app-text-muted: #475569;
   --app-text-dim: #64748B;
-
-  /* ---- 语义色 + 同色底 ---- */
   --app-green: #16A34A;
   --app-green-hover: #15803D;
   --app-green-bg: rgba(22, 163, 74, 0.1);
@@ -48,19 +40,14 @@
   --app-purple-bg: rgba(124, 58, 237, 0.1);
   --app-red: #DC2626;
   --app-red-bg: rgba(220, 38, 38, 0.1);
-
-  /* ---- 交互态 ---- */
   --app-hover: rgba(0, 0, 0, 0.04);
   --app-hover-strong: rgba(0, 0, 0, 0.08);
-
-  /* ---- 杂项 ---- */
   --app-scrollbar-thumb: #CBD5E1;
   --app-scrollbar-hover: #94A3B8;
   --app-placeholder-color: #CBD5E1;
 }
 
 [data-theme="dark"] {
-  /* ---- 表面 / 边框 ---- */
   --app-body-bg: #0F172A;
   --app-sidebar-bg: #0C1322;
   --app-sidebar-border: #1E293B;
@@ -72,14 +59,10 @@
   --app-drop-zone-bg: #0C1322;
   --app-drop-zone-border: #334155;
   --app-storage-bg: rgba(15, 23, 42, 0.5);
-
-  /* ---- 文字 ---- */
   --app-text-primary: #F8FAFC;
   --app-text-secondary: #CBD5E1;
   --app-text-muted: #94A3B8;
   --app-text-dim: #64748B;
-
-  /* ---- 语义色 + 同色底 ---- */
   --app-green: #22C55E;
   --app-green-hover: #16A34A;
   --app-green-bg: rgba(34, 197, 94, 0.1);
@@ -94,12 +77,8 @@
   --app-purple-bg: rgba(167, 139, 250, 0.14);
   --app-red: #EF4444;
   --app-red-bg: rgba(239, 68, 68, 0.14);
-
-  /* ---- 交互态 ---- */
   --app-hover: rgba(34, 197, 94, 0.06);
   --app-hover-strong: rgba(34, 197, 94, 0.12);
-
-  /* ---- 杂项 ---- */
   --app-scrollbar-thumb: #334155;
   --app-scrollbar-hover: #475569;
   --app-placeholder-color: #334155;

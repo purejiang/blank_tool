@@ -1,39 +1,29 @@
 /* ============================================================================
- * variables.css — 唯一的**非颜色** token 表。
+ * variables.css — 【自动生成，请勿手改】
  *
- * 命名空间与颜色一致，全部 --app-*，避免再出现 --space-sm / --spacing-sm /
- * --radius-md / --border-radius 这种「一件事两个名字」的重复体系。
- * 颜色一律在 themes.css。（本文件原在 assets/variables.css，2026-09-14 归位）
+ * 源：src/renderer/theme/tokens.ts（staticTokens：非颜色 token）
+ * 生成：npm run theme:css（scripts/generate-theme-css.mjs）
+ * 守卫：tests/unit/theme/tokens-css-parity.test.ts
+ *
+ * 命名空间与颜色一致，全部 --app-*，避免再出现 --space-sm / --spacing-sm 这类「一件事两个名字」的重复体系。
+ * 分组的语义注释见 tokens.ts；本文件只保证「token → CSS 变量」的逐一对应。
  * ========================================================================== */
 
 :root {
-  /* ---- 字体：页面只有这两个字体栈（Inter 由 index.html 加载） ---- */
-  --app-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --app-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --app-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-
-  /* ---- 间距 ---- */
   --app-space-xs: 4px;
   --app-space-sm: 8px;
   --app-space-md: 16px;
   --app-space-lg: 24px;
   --app-space-xl: 32px;
-
-  /* ---- 圆角 ---- */
   --app-radius-sm: 4px;
   --app-radius-md: 8px;
   --app-radius-lg: 12px;
-
-  /* ---- 阴影 ---- */
   --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --app-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
   --app-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-
-  /* ---- 布局：单一页面宽度，切页不再跳宽 ---- */
   --app-page-max-width: 1040px;
-
-  /* ---- 日志控制台：恒定深色（两种主题下都保持深底），
-         所以刻意不引用 --app-text-* ---- */
   --app-console-bg: #0F1115;
   --app-console-fg: #C8D0DA;
   --app-console-dim: #5C6672;
