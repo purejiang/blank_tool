@@ -50,10 +50,10 @@
 
 /* 通知吐司字号：Naive Notification 主题未暴露这两处字号字段，故仍以 CSS 覆盖 */
 .n-notification .n-notification__main {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
 }
 .n-notification .n-notification__main__title {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   font-weight: 600;
 }
 
