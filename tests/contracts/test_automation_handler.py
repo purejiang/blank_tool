@@ -133,6 +133,82 @@ class TestImeStatus:
         assert data["result"]["type"] == "error"
 
 
+class TestInstallCa:
+    """automation.install_ca — non-streaming wrapper around traffic.install_ca.
+
+    The handler preflights the local cert through THIS module's ``ca_cert_path``
+    alias (review M5): patching ``mod.ca_cert_path`` must reach the preflight —
+    patching the traffic impl alone cannot.
+    """
+
+    def test_install_ca_missing_device_id_returns_error(self, api_handler):
+        data = _call(api_handler, "automation.install_ca", {}, 81)
+        assert data["id"] == 81
+        assert data["finished"] is True
+        assert data["result"]["type"] == "error"
+        assert data["result"]["payload"]["message"] == "device_id is required"
+
+    def test_install_ca_blank_device_id_returns_error(self, api_handler):
+        data = _call(api_handler, "automation.install_ca", {"device_id": "  "}, 82)
+        assert data["result"]["type"] == "error"
+        assert data["result"]["payload"]["message"] == "device_id is required"
+
+    def test_install_ca_missing_cert_file_returns_error(self, api_handler, monkeypatch, tmp_path):
+        import app.handlers.automation_handler as mod
+
+        monkeypatch.setattr(mod, "ca_cert_path", lambda: str(tmp_path / "nope.pem"))
+        data = _call(
+            api_handler, "automation.install_ca", {"device_id": "emulator-5554"}, 83
+        )
+        assert data["result"]["type"] == "error"
+        message = data["result"]["payload"]["message"]
+        assert "run one capture first" in message
+
+    def test_install_ca_delegates_to_traffic_impl(self, api_handler, monkeypatch, tmp_path):
+        import app.handlers.automation_handler as mod
+
+        cert = tmp_path / "mitmproxy-ca-cert.pem"
+        cert.write_bytes(b"-----BEGIN CERTIFICATE-----")
+        monkeypatch.setattr(mod, "ca_cert_path", lambda: str(cert))
+
+        captured = {}
+
+        def fake_impl(device_id):
+            captured["device_id"] = device_id
+            return {"success": True, "already_installed": False}
+
+        monkeypatch.setattr(mod, "install_ca_impl", fake_impl)
+
+        data = _call(
+            api_handler, "automation.install_ca", {"device_id": "emulator-5554"}, 84
+        )
+        assert captured["device_id"] == "emulator-5554"
+        result = data["result"]
+        assert result["type"] == "success"
+        # Exact passthrough — the traffic impl's payload shape, verbatim.
+        assert result["payload"] == {"success": True, "already_installed": False}
+
+    def test_install_ca_ignores_unknown_extra_params(self, api_handler, monkeypatch, tmp_path):
+        """malformed_input probe: unknown extras must not break the handler."""
+        import app.handlers.automation_handler as mod
+
+        cert = tmp_path / "mitmproxy-ca-cert.pem"
+        cert.write_bytes(b"-----BEGIN CERTIFICATE-----")
+        monkeypatch.setattr(mod, "ca_cert_path", lambda: str(cert))
+        monkeypatch.setattr(
+            mod, "install_ca_impl",
+            lambda device_id: {"success": True, "already_installed": True},
+        )
+
+        data = _call(
+            api_handler,
+            "automation.install_ca",
+            {"device_id": "emulator-5554", "unknown": 1, "foo": {"bar": 2}},
+            85,
+        )
+        assert data["result"]["type"] == "success"
+
+
 class TestResponseShape:
     METHODS = [
         "automation.traffic_status",

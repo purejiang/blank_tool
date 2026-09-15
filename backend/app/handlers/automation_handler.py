@@ -14,9 +14,13 @@ into the params so the orchestrator can find its per-run artifact
 directory, and registers a stop_event the orchestrator polls for cancel.
 """
 
+import os
+
 from app.automation.input import ime_status as ime_status_impl
 from app.automation.orchestrator import run as run_orchestration
 from app.automation.traffic import status as traffic_status_impl
+from app.automation.traffic import ca_cert_path
+from app.automation.traffic import install_ca as install_ca_impl
 from app.common.decorators import logs_errors, streaming
 from app.common.exceptions import ToolException
 from app.common.stream_context import StreamContext
@@ -63,8 +67,26 @@ def ime_status(params, stream_handler=None):
     return ime_status_impl(device_id)
 
 
+@logs_errors("AutomationHandler")
+def install_ca(params, stream_handler=None):
+    """Install the mitmproxy CA cert onto one device (non-streaming).
+
+    Only meaningful after a first capture generated the CA locally, so the
+    preflight below rejects before touching the device. The preflight reads
+    THIS module's ``ca_cert_path`` alias (not the traffic impl) so tests can
+    point it at a tmp path — same impl-alias convention as ``ime_status_impl``.
+    """
+    device_id = str(params.get("device_id") or "").strip()
+    if not device_id:
+        raise ToolException("device_id is required")
+    if not os.path.isfile(ca_cert_path()):
+        raise ToolException("CA cert not generated yet — run one capture first")
+    return install_ca_impl(device_id)
+
+
 API_MAP = {
     "automation.run": run_automation,
     "automation.traffic_status": traffic_status,
     "automation.ime_status": ime_status,
+    "automation.install_ca": install_ca,
 }
