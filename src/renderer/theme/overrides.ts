@@ -42,6 +42,12 @@ export const themeOverridesDark: GlobalThemeOverrides = {
     textColor2: D['text-secondary'],
     textColor3: D['text-muted'],
     scrollbarColor: D['scrollbar-thumb'],
+    // Naive 自绘滚动条与原生条保持一致：hover 色走 token、几何走 scrollbar-* token
+    // （此前 hover 用 Naive 默认的 alpha 叠加，与原生条 hover 变深的行为不一致）
+    scrollbarColorHover: D['scrollbar-hover'],
+    scrollbarWidth: staticTokens['scrollbar-size'],
+    scrollbarHeight: staticTokens['scrollbar-size'],
+    scrollbarBorderRadius: staticTokens['scrollbar-radius'],
     inputColor: D['input-bg'],
     actionColor: D['action-bg'],
     hoverColor: D['green-bg-active'],
@@ -89,6 +95,10 @@ export const themeOverridesLight: GlobalThemeOverrides = {
     textColor2: L['text-secondary'],
     textColor3: L['text-muted'],
     scrollbarColor: L['scrollbar-thumb'],
+    scrollbarColorHover: L['scrollbar-hover'],
+    scrollbarWidth: staticTokens['scrollbar-size'],
+    scrollbarHeight: staticTokens['scrollbar-size'],
+    scrollbarBorderRadius: staticTokens['scrollbar-radius'],
     inputColor: L['input-bg'],
     actionColor: L['action-bg'],
     hoverColor: L['green-bg-hover'],
