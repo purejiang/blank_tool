@@ -318,7 +318,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
 }
 .panel-title {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   font-weight: 600;
   color: var(--app-text-primary);
 }
@@ -337,7 +337,7 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   padding: 2px 0;
   border-bottom: 1px dashed var(--app-card-border);
 }
@@ -356,7 +356,7 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 .record-empty {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-muted);
   text-align: center;
   padding: 10px 0;
@@ -364,7 +364,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
 }
 .gap-line {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--app-text-muted);
   text-align: center;
   padding: 1px 0;
@@ -382,7 +382,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   flex-wrap: wrap;
 }
-.gap-label { font-size: 11px; color: var(--app-text-muted); margin-right: 4px; }
+.gap-label { font-size: var(--app-font-size-xs); color: var(--app-text-muted); margin-right: 4px; }
 .gap-field { display: inline-flex; align-items: center; }
 .gap-num { width: 84px; }
 </style>

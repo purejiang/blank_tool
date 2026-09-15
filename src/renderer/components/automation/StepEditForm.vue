@@ -223,7 +223,7 @@ function save() {
 .form-field label {
   width: 72px;
   flex: none;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-muted);
   text-align: right;
 }
@@ -232,7 +232,7 @@ function save() {
 .ctl-pick { display: flex; align-items: center; gap: 6px; }
 .ctl-pick .n-input { flex: 1; min-width: 0; }
 .ctl-pick-btn { flex: none; }
-.form-error { font-size: 12px; color: var(--app-red); }
+.form-error { font-size: var(--app-font-size-sm); color: var(--app-red); }
 .form-actions {
   display: flex;
   justify-content: flex-end;

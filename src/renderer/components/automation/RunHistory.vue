@@ -85,17 +85,17 @@ function fmtDur(ms: number): string {
   flex: 0 1 auto; min-height: 0; overflow: hidden;
 }
 .rh-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex: none; }
-.rh-title { font-size: 12px; font-weight: 600; color: var(--app-text-primary); }
+.rh-title { font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-primary); }
 .rh-count {
-  font-size: 11px; color: var(--app-text-muted); background: var(--app-blue-bg);
+  font-size: var(--app-font-size-xs); color: var(--app-text-muted); background: var(--app-blue-bg);
   border-radius: 8px; padding: 0 6px; line-height: 16px;
 }
 .rh-head :deep(.n-button) { margin-left: auto; }
-.rh-empty { padding: 8px 0; font-size: 12px; color: var(--app-text-muted); text-align: center; }
+.rh-empty { padding: 8px 0; font-size: var(--app-font-size-sm); color: var(--app-text-muted); text-align: center; }
 .rh-list { flex: 1 1 auto; min-height: 0; max-height: 140px; }
 .run-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 2px 4px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  padding: 2px 4px; border-radius: 6px; cursor: pointer; font-size: var(--app-font-size-sm);
   border: 1px solid transparent;
 }
 .run-row:hover { background: var(--app-blue-bg); }
@@ -109,7 +109,7 @@ function fmtDur(ms: number): string {
 .run-row.ok .run-counts { color: var(--app-green); }
 .run-row.bad .run-counts { color: var(--app-red); }
 .run-row.warn .run-counts { color: var(--app-yellow); }
-.run-dur { color: var(--app-text-muted); flex: none; font-variant-numeric: tabular-nums; font-size: 11px; }
+.run-dur { color: var(--app-text-muted); flex: none; font-variant-numeric: tabular-nums; font-size: var(--app-font-size-xs); }
 /* the delete affordance only appears on hover — it was crowding the row */
 .run-del { flex: none; opacity: 0; transition: opacity 0.12s; }
 .run-row:hover .run-del, .run-row.active .run-del { opacity: 1; }

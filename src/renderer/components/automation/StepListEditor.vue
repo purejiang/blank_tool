@@ -248,7 +248,7 @@ function stepKey(step: Step): string {
 .step-idx {
   width: 20px;
   flex: none;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   line-height: 1;
   color: var(--app-text-dim);
   text-align: right;
@@ -257,7 +257,7 @@ function stepKey(step: Step): string {
 /* action badge — hue = action family, see stepMeta.stepActionGroup */
 .step-badge {
   flex: none;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   line-height: 1;
   padding: 3px 6px;
   border-radius: 5px;
@@ -272,7 +272,7 @@ function stepKey(step: Step): string {
 .step-sum {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

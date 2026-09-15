@@ -574,7 +574,7 @@ watch(visibleLogs, async () => {
 .run-status.bad .dot { background: var(--app-red); }
 .run-status.warn .dot { background: var(--app-yellow); }
 .run-status.run .dot { background: var(--app-blue); }
-.st-label { font-size: 12px; font-weight: 600; flex: none; }
+.st-label { font-size: var(--app-font-size-sm); font-weight: 600; flex: none; }
 .run-status.ok .st-label { color: var(--app-green); }
 .run-status.bad .st-label { color: var(--app-red); }
 .run-status.warn .st-label { color: var(--app-yellow); }
@@ -594,7 +594,7 @@ watch(visibleLogs, async () => {
 .dp-v.path { cursor: copy; }
 .dp-v.path:hover { color: var(--app-blue); }
 
-.crash-note { display: flex; flex-direction: column; gap: 2px; font-size: 12px; margin-top: 6px; flex: none; }
+.crash-note { display: flex; flex-direction: column; gap: 2px; font-size: var(--app-font-size-sm); margin-top: 6px; flex: none; }
 .crash-text { color: var(--app-red); font-weight: 600; }
 .crash-log { color: var(--app-text-muted); word-break: break-all; }
 
@@ -606,7 +606,7 @@ watch(visibleLogs, async () => {
 }
 .tab {
   appearance: none; background: none; border: none; cursor: pointer;
-  padding: 5px 10px; font-size: 12px; color: var(--app-text-muted);
+  padding: 5px 10px; font-size: var(--app-font-size-sm); color: var(--app-text-muted);
   border-bottom: 2px solid transparent; margin-bottom: -1px;
   font-family: inherit; display: flex; align-items: center; gap: 5px;
 }
@@ -629,13 +629,13 @@ watch(visibleLogs, async () => {
 /* min-height MUST stay 0: any floor here makes the list outgrow the panel and
    paint over the run history underneath it */
 .scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.empty { padding: 18px 8px; text-align: center; color: var(--app-text-muted); font-size: 12px; }
+.empty { padding: 18px 8px; text-align: center; color: var(--app-text-muted); font-size: var(--app-font-size-sm); }
 
 /* ---- step rows ---- */
 .step-block + .step-block { border-top: 1px dashed var(--app-card-border); }
 .srow {
   display: flex; gap: 7px; align-items: baseline;
-  padding: 4px 2px; font-size: 12px; cursor: pointer; border-radius: 5px;
+  padding: 4px 2px; font-size: var(--app-font-size-sm); cursor: pointer; border-radius: 5px;
 }
 .srow:hover { background: var(--app-blue-bg); }
 .s-rel { flex: none; width: 48px; font-size: var(--app-font-size-xs); color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
@@ -658,7 +658,7 @@ watch(visibleLogs, async () => {
 }
 .sd-msg { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); word-break: break-all; }
 .sd-shots { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
-.sd-empty { font-size: 11px; color: var(--app-text-muted); margin-top: 4px; }
+.sd-empty { font-size: var(--app-font-size-xs); color: var(--app-text-muted); margin-top: 4px; }
 
 /* ---- requests ---- */
 .req-list { display: flex; flex-direction: column; }
@@ -681,11 +681,11 @@ watch(visibleLogs, async () => {
 .rd-pre {
   margin: 0; padding: 5px 7px; max-height: 180px; overflow: auto;
   background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 5px;
-  font-family: var(--app-font-mono); font-size: 11px; line-height: 1.5;
+  font-family: var(--app-font-mono); font-size: var(--app-font-size-xs); line-height: 1.5;
   color: var(--app-console-fg); white-space: pre-wrap; word-break: break-all;
 }
-.rd-note { font-size: 11px; color: var(--app-text-muted); padding: 2px 0; }
-.trunc-note { font-size: 11px; color: var(--app-yellow); padding: 6px 0; }
+.rd-note { font-size: var(--app-font-size-xs); color: var(--app-text-muted); padding: 2px 0; }
+.trunc-note { font-size: var(--app-font-size-xs); color: var(--app-yellow); padding: 6px 0; }
 
 /* ---- logs ---- */
 .log-scroll { background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px 8px; }

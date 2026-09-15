@@ -349,7 +349,7 @@ async function importScriptsTo(p: { id: string; scripts: any[] }) {
 }
 .col-head {
   display: flex; justify-content: space-between; align-items: center;
-  font-size: 13px; font-weight: 600; color: var(--app-text-primary);
+  font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary);
   margin-bottom: 10px;
 }
 .head-actions { display: flex; align-items: center; gap: 4px; }
@@ -369,14 +369,14 @@ async function importScriptsTo(p: { id: string; scripts: any[] }) {
 .proj-row:hover .row-actions { opacity: 1; }
 /* 可见备注行：与名字后的图标对齐（图标 14px + gap 5px） */
 .item-desc {
-  font-size: 11px; color: var(--app-text-muted);
+  font-size: var(--app-font-size-xs); color: var(--app-text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .proj-desc { padding: 1px 0 4px 19px; }
 .scripts { margin: 2px 0 6px 12px; display: flex; flex-direction: column; gap: 1px; }
 .script-row {
   display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px;
-  cursor: pointer; font-size: 12px; color: var(--app-text-secondary);
+  cursor: pointer; font-size: var(--app-font-size-sm); color: var(--app-text-secondary);
 }
 .script-row.active { background: var(--app-blue-bg); color: var(--app-text-primary); }
 .script-main { flex: 1; min-width: 0; }

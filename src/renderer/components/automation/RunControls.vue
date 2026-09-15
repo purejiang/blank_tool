@@ -167,7 +167,7 @@ const captureSummary = computed(() =>
 .run-btn { flex: none; }
 .run-config-btn { flex: none; }
 .run-hints { display: flex; flex-direction: column; gap: 2px; }
-.run-hint { font-size: 12px; color: var(--app-text-muted); }
+.run-hint { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 
 /* ---- run settings dialog ---- */
 /* teleported by n-modal, but the vnodes are created here, so the scoped
@@ -175,9 +175,9 @@ const captureSummary = computed(() =>
 .rcf-block { display: flex; flex-direction: column; gap: 6px; }
 .rcf-block + .rcf-block { margin-top: 16px; }
 .rcf-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.rcf-label { font-size: 13px; color: var(--app-text-primary); }
-.rcf-hint { font-size: 12px; line-height: 1.55; color: var(--app-text-muted); }
-.rcf-warn { font-size: 12px; line-height: 1.55; color: var(--app-red); }
+.rcf-label { font-size: var(--app-font-size-md); color: var(--app-text-primary); }
+.rcf-hint { font-size: var(--app-font-size-sm); line-height: 1.55; color: var(--app-text-muted); }
+.rcf-warn { font-size: var(--app-font-size-sm); line-height: 1.55; color: var(--app-red); }
 .rcf-input { width: 100%; }
 .rcf-block.is-off .rcf-label,
 .rcf-block.is-off .rcf-hint { opacity: .55; }
