@@ -65,7 +65,11 @@ export default defineConfig({
       strictPort: true
     },
     build: {
-      outDir: '../dist/renderer',
+      // 注意：electron-vite 的 build.outDir 按**项目根**解析（不是 renderer root），
+      // 所以这里必须是 'dist/renderer'。写成 '../dist/renderer'（旧 vite.config.ts
+      // 的写法，那里 outDir 相对 root=src）会把产物写到项目**上一级**目录，
+      // 导致 electron-builder 打包时 dist/renderer 缺失。
+      outDir: 'dist/renderer',
       emptyOutDir: true,
       rollupOptions: {
         input: { main: resolve(__dirname, 'src/index.html') }
