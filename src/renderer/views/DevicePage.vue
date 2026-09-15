@@ -740,6 +740,8 @@ const takeScreenshot = async () => {
   word-break: break-all;
   max-height: 180px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 /* Apps */
@@ -846,6 +848,8 @@ const takeScreenshot = async () => {
   padding: 10px 12px;
   max-height: 480px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
   font-family: var(--app-font-mono);
   font-size: var(--app-font-size-xs);
   line-height: 1.5;

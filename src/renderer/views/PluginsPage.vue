@@ -838,7 +838,7 @@ onUnmounted(() => {
   padding: 5px 10px; font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-primary);
   border-bottom: 1px solid var(--app-card-border); flex: none;
 }
-.pl-console-body { flex: 1; min-height: 0; overflow: auto; padding: 6px 10px; font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); background: var(--app-code-bg, transparent); }
+.pl-console-body { flex: 1; min-height: 0; overflow: auto; padding: 6px 10px; font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); background: var(--app-code-bg, transparent); scrollbar-gutter: stable; overscroll-behavior: contain; }
 .pl-console-empty { color: var(--app-text-muted); font-size: var(--app-font-size-sm); padding: 12px 0; text-align: center; }
 .pl-line { white-space: pre-wrap; word-break: break-all; color: var(--app-text-primary); }
 .pl-line.lv-warn { color: var(--app-yellow); }

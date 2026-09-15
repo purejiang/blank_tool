@@ -656,6 +656,8 @@ onUnmounted(() => {
   max-height: 400px;
   min-height: 120px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
   margin: 8px 0 6px;
   background: var(--app-code-bg);
   border: 1px solid var(--app-card-border);

@@ -850,7 +850,7 @@ onMounted(() => {
 .json-status { font-size: var(--app-font-size-sm); margin-top: 4px; }
 .json-status.ok { color: var(--app-green); }
 .json-status.bad { color: var(--app-red); }
-.editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; scrollbar-gutter: stable; overscroll-behavior: contain; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }

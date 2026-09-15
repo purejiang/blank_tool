@@ -1558,7 +1558,7 @@ function renderApkInfo(data: any) {
    原来写的是 calc(100vh - 48px)，把外壳的上下 24px 内边距硬编进来了——
    外壳 padding 一改这页就悄悄短一截。顶部留白现在归 .app-page-header 管。 */
 .package-page { height: 100%; display: flex; flex-direction: column; }
-.task-list-area { flex: 1; overflow-y: auto; min-height: 0; }
+  .task-list-area { flex: 1; overflow-y: auto; min-height: 0; scrollbar-gutter: stable; overscroll-behavior: contain; }
 
 /* New Task Bar */
 .new-task-bar {
