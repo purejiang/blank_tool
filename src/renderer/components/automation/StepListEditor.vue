@@ -213,6 +213,8 @@ function stepKey(step: Step): string {
   flex-direction: column;
   gap: 5px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 .step-item {
   border: 1px solid var(--app-card-border);

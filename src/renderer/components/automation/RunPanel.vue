@@ -628,7 +628,7 @@ watch(visibleLogs, async () => {
 .panel-body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; margin-top: 6px; }
 /* min-height MUST stay 0: any floor here makes the list outgrow the panel and
    paint over the run history underneath it */
-.scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.scroll { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
 .empty { padding: 18px 8px; text-align: center; color: var(--app-text-muted); font-size: var(--app-font-size-sm); }
 
 /* ---- step rows ---- */

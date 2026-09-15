@@ -49,7 +49,7 @@ const { t } = useI18n()
 <style scoped>
 .dumping { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 0; }
 .dumping-hint { margin: 0; }
-.elem-list { max-height: 360px; overflow: auto; }
+  .elem-list { max-height: 360px; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
 .elem-item { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .elem-item:hover { background: var(--app-blue-bg); }
 .elem-main { display: flex; flex-direction: column; min-width: 0; }

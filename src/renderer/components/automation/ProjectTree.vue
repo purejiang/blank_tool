@@ -355,7 +355,7 @@ async function importScriptsTo(p: { id: string; scripts: any[] }) {
 .head-actions { display: flex; align-items: center; gap: 4px; }
 .col-empty { margin: auto; text-align: center; }
 
-.tree { overflow: auto; flex: 1; }
+  .tree { overflow: auto; flex: 1; scrollbar-gutter: stable; overscroll-behavior: contain; }
 .proj { margin-bottom: 2px; }
 .proj-row {
   display: flex; align-items: center; justify-content: space-between;
