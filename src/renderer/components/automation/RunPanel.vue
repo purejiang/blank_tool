@@ -330,7 +330,11 @@ const reqDetail = ref<Record<number, any>>({})
 const reqDetailLoading = ref<number | null>(null)
 const reqDetailError = ref<Record<number, string>>({})
 
-async function toggleReq(i: number) {
+/** v-for 的 index 在松散类型（any[]）下被 vue-tsc 推断为 string | number，
+ *  这里统一归一为数字下标（traffic jsonl 的行号）。 */
+async function toggleReq(raw: number | string) {
+  const i = Number(raw)
+  if (!Number.isFinite(i)) return
   if (expandedReq.value === i) {
     expandedReq.value = null
     return
