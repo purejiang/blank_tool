@@ -433,6 +433,117 @@ class TestInstallMitmproxy:
             assert terminals[0]["type"] == "complete"
             assert terminals[0]["payload"]["degraded"] is True
 
+    def test_install_mitmproxy_marker_write_failure_degrades(
+        self, monkeypatch, tmp_path
+    ):
+        """R3: the post-pip tail must degrade like any pip failure — a marker
+        write blow-up yields the SAME degraded complete, never a bare error."""
+        import os
+        import sys
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: True)
+        monkeypatch.setattr(mod, "_pip_install", lambda lib, on_line: 0)
+
+        def boom(_runtime):
+            raise OSError("disk full while stamping marker")
+
+        # raising=False: the seam only exists once the R3 helper lands.
+        monkeypatch.setattr(mod, "_write_python_marker", boom, raising=False)
+
+        mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        payload = completes[0]["payload"]
+        assert set(payload.keys()) == {
+            "success", "degraded", "manual_command", "lib_path", "python_bin",
+        }
+        assert payload["success"] is False
+        assert payload["degraded"] is True
+        lib = os.path.join(str(tmp_path), "mitmproxy", "lib")
+        # Byte-identical to the pip-failure paths' manual command.
+        assert payload["manual_command"] == (
+            f'"{sys.executable}" -m pip install --target "{lib}" --upgrade mitmproxy'
+        )
+        assert not any(e["type"] == "error" for e in events)
+        # No partial marker may survive that later reads as a version stamp.
+        assert not os.path.exists(
+            os.path.join(str(tmp_path), "mitmproxy", "PYTHON_MARKER")
+        )
+
+    def test_install_mitmproxy_status_build_failure_degrades(
+        self, monkeypatch, tmp_path
+    ):
+        """R3: traffic_status_impl blowing up after pip exit 0 degrades too —
+        the marker write already succeeded and must survive intact."""
+        import os
+        import sys
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: True)
+        monkeypatch.setattr(mod, "_pip_install", lambda lib, on_line: 0)
+
+        def boom():
+            raise RuntimeError("status probe exploded")
+
+        monkeypatch.setattr(mod, "traffic_status_impl", boom)
+
+        mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        payload = completes[0]["payload"]
+        assert set(payload.keys()) == {
+            "success", "degraded", "manual_command", "lib_path", "python_bin",
+        }
+        assert payload["success"] is False
+        assert payload["degraded"] is True
+        lib = os.path.join(str(tmp_path), "mitmproxy", "lib")
+        assert payload["manual_command"] == (
+            f'"{sys.executable}" -m pip install --target "{lib}" --upgrade mitmproxy'
+        )
+        assert not any(e["type"] == "error" for e in events)
+        # The marker write happened before the status build failed — intact.
+        marker = os.path.join(str(tmp_path), "mitmproxy", "PYTHON_MARKER")
+        assert os.path.isfile(marker)
+        with open(marker, "r", encoding="utf-8") as f:
+            assert f.read() == f"{sys.version_info[0]}.{sys.version_info[1]}"
+
+    def test_install_mitmproxy_tail_baseexception_not_swallowed(
+        self, monkeypatch, tmp_path
+    ):
+        """malformed_input probe: the tail guard catches Exception only — a
+        BaseException from the tail (KeyboardInterrupt / SystemExit class,
+        interpreter control flow) must propagate, not be degraded away."""
+        import app.handlers.automation_handler as mod
+
+        class TailAbort(BaseException):
+            pass
+
+        events = []
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: True)
+        monkeypatch.setattr(mod, "_pip_install", lambda lib, on_line: 0)
+
+        def boom(_runtime):
+            raise TailAbort("control-flow signal")
+
+        # raising=False: the seam only exists once the R3 helper lands.
+        monkeypatch.setattr(mod, "_write_python_marker", boom, raising=False)
+
+        with pytest.raises(TailAbort):
+            mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        assert not any(e["type"] == "complete" for e in events)
+        assert not any(e["type"] == "error" for e in events)
+
 
 class _FakeApkResp:
     """Minimal urllib response for the real _download_apk: fixed headers plus

@@ -155,16 +155,34 @@ def _pip_install(lib_path: str, on_line) -> int:
         return 1
 
 
+def _write_python_marker(runtime: str) -> None:
+    """Stamp ``<runtime>/mitmproxy/PYTHON_MARKER`` with this interpreter's X.Y.
+
+    Writes through a temp file + ``os.replace`` so a failed stamp can never
+    leave a PARTIAL marker behind: readers see the old content or the new,
+    never in-between (a truncated "3.1" of "3.11" would fake a version
+    mismatch). A leftover ``.tmp`` file is read by no probe.
+    """
+    marker_dir = os.path.join(runtime, "mitmproxy")
+    os.makedirs(marker_dir, exist_ok=True)
+    marker = os.path.join(marker_dir, "PYTHON_MARKER")
+    tmp = f"{marker}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(f"{sys.version_info[0]}.{sys.version_info[1]}")
+    os.replace(tmp, marker)
+
+
 @streaming
 @logs_errors("AutomationHandler")
 def install_mitmproxy(params, stream_handler):
     """Install mitmproxy into the bundled runtime via pip (streaming).
 
     Order matters: refuse while a capture runs (Windows locks mitmdump's
-    .pyd/.dll), bail without a runtime dir, then probe pip. Any pip failure
-    — probe or install — degrades to a copy-pasteable manual command with
-    both paths double-quoted (space-safe). Never generates the CA; the
-    first capture run does that.
+    .pyd/.dll), bail without a runtime dir, then probe pip. Any failure
+    — pip probe, pip install, or the finalize tail (marker write / status
+    build) — degrades to a copy-pasteable manual command with both paths
+    double-quoted (space-safe). Never generates the CA; the first capture
+    run does that.
     """
     ctx = StreamContext("automation", stream_handler)
 
@@ -199,13 +217,19 @@ def install_mitmproxy(params, stream_handler):
         degraded()
         return
 
-    marker_dir = os.path.join(runtime, "mitmproxy")
-    os.makedirs(marker_dir, exist_ok=True)
-    marker = os.path.join(marker_dir, "PYTHON_MARKER")
-    with open(marker, "w", encoding="utf-8") as f:
-        f.write(f"{sys.version_info[0]}.{sys.version_info[1]}")
+    try:
+        _write_python_marker(runtime)
+        status = traffic_status_impl()
+    except Exception as e:
+        # Plan contract: ANY failure degrades. pip exited 0, but a finalize
+        # blow-up (marker stamp / status build) must still hand the user the
+        # copy-pasteable manual command instead of a bare error event.
+        # Exception only: KeyboardInterrupt/SystemExit are control flow.
+        logger.error(f"mitmproxy install finalize failed: {e}", exc_info=True)
+        degraded()
+        return
 
-    ctx.complete({"success": True, **traffic_status_impl()})
+    ctx.complete({"success": True, **status})
 
 
 ADBKEYBOARD_URL = "https://github.com/senzhk/ADBKeyBoard/raw/master/ADBKeyBoard.apk"
