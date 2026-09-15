@@ -29,6 +29,7 @@ export const colorTokens = {
     'drop-zone-bg': '#F8FAFC',
     'drop-zone-border': '#94A3B8',
     'storage-bg': 'rgba(0, 0, 0, 0.04)',
+    'action-bg': '#E2E8F0',
 
     // ---- 文字 ----
     'text-primary': '#0F172A',
@@ -42,6 +43,7 @@ export const colorTokens = {
     'green-bg': 'rgba(22, 163, 74, 0.1)',
     'green-bg-hover': 'rgba(22, 163, 74, 0.06)',
     'green-bg-active': 'rgba(22, 163, 74, 0.12)',
+    'green-pressed': '#166534',
     'blue': '#2563EB',
     'blue-hover': '#1D4ED8',
     'blue-bg': 'rgba(37, 99, 235, 0.1)',
@@ -51,6 +53,9 @@ export const colorTokens = {
     'purple-bg': 'rgba(124, 58, 237, 0.1)',
     'red': '#DC2626',
     'red-bg': 'rgba(220, 38, 38, 0.1)',
+    // 任务卡边框（进行中/失败）：语义色 40% 透明度
+    'green-border': 'rgba(22, 163, 74, 0.4)',
+    'red-border': 'rgba(220, 38, 38, 0.4)',
 
     // ---- 交互态 ----
     'hover': 'rgba(0, 0, 0, 0.04)',
@@ -60,6 +65,9 @@ export const colorTokens = {
     'scrollbar-thumb': '#CBD5E1',
     'scrollbar-hover': '#94A3B8',
     'placeholder-color': '#CBD5E1',
+    // 进度条轨道：跟随主题（亮色用黑色半透明、暗色用白色半透明），
+    // 否则在相反主题下轨道几乎不可见
+    'progress-rail': 'rgba(0, 0, 0, 0.06)',
   },
   dark: {
     // ---- 表面 / 边框 ----
@@ -74,6 +82,7 @@ export const colorTokens = {
     'drop-zone-bg': '#0C1322',
     'drop-zone-border': '#334155',
     'storage-bg': 'rgba(15, 23, 42, 0.5)',
+    'action-bg': '#334155',
 
     // ---- 文字 ----
     'text-primary': '#F8FAFC',
@@ -87,6 +96,7 @@ export const colorTokens = {
     'green-bg': 'rgba(34, 197, 94, 0.1)',
     'green-bg-hover': 'rgba(34, 197, 94, 0.06)',
     'green-bg-active': 'rgba(34, 197, 94, 0.12)',
+    'green-pressed': '#15803D',
     'blue': '#3B82F6',
     'blue-hover': '#2563EB',
     'blue-bg': 'rgba(59, 130, 246, 0.1)',
@@ -96,6 +106,9 @@ export const colorTokens = {
     'purple-bg': 'rgba(167, 139, 250, 0.14)',
     'red': '#EF4444',
     'red-bg': 'rgba(239, 68, 68, 0.14)',
+    // 任务卡边框（进行中/失败）：语义色 40% 透明度
+    'green-border': 'rgba(34, 197, 94, 0.4)',
+    'red-border': 'rgba(239, 68, 68, 0.4)',
 
     // ---- 交互态 ----
     'hover': 'rgba(34, 197, 94, 0.06)',
@@ -105,6 +118,7 @@ export const colorTokens = {
     'scrollbar-thumb': '#334155',
     'scrollbar-hover': '#475569',
     'placeholder-color': '#334155',
+    'progress-rail': 'rgba(255, 255, 255, 0.1)',
   },
 } as const
 
@@ -121,6 +135,29 @@ export const staticTokens = {
   'space-lg': '24px',
   'space-xl': '32px',
 
+  // ---- 字号阶梯 ----
+  // 依据现有用法聚类归纳（不是凭空发明）：11/12/13 覆盖 77% 的用法（高密度 UI
+  // 正文），14/16 为强调，18 为标题。命名用 font-size-* 以避开已有的
+  // --app-text-*（那是文字**颜色**）。
+  // 待迁移的离群值（后续扫尾时归一到本阶梯）：10 / 10.5 / 11.5 / 12.5 / 15 /
+  // 22 / 24 / 32px。
+  'font-size-xs': '11px',
+  'font-size-sm': '12px',
+  'font-size-md': '13px',
+  'font-size-lg': '14px',
+  'font-size-xl': '16px',
+  'font-size-title': '18px',
+
+  // ---- 动效时长 ----
+  // 现有用法聚两簇：0.12–0.2s（hover/微交互）与 0.25–0.4s（面板/主题过渡）
+  'duration-fast': '0.15s',
+  'duration-slow': '0.3s',
+
+  // ---- 层级 ----
+  // 现有用法仅两级：局部抬升 10、全屏遮罩 9999
+  'z-raised': '10',
+  'z-overlay': '9999',
+
   // ---- 圆角 ----
   'radius-sm': '4px',
   'radius-md': '8px',
@@ -133,6 +170,14 @@ export const staticTokens = {
 
   // ---- 布局：单一页面宽度，切页不再跳宽 ----
   'page-max-width': '1040px',
+
+  // ---- 效果层（两种主题共用）----
+  // 彩色底上的反白文字（如通知图标）：恒为白色，不随主题
+  'text-inverse': '#FFFFFF',
+  // 灯箱/遮罩
+  'overlay-bg': 'rgba(0, 0, 0, 0.72)',
+  'shadow-icon': '0 1px 2px rgba(0, 0, 0, 0.18)',
+  'shadow-overlay': '0 8px 40px rgba(0, 0, 0, 0.5)',
 
   // ---- 日志控制台：恒定深色（两种主题下都保持深底），
   //      所以刻意不引用颜色 token ----

@@ -306,6 +306,7 @@ import type { Task } from '@stores/taskStore'
 import { formatDuration as formatDurationUtil } from '@utils/formatDuration'
 import { log as logUtil } from '@utils/logger'
 import serviceManager from '@services/ServiceManager'
+import { colorTokens, staticTokens } from '@/theme/tokens'
 import { enqueueTask } from '@services/TaskExecutionService'
 
 const { t, locale } = useI18n()
@@ -557,32 +558,27 @@ async function exportTaskLog(task: Task) {
 //
 // KEEP IN SYNC with the global <style> block at the bottom of this file —
 // REPORT_DOC_CSS must stay a superset of the selectors the report HTML uses.
+// 报告产物（exportReport 写到磁盘、用浏览器打开）的 CSS 变量：从 app tokens
+// 生成，消灭最后一份手写调色板。报告没有 data-theme，所以暗色走
+// prefers-color-scheme（这是该产物的正确机制，不是遗漏）。
+// --apk-accent 是报告专属的架构色（app token 表里没有），保持报告局部。
+const reportVars = (t: Record<string, string>): string =>
+  Object.entries(t).map(([k, v]) => `--app-${k}: ${v};`).join('\n  ')
+
 const REPORT_DOC_CSS = `
 :root {
-  --app-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --app-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  --app-card-bg: #ffffff; --app-card-border: #e2e8f0;
-  --app-text-secondary: #1e293b; --app-text-dim: #64748b; --app-text-muted: #94a3b8;
-  --app-hover: rgba(0,0,0,0.04); --app-storage-bg: rgba(0,0,0,0.06);
-  --app-red: #dc2626; --app-red-bg: rgba(220,38,38,0.12);
-  --app-green: #16a34a; --app-green-bg: rgba(22,163,74,0.12);
-  --app-yellow: #d97706; --app-yellow-bg: rgba(217,119,6,0.12);
+  ${reportVars(colorTokens.light)}
+  ${reportVars(staticTokens)}
   --apk-accent: #3b82f6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --app-card-bg: #16202f; --app-card-border: #27354a;
-    --app-text-secondary: #e2e8f0; --app-text-dim: #94a3b8; --app-text-muted: #64748b;
-    --app-hover: rgba(255,255,255,0.05); --app-storage-bg: rgba(255,255,255,0.08);
-    --app-red: #f87171; --app-red-bg: rgba(248,113,113,0.14);
-    --app-green: #4ade80; --app-green-bg: rgba(74,222,128,0.14);
-    --app-yellow: #fbbf24; --app-yellow-bg: rgba(251,191,36,0.14);
+    ${reportVars(colorTokens.dark)}
     --apk-accent: #60a5fa;
   }
 }
-body { margin: 0; padding: 16px; background: #f4f6f8; color: var(--app-text-secondary);
+body { margin: 0; padding: 16px; background: var(--app-body-bg); color: var(--app-text-secondary);
   font-family: var(--app-font); }
-@media (prefers-color-scheme: dark) { body { background: #0d141f; } }
 .apk-info { display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.6; }
 .apk-card { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-radius: 10px; padding: 10px 14px; }
 .apk-card > summary { list-style: none; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--app-text-secondary); font-size: 13px; font-weight: 600; }
@@ -1615,8 +1611,8 @@ function renderApkInfo(data: any) {
   overflow: hidden;
   transition: border-color .2s;
 }
-.task-card.task-running { border-color: rgba(34,197,94,0.4); }
-.task-card.task-failed { border-color: rgba(239,68,68,0.4); }
+.task-card.task-running { border-color: var(--app-green-border); }
+.task-card.task-failed { border-color: var(--app-red-border); }
 
 .task-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -1731,15 +1727,15 @@ function renderApkInfo(data: any) {
 /* nested sub-cards lose their own box so the group is the single container */
 .apk-group-body .apk-card { background: transparent; border: none; border-radius: 0; padding: 0; }
 .apk-group-body .apk-card[open] > .apk-card-body { margin-top: 6px; padding-top: 6px; }
-.apk-icon { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; box-shadow: 0 1px 2px rgba(0,0,0,.18); flex: 0 0 auto; cursor: zoom-in; }
+.apk-icon { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; box-shadow: var(--app-shadow-icon); flex: 0 0 auto; cursor: zoom-in; }
 .apk-icon--fallback { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 8px; background: var(--app-card-border); color: var(--app-text-dim); font-weight: 600; font-size: 15px; flex: 0 0 auto; cursor: default; }
 
 /* click-to-zoom lightbox for the app icon (overlay lives on <body>) */
-.apk-lightbox { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.72); cursor: zoom-out; }
+.apk-lightbox { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: var(--app-overlay-bg); cursor: zoom-out; }
 /* Show at the icon's NATURAL size and only shrink if it exceeds the cap —
    width/height:auto (not a fixed box) prevents object-fit from upscaling a
    small source and turning it blurry. */
-.apk-lightbox-img { width: auto; height: auto; max-width: min(420px, 80vw); max-height: min(420px, 80vh); border-radius: 20px; box-shadow: 0 8px 40px rgba(0,0,0,.5); background: transparent; }
+.apk-lightbox-img { width: auto; height: auto; max-width: min(420px, 80vw); max-height: min(420px, 80vh); border-radius: 20px; box-shadow: var(--app-shadow-overlay); background: transparent; }
 .apk-sum { font-size: 11px; color: var(--app-text-dim); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* uniform table for every analysis section */

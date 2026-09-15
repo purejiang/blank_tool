@@ -22,6 +22,7 @@
   --app-drop-zone-bg: #F8FAFC;
   --app-drop-zone-border: #94A3B8;
   --app-storage-bg: rgba(0, 0, 0, 0.04);
+  --app-action-bg: #E2E8F0;
   --app-text-primary: #0F172A;
   --app-text-secondary: #334155;
   --app-text-muted: #475569;
@@ -31,6 +32,7 @@
   --app-green-bg: rgba(22, 163, 74, 0.1);
   --app-green-bg-hover: rgba(22, 163, 74, 0.06);
   --app-green-bg-active: rgba(22, 163, 74, 0.12);
+  --app-green-pressed: #166534;
   --app-blue: #2563EB;
   --app-blue-hover: #1D4ED8;
   --app-blue-bg: rgba(37, 99, 235, 0.1);
@@ -40,11 +42,14 @@
   --app-purple-bg: rgba(124, 58, 237, 0.1);
   --app-red: #DC2626;
   --app-red-bg: rgba(220, 38, 38, 0.1);
+  --app-green-border: rgba(22, 163, 74, 0.4);
+  --app-red-border: rgba(220, 38, 38, 0.4);
   --app-hover: rgba(0, 0, 0, 0.04);
   --app-hover-strong: rgba(0, 0, 0, 0.08);
   --app-scrollbar-thumb: #CBD5E1;
   --app-scrollbar-hover: #94A3B8;
   --app-placeholder-color: #CBD5E1;
+  --app-progress-rail: rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="dark"] {
@@ -59,6 +64,7 @@
   --app-drop-zone-bg: #0C1322;
   --app-drop-zone-border: #334155;
   --app-storage-bg: rgba(15, 23, 42, 0.5);
+  --app-action-bg: #334155;
   --app-text-primary: #F8FAFC;
   --app-text-secondary: #CBD5E1;
   --app-text-muted: #94A3B8;
@@ -68,6 +74,7 @@
   --app-green-bg: rgba(34, 197, 94, 0.1);
   --app-green-bg-hover: rgba(34, 197, 94, 0.06);
   --app-green-bg-active: rgba(34, 197, 94, 0.12);
+  --app-green-pressed: #15803D;
   --app-blue: #3B82F6;
   --app-blue-hover: #2563EB;
   --app-blue-bg: rgba(59, 130, 246, 0.1);
@@ -77,9 +84,12 @@
   --app-purple-bg: rgba(167, 139, 250, 0.14);
   --app-red: #EF4444;
   --app-red-bg: rgba(239, 68, 68, 0.14);
+  --app-green-border: rgba(34, 197, 94, 0.4);
+  --app-red-border: rgba(239, 68, 68, 0.4);
   --app-hover: rgba(34, 197, 94, 0.06);
   --app-hover-strong: rgba(34, 197, 94, 0.12);
   --app-scrollbar-thumb: #334155;
   --app-scrollbar-hover: #475569;
   --app-placeholder-color: #334155;
+  --app-progress-rail: rgba(255, 255, 255, 0.1);
 }
