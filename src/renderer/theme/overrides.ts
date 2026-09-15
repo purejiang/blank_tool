@@ -4,13 +4,20 @@ import { colorTokens, staticTokens } from './tokens'
 /**
  * Naive UI 覆盖表 —— 由 tokens.ts 派生。
  *
- * 一致性：与 tokens 同义的值一律引用 token（禁止再写一份字面色）；只有下列
- * 「Naive 现有观感 ≠ token」的分歧项保留字面值，标注 `≠ token(...)`，使本批
- * 保持零视觉变化。是否统一到 token 值属批 2 决策（见样式审计表 P2）：
- *   light: textColor2 / textColor3 / warningColor / hoverColor
- *   dark:  Input+InternalSelection.border
- * 另有 3 个 Naive 语义角色没有对应 token（primaryColorPressed / actionColor /
- * modal|popoverColor 复用 card 色），同样以注释说明来源。
+ * 一致性：与 tokens 同义的值一律引用 token，本文件不含「第二份调色板」。
+ * 仅剩的字面值都是 Naive 有、token 无的语义角色：
+ *   · primaryColorPressed（亮/暗各一，token 里无「按下态」色）
+ *   · actionColor（hover/action 底色，值与既有 token 巧合相同但语义不同，故不引用）
+ *   · modalColor / popoverColor 复用 card 色（无独立 token）
+ *
+ * 2026-09 统一（原 Naive 覆盖值与 token 存在 5 处分歧，已全部对齐 token）：
+ *   light warningColor  #D97706 → --app-yellow        #B45309
+ *   light textColor2    #475569 → --app-text-secondary #334155
+ *   light textColor3    #94A3B8 → --app-text-muted     #475569
+ *   light hoverColor    rgba(22,163,74,.08) → --app-green-bg-hover rgba(22,163,74,.06)
+ *   dark  Input/InternalSelection.border #475569 → --app-input-border #334155
+ * 黄金值测试（tests/unit/theme/themeOverrides.test.ts）同步更新并新增
+ * token 同源断言，锁死这次对齐。
  */
 const L = colorTokens.light
 const D = colorTokens.dark
@@ -26,7 +33,7 @@ export const themeOverridesDark: GlobalThemeOverrides = {
     borderRadius: RADIUS_MD,
     primaryColor: D['green'],
     primaryColorHover: D['green-hover'],
-    primaryColorPressed: '#15803D', // 无对应 token（值同 light 的 green-hover）
+    primaryColorPressed: D['green-pressed'],
     infoColor: D['blue'],
     successColor: D['green'],
     warningColor: D['yellow'],
@@ -36,20 +43,30 @@ export const themeOverridesDark: GlobalThemeOverrides = {
     textColor3: D['text-muted'],
     scrollbarColor: D['scrollbar-thumb'],
     inputColor: D['input-bg'],
-    actionColor: '#334155', // 无对应 token（值同 card-border，语义不同故不引用）
+    actionColor: D['action-bg'],
     hoverColor: D['green-bg-active'],
   },
   Input: {
-    border: '1px solid #475569', // ≠ token(--app-input-border #334155)
+    border: `1px solid ${D['input-border']}`,
     borderHover: `1px solid ${D['green']}`,
     borderFocus: `1px solid ${D['green']}`,
     borderRadius: RADIUS_MD,
   },
   InternalSelection: {
-    border: '1px solid #475569', // ≠ token(--app-input-border #334155)
+    border: `1px solid ${D['input-border']}`,
     borderHover: `1px solid ${D['green']}`,
     borderFocus: `1px solid ${D['green']}`,
     borderRadius: RADIUS_MD,
+  },
+  // 菜单项底色由 naive-overrides.css 迁入（原为 3 个 !important 覆盖）：
+  // 选中/hover 是 Naive 一等主题字段，走 themeOverrides 不需要 !important。
+  // itemColorActiveHover 取 hover 值以保持原观感（原先 :hover 规则胜过 --selected）。
+  // 按下态（:active）无对应字段，仍留在 CSS。
+  Menu: {
+    itemColorHover: D['hover'],
+    itemColorActive: D['hover-strong'],
+    itemColorActiveHover: D['hover'],
+    itemColorActiveCollapsed: D['hover-strong'],
   },
 }
 
@@ -63,18 +80,18 @@ export const themeOverridesLight: GlobalThemeOverrides = {
     borderRadius: RADIUS_MD,
     primaryColor: L['green'],
     primaryColorHover: L['green-hover'],
-    primaryColorPressed: '#166534', // 无对应 token
+    primaryColorPressed: L['green-pressed'],
     infoColor: L['blue'],
     successColor: L['green'],
-    warningColor: '#D97706',        // ≠ token(--app-yellow #B45309)
+    warningColor: L['yellow'],
     errorColor: L['red'],
     textColor1: L['text-primary'],
-    textColor2: '#475569',          // ≠ token(--app-text-secondary #334155)，值同 light 的 --app-text-muted
-    textColor3: '#94A3B8',          // ≠ token(--app-text-muted #475569)，值同 dark 的 --app-text-muted
+    textColor2: L['text-secondary'],
+    textColor3: L['text-muted'],
     scrollbarColor: L['scrollbar-thumb'],
     inputColor: L['input-bg'],
-    actionColor: '#E2E8F0',         // 无对应 token（值同 --app-sidebar-bg，语义不同故不引用）
-    hoverColor: 'rgba(22,163,74,0.08)', // ≠ token(--app-green-bg-hover rgba(22,163,74,0.06))
+    actionColor: L['action-bg'],
+    hoverColor: L['green-bg-hover'],
   },
   Input: {
     border: `1px solid ${L['input-border']}`,
@@ -87,6 +104,12 @@ export const themeOverridesLight: GlobalThemeOverrides = {
     borderHover: `1px solid ${L['green']}`,
     borderFocus: `1px solid ${L['green']}`,
     borderRadius: RADIUS_MD,
+  },
+  Menu: {
+    itemColorHover: L['hover'],
+    itemColorActive: L['hover-strong'],
+    itemColorActiveHover: L['hover'],
+    itemColorActiveCollapsed: L['hover-strong'],
   },
 }
 

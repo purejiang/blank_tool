@@ -1,42 +1,43 @@
-/* Global Naive UI menu overrides */
+/* ============================================================================
+ * naive-overrides.css — Naive UI 结构性覆盖（第三方覆盖的唯一去处）
+ *
+ * !important 策略：Naive 的样式由 CSS-in-JS 在运行时注入，**晚于**本文件加载，
+ * 同特异性下它胜出 —— 所以「结构性」覆盖（themeOverrides 无法表达的部分）
+ * 必须用 !important，这不是坏味道而是唯一手段。
+ *
+ * 凡 Naive 暴露为主题的，一律走 src/renderer/theme/overrides.ts（token 派生）：
+ *   · 菜单项选中/hover 底色 → Menu.itemColorActive / itemColorHover /
+ *     itemColorActiveHover / itemColorActiveCollapsed（2026-09 从本文件迁出）
+ *
+ * 已删除：.n-card-header / .n-card__content 的 transparent 覆盖（7 个选择器 +
+ * 2 个 !important）—— 核对 Naive 源码（card/src/styles/index.cssr.mjs）后确认
+ * 这两种元素自身不声明 background（只有 flex/padding/font-size），卡片底色由
+ * 根节点的 --n-color 提供，原覆盖是死代码。
+ * ========================================================================== */
+
+/* 菜单项外形（间距/圆角/过渡）：无对应 themeOverrides 字段 */
 .n-menu .n-menu-item-content {
   margin: 2px 8px;
   border-radius: 8px;
   transition: all 0.15s ease;
 }
-.n-menu .n-menu-item-content--selected {
-  background: var(--app-hover-strong) !important;
-}
-
-/* Card header backgrounds - transparent everywhere */
-.n-card-header,
-.n-card-header__main,
-.n-card-header__close,
-.n-card__header,
-.n-card .n-card-header,
-.n-card > .n-card-header {
-  background: transparent !important;
-}
-/* Card content area also transparent, matching cardColor */
-.n-card > .n-card__content {
-  background: transparent !important;
-}
-.n-menu .n-menu-item-content:hover {
-  background: var(--app-hover) !important;
-}
+/* 按下态：Naive 无「菜单项 pressed」主题字段（itemColor* 仅覆盖默认/hover/选中），保留 */
 .n-menu .n-menu-item-content:active {
   background: var(--app-hover-strong) !important;
 }
-/* Center icons when sidebar is collapsed */
+
+/* 折叠态居中：纯布局，themeOverrides 无对应字段 */
 .n-menu--collapsed .n-menu-item-content {
   margin-left: auto !important;
   margin-right: auto !important;
   justify-content: center !important;
 }
+/* 折叠态图标右边距：Naive 无 itemIconMarginRight 字段（已核对 menu/styles/light.mjs） */
 .n-menu--collapsed .n-menu-item-content .n-menu-item-content__icon {
   margin-right: 0 !important;
 }
-/* Sidebar scroll container fill sider height */
+
+/* 侧栏滚动容器撑满：纯布局 */
 .n-layout-sider .n-scrollbar-container,
 .n-layout-sider .n-scrollbar-content {
   display: flex;
@@ -47,7 +48,7 @@
   height: 100%;
 }
 
-/* Notification toasts — smaller font */
+/* 通知吐司字号：Naive Notification 主题未暴露这两处字号字段，故仍以 CSS 覆盖 */
 .n-notification .n-notification__main {
   font-size: 12px;
 }
@@ -55,9 +56,6 @@
   font-size: 13px;
   font-weight: 600;
 }
-
-/* 以下两段原先住在 themes.css（那是纯 token 表，不该管元素样式），
-   2026-09-14 挪过来，集中放第三方覆盖。 */
 
 /* Naive UI 深色下 modal / drawer 的底色跟卡片一致 */
 [data-theme="dark"] .n-modal,
