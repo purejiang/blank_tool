@@ -12,7 +12,7 @@
         :height="6"
         :border-radius="3"
         color="var(--app-green)"
-        rail-color="rgba(255,255,255,0.1)"
+        rail-color="var(--app-progress-rail)"
       />
       <div class="loading-info">
         <p class="loading-step">{{ step }}</p>
