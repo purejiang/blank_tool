@@ -638,7 +638,7 @@ onUnmounted(() => {
 
 /* Health */
 .health-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.health-label { font-size: 14px; font-weight: 600; color: var(--app-text-primary); }
+.health-label { font-size: var(--app-font-size-lg); font-weight: 600; color: var(--app-text-primary); }
 .health-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .health-dot.dot-healthy { background: var(--app-green); }
 .health-dot.dot-unhealthy { background: var(--app-red); animation: diag-pulse 1.5s infinite; }
@@ -649,7 +649,7 @@ onUnmounted(() => {
 }
 
 /* Tasks / logs shared */
-.empty-hint { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
+.empty-hint { font-size: var(--app-font-size-md); color: var(--app-text-dim); padding: 8px 0; }
 
 /* Log viewer */
 .log-view {
@@ -662,7 +662,7 @@ onUnmounted(() => {
   padding: 12px;
   border-radius: 6px;
   font-family: var(--app-font-mono);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   line-height: 1.6;
   color: var(--app-text-secondary);
   white-space: pre-wrap;
@@ -673,16 +673,16 @@ onUnmounted(() => {
 
 /* Self-check */
 .sc-summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 2px 0 10px; border-bottom: 1px solid var(--app-card-border); }
-.sc-count { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--app-text-secondary); }
-.sc-stamp { margin-left: auto; font-size: 12px; }
+.sc-count { display: inline-flex; align-items: center; gap: 6px; font-size: var(--app-font-size-md); color: var(--app-text-secondary); }
+.sc-stamp { margin-left: auto; font-size: var(--app-font-size-sm); }
 .sc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .sc-dot-ok { background: var(--app-green); }
 .sc-dot-warn { background: var(--app-yellow); }
 .sc-dot-fail { background: var(--app-red); }
 
 .sc-section { padding-top: 12px; }
-.sc-section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--app-text-dim); margin-bottom: 4px; }
-.sc-clean { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--app-text-dim); padding: 4px 0; }
+.sc-section-title { font-size: var(--app-font-size-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--app-text-dim); margin-bottom: 4px; }
+.sc-clean { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-md); color: var(--app-text-dim); padding: 4px 0; }
 .sc-list { display: flex; flex-direction: column; }
 
 /* icon | label | value, with the hint wrapping onto a second row */
@@ -692,11 +692,11 @@ onUnmounted(() => {
   align-items: baseline;
   gap: 2px 10px;
   padding: 5px 0;
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
 }
 .sc-row + .sc-row { border-top: 1px solid var(--app-card-border); }
 .sc-icon { justify-self: center; align-self: start; margin-top: 3px; }
 .sc-label { color: var(--app-text-primary); }
-.sc-value { color: var(--app-text-secondary); font-family: var(--app-font-mono); font-size: 12px; overflow-wrap: anywhere; }
-.sc-hint { grid-column: 2 / -1; font-size: 12px; color: var(--app-text-dim); }
+.sc-value { color: var(--app-text-secondary); font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); overflow-wrap: anywhere; }
+.sc-hint { grid-column: 2 / -1; font-size: var(--app-font-size-sm); color: var(--app-text-dim); }
 </style>

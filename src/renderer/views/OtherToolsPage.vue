@@ -799,7 +799,7 @@ onMounted(() => {
 }
 .col-head {
   display: flex; justify-content: flex-start; align-items: center; gap: 10px;
-  font-size: 13px; font-weight: 600; color: var(--app-text-primary);
+  font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary);
   margin-bottom: 10px;
 }
 /* NOTE: the "元素超时" (element default timeout) control used to sit on this
@@ -819,7 +819,7 @@ onMounted(() => {
 }
 .view-switch { flex: none; }
 .editor-name {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   font-weight: 600;
   color: var(--app-text-primary);
   white-space: nowrap;
@@ -827,7 +827,7 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 .editor-desc {
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   font-weight: 400;
   color: var(--app-text-muted);
   white-space: nowrap;
@@ -836,7 +836,7 @@ onMounted(() => {
 }
 .autosave-hint {
   flex: none;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--app-text-muted);
 }
 .autosave-hint.saved { color: var(--app-green); }
@@ -846,13 +846,13 @@ onMounted(() => {
 /* right run console: controls / panel / history stacked with a uniform gap
    (the panel itself absorbs the slack) */
 .col-right { gap: 8px; }
-.steps-json { font-family: var(--app-font-mono); font-size: 12px; }
+.steps-json { font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); }
 .json-status { font-size: var(--app-font-size-sm); margin-top: 4px; }
 .json-status.ok { color: var(--app-green); }
 .json-status.bad { color: var(--app-red); }
 .editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
-.field label { font-size: 12px; color: var(--app-text-muted); }
+.field label { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
 /* 工具行：视图切换靠左、添加步骤贴最右（两端撑开） */
 .steps-head {
@@ -861,7 +861,7 @@ onMounted(() => {
 }
 /* 计数单独一行，落在工具行下面、贴着列表，左对齐 */
 .steps-count-row { display: flex; align-items: center; }
-.steps-count { font-size: 12px; color: var(--app-text-secondary); }
+.steps-count { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
 .add-step-btn { flex: none; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
 

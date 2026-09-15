@@ -657,13 +657,13 @@ const takeScreenshot = async () => {
   text-align: center;
 }
 .placeholder-title {
-  font-size: 15px;
+  font-size: var(--app-font-size-xl);
   font-weight: 600;
   color: var(--app-text-muted);
   margin: 8px 0 0;
 }
 .placeholder-desc {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   color: var(--app-text-dim);
   margin: 0;
   max-width: 280px;
@@ -698,7 +698,7 @@ const takeScreenshot = async () => {
 }
 .info-value.mono {
   font-family: var(--app-font-mono);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-blue);
 }
 
@@ -724,7 +724,7 @@ const takeScreenshot = async () => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   color: var(--app-text-muted);
   background: var(--app-green-bg-hover);
   border-bottom: 1px solid var(--app-card-bg);
@@ -733,7 +733,7 @@ const takeScreenshot = async () => {
   margin: 0;
   padding: 10px 12px;
   font-family: var(--app-font-mono);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-secondary);
   line-height: 1.6;
   white-space: pre-wrap;
@@ -786,7 +786,7 @@ const takeScreenshot = async () => {
   align-items: center;
   gap: 6px;
   margin: -2px 0 8px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-dim);
 }
 .apps-meta-dot {
@@ -819,7 +819,7 @@ const takeScreenshot = async () => {
   flex: 1 1 auto;
   min-width: 0;
   font-family: var(--app-font-mono);
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   line-height: 1.4;
   color: var(--app-text-secondary);
   overflow: hidden;
@@ -839,7 +839,7 @@ const takeScreenshot = async () => {
   align-items: center;
   margin-bottom: 12px;
 }
-.logcat-waiting { font-size: 12px; color: var(--app-text-dim); padding: 24px 0; text-align: center; }
+.logcat-waiting { font-size: var(--app-font-size-sm); color: var(--app-text-dim); padding: 24px 0; text-align: center; }
 .logcat-output-full {
   background: var(--app-code-bg);
   border-radius: 8px;
@@ -847,7 +847,7 @@ const takeScreenshot = async () => {
   max-height: 480px;
   overflow-y: auto;
   font-family: var(--app-font-mono);
-  font-size: 11px;
+  font-size: var(--app-font-size-xs);
   line-height: 1.5;
 }
 .logcat-line { display: flex; gap: 10px; white-space: pre-wrap; word-break: break-all; color: var(--app-text-secondary); padding: 0 6px; border-radius: 3px; }
@@ -867,19 +867,19 @@ const takeScreenshot = async () => {
   gap: 6px;
   padding: 24px 16px;
   color: var(--app-text-dim);
-  font-size: 14px;
+  font-size: var(--app-font-size-lg);
 }
 .empty-state p { margin: 0; }
 .empty-state.small {
   padding: 20px 16px;
 }
 .empty-title {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   font-weight: 600;
   color: var(--app-text-muted);
 }
 .empty-desc {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-dim);
 }
 </style>
