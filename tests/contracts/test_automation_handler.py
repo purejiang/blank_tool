@@ -434,6 +434,383 @@ class TestInstallMitmproxy:
             assert terminals[0]["payload"]["degraded"] is True
 
 
+class _FakeApkResp:
+    """Minimal urllib response for the real _download_apk: fixed headers plus
+    scripted read() chunks (StopIteration-like EOF via b"")."""
+
+    headers = {"Content-Length": "5"}
+
+    def __init__(self, chunks):
+        self._chunks = iter(chunks)
+
+    def read(self, _n):
+        try:
+            return next(self._chunks)
+        except StopIteration:
+            return b""
+
+    def close(self):
+        pass
+
+
+class _MidFailResp:
+    """Fake response that dies mid-chunk (connection reset while reading)."""
+
+    headers = {"Content-Length": "100000"}
+
+    def __init__(self):
+        self._calls = 0
+
+    def read(self, n):
+        self._calls += 1
+        if self._calls == 1:
+            return b"x" * n
+        raise OSError("connection reset by peer")
+
+    def close(self):
+        pass
+
+
+def _patch_net(monkeypatch, side_effect_or_resp):
+    """Patch the handler module's urlopen AND build_opener so the real
+    _download_apk never touches the network, whichever branch the env's
+    proxy settings pick."""
+    from unittest.mock import MagicMock
+
+    import app.handlers.automation_handler as mod
+
+    uo = MagicMock(side_effect=side_effect_or_resp) if isinstance(
+        side_effect_or_resp, Exception
+    ) else MagicMock(return_value=side_effect_or_resp)
+    bo = MagicMock()
+    bo.return_value.open.side_effect = side_effect_or_resp if isinstance(
+        side_effect_or_resp, Exception
+    ) else MagicMock(return_value=side_effect_or_resp)
+    monkeypatch.setattr(mod, "urlopen", uo)
+    monkeypatch.setattr(mod, "build_opener", bo)
+    return uo, bo
+
+
+class TestInstallIme:
+    """automation.install_ime — streaming download → adb install → verify.
+
+    Direct-call + events-lambda; every external seam (download, adb, IME
+    probe, cache dir) is a module-level monkeypatch target.
+    """
+
+    def test_install_ime_online_success_installs_and_verifies(
+        self, monkeypatch, tmp_path
+    ):
+        import os
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        cache = tmp_path / "cache"
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(cache))
+
+        dl_calls = []
+        monkeypatch.setattr(
+            mod, "_download_apk",
+            lambda dest, on_progress, on_log: dl_calls.append(dest),
+        )
+
+        adb_calls = []
+
+        def fake_run_adb(device_id, args):
+            adb_calls.append((device_id, list(args)))
+            return {"returncode": 0, "stdout": "Success", "stderr": ""}
+
+        monkeypatch.setattr(mod, "run_adb", fake_run_adb)
+        monkeypatch.setattr(mod, "adb_ime_installed", lambda device_id: True)
+        monkeypatch.setattr(mod, "ime_status_impl", lambda device_id: {
+            "device_id": device_id,
+            "package": "com.android.adbkeyboard/.AdbIME",
+            "installed": True,
+            "active": False,
+        })
+
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: events.append(e)
+        )
+
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        payload = completes[0]["payload"]
+        assert set(payload.keys()) == {
+            "success", "device_id", "package", "installed", "active",
+        }
+        assert payload["success"] is True
+        assert payload["installed"] is True
+
+        dest = os.path.join(str(cache), "tools", "ADBKeyBoard.apk")
+        assert dl_calls == [dest]
+        assert adb_calls == [("emulator-5554", ["install", "-r", dest])]
+
+    def test_install_ime_download_failure_emits_error_no_complete(
+        self, monkeypatch, tmp_path
+    ):
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(tmp_path / "cache"))
+
+        def failing_download(dest, on_progress, on_log):
+            raise RuntimeError("下载失败: 网络不可达")
+
+        monkeypatch.setattr(mod, "_download_apk", failing_download)
+
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: events.append(e)
+        )
+
+        errors = [e for e in events if e["type"] == "error"]
+        assert len(errors) == 1
+        assert mod.ADBKEYBOARD_URL in errors[0]["payload"]
+        assert "可在弹窗选择本地 APK" in errors[0]["payload"]
+        assert not any(e["type"] == "complete" for e in events)
+
+    def test_install_ime_urlopen_retries_exhausted_error_no_complete(
+        self, monkeypatch, tmp_path
+    ):
+        """Real _download_apk: urlopen/build_opener raise URLError on every
+        attempt — 3 attempts, then a terminal error with URL + local-APK hint."""
+        from urllib.error import URLError
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(tmp_path / "cache"))
+        monkeypatch.setattr(mod, "_DL_BACKOFF_BASE", 0)
+        uo, bo = _patch_net(monkeypatch, URLError("connection refused"))
+
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: events.append(e)
+        )
+
+        assert uo.call_count + bo.call_count == 3
+        errors = [e for e in events if e["type"] == "error"]
+        assert len(errors) == 1
+        assert mod.ADBKEYBOARD_URL in errors[0]["payload"]
+        assert "可在弹窗选择本地 APK" in errors[0]["payload"]
+        assert not any(e["type"] == "complete" for e in events)
+
+    def test_install_ime_local_apk_path_skips_download(self, monkeypatch, tmp_path):
+        from unittest.mock import MagicMock
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        apk = tmp_path / "local" / "ADBKeyBoard.apk"
+        apk.parent.mkdir(parents=True)
+        apk.write_bytes(b"PK\x03\x04fake-apk")
+
+        dl_mock = MagicMock()
+        monkeypatch.setattr(mod, "_download_apk", dl_mock)
+        uo = MagicMock()
+        monkeypatch.setattr(mod, "urlopen", uo)
+
+        adb_calls = []
+        monkeypatch.setattr(
+            mod, "run_adb",
+            lambda device_id, args: (
+                adb_calls.append((device_id, list(args))) or
+                {"returncode": 0, "stdout": "Success", "stderr": ""}
+            ),
+        )
+        monkeypatch.setattr(mod, "adb_ime_installed", lambda device_id: True)
+        monkeypatch.setattr(mod, "ime_status_impl", lambda device_id: {
+            "device_id": device_id, "package": "pkg",
+            "installed": True, "active": True,
+        })
+
+        mod.install_ime(
+            {"device_id": "emulator-5554", "apk_path": str(apk)},
+            lambda e: events.append(e),
+        )
+
+        dl_mock.assert_not_called()
+        uo.assert_not_called()
+        assert adb_calls == [("emulator-5554", ["install", "-r", str(apk)])]
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        assert completes[0]["payload"]["success"] is True
+
+    def test_install_ime_local_apk_missing_errors(self, monkeypatch, tmp_path):
+        import app.handlers.automation_handler as mod
+
+        events = []
+        adb_calls = []
+        monkeypatch.setattr(
+            mod, "run_adb",
+            lambda device_id, args: adb_calls.append((device_id, args)),
+        )
+
+        missing = str(tmp_path / "missing.apk")
+        mod.install_ime(
+            {"device_id": "emulator-5554", "apk_path": missing},
+            lambda e: events.append(e),
+        )
+
+        assert any(e["type"] == "error" for e in events)
+        assert missing in [e["payload"] for e in events if e["type"] == "error"][0]
+        assert not any(e["type"] == "complete" for e in events)
+        assert adb_calls == []
+
+    def test_install_ime_install_failure_success_false(self, monkeypatch, tmp_path):
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(tmp_path / "cache"))
+        monkeypatch.setattr(mod, "_download_apk", lambda dest, op, ol: None)
+        monkeypatch.setattr(mod, "run_adb", lambda device_id, args: {
+            "returncode": 1, "stdout": "",
+            "stderr": "INSTALL_PARSE_FAILED_MANIFEST_MALFORMED",
+        })
+        monkeypatch.setattr(mod, "adb_ime_installed", lambda device_id: False)
+        monkeypatch.setattr(mod, "ime_status_impl", lambda device_id: {
+            "device_id": device_id, "package": "pkg",
+            "installed": False, "active": False,
+        })
+
+        # Must not raise — degraded terminal complete instead.
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: events.append(e)
+        )
+
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        assert completes[0]["payload"]["success"] is False
+        assert completes[0]["payload"]["installed"] is False
+        logs = [e for e in events if e["type"] == "log"]
+        assert any(
+            "INSTALL_PARSE_FAILED_MANIFEST_MALFORMED" in e["payload"] for e in logs
+        )
+
+    def test_install_ime_missing_device_id_errors(self, monkeypatch, tmp_path):
+        from unittest.mock import MagicMock
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        dl_mock = MagicMock()
+        monkeypatch.setattr(mod, "_download_apk", dl_mock)
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(tmp_path / "cache"))
+
+        mod.install_ime({}, lambda e: events.append(e))
+
+        errors = [e for e in events if e["type"] == "error"]
+        assert len(errors) == 1
+        assert "device_id is required" in errors[0]["payload"]
+        assert not any(e["type"] == "complete" for e in events)
+        dl_mock.assert_not_called()
+
+    def test_install_ime_hostile_http_404_friendly_error_no_class_name(
+        self, monkeypatch, tmp_path
+    ):
+        """untrusted_external_text probe: a hostile 404 must surface as a
+        friendly error (URL + local-APK hint) with no exception class name."""
+        from urllib.error import HTTPError
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(tmp_path / "cache"))
+        monkeypatch.setattr(mod, "_DL_BACKOFF_BASE", 0)
+        _patch_net(monkeypatch, HTTPError(
+            mod.ADBKEYBOARD_URL, 404, "Not Found", None, None,
+        ))
+
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: events.append(e)
+        )
+
+        errors = [e for e in events if e["type"] == "error"]
+        assert len(errors) == 1
+        msg = errors[0]["payload"]
+        assert "404" in msg
+        assert mod.ADBKEYBOARD_URL in msg
+        assert "可在弹窗选择本地 APK" in msg
+        assert "HTTPError" not in msg
+        assert not any(e["type"] == "complete" for e in events)
+
+    def test_install_ime_mid_read_failure_error_no_complete_rerun_independent(
+        self, monkeypatch, tmp_path
+    ):
+        """resumable_cancel_resume probe: a download dying mid-chunk emits
+        error (no complete); a re-invocation behaves independently."""
+        import app.handlers.automation_handler as mod
+
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(tmp_path / "cache"))
+        monkeypatch.setattr(mod, "_DL_BACKOFF_BASE", 0)
+        monkeypatch.setattr(mod, "run_adb", lambda device_id, args: {
+            "returncode": 0, "stdout": "Success", "stderr": "",
+        })
+        monkeypatch.setattr(mod, "adb_ime_installed", lambda device_id: True)
+        monkeypatch.setattr(mod, "ime_status_impl", lambda device_id: {
+            "device_id": device_id, "package": "pkg",
+            "installed": True, "active": False,
+        })
+
+        first = []
+        uo, bo = _patch_net(monkeypatch, _MidFailResp())
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: first.append(e)
+        )
+        assert any(e["type"] == "error" for e in first)
+        assert not any(e["type"] == "complete" for e in first)
+
+        second = []
+        uo2, bo2 = _patch_net(monkeypatch, _FakeApkResp([b"data"]))
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: second.append(e)
+        )
+        completes = [e for e in second if e["type"] == "complete"]
+        assert len(completes) == 1
+        assert completes[0]["payload"]["success"] is True
+
+    def test_install_ime_download_overwrites_stale_cached_apk(
+        self, monkeypatch, tmp_path
+    ):
+        """generated_cached_artifacts probe: a stale cached APK is
+        overwritten (not appended), and progress payloads have the exact
+        {progress, downloaded, total, speed} shape."""
+        import os
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        cache = tmp_path / "cache"
+        dest = cache / "tools" / "ADBKeyBoard.apk"
+        dest.parent.mkdir(parents=True)
+        dest.write_bytes(b"STALE-OLD-CONTENT" * 100)
+
+        monkeypatch.setattr(mod, "get_cache_dir", lambda: str(cache))
+        monkeypatch.setattr(mod, "_DL_BACKOFF_BASE", 0)
+        _patch_net(monkeypatch, _FakeApkResp([b"hello"]))
+        monkeypatch.setattr(mod, "run_adb", lambda device_id, args: {
+            "returncode": 0, "stdout": "Success", "stderr": "",
+        })
+        monkeypatch.setattr(mod, "adb_ime_installed", lambda device_id: True)
+        monkeypatch.setattr(mod, "ime_status_impl", lambda device_id: {
+            "device_id": device_id, "package": "pkg",
+            "installed": True, "active": False,
+        })
+
+        mod.install_ime(
+            {"device_id": "emulator-5554"}, lambda e: events.append(e)
+        )
+
+        assert dest.read_bytes() == b"hello"
+        progresses = [e for e in events if e["type"] == "progress"]
+        assert progresses
+        assert set(progresses[0]["payload"].keys()) == {
+            "progress", "downloaded", "total", "speed",
+        }
+        assert progresses[0]["payload"]["downloaded"] == 5
+        assert progresses[0]["payload"]["total"] == 5
+
+
 class TestResponseShape:
     METHODS = [
         "automation.traffic_status",
