@@ -147,6 +147,9 @@ export const staticTokens = {
   'font-size-lg': '14px',
   'font-size-xl': '16px',
   'font-size-title': '18px',
+  // 页面标题级（.app-page-title 共享规则，1 处消费者）与显示级（更新弹窗状态图标）
+  'font-size-2xl': '22px',
+  'font-size-display': '32px',
 
   // ---- 动效时长 ----
   // 现有用法聚两簇：0.12–0.2s（hover/微交互）与 0.25–0.4s（面板/主题过渡）
