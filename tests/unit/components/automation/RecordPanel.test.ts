@@ -67,10 +67,10 @@ vi.mock('vue-i18n', async (importOriginal) => {
 
 import RecordPanel from '@/renderer/components/automation/RecordPanel.vue'
 
-function mountPanel(disabled = false) {
+function mountPanel(disabled = false, deviceId = '') {
   const pinia = createPinia()
   const wrapper = mount(RecordPanel, {
-    props: { disabled },
+    props: { disabled, deviceId },
     global: { plugins: [pinia] },
   })
   return { wrapper, store: useDeviceStore(pinia) }
@@ -84,9 +84,10 @@ function isDisabled(btn: any): boolean {
   return (btn.element as HTMLButtonElement).disabled
 }
 
-async function selectDevice(store: any, id = 'dev-1') {
-  store.selectedDeviceId = id
-  await nextTick()
+/** 录制目标设备自 commit 3b94c34 起由 prop 传入（与设备页列表选中解耦），
+ *  不再读 device store —— 这里通过 prop 切换以匹配当前契约。 */
+async function selectDevice(wrapper: any, id = 'dev-1') {
+  await wrapper.setProps({ deviceId: id })
 }
 
 async function startRecording(wrapper: any) {
@@ -118,7 +119,7 @@ describe('RecordPanel', () => {
 
   it('disables the start button when props.disabled is true', async () => {
     const { wrapper, store } = mountPanel(true)
-    await selectDevice(store)
+    await selectDevice(wrapper)
 
     const start = findButton(wrapper, 'automation.recordStart')
     expect(isDisabled(start)).toBe(true)
@@ -126,7 +127,7 @@ describe('RecordPanel', () => {
 
   it('starts a recording: callbacks live before launch — in-flight step survives, later steps appended', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
     await startRecording(wrapper)
 
     // Callbacks ride with the start call (the service registers them before
@@ -169,7 +170,7 @@ describe('RecordPanel', () => {
 
   it('stop via button: stages steps locally (no auto-emit); apply button emits recorded; reset + recording-end once', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
     await startRecording(wrapper)
 
     const steps = [
@@ -203,7 +204,7 @@ describe('RecordPanel', () => {
 
   it('startRecording rejection: error toast, recording-end emitted, start re-enabled', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
     mockRecordingService.startRecording.mockRejectedValueOnce(new Error('adb boom'))
 
     await findButton(wrapper, 'automation.recordStart').trigger('click')
@@ -220,7 +221,7 @@ describe('RecordPanel', () => {
 
   it('onStopped (natural end): warns, emits recording-end once; recorded is never emitted from this path', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
     await startRecording(wrapper)
 
     callbacks.onStopped({ count: 0, record_device: 'dev-1' })
@@ -242,7 +243,7 @@ describe('RecordPanel', () => {
 
   it('onStopped ignores steps in the payload ({count} only) — recorded is not emitted', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
     await startRecording(wrapper)
 
     callbacks.onStopped({ count: 3, record_device: 'dev-1' })
@@ -255,7 +256,7 @@ describe('RecordPanel', () => {
 
   it('ignores a second start while the first startRecording call is still pending (reentry guard)', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
 
     let release!: (id: string) => void
     mockRecordingService.startRecording.mockImplementationOnce(
@@ -283,7 +284,7 @@ describe('RecordPanel', () => {
 
   it('stops an active recording on unmount (no orphaned backend session)', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
     await startRecording(wrapper)
     expect(mockRecordingService.stopRecording).not.toHaveBeenCalled()
 
@@ -296,7 +297,7 @@ describe('RecordPanel', () => {
 
   it('stopRecording rejection still resets and emits recording-end without crashing', async () => {
     const { wrapper, store } = mountPanel()
-    await selectDevice(store)
+    await selectDevice(wrapper)
     await startRecording(wrapper)
 
     mockRecordingService.stopRecording.mockRejectedValueOnce(new Error('device gone'))

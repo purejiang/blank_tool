@@ -5,13 +5,13 @@
       <div class="head-actions">
         <n-tooltip trigger="hover" placement="bottom">
           <template #trigger>
-            <n-button size="tiny" tertiary :disabled="running" :title="t('automation.import')" @click="importConfig">
+            <n-button size="tiny" tertiary :disabled="running" :title="t('automation.import')" data-testid="import-projects" @click="importConfig">
               <template #icon><n-icon><Upload /></n-icon></template>
             </n-button>
           </template>
           {{ t('automation.importMergeHint') }}
         </n-tooltip>
-        <n-button size="tiny" tertiary type="primary" :disabled="running" @click="store.newProject">
+        <n-button size="tiny" tertiary type="primary" :disabled="running" data-testid="new-project" @click="store.newProject">
           <template #icon><n-icon><FolderPlus /></n-icon></template>
         </n-button>
       </div>

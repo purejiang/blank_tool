@@ -96,7 +96,7 @@ describe('OtherToolsPage — project creation', () => {
     const wrapper = mountPage()
     await flushPromises()
 
-    await click(wrapper, '.col-left .col-head button')
+    await click(wrapper, '[data-testid="new-project"]')
 
     expect(mockMessage.error).not.toHaveBeenCalled()
     expect(cfgStore.automation.projects).toHaveLength(1)
@@ -109,7 +109,7 @@ describe('OtherToolsPage — project creation', () => {
     const wrapper = mountPage()
     await flushPromises()
 
-    await click(wrapper, '.col-left .col-head button')
+    await click(wrapper, '[data-testid="new-project"]')
     await click(wrapper, '.scripts button')
 
     expect(mockMessage.error).not.toHaveBeenCalled()
@@ -122,7 +122,7 @@ describe('OtherToolsPage — project creation', () => {
     })
     await flushPromises()
 
-    await click(wrapper, '.col-left .col-head button')
+    await click(wrapper, '[data-testid="new-project"]')
 
     expect(mockMessage.error).toHaveBeenCalledWith('boom-ipc')
   })
