@@ -14,10 +14,12 @@ dirs (which live under ``tasks/``) can never be touched from here.
 """
 
 import base64
+import gzip
 import json
 import os
 import shutil
 import time
+import zlib
 
 from app.utils.env import get_auto_tasks_root
 from app.utils.logger import Logger
@@ -128,6 +130,55 @@ def _read_traffic(jsonl_path: str, limit: int) -> dict:
     return {"entries": entries, "total": total, "truncated": total > len(entries)}
 
 
+_DEFLATE_RAW_WBITS = -zlib.MAX_WBITS
+
+
+def _content_encoding(headers) -> str:
+    """Content-Encoding 归一化（大小写不敏感；多值取第一个）。"""
+    if not isinstance(headers, dict):
+        return ""
+    for key, value in headers.items():
+        if str(key).lower() == "content-encoding":
+            return str(value).split(",")[0].strip().lower()
+    return ""
+
+
+def _rescue_compressed_body(rec: dict) -> None:
+    """历史抓包抢救：把压缩体就地还原成文本（就地修改 rec）。
+
+    早期 traffic_addon 用 ``raw_content`` 落盘 —— gzip/deflate 响应存的是**线上
+    压缩字节**，读取时 UTF-8 解码失败被判成二进制（b64），表现为「响应体都是二进制
+    内容」。这里按 content-encoding 解压，能解成 UTF-8 的换成 ``{"text": ...}``
+    并标注 ``decompressed``，使存量抓包在查看器与导出里都恢复可读。
+
+    只覆盖 stdlib 能解的 gzip / deflate；``br`` 无标准库支持，需重抓
+    （traffic_addon 已改为使用解码后的 ``.content``）。解不开或非 UTF-8 时保持原样。
+    """
+    for body_key, headers_key in (("req_body", "req_headers"), ("resp_body", "resp_headers")):
+        body = rec.get(body_key)
+        if not isinstance(body, dict) or "b64" not in body:
+            continue
+        encoding = _content_encoding(rec.get(headers_key))
+        if encoding not in ("gzip", "x-gzip", "deflate"):
+            continue
+        try:
+            raw = base64.b64decode(str(body["b64"]))
+            if encoding in ("gzip", "x-gzip"):
+                data = gzip.decompress(raw)
+            else:
+                try:
+                    data = zlib.decompress(raw)              # 规范：zlib 包装
+                except zlib.error:
+                    data = zlib.decompress(raw, _DEFLATE_RAW_WBITS)  # 裸 deflate（部分服务端）
+        except Exception:
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        rec[body_key] = {"text": text, "decompressed": encoding}
+
+
 def _read_traffic_full(jsonl_path: str, limit: int) -> dict:
     """Parse the capture jsonl into FULL records (headers + bodies).
 
@@ -155,6 +206,7 @@ def _read_traffic_full(jsonl_path: str, limit: int) -> dict:
                     continue
                 if not isinstance(rec, dict):
                     continue
+                _rescue_compressed_body(rec)
                 entries.append(rec)
     except OSError as e:
         return {"entries": entries, "total": total, "truncated": False, "error": str(e)}
@@ -237,6 +289,8 @@ def handle_traffic_detail(params, stream_handler):
                 except ValueError as e:
                     return {"success": False, "record": None,
                             "error": f"record {index} is corrupt: {e}"}
+                if isinstance(rec, dict):
+                    _rescue_compressed_body(rec)
                 return {"success": True,
                         "record": rec if isinstance(rec, dict) else None}
         return {"success": False, "record": None, "error": "index out of range"}
