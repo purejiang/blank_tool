@@ -18,6 +18,10 @@ async function main() {
   console.log(`[build] Version: ${pkg.version}`);
   console.log(`[build] Platform: ${platform}`);
 
+  // Step 0: Regenerate theme CSS from tokens.ts (single source of truth)
+  console.log('[build] Generating theme CSS...');
+  execSync('node scripts/generate-theme-css.mjs', { cwd: root, stdio: 'inherit' });
+
   // Step 1: Build main + preload + renderer (electron-vite)
   console.log('[build] Building Vite...');
   execSync('npx electron-vite build', { cwd: root, stdio: 'inherit' });

@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
+    "predev": "npm run theme:css",
+    "theme:css": "node scripts/generate-theme-css.mjs",
     "lint": "vue-tsc --noEmit --pretty false",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
