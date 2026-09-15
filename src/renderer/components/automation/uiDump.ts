@@ -14,6 +14,7 @@ export interface UiNode {
   by: string
   value: string
   clickable: boolean
+  editable: boolean
   matchCount: number
   label: string
 }
@@ -26,6 +27,16 @@ export function attr(tag: string, name: string): string {
 export function shortClass(cls: string): string {
   const i = cls.lastIndexOf('.')
   return i >= 0 ? cls.slice(i + 1) : cls
+}
+
+/**
+ * Editable text widgets: the user types into them, so their `text`
+ * (placeholder / typed value) changes over time and is NOT a stable locator.
+ * Matched by class substring — do NOT widen to `focusable` (containers are
+ * focusable too and would flood the list).
+ */
+export function isEditableClass(cls: string): boolean {
+  return /EditText|AutoCompleteTextView|SearchView/.test(cls)
 }
 
 export function boundsCenter(bounds: string): { x: number; y: number } | null {
@@ -67,12 +78,31 @@ export function parseUiDump(xml: string): UiNode[] {
     const cls = attr(tag, 'class')
     const bounds = attr(tag, 'bounds')
     const clickable = attr(tag, 'clickable') === 'true'
+    const editable = isEditableClass(cls)
     // Keep nodes identifiable by text/rid/desc, plus clickable widgets
-    // (icon-only buttons etc.) which are located by class substring.
-    if (!text && !rid && !desc && !clickable) continue
+    // (icon-only buttons etc.) which are located by class substring, plus
+    // editable boxes — an untouched, id-less input has none of the above
+    // and would otherwise be invisible in the picker.
+    if (!text && !rid && !desc && !clickable && !editable) continue
     let by = ''
     let value = ''
-    if (text) {
+    if (editable) {
+      // The `text` of an input is its placeholder and becomes the typed
+      // value at replay time — prefer the stable resource-id when present.
+      if (rid) {
+        by = 'resource_id'
+        value = rid
+      } else if (text) {
+        by = 'text'
+        value = text
+      } else if (desc) {
+        by = 'content_desc'
+        value = desc
+      } else {
+        by = 'class'
+        value = cls
+      }
+    } else if (text) {
       by = 'text'
       value = text
     } else if (rid) {
@@ -94,6 +124,7 @@ export function parseUiDump(xml: string): UiNode[] {
       by,
       value,
       clickable,
+      editable,
       matchCount: countMatches(by, value),
       label: text || rid || desc || shortClass(cls),
     })

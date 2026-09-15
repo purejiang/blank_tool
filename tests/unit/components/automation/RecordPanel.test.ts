@@ -67,10 +67,10 @@ vi.mock('vue-i18n', async (importOriginal) => {
 
 import RecordPanel from '@/renderer/components/automation/RecordPanel.vue'
 
-function mountPanel(disabled = false, deviceId = '') {
+function mountPanel(disabled = false, deviceId = '', hasSelection = false) {
   const pinia = createPinia()
   const wrapper = mount(RecordPanel, {
-    props: { disabled, deviceId },
+    props: { disabled, deviceId, hasSelection },
     global: { plugins: [pinia] },
   })
   return { wrapper, store: useDeviceStore(pinia) }
@@ -197,9 +197,54 @@ describe('RecordPanel', () => {
     expect(recorded).toHaveLength(1)
     expect(recorded![0][0]).toEqual({
       steps,
-      gap: { enabled: true, thresholdMs: 500, maxMs: 5000 },
+      gap: { enabled: true, thresholdMs: 500, maxMs: 0 },
       insertAt: 'end',
     })
+  })
+
+  it('takes the insert position from the ENTRY POINT (defaultInsertAt), not from the selection', async () => {
+    // 顶部「插入位」进来 → defaultInsertAt 'start' → 插到开头
+    const top = mountPanel(false, 'dev-1', false)
+    await top.wrapper.setProps({ defaultInsertAt: 'start' })
+    await startRecording(top.wrapper)
+    mockRecordingService.stopRecording.mockResolvedValueOnce({
+      steps: [{ action: 'tap', x: 1, y: 2 }],
+      record_device: 'dev-1',
+    })
+    await findButton(top.wrapper, 'automation.recordStop').trigger('click')
+    await flushPromises()
+    await findButton(top.wrapper, 'automation.applySteps').trigger('click')
+    expect(top.wrapper.emitted('recorded')![0][0].insertAt).toBe('start')
+
+    // 行内「+ 录制片段」进来 → defaultInsertAt 'after' → 插在选中行之后
+    const row = mountPanel(false, 'dev-1', true)
+    await row.wrapper.setProps({ defaultInsertAt: 'after' })
+    await startRecording(row.wrapper)
+    mockRecordingService.stopRecording.mockResolvedValueOnce({
+      steps: [{ action: 'tap', x: 1, y: 2 }],
+      record_device: 'dev-1',
+    })
+    await findButton(row.wrapper, 'automation.recordStop').trigger('click')
+    await flushPromises()
+    await findButton(row.wrapper, 'automation.applySteps').trigger('click')
+    expect(row.wrapper.emitted('recorded')![0][0].insertAt).toBe('after')
+  })
+
+  it('degrades "after" to "end" when the selected row is gone before apply', async () => {
+    const { wrapper } = mountPanel(false, 'dev-1', true)
+    await wrapper.setProps({ defaultInsertAt: 'after' })
+    await startRecording(wrapper)
+    mockRecordingService.stopRecording.mockResolvedValueOnce({
+      steps: [{ action: 'tap', x: 1, y: 2 }],
+      record_device: 'dev-1',
+    })
+    await findButton(wrapper, 'automation.recordStop').trigger('click')
+    await flushPromises()
+
+    // 选中行没了 → 失效位置兜底回落到末尾
+    await wrapper.setProps({ hasSelection: false })
+    await findButton(wrapper, 'automation.applySteps').trigger('click')
+    expect(wrapper.emitted('recorded')![0][0].insertAt).toBe('end')
   })
 
   it('startRecording rejection: error toast, recording-end emitted, start re-enabled', async () => {

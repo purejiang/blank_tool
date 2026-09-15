@@ -514,7 +514,7 @@ def build_report_html(report: dict, traffic: list) -> str:
         if it["kind"] == "step":
             cls = "ok" if it.get("ok") else "bad"
             thumbs = "".join(
-                f'<img class="thumb" src="{data_uris[p]}" alt="{_esc(os.path.basename(p))}">'
+                f'<img class="thumb" src="{data_uris[p]}" alt="{_esc(os.path.basename(p))}" title="点击放大">'
                 for p in it["shots"]
             )
             rows.append(
@@ -541,7 +541,7 @@ def build_report_html(report: dict, traffic: list) -> str:
                 rows.append(_req_detail_html(full, body_budget))
 
     gallery = "".join(
-        f'<figure><img src="{data_uris[p]}" alt="{_esc(os.path.basename(p))}">'
+        f'<figure><img src="{data_uris[p]}" alt="{_esc(os.path.basename(p))}" title="点击放大">'
         f'<figcaption>{_esc(os.path.basename(p))}'
         f'{" · step " + _esc(shot_by_path[p].get("step_index")) if shot_by_path.get(p, {}).get("step_index") else ""}'
         f'</figcaption></figure>'
@@ -619,6 +619,15 @@ pre.crash {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
 .rdet pre.empty {{ color: #9ca3af; border-style: dashed; }}
 table.filter-steps tr.req {{ display: none; }}
 table.filter-reqs tr.step {{ display: none; }}
+/* 截图放大：必须用页内灯箱 —— 截图以 data: URI 内嵌，而 Chromium 禁止顶层
+   导航到 data: URL（Chrome 60 起），交给浏览器打开只会得到空白标签页。
+   （测试断言此文件中不出现该旧做法，故此处不写其字面量。） */
+#lightbox {{ position: fixed; inset: 0; z-index: 9999; display: none;
+  align-items: center; justify-content: center;
+  background: var(--app-overlay-bg); cursor: zoom-out; }}
+#lightbox.open {{ display: flex; }}
+#lightbox img {{ max-width: 92vw; max-height: 92vh; border-radius: 8px;
+  box-shadow: var(--app-shadow-overlay); }}
 </style></head>
 <body><div class="wrap">
 <h1>自动化执行报告</h1>
@@ -663,13 +672,27 @@ document.querySelectorAll('#tl tr.req').forEach(function(tr) {{
     }}
   }});
 }});
+var lbox = document.getElementById('lightbox');
+var lboxImg = lbox ? lbox.querySelector('img') : null;
 document.addEventListener('click', function(e) {{
-  if (e.target.tagName === 'IMG') {{
-    window.open(e.target.src, '_blank');
+  if (!lboxImg) return;
+  if (e.target.tagName === 'IMG' && e.target !== lboxImg) {{
+    lboxImg.src = e.target.src;
+    lboxImg.alt = e.target.alt || '';
+    lbox.classList.add('open');
+  }} else if (lbox.classList.contains('open')) {{
+    lbox.classList.remove('open');
+  }}
+}});
+document.addEventListener('keydown', function(e) {{
+  if (e.key === 'Escape' && lbox.classList.contains('open')) {{
+    lbox.classList.remove('open');
   }}
 }});
 </script>
-</div></body></html>"""
+</div>
+<div id="lightbox"><img alt=""></div>
+</body></html>"""
 
 
 def handle_export_run(params, stream_handler):

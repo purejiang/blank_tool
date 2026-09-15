@@ -36,8 +36,8 @@
 
     <n-scrollbar v-if="liveSteps.length" class="record-list">
       <template v-for="(step, i) in liveSteps" :key="i">
-        <div v-if="gapMs(i) > gap.thresholdMs" class="gap-line">
-          + {{ Math.min(gapMs(i), gap.maxMs) }}ms
+        <div v-if="displayGapMs(i)" class="gap-line">
+          + {{ displayGapMs(i) }}ms
         </div>
         <div class="step-line">
           <span class="step-idx">#{{ i + 1 }}</span>
@@ -103,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   NButton, NCheckbox, NIcon, NInputNumber, NScrollbar, NTag, NTooltip, useMessage,
@@ -114,10 +114,13 @@ import serviceManager from '@services/ServiceManager'
 // automation.record* i18n keys (zh-CN/en-US) landed in 4198cc3.
 const props = defineProps<{
   disabled: boolean
-  /** 步骤编辑器里是否有选中行（决定"插入到选中步骤之后"是否可选） */
+  /** 步骤编辑器里是否有选中行（"插入到选中步骤之后"是否可选） */
   hasSelection?: boolean
   /** 录制目标设备 — 来自自动化页自己的选择，与设备页详情选中解耦 */
   deviceId?: string
+  /** 落点默认值，由入口决定：顶部「插入位」= 'start'（插到开头），
+   *  行内「+」= 'after'（插在选中行之后）。面板里仍可手动改。 */
+  defaultInsertAt?: 'end' | 'start' | 'after'
 }>()
 
 export type InsertAt = 'end' | 'start' | 'after'
@@ -145,11 +148,15 @@ const recId = ref('')
 const ended = ref(false)
 let svc: any = null
 
-/** auto-wait synthesis settings; threshold/cap editable while recording */
+/**
+ * auto-wait synthesis settings; default floor 500 ms treats sub-floor
+ * pauses as hand-speed jitter (no wait step), cap 0 = uncapped so long
+ * pauses replay at their true length. Both still user-editable.
+ */
 const gap = reactive<RecordedGap>({
   enabled: true,
   thresholdMs: 500,
-  maxMs: 5000,
+  maxMs: 0,
 })
 
 /** gap (ms) between the end of step i-1 and the START of step i. */
@@ -162,11 +169,26 @@ function gapMs(i: number): number {
   return Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
 }
 
+/** wait value the store's withWaits would emit for step i under the
+ *  current floor/cap (0 = filtered out — no gap line rendered). */
+function displayGapMs(i: number): number {
+  const g = gapMs(i)
+  if (g <= 0 || g <= gap.thresholdMs) return 0
+  return gap.maxMs > 0 ? Math.min(g, gap.maxMs) : g
+}
+
 /** 停止后暂存的录制结果；点击「插入到脚本」才交给页面按位置写入 */
 const lastRecord = ref<{ steps: any[]; gap: RecordedGap } | null>(null)
 
-/** 插入位置；"选中步骤之后"在编辑器无选中时禁用 */
-const insertAt = ref<InsertAt>('end')
+/** 插入位置：默认由**入口**决定（顶部「插入位」= 开头，行内「+」= 该行下方），
+ *  入口每次打开面板都会改写它；用户仍可在下拉里手动改。applyRecorded 兜底
+ *  防失效位置（无选中行时 'after' 降级为末尾）。 */
+const insertAt = ref<InsertAt>(props.defaultInsertAt ?? 'end')
+watch(
+  () => props.defaultInsertAt,
+  (v) => { if (v) insertAt.value = v },
+  { immediate: true },
+)
 const insertOptions = computed(() => [
   { value: 'end', label: t('automation.insertEnd') },
   { value: 'start', label: t('automation.insertStart') },

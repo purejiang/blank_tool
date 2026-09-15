@@ -1,10 +1,23 @@
 <template>
   <div class="step-edit-form">
+    <!-- 备注 is metadata, NOT a schema field (no per-action column), so it is
+         a standalone block on top and is written back explicitly in save(). -->
+    <div class="form-field">
+      <label>{{ t('automation.f.note') }}</label>
+      <n-input
+        :value="note"
+        size="small"
+        :placeholder="t('automation.f.notePlaceholder')"
+        class="field-ctl"
+        @update:value="setNote"
+      />
+    </div>
+
     <div v-for="f in fields" :key="f.key" class="form-field">
       <label>{{ t(`automation.f.${f.labelKey}`) }}<span v-if="f.required" class="req">*</span></label>
 
       <n-input-number
-        v-if="f.type === 'number'"
+        v-if="f.type === 'number' && f.key !== 'coord.y'"
         :value="numVal(f.key)"
         size="small"
         :placeholder="f.placeholder"
@@ -50,6 +63,29 @@
           @click="$emit('pick', { mode: pickMode })"
         >{{ t('automation.f.pickElement') }}</n-button>
       </div>
+      <!-- coordinate value row: same button-next-to-the-field pattern —
+           opens the screenshot picker (games expose no UI hierarchy).
+           `coord.y` is a `number` field, hence the explicit exclusion in the
+           generic number branch above: while both claimed it, the chain
+           stopped there and this branch was dead code. -->
+      <div v-else-if="f.key === 'coord.y'" class="field-ctl ctl-pick">
+        <n-input-number
+          :value="numVal(f.key)"
+          size="small"
+          :placeholder="f.placeholder"
+          class="ctl-pick-input"
+          @update:value="(v: number | null) => setField(f.key, v)"
+        />
+        <n-button
+          v-if="pickMode === 'screenshot'"
+          size="tiny"
+          type="info"
+          secondary
+          class="ctl-pick-btn"
+          :title="t('automation.f.pickCoord')"
+          @click="$emit('pick', { mode: pickMode })"
+        >{{ t('automation.f.pickCoord') }}</n-button>
+      </div>
       <n-input
         v-else
         :value="strVal(f.key)"
@@ -85,8 +121,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'save', step: Step): void
   (e: 'cancel'): void
-  /** Request the current UI dump to fill element/coord targets. */
-  (e: 'pick', payload: { mode: 'coord' | 'element' }): void
+  /** Request a pick: element → UI dump, screenshot → click coords off a capture. */
+  (e: 'pick', payload: { mode: 'coord' | 'element' | 'screenshot' }): void
 }>()
 
 const { t } = useI18n()
@@ -105,20 +141,23 @@ const fields = computed(() =>
 )
 
 /**
- * "Pick from current UI dump" availability: ONLY meaningful for an element
- * target (fills target.by/value). Coordinate taps and fixed-duration waits
- * have nothing to pick.
+ * "Pick" availability: element targets (and the input focus tap) pick from
+ * the UI dump; a coordinate tap picks from a screenshot instead — games
+ * (SurfaceView) expose no UI hierarchy, so coords are the only option there.
+ * Fixed-duration waits have nothing to pick.
  */
 const pickable = computed(() => {
   const a = props.step.action
   // input focuses the target field by by/value — always element-based
   if (a === 'input') return true
-  if (a !== 'tap' && a !== 'wait') return false
+  // tap is pickable in BOTH modes: coord → screenshot, element → UI dump
+  if (a === 'tap') return true
+  if (a !== 'wait') return false
   return String(getPath(form, 'mode') ?? '') === 'element'
 })
-const pickMode = computed<'coord' | 'element'>(() => {
+const pickMode = computed<'coord' | 'element' | 'screenshot'>(() => {
   const m = String(getPath(form, 'mode') ?? '')
-  if (props.step.action === 'tap' && m === 'coord') return 'coord'
+  if (props.step.action === 'tap' && m === 'coord') return 'screenshot'
   return 'element'
 })
 
@@ -146,6 +185,17 @@ function fieldDefault(f: { key: string; default?: string | number }): string | n
 
 const form = reactive<Record<string, unknown>>(buildForm())
 
+/**
+ * 备注 is user metadata, NOT a schema field — it lives outside the `form` bag
+ * and must be written back explicitly in save(), which rebuilds the step from
+ * the visible schema fields only and would otherwise drop it.
+ */
+const note = ref(String(props.step.note ?? ''))
+
+function setNote(v: string) {
+  note.value = v
+}
+
 // Switching to element mode auto-fills the timeout from the right-column
 // default (only when empty — never overwrite a user-entered value).
 watch(() => String(getPath(form, 'mode') ?? ''), (m) => {
@@ -157,6 +207,9 @@ watch(() => String(getPath(form, 'mode') ?? ''), (m) => {
 })
 
 watch(() => props.step, () => {
+  // 备注 lives outside `form`, so it needs its own re-sync when the step is
+  // replaced externally (e.g. an element picked from the UI dump).
+  note.value = String(props.step.note ?? '')
   Object.assign(form, buildForm())
 })
 
@@ -191,6 +244,9 @@ function save() {
   // must not leave stale coord/target pairs behind.
   const next: any = { id: props.step.id, action: props.step.action }
   if (props.step.ts !== undefined) next.ts = props.step.ts
+  // 备注 is NOT a schema field — write it back explicitly or the rebuild below
+  // drops it; whitespace-only is omitted so it never litters the JSON.
+  if (note.value.trim()) next.note = note.value
   for (const f of fields.value) {
     if (f.type === 'number') {
       const n = Number(getPath(form, f.key))
@@ -231,6 +287,7 @@ function save() {
 .field-ctl { flex: 1; }
 .ctl-pick { display: flex; align-items: center; gap: 6px; }
 .ctl-pick .n-input { flex: 1; min-width: 0; }
+.ctl-pick-input { flex: 1; min-width: 0; }
 .ctl-pick-btn { flex: none; }
 .form-error { font-size: var(--app-font-size-sm); color: var(--app-red); }
 .form-actions {

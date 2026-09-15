@@ -126,11 +126,17 @@
           <div v-if="expanded === st.index" class="sdetail">
             <div class="sd-msg">{{ st.message || (st.ok ? 'ok' : 'fail') }}</div>
             <div v-if="st.shots.length" class="sd-shots">
-              <n-image
-                v-for="(p, k) in st.shots" :key="k"
-                :src="fileUrl(p)" width="64" height="114" object-fit="cover" :alt="p"
-                :preview-src="fileUrl(p)"
-              />
+              <template v-for="(p, k) in st.shots" :key="k">
+                <n-image
+                  v-if="shotUrls[p]"
+                  :src="shotUrls[p]" width="64" height="114" object-fit="cover" :alt="p"
+                  :preview-src="shotUrls[p]"
+                />
+                <div v-else class="sd-shot-slot" :title="shotFailed[p] ? t('automation.shotLoadFail') : p">
+                  <n-spin v-if="!shotFailed[p]" size="small" />
+                  <n-icon v-else size="14"><ImageOff /></n-icon>
+                </div>
+              </template>
             </div>
             <div v-else class="sd-empty">{{ t('automation.noShots') }}</div>
           </div>
@@ -189,7 +195,7 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NCheckbox, NIcon, NImage, NPopover } from 'naive-ui'
-import { Download, ExternalLink, Image as ImageIcon, X } from 'lucide-vue-next'
+import { Download, ExternalLink, Image as ImageIcon, ImageOff, X } from 'lucide-vue-next'
 import { stepActionLabel } from '@components/automation/stepMeta'
 
 const props = defineProps<{
@@ -517,11 +523,32 @@ function reqClass(rq: any): string {
   return c < 400 ? 'ok' : 'warn'
 }
 
-function fileUrl(p: string): string {
-  if (!p) return ''
-  if (p.startsWith('file://') || p.startsWith('data:')) return p
-  return 'file:///' + p.replace(/\\/g, '/')
+// 截图以**本地路径**落盘。dev 下渲染层源是 http://localhost:3000，Chromium 会拦截
+// http 源加载 file:// 子资源（生产是 file:// 源所以正常）→ 表现为只显示占位图。
+// 改走既有的 readImageAsDataURL（主进程读盘 → base64 data URL），
+// 与 PackagePage 加载 APK 图标同一套路；data URL 也让 n-image 的 preview 可用。
+const shotUrls = ref<Record<string, string>>({})
+const shotFailed = ref<Record<string, boolean>>({})
+
+async function ensureShot(p: string) {
+  if (!p || shotUrls.value[p] || shotFailed.value[p]) return
+  try {
+    const res = await window.electronAPI.readImageAsDataURL(p)
+    if (res?.success && res.dataUrl) {
+      shotUrls.value = { ...shotUrls.value, [p]: res.dataUrl }
+    } else {
+      shotFailed.value = { ...shotFailed.value, [p]: true }
+    }
+  } catch {
+    shotFailed.value = { ...shotFailed.value, [p]: true }
+  }
 }
+
+const shotPaths = computed(() =>
+  stepsWithShots.value.flatMap((s: any) => (s.shots || []) as string[]))
+watch(shotPaths, (paths) => {
+  for (const p of paths) void ensureShot(p)
+}, { immediate: true })
 
 function toggle(index: number) {
   expanded.value = expanded.value === index ? null : index
@@ -658,6 +685,9 @@ watch(visibleLogs, async () => {
 }
 .sd-msg { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); word-break: break-all; }
 .sd-shots { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+/* 截图未就绪/读取失败时的占位槽：与缩略图同尺寸，避免加载完成时布局跳动 */
+.sd-shot-slot { width: 64px; height: 114px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--app-card-border); border-radius: 6px; color: var(--app-text-dim); }
 .sd-empty { font-size: var(--app-font-size-xs); color: var(--app-text-muted); margin-top: 4px; }
 
 /* ---- requests ---- */

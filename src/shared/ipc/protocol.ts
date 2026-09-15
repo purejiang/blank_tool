@@ -184,6 +184,19 @@ export type DeviceAppOpResult = UninstallAppResult
 export interface ScreenshotResult {
   success: boolean
   file_path: string
+  /** error envelope detail when the capture failed */
+  error?: string
+}
+
+/** Return type of device.display_transform */
+export interface DisplayTransformResult {
+  success: boolean
+  /** 0..3, current surface rotation */
+  rotation: number
+  /** natural (unrotated) panel size */
+  width: number
+  height: number
+  error: string
 }
 
 /** Return type of cache.info / cache.get_info */
@@ -426,6 +439,7 @@ export interface ApiMethodMap {
   'device.input_text': { params: { device_id: string; text: string }; result: { success: boolean } }
   'device.keyevent': { params: { device_id: string; key: string }; result: { success: boolean } }
   'device.ui_dump': { params: { device_id: string; timeout_ms?: number }; result: { success: boolean; xml: string; error: string } }
+  'device.display_transform': { params: { device_id: string }; result: DisplayTransformResult }
   'device.find_element': { params: { device_id: string; by: string; value: string; timeout_ms?: number }; result: { found: boolean; node: Record<string, unknown> | null; error: string } }
   'device.tap_element': { params: { device_id: string; by: string; value: string; timeout_ms?: number }; result: { success: boolean; node: Record<string, unknown> | null; error: string } }
   'device.current_activity': { params: { device_id: string; timeout_ms?: number }; result: { success: boolean; activity: string; error: string } }

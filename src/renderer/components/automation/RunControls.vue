@@ -21,23 +21,29 @@
         <template #icon><n-icon><Square /></n-icon></template>
         {{ t('automation.stop') }}
       </n-button>
-      <!-- run options (traffic capture + host filter) moved into the dialog
-           below, so this row stays: device select · run · run settings -->
-      <!-- icon-only: the row has no slack for a label, and the tooltip
-           already spells out the current capture state -->
+      <!-- 次级入口收进一个菜单：运行配置 / 运行记录（各自开弹窗）。行里只多一个
+           按钮，但抓包状态必须仍然一眼可见 —— captureTraffic 打开时按钮右上角
+           带一个圆点（tooltip 依旧说明它会改写设备代理）。 -->
       <n-tooltip placement="top">
         <template #trigger>
-          <n-button
-            size="small"
-            quaternary
-            class="run-config-btn"
-            :aria-label="t('automation.runConfig')"
-            @click="configOpen = true"
+          <n-dropdown
+            trigger="click"
+            placement="bottom-end"
+            :options="menuOptions"
+            @select="onMenuSelect"
           >
-            <template #icon><n-icon><Settings2 /></n-icon></template>
-          </n-button>
+            <n-button
+              size="small"
+              quaternary
+              class="run-menu-btn"
+              :aria-label="t('automation.runMenu')"
+            >
+              <template #icon><n-icon><MoreHorizontal /></n-icon></template>
+              <span v-if="captureTraffic" class="run-dot" />
+            </n-button>
+          </n-dropdown>
         </template>
-        {{ captureSummary }}
+        {{ menuTip }}
       </n-tooltip>
     </div>
     <!-- non-blocking preflight hints (missing mitmproxy / ADBKeyBoard) -->
@@ -94,8 +100,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NDynamicTags, NIcon, NModal, NSelect, NSpace, NSwitch, NTooltip } from 'naive-ui'
-import { Play, Settings2, Square } from 'lucide-vue-next'
+import { NButton, NDropdown, NDynamicTags, NIcon, NModal, NSelect, NSpace, NSwitch, NTooltip } from 'naive-ui'
+import { MoreHorizontal, Play, Square } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 
 const props = defineProps<{
@@ -111,6 +117,8 @@ const props = defineProps<{
   /** capture is on but this machine can't capture (mitmproxy missing or the
    *  Python version doesn't match) — shown inside the settings dialog. */
   captureUnavailable?: boolean
+  /** 运行记录条数：菜单项带个数字，不用打开就知道有没有历史 */
+  historyCount?: number
 }>()
 
 const emit = defineEmits<{
@@ -119,6 +127,8 @@ const emit = defineEmits<{
   (e: 'update:trafficHostFilter', v: string): void
   (e: 'run'): void
   (e: 'stop'): void
+  /** 菜单里选了「运行记录」—— 列表数据在页面，这里只发请求 */
+  (e: 'openHistory'): void
 }>()
 
 const { t } = useI18n()
@@ -146,15 +156,28 @@ function onFilterTags(tags: string[]) {
     tags.map((s) => s.replace(/,/g, ' ').trim()).filter(Boolean).join(','),
   )
 }
-/** One-line state for the settings button tooltip — an active capture rewrites
- *  the device proxy on every run, so it must never be invisible. */
-const captureSummary = computed(() =>
-  props.captureTraffic
-    ? t('automation.runConfigTipOn', {
-        filter: filterTags.value.join(' / ') || t('automation.runConfigFilterAll'),
-      })
-    : t('automation.runConfigTipOff'),
+/** 菜单按钮的 tooltip：**故意只留一行**。抓包会改写设备代理，这个状态不能藏，
+ *  但细节（具体过滤条件）在设置弹窗里已经列全了 —— hover 时铺开一长串文字只会
+ *  挡住视线，圆点 + 「抓包已开启」就够。 */
+const menuTip = computed(() =>
+  props.captureTraffic ? t('automation.runMenuTipOn') : t('automation.runMenuTip'),
 )
+
+/** 次级入口的弹出列表：运行配置（抓包 + 域名过滤）与运行记录（历史）。 */
+const menuOptions = computed(() => [
+  { key: 'settings', label: t('automation.runConfig') },
+  {
+    key: 'history',
+    label: props.historyCount
+      ? `${t('automation.runHistory')} (${props.historyCount})`
+      : t('automation.runHistory'),
+  },
+])
+
+function onMenuSelect(key: string | number) {
+  if (key === 'settings') configOpen.value = true
+  else if (key === 'history') emit('openHistory')
+}
 </script>
 
 <style scoped>
@@ -165,7 +188,13 @@ const captureSummary = computed(() =>
 .run-controls-row { display: flex; align-items: center; gap: 8px; }
 .run-controls-row :deep(.n-select) { flex: 1; min-width: 0; }
 .run-btn { flex: none; }
-.run-config-btn { flex: none; }
+.run-menu-btn { flex: none; position: relative; }
+/* 抓包开着必须一眼可见：收进菜单后，除了 tooltip 就只剩这个圆点 */
+.run-dot {
+  position: absolute; top: 3px; right: 3px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--app-yellow);
+}
 .run-hints { display: flex; flex-direction: column; gap: 2px; }
 .run-hint { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 

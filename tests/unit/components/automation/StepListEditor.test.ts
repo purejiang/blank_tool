@@ -4,7 +4,9 @@
  * The step model is v2 (see stepTypes.ts): every step carries `id`, tap/wait
  * carry a `mode` discriminator, and coordinates/paths/targets are NESTED
  * (`coord` / `path` / `target`). Legacy flat actions (`tap_element` …) are gone
- * by design, and row reordering moved from up/down buttons to drag & drop.
+ * by design. Row interaction: a row CLICK expands/collapses the inline editor
+ * (there is no pencil button any more) and reordering is a drag from the front
+ * grip handle, which hands the browser the whole row as its drag image.
  *
  * vue-i18n identity t() (keys render as themselves).
  */
@@ -34,6 +36,10 @@ const swipe = (): Step => ({
   action: 'swipe',
   path: { x1: 1, y1: 2, x2: 3, y2: 4, duration_ms: 300 },
 })
+/** Minimal DataTransfer stand-in for drag events. */
+function dt(extra: Record<string, unknown> = {}) {
+  return { effectAllowed: '', setData: () => {}, setDragImage: () => {}, ...extra }
+}
 
 describe('stepTypes', () => {
   it('defaultStep fills schema defaults (v2 shape: id + mode + nested params)', () => {
@@ -90,45 +96,97 @@ describe('StepListEditor', () => {
 
   it('emits a cloned array without the deleted step', async () => {
     const w = mountEditor([tap(1, 1), tap(2, 2), tap(3, 3)])
-    // row ops are [edit, delete] — reorder is drag & drop now
-    await w.findAll('.step-row')[1].findAll('button')[1].trigger('click')
+    // row ops are [delete, insert-below] — the pencil is gone (a row click
+    // expands the editor) and reorder is long-press drag & drop now
+    await w.findAll('.step-row')[1].findAll('button')[0].trigger('click')
     const evt = w.emitted('update:modelValue')
     expect(evt![0][0]).toEqual([tap(1, 1), tap(3, 3)])
     // cloned, not the same reference
     expect(evt![0][0]).not.toBe(w.props('modelValue'))
   })
 
-  it('reorders rows via drag & drop (replaces the old up/down buttons)', async () => {
+  it('reorders rows by dragging the handle', async () => {
     const w = mountEditor([tap(1, 1), swipe()])
-    const items = w.findAll('.step-item')
-    await items[1].trigger('dragstart', {
-      dataTransfer: { effectAllowed: '', setData: () => {} },
-    })
-    await items[0].trigger('drop')
+    await w.findAll('.step-handle')[1].trigger('dragstart', { dataTransfer: dt() })
+    await w.findAll('.step-item')[0].trigger('drop')
     expect(w.emitted('update:modelValue')![0][0]).toEqual([swipe(), tap(1, 1)])
+  })
+
+  it('uses the WHOLE row as the drag image so it follows the cursor', async () => {
+    const w = mountEditor([tap(1, 1), swipe()])
+    const setDragImage = vi.fn()
+    await w.findAll('.step-handle')[1].trigger('dragstart', {
+      clientX: 30,
+      clientY: 40,
+      dataTransfer: dt({ setDragImage }),
+    })
+    expect(setDragImage).toHaveBeenCalledTimes(1)
+    // the drag image must be the row, not the 20px grip the browser defaults to
+    const el = setDragImage.mock.calls[0][0] as HTMLElement
+    expect(el.classList.contains('step-item')).toBe(true)
+    // and offset to where the pointer grabbed it, so it is picked up in place
+    expect(setDragImage.mock.calls[0][1]).toBe(30 - el.getBoundingClientRect().left)
+    expect(setDragImage.mock.calls[0][2]).toBe(40 - el.getBoundingClientRect().top)
+  })
+
+  it('only the handle is a drag source — the row itself never is', () => {
+    const w = mountEditor([tap(1, 1), swipe()])
+    expect(w.findAll('.step-handle')[1].attributes('draggable')).toBe('true')
+    expect(w.findAll('.step-item')[1].attributes('draggable')).toBeUndefined()
+  })
+
+  it('row click expands + selects, a second click collapses + deselects', async () => {
+    const w = mountEditor([tap(1, 1), tap(2, 2)])
+    const items = w.findAll('.step-item')
+    await items[0].trigger('click')
+    expect(w.findComponent({ name: 'StepEditForm' }).exists()).toBe(true)
+    expect(w.emitted('update:selectedIndex')![0][0]).toBe(0)
+    await items[0].trigger('click')
+    expect(w.findComponent({ name: 'StepEditForm' }).exists()).toBe(false)
+    expect(w.emitted('update:selectedIndex')![1][0]).toBe(-1)
   })
 
   it('edits a row in place and saves back at that index', async () => {
     const w = mountEditor([tap(1, 1), tap(2, 2)])
-    await w.findAll('.step-row')[0].findAll('button')[0].trigger('click') // edit
+    await w.findAll('.step-item')[0].trigger('click') // row click = expand
     const form = w.findComponent({ name: 'StepEditForm' })
     expect(form.exists()).toBe(true)
+    expect(w.emitted('update:selectedIndex')![0][0]).toBe(0)
 
     const updated = tap(9, 9)
     form.vm.$emit('save', updated)
     await w.vm.$nextTick()
     expect(w.emitted('update:modelValue')![0][0]).toEqual([updated, tap(2, 2)])
-    // form closed after save
+    // form closed — and the selection drops with it (open row == selected row)
     expect(w.findComponent({ name: 'StepEditForm' }).exists()).toBe(false)
+    expect(w.emitted('update:selectedIndex')![1][0]).toBe(-1)
   })
 
-  it('openEditor opens the edit form for an externally appended step', async () => {
+  it('openEditor opens the edit form for an externally appended step and selects it', async () => {
     // The add-step flow lives on the page (dropdown) — it appends the step and
     // calls openEditor(index) through the component ref.
     const w = mountEditor([tap()])
     ;(w.vm as unknown as { openEditor: (i: number) => void }).openEditor(0)
     await w.vm.$nextTick()
     expect(w.findComponent({ name: 'StepEditForm' }).exists()).toBe(true)
+    expect(w.emitted('update:selectedIndex')![0][0]).toBe(0)
+  })
+
+  it('has no pencil/edit button any more — delete and insert-below remain', () => {
+    const w = mountEditor([tap(1, 1)])
+    const titles = w.findAll('button').map((b) => b.attributes('title'))
+    expect(titles).not.toContain('automation.stepEdit')
+    expect(titles).toContain('automation.stepDelete')
+    expect(titles).toContain('automation.addStep')
+  })
+
+  it('renders the note as a second line only when the step carries one', () => {
+    const w = mountEditor([{ ...tap(1, 2), note: '打开设置页' }, tap(3, 4)])
+    const notes = w.findAll('.step-note')
+    expect(notes.length).toBe(1)
+    expect(notes[0].text()).toBe('打开设置页')
+    // whitespace-only notes count as absent
+    expect(mountEditor([{ ...tap(1, 2), note: '   ' }]).findAll('.step-note').length).toBe(0)
   })
 
   it('shows empty hint when no steps', () => {

@@ -16,6 +16,7 @@
             <div class="elem-label-row">
               <span class="elem-label">{{ el.label }}</span>
               <span v-if="el.clickable" class="elem-click">{{ t('automation.clickable') }}</span>
+              <span v-if="el.editable" class="elem-edit">{{ t('automation.editable') }}</span>
               <span v-if="el.matchCount > 1" class="elem-multi">{{ t('automation.multiMatch', { n: el.matchCount }) }}</span>
             </div>
             <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
@@ -56,6 +57,7 @@ const { t } = useI18n()
 .elem-label-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .elem-label { font-size: var(--app-font-size-md); color: var(--app-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-click { flex: 0 0 auto; font-size: var(--app-font-size-xs); line-height: 16px; color: var(--app-green); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.elem-edit { flex: 0 0 auto; font-size: var(--app-font-size-xs); line-height: 16px; color: var(--app-blue); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .elem-multi { flex: 0 0 auto; font-size: var(--app-font-size-xs); line-height: 16px; color: var(--app-yellow); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .elem-by { font-size: var(--app-font-size-xs); color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .elem-bounds { font-size: var(--app-font-size-xs); color: var(--app-text-muted); flex: 0 0 auto; }

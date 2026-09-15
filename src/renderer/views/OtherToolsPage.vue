@@ -38,7 +38,8 @@
 
           <div class="editor-body">
             <div class="field steps-field">
-              <!-- 工具行：视图切换靠左、添加步骤贴最右，两端撑开 -->
+              <!-- 工具行：视图切换靠左、计数贴右（计数原来独占一行，并进这里，
+                   腾出的高度给下面的「插入位」，整体净高度不变） -->
               <div class="steps-head">
                 <n-radio-group
                   class="view-switch"
@@ -50,30 +51,25 @@
                   <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
                   <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
                 </n-radio-group>
-                <n-dropdown
-                  trigger="click"
-                  placement="bottom-end"
-                  :options="addOptions"
-                  :disabled="runner.running || store.stepsView !== 'ui'"
-                  @select="onAdd"
-                >
-                  <n-button
-                    class="add-step-btn"
-                    size="small"
-                    type="primary"
-                    secondary
-                    :disabled="runner.running || store.stepsView !== 'ui'"
-                  >
-                    <template #icon><n-icon><Plus /></n-icon></template>
-                    {{ t('automation.addStep') }}
-                  </n-button>
-                </n-dropdown>
-              </div>
-
-              <!-- 计数单独一行，紧贴下面的列表，左对齐 -->
-              <div class="steps-count-row">
                 <span class="steps-count">{{ t('automation.stepCountLabel', { n: stepCountDisplay }) }}</span>
               </div>
+
+              <!-- 「插入位」：站在列表顶部 = 新内容的落点。和行内「+」（落在该行
+                   下方）同一套心智模型——按钮在哪，新步骤/录制片段就插在哪。
+                   顶部入口一律插到开头，所以固定传 0。 -->
+              <n-dropdown
+                v-if="store.stepsView === 'ui'"
+                trigger="click"
+                placement="bottom-start"
+                :options="addOptions"
+                :disabled="runner.running"
+                @select="(key: string | number) => onAdd(String(key), 0)"
+              >
+                <button class="insert-top" type="button" :disabled="runner.running">
+                  <n-icon size="14"><Plus /></n-icon>
+                  <span>{{ t('automation.insertStart') }}</span>
+                </button>
+              </n-dropdown>
 
               <StepListEditor
                 v-if="store.stepsView === 'ui'"
@@ -82,8 +78,10 @@
                 v-model:selected-index="store.selectedStepIndex"
                 :disabled="runner.running"
                 :default-timeout="elementTimeoutMs"
+                :add-options="addOptions"
                 class="steps-editor"
                 @pick="onStepPick"
+                @insert-below="(p: { index: number; key: string }) => onAdd(p.key, p.index + 1)"
               />
               <template v-else>
                 <n-input
@@ -101,29 +99,33 @@
             </div>
           </div>
 
-          <!-- 录制面板：停靠在中栏编辑器下方 -->
-          <RecordPanel
-            v-show="recordPanelOpen"
-            ref="recordPanelRef"
-            class="docked-record"
-            :device-id="autoDeviceId"
-            :disabled="runner.running && !recording"
-            :has-selection="store.selectedStepIndex >= 0"
-            @recording-start="onRecStart"
-            @recorded="store.onRecorded"
-            @recording-end="onRecEnd"
-            @close="recordPanelOpen = false"
-          />
+          <!-- 录制面板：改成弹窗。原来停靠在编辑区下方会跟步骤列表抢垂直空间，
+               而录制本身是一次性的模态活动（开始 → 看实时步骤流 → 停止 → 插入） -->
+          <n-modal
+            v-model:show="recordPanelOpen"
+            preset="card"
+            style="width: 560px"
+          >
+            <RecordPanel
+              ref="recordPanelRef"
+              :device-id="autoDeviceId"
+              :disabled="runner.running && !recording"
+              :has-selection="store.selectedStepIndex >= 0"
+              :default-insert-at="recordInsertAt"
+              @recording-start="onRecStart"
+              @recorded="store.onRecorded"
+              @recording-end="onRecEnd"
+              @close="recordPanelOpen = false"
+            />
+          </n-modal>
         </template>
       </section>
 
       <div class="col-divider" @pointerdown.prevent="startResize('right', $event)" />
 
       <!-- ============ RIGHT: run console ============ -->
-      <!-- top → bottom: run controls, the run panel (status bar + steps /
-           requests / logs tabs, live or replayed), then run history. The
-           history stays permanently expanded and a click replays that run
-           into the panel above it. -->
+      <!-- 控制区 + 运行面板。次级入口（运行设置 / 运行记录）收进控制区最右的
+           「功能」菜单，各自开弹窗 —— 右栏的常驻高度全部留给产出的运行面板。 -->
       <section class="col col-right">
         <RunControls
           v-model:auto-device-id="autoDeviceId"
@@ -133,8 +135,10 @@
           :can-run="canRun"
           :hints="runHints"
           :capture-unavailable="captureUnavailable"
+          :history-count="runs.length"
           @run="runScript"
           @stop="runner.stopRun"
+          @open-history="showHistory = true"
         />
         <RunPanel
           :running="runner.running"
@@ -150,14 +154,6 @@
           @download-report="downloadRunReport"
           @close-report="closeReport"
         />
-        <RunHistory
-          :runs="runs"
-          :loading="runsLoading"
-          :selected-task-id="viewingReport?.task_id || ''"
-          @refresh="fetchRuns"
-          @select="onSelectRun"
-          @remove="onDeleteRun"
-        />
       </section>
     </div>
 
@@ -168,6 +164,34 @@
       :elements="elements"
       @apply="applyElement"
     />
+
+    <!-- ============ Screenshot coordinate picker modal ============ -->
+    <ScreenshotPickerModal
+      v-model:show="showShotPicker"
+      :device-id="autoDeviceId"
+      @apply="applyShotCoords"
+    />
+
+    <!-- ============ Run history dialog ============ -->
+    <!-- 从「功能」菜单打开；点某一条会恢复进右栏面板并自动关掉本弹窗，
+         删除某一条则保持打开（连续清理）。列表在弹窗里可以给到 60vh。 -->
+    <n-modal
+      v-model:show="showHistory"
+      preset="card"
+      :title="t('automation.runHistory')"
+      style="width: 520px"
+    >
+      <div class="history-dialog">
+        <RunHistory
+          :runs="runs"
+          :loading="runsLoading"
+          :selected-task-id="viewingReport?.task_id || ''"
+          @refresh="fetchRuns"
+          @select="onSelectRunFromDialog"
+          @remove="onDeleteRun"
+        />
+      </div>
+    </n-modal>
 
     <!-- ============ Tool install modal (traffic capture / ADBKeyBoard) ============ -->
     <ToolInstallModal
@@ -237,6 +261,7 @@ import RunPanel from '@components/automation/RunPanel.vue'
 import RunHistory from '@components/automation/RunHistory.vue'
 import ToolInstallModal from '@components/automation/ToolInstallModal.vue'
 import ElementPickerModal from '@components/automation/ElementPickerModal.vue'
+import ScreenshotPickerModal from '@components/automation/ScreenshotPickerModal.vue'
 import { parseUiDump, boundsCenter, type UiNode } from '@components/automation/uiDump'
 import {
   ADDABLE_ACTIONS, defaultStep, type Step, type StepAction,
@@ -435,30 +460,41 @@ const addOptions = computed(() => [
   })),
 ])
 
-function onAdd(action: string) {
+function onAdd(action: string, atIndex = 0) {
   if (action === RECORD_KEY) {
-    onRecordRequest()
+    // 顶部「插入位」传 0 → 插到开头；行内「+」传 i+1 → 插到第 i 行下方。
+    // 录制片段走 store.onRecorded：'start' 插开头、'after' 插在选中行之后。
+    onRecordRequest(atIndex > 0 ? atIndex - 1 : null)
     return
   }
-  const list: Step[] = [...store.editor.steps, defaultStep(action as StepAction)]
+  const at = atIndex
+  const list = [...store.editor.steps]
+  list.splice(at, 0, defaultStep(action as StepAction))
   store.editor.steps = list
   if (store.stepsView === 'json') store.syncJsonText()
-  // 新步骤直接进入编辑状态
-  nextTick(() => stepListRef.value?.openEditor(list.length - 1))
+  // 新行成为选中行，并直接进入编辑状态
+  store.selectedStepIndex = at
+  nextTick(() => stepListRef.value?.openEditor(at))
 }
 
-/** 录制面板停靠开关（中栏编辑器下方）；唯一入口 = 添加步骤 → 录制片段，
+/** 录制面板停靠开关（中栏编辑器下方）；入口 = 顶部「插入位」或行内「+」，
  * 关闭走面板自带的 X 按钮 */
 const recordPanelOpen = ref(false)
 const recording = ref(false)
 const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
+/** 录制片段的落点：由**入口**决定（顶部 = 开头；行内「+」= 该行下方），
+ *  交给 RecordPanel 当默认值 */
+const recordInsertAt = ref<'start' | 'after'>('start')
 
-/** 「添加步骤 → 录制片段…」：展开中栏录制面板采集 */
-function onRecordRequest() {
+/** 录制片段入口：targetRow = null → 插到开头（顶部「插入位」）；
+ *  传行下标 → 插在该行下方（行内「+」，靠选中行 + onRecorded 的 'after' 分支）。 */
+function onRecordRequest(targetRow: number | null = null) {
   if (runner.running && !recording.value) {
     message.warning(t('automation.runStopFirst'))
     return
   }
+  recordInsertAt.value = targetRow === null ? 'start' : 'after'
+  if (targetRow !== null) store.selectedStepIndex = targetRow
   recordPanelOpen.value = true
   message.info(t('automation.recordSegmentHint'))
 }
@@ -481,6 +517,8 @@ function onRecEnd() {
 const runs = ref<any[]>([])
 const runsLoading = ref(false)
 const viewingReport = ref<any | null>(null)
+/** 运行记录弹窗（从运行控件旁的「功能」菜单打开） */
+const showHistory = ref(false)
 
 async function fetchRuns() {
   runsLoading.value = true
@@ -495,6 +533,13 @@ async function fetchRuns() {
   }
 }
 onMounted(() => { void fetchRuns() })
+
+/** 从运行记录弹窗里选一条：把运行恢复进面板后**关掉弹窗**，
+ *  否则报告被弹窗盖住 —— 这一步不能省。 */
+async function onSelectRunFromDialog(taskId: string) {
+  await onSelectRun(taskId)
+  showHistory.value = false
+}
 
 /** 点运行记录 → 把那次运行的报告恢复到页面里 */
 async function onSelectRun(taskId: string) {
@@ -705,12 +750,14 @@ async function runScript() {
   }
 }
 
-// ---------------- element picker ----------------
+// ---------------- element picker / screenshot picker ----------------
 const dumping = ref(false)
 const showElements = ref(false)
 const elements = ref<UiNode[]>([])
-/** 元素抽屉始终处于“填充步骤”模式（由编辑表单的“获取界面元素”按钮打开） */
-const pickTarget = ref<{ index: number; mode: 'coord' | 'element' } | null>(null)
+/** 抽屉始终处于“填充步骤”模式（由编辑表单的拾取按钮打开）：
+ *  element → UI dump 抽屉，screenshot → 截图取点弹窗，coord 为遗留分支 */
+const pickTarget = ref<{ index: number; mode: 'coord' | 'element' | 'screenshot' } | null>(null)
+const showShotPicker = ref(false)
 
 async function getElements() {
   if (runner.running) return
@@ -742,9 +789,37 @@ async function getElements() {
   }
 }
 
-function onStepPick(payload: { index: number; mode: 'coord' | 'element' }) {
+function onStepPick(payload: { index: number; mode: 'coord' | 'element' | 'screenshot' }) {
   pickTarget.value = payload
+  // screenshot pick: the modal captures + shows on open, then reports coords
+  if (payload.mode === 'screenshot') {
+    showShotPicker.value = true
+    return
+  }
   void getElements()
+}
+
+/** 截图上点选一个坐标：写入 coord 模式步骤（与 applyElement 的 coord 分支
+ *  同样的写法 —— 换 mode、清 target/ms 防脏字段） */
+function applyShotCoords(c: { x: number; y: number }) {
+  const target = pickTarget.value
+  if (!target) {
+    message.warning(t('automation.pickNoTarget'))
+    return
+  }
+  const steps = [...store.editor.steps]
+  const s = { ...steps[target.index] } as any
+  if (!s) return
+  s.mode = 'coord'
+  s.coord = { x: c.x, y: c.y }
+  delete s.target
+  delete s.ms
+  steps[target.index] = s
+  store.editor.steps = steps
+  if (store.stepsView === 'json') store.syncJsonText()
+  pickTarget.value = null
+  showShotPicker.value = false
+  message.success(`${c.x}, ${c.y}`)
 }
 
 /** 元素抽屉里选中一个元素：填充正在编辑的步骤（v2 模型） */
@@ -881,19 +956,32 @@ onMounted(() => {
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
-/* 工具行：视图切换靠左、添加步骤贴最右（两端撑开） */
+/* 工具行：视图切换靠左、计数贴右（两端撑开） */
 .steps-head {
   display: flex; justify-content: space-between; align-items: center;
   gap: 8px; flex-wrap: wrap;
 }
-/* 计数单独一行，落在工具行下面、贴着列表，左对齐 */
-.steps-count-row { display: flex; align-items: center; }
 .steps-count { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
-.add-step-btn { flex: none; }
+/* 「插入位」：列表顶上的一条虚线幽灵行。它的位置就是落点，所以不放进工具行；
+   放在列表滚动区之外 —— 列表滚起来时它始终可见，插到开头永远够得着。 */
+.insert-top {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-bottom: 5px; padding: 5px 8px;
+  font-family: inherit; font-size: var(--app-font-size-sm);
+  color: var(--app-text-muted); cursor: pointer;
+  background: transparent;
+  border: 1px dashed var(--app-card-border); border-radius: 8px;
+  transition: color 0.13s, border-color 0.13s, background 0.13s;
+}
+.insert-top:hover:not(:disabled) {
+  color: var(--app-blue); border-color: var(--app-blue);
+  background: var(--app-blue-bg);
+}
+.insert-top:disabled { opacity: 0.5; cursor: not-allowed; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
 /* 页头右侧动作区：.app-page-header 已是 flex + space-between，这里只补间距 */
 .header-actions { flex: none; display: flex; align-items: center; gap: 8px; }
 
-/* right run */
-.docked-record { flex: 0 0 auto; border-top: 1px solid var(--app-card-border); padding-top: 10px; }
+/* 运行记录弹窗：列表在弹窗里可以给到接近整屏（右栏常驻时只有 140px） */
+.history-dialog :deep(.rh-list) { max-height: 60vh; }
 </style>

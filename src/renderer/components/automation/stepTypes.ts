@@ -67,6 +67,8 @@ export interface Step {
   name?: string
   /** device-time seconds of the touch END marker (recorded steps only) */
   ts?: number
+  /** user note — what this step is for (metadata only, ignored at replay) */
+  note?: string
   [key: string]: unknown
 }
 

@@ -30,6 +30,46 @@ export interface Project {
   scripts: Script[]
 }
 
+/**
+ * Insert fixed-wait steps between recorded steps to reproduce the TRUE
+ * recorded pace. Uses each step's `ts` (device-time seconds of the touch
+ * END marker); a swipe's own duration is subtracted so the wait measures
+ * true idle time (touch END of prev → touch START of cur).
+ *
+ * Gap semantics (defaults: 500 ms jitter floor, uncapped):
+ *  - `thresholdMs` is a floor: gaps <= it are skipped — sub-floor pauses
+ *    are hand-speed jitter, not real waits. 0 would keep every real gap.
+ *  - `maxMs` is a cap: gaps above it are clamped. 0 means "no cap", so a
+ *    real long pause replays at its true length instead of a fixed value.
+ * Missing/non-numeric `ts` on either side skips that gap (no wait emitted).
+ */
+export function withWaits(
+  steps: Step[],
+  gap: { enabled: boolean; thresholdMs: number; maxMs: number },
+): Step[] {
+  if (!gap?.enabled || steps.length < 2) return steps
+  const out: Step[] = []
+  for (let i = 0; i < steps.length; i++) {
+    const cur = steps[i]
+    if (i > 0) {
+      const prev = steps[i - 1]
+      if (typeof prev?.ts === 'number' && typeof cur?.ts === 'number') {
+        const dur = (cur as any).path?.duration_ms ?? (cur as any).duration_ms ?? 0
+        const startOfCur = cur.ts - (Number(dur) || 0) / 1000
+        const gapMs = Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
+        if (gapMs > 0 && gapMs > gap.thresholdMs) {
+          out.push({
+            id: genId(), action: 'wait', mode: 'time',
+            ms: gap.maxMs > 0 ? Math.min(gapMs, gap.maxMs) : gapMs,
+          })
+        }
+      }
+    }
+    out.push(cur)
+  }
+  return out
+}
+
 export function useAutomationStore(isBusy?: () => boolean) {
   const { t } = useI18n()
   const message = useMessage()
@@ -416,39 +456,6 @@ export function useAutomationStore(isBusy?: () => boolean) {
     return base
   }
 
-  /**
-   * Insert fixed-wait steps between recorded steps whose gap exceeds the
-   * configured threshold. Uses each step's `ts` (device-time seconds of the
-   * touch END marker); a swipe's own duration is subtracted so the wait
-   * measures true idle time. Gap is capped at maxMs.
-   */
-  function withWaits(
-    steps: Step[],
-    gap: { enabled: boolean; thresholdMs: number; maxMs: number },
-  ): Step[] {
-    if (!gap?.enabled || steps.length < 2) return steps
-    const out: Step[] = []
-    for (let i = 0; i < steps.length; i++) {
-      const cur = steps[i]
-      if (i > 0) {
-        const prev = steps[i - 1]
-        if (typeof prev?.ts === 'number' && typeof cur?.ts === 'number') {
-          const dur = (cur as any).path?.duration_ms ?? (cur as any).duration_ms ?? 0
-          const startOfCur = cur.ts - (Number(dur) || 0) / 1000
-          const gapMs = Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
-          if (gapMs > gap.thresholdMs) {
-            out.push({
-              id: genId(), action: 'wait', mode: 'time',
-              ms: Math.min(gapMs, gap.maxMs),
-            })
-          }
-        }
-      }
-      out.push(cur)
-    }
-    return out
-  }
-
   function onRecorded(payload: {
     steps: any[]
     gap: { enabled: boolean; thresholdMs: number; maxMs: number }
@@ -470,7 +477,7 @@ export function useAutomationStore(isBusy?: () => boolean) {
     }
 
     const raw = Array.isArray(payload?.steps) ? payload.steps : []
-    const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 5000 }
+    const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 0 }
     const add = withWaits(raw.map(toV2Step), gap)
 
     const old = editor.value.steps

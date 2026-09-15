@@ -27,6 +27,7 @@ from app.automation.elements import (
     ui_dump,
 )
 from app.automation.apps import current_activity
+from app.automation.coords import get_display_transform
 from app.common.decorators import streaming, logs_errors
 
 logger = Logger.get_logger("AdbHandler")
@@ -588,6 +589,28 @@ def device_current_activity(params, stream_handler):
 
 
 @logs_errors("AdbHandler")
+def device_display_transform(params, stream_handler):
+    """Current surface rotation + natural panel size.
+
+    Same source the replay path uses via ``rotate_to_display`` — one source
+    of truth for both, so a picked coordinate can never drift from what the
+    run will actually tap.
+    """
+    device_id = params.get("device_id")
+    if not device_id:
+        raise ToolException("Missing device_id")
+    dt = get_display_transform(device_id)
+    ok = bool(dt.get("width")) and bool(dt.get("height"))
+    return {
+        "success": ok,
+        "rotation": int(dt.get("rotation") or 0),
+        "width": int(dt.get("width") or 0),
+        "height": int(dt.get("height") or 0),
+        "error": "" if ok else "device size unavailable",
+    }
+
+
+@logs_errors("AdbHandler")
 def adb_connect(params, stream_handler):
     """Connect to a remote ADB device via TCP/IP."""
     address = params.get("address", "")
@@ -652,4 +675,5 @@ API_MAP = {
     "device.find_element": device_find_element,
     "device.tap_element": device_tap_element,
     "device.current_activity": device_current_activity,
+    "device.display_transform": device_display_transform,
 }

@@ -13,29 +13,42 @@
         :key="i"
         class="step-item"
         :class="{ editing: i === editingIndex, selected: i === selectedIndex, dragging: dragIndex === i, 'drag-over': overIndex === i && dragIndex !== -1 && dragIndex !== i }"
-        :draggable="i !== editingIndex"
         @click="toggleSelect(i)"
-        @dragstart="onDragStart(i, $event)"
         @dragover.prevent="overIndex = i"
         @dragleave="overIndex = -1"
         @drop.prevent="onDrop(i)"
-        @dragend="dragIndex = -1; overIndex = -1"
       >
         <div class="step-row">
+          <!-- Drag source is THIS handle only, so a plain click on the row body
+               can still expand/collapse it. The row stays the drop target —
+               dropping onto a 20px grip would be unusable. onDragStart hands the
+               browser the WHOLE row as the drag image (see below), otherwise the
+               default ghost is just this little grip and the row looks like it
+               never followed the cursor. -->
+          <span
+            class="step-handle"
+            :title="t('automation.dragHint')"
+            draggable="true"
+            @dragstart="onDragStart(i, $event)"
+            @dragend="dragIndex = -1; overIndex = -1"
+            @click.stop
+          >
+            <n-icon size="12"><GripVertical /></n-icon>
+          </span>
           <span class="step-idx">{{ i + 1 }}</span>
           <span class="step-badge" :class="'g-' + stepActionGroup(step.action)">
             {{ stepActionLabel(step.action, t) }}
           </span>
-          <span class="step-sum" :title="stepSummary(step)">{{ stepSummary(step) }}</span>
+          <div class="step-texts">
+            <span class="step-sum" :title="stepSummary(step)">{{ stepSummary(step) }}</span>
+            <span
+              v-if="String(step.note || '').trim()"
+              class="step-note"
+              :title="String(step.note || '')"
+            >{{ step.note }}</span>
+          </div>
 
           <div class="step-ops" @click.stop>
-            <n-button
-              size="tiny" text type="primary" :disabled="disabled"
-              :title="t('automation.stepEdit')"
-              @click.stop="toggleEdit(i)"
-            >
-              <n-icon size="14"><Pencil /></n-icon>
-            </n-button>
             <n-button
               size="tiny" text type="error" :disabled="disabled"
               :title="t('automation.stepDelete')"
@@ -43,6 +56,20 @@
             >
               <n-icon size="14"><Trash2 /></n-icon>
             </n-button>
+            <n-dropdown
+              trigger="click"
+              placement="bottom-end"
+              :options="addOptions || []"
+              :disabled="disabled"
+              @select="(key: string) => emit('insertBelow', { index: i, key: String(key) })"
+            >
+              <n-button
+                size="tiny" text type="primary" :disabled="disabled"
+                :title="t('automation.addStep')"
+              >
+                <n-icon size="14"><Plus /></n-icon>
+              </n-button>
+            </n-dropdown>
           </div>
         </div>
 
@@ -53,7 +80,7 @@
           :default-timeout="defaultTimeout"
           @click.stop
           @save="onSave(i, $event)"
-          @cancel="editingIndex = -1"
+          @cancel="closeEditor"
           @pick="onPick(i, $event)"
         />
       </div>
@@ -65,10 +92,10 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
-  NButton, NEmpty, NIcon,
+  NButton, NDropdown, NEmpty, NIcon,
 } from 'naive-ui'
 import {
-  Pencil, Trash2,
+  GripVertical, Plus, Trash2,
 } from 'lucide-vue-next'
 import StepEditForm from './StepEditForm.vue'
 import { type Step } from './stepTypes'
@@ -81,24 +108,40 @@ const props = defineProps<{
   selectedIndex?: number
   /** 元素目标默认超时（右栏可设），元素模式下自动填充 */
   defaultTimeout?: number
+  /** 页头「添加步骤」下拉的同一份选项（行内 + 按钮复用，避免第二份清单） */
+  addOptions?: any[]
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', steps: Step[]): void
   (e: 'update:selectedIndex', index: number): void
-  /** StepEditForm 请求从当前界面 dump 中拾取元素/坐标 */
-  (e: 'pick', payload: { index: number; mode: 'coord' | 'element' }): void
+  /** StepEditForm 请求拾取：元素/坐标走 UI dump，screenshot 走截图取点 */
+  (e: 'pick', payload: { index: number; mode: 'coord' | 'element' | 'screenshot' }): void
+  /** 行内「+」在该行下方插入：index = 被点击的行，key = 动作或录制占位键 */
+  (e: 'insertBelow', payload: { index: number; key: string }): void
 }>()
 
 const { t } = useI18n()
 
 const editingIndex = ref(-1)
 
-/** 行选中：再点一次取消；按钮区已 stop 冒泡 */
+/**
+ * Row click: collapsed → select + expand; already open → collapse + deselect.
+ * 展开的行就是选中的行，所以不再需要单独的编辑按钮 —— 一个手势覆盖两件事。
+ */
 function toggleSelect(i: number) {
   if (props.disabled) return
-  const cur = props.selectedIndex ?? -1
-  emit('update:selectedIndex', cur === i ? -1 : i)
+  if (editingIndex.value === i) closeEditor()
+  else {
+    editingIndex.value = i
+    emit('update:selectedIndex', i)
+  }
+}
+
+/** 收起编辑表单，选中状态跟着一起收（open row == selected row）。 */
+function closeEditor() {
+  editingIndex.value = -1
+  emit('update:selectedIndex', -1)
 }
 
 /** emit a fresh (cloned) array — never mutate the prop in place */
@@ -123,6 +166,15 @@ function onDragStart(i: number, e: DragEvent) {
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', String(i))
+    // Drag source is the 20px handle, so the browser's default drag image is
+    // just that little grip — the row appears not to follow the cursor. The
+    // standard fix is to hand it the whole row, offset to where the pointer
+    // grabbed it, so the ghost is the row itself and feels picked up in place.
+    const rowEl = (e.currentTarget as HTMLElement | null)?.closest('.step-item') as HTMLElement | null
+    if (rowEl) {
+      const rect = rowEl.getBoundingClientRect()
+      e.dataTransfer.setDragImage(rowEl, e.clientX - rect.left, e.clientY - rect.top)
+    }
   }
 }
 
@@ -161,25 +213,23 @@ function remove(i: number) {
   else if (editingIndex.value > i) editingIndex.value -= 1
 }
 
-function toggleEdit(i: number) {
-  editingIndex.value = editingIndex.value === i ? -1 : i
-}
-
 function onSave(i: number, step: Step) {
   const list = [...props.modelValue]
   list[i] = step
   emitList(list)
-  editingIndex.value = -1
+  closeEditor()
 }
 
-function onPick(i: number, payload: { mode: 'coord' | 'element' }) {
+function onPick(i: number, payload: { mode: 'coord' | 'element' | 'screenshot' }) {
   emit('pick', { index: i, ...payload })
 }
 
-/** 外部（页面顶部"添加步骤"）追加步骤后打开对应行的编辑表单 */
+/** 外部（页面顶部"添加步骤"、行内「+」）插入步骤后打开对应行的编辑表单 */
 function openEditor(i: number) {
   if (i >= 0 && i < props.modelValue.length && !props.disabled) {
     editingIndex.value = i
+    // keep the "open row == selected row" invariant the row click relies on
+    emit('update:selectedIndex', i)
   }
 }
 defineExpose({ openEditor })
@@ -235,8 +285,7 @@ function stepKey(step: Step): string {
   border-color: var(--app-blue);
   background: var(--app-blue-bg);
 }
-/* drag & drop reorder (whole row is the handle, except the open editor) */
-.step-item:not(.editing) { cursor: grab; }
+/* drag feedback — the grip handle (.step-handle) is the only drag source */
 .step-item.dragging { opacity: 0.45; }
 .step-item.drag-over {
   border-top: 2px solid var(--app-blue);
@@ -245,8 +294,26 @@ function stepKey(step: Step): string {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 7px 8px;
+  min-height: 36px;
 }
+/* 20px wide so the grip hits 8 + 20 + 8 = 36 — the same left edge the edit
+   form indents to, i.e. the handle sits in the gutter without shifting the
+   badge. Also the long-press target, so it must not be a 12px sliver. */
+.step-handle {
+  flex: none;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-dim);
+  cursor: grab;
+  opacity: 0.45;
+  transition: opacity 0.13s;
+}
+.step-item:hover .step-handle,
+.step-item.selected .step-handle,
+.step-item.editing .step-handle { opacity: 1; }
 .step-idx {
   width: 20px;
   flex: none;
@@ -271,15 +338,29 @@ function stepKey(step: Step): string {
 .step-badge.g-act { color: var(--app-green); background: color-mix(in srgb, var(--app-green) 16%, transparent); }
 .step-badge.g-wait { color: var(--app-yellow); background: color-mix(in srgb, var(--app-yellow) 16%, transparent); }
 .step-badge.g-check { color: var(--app-purple); background: color-mix(in srgb, var(--app-purple) 16%, transparent); }
-.step-sum {
+/* summary + optional note live in one column so a note grows the row to two
+   lines instead of squeezing the summary */
+.step-texts {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.step-sum {
   font-size: var(--app-font-size-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--app-text-secondary);
   font-variant-numeric: tabular-nums;
+}
+.step-note {
+  font-size: var(--app-font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--app-text-dim);
 }
 /* row actions stay out of the way until the row is hovered / focused —
    6 rows × 2 coloured icons was the loudest thing in the column, and the

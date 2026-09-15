@@ -194,6 +194,14 @@ def test_export_body_budget_degrades_gracefully(run_env, tmp_path, monkeypatch):
     assert "a.example.com" in html
 
 
+def test_export_uses_inline_lightbox_not_window_open(run_env, tmp_path):
+    """截图是 data: URI 内嵌；Chromium 禁止顶层导航到 data: URL（Chrome 60+），
+    因此 window.open(src) 只会开出空白标签页（用户报告的症状）。放大必须走页内灯箱。"""
+    html = _export_html(run_env, tmp_path)
+    assert 'id="lightbox"' in html
+    assert "window.open(" not in html
+
+
 def test_read_traffic_full_keeps_wire_shapes(run_env):
     _, jsonl = run_env
     r = _read_traffic_full(jsonl, 100)
