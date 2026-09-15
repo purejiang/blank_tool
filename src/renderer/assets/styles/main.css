@@ -37,10 +37,14 @@ body {
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
 }
 
-/* ---- 滚动条：唯一定义处（原 main.css 与 themes.css 各写一份、宽度还不一致） ---- */
+/* ---- 滚动条：唯一定义处（原 main.css 与 themes.css 各写一份、宽度还不一致） ----
+ * 命中区 = 视觉厚度 + 2×2px 透明边框（background-clip: content-box）：看起来仍是
+ * 6px，但鼠标可抓 10px，细条不再难抓。颜色/几何全部来自 token，与 Naive 自绘
+ * 滚动条（theme/overrides.ts 的 scrollbarWidth/Color）同源。
+ * 注意：不用 background 简写，否则会把 background-clip 重置回 border-box。 */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: calc(var(--app-scrollbar-size) + 4px);
+  height: calc(var(--app-scrollbar-size) + 4px);
 }
 
 ::-webkit-scrollbar-track {
@@ -48,12 +52,23 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--app-scrollbar-thumb);
-  border-radius: 3px;
+  background-color: var(--app-scrollbar-thumb);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: calc(var(--app-scrollbar-radius) + 2px);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--app-scrollbar-hover);
+  background-color: var(--app-scrollbar-hover);
+}
+
+/* Windows 上偶发的箭头块 + 横竖条交汇处的白方块，都清掉 */
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ---- 选区 / 焦点 ---- */

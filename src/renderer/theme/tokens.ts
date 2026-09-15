@@ -161,6 +161,13 @@ export const staticTokens = {
   'z-raised': '10',
   'z-overlay': '9999',
 
+  // ---- 滚动条几何 ----
+  // 视觉厚度/圆角。原生条（::-webkit-scrollbar）与 Naive 自绘条
+  // （themeOverrides 的 scrollbarWidth/BorderRadius）都从这里取值，
+  // 保证两套系统外观一致。
+  'scrollbar-size': '6px',
+  'scrollbar-radius': '3px',
+
   // ---- 圆角 ----
   'radius-sm': '4px',
   'radius-md': '8px',

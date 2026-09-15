@@ -29,6 +29,8 @@
   --app-duration-slow: 0.3s;
   --app-z-raised: 10;
   --app-z-overlay: 9999;
+  --app-scrollbar-size: 6px;
+  --app-scrollbar-radius: 3px;
   --app-radius-sm: 4px;
   --app-radius-md: 8px;
   --app-radius-lg: 12px;
