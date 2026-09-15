@@ -1001,7 +1001,7 @@ onMounted(() => {
 .runtime-version { font-size: 11px; font-weight: 500; color: var(--app-green); }
 .runtime-version.is-missing { color: var(--app-yellow); }
 .runtime-path { font-size: 11px; color: var(--app-text-muted); font-family: var(--app-font-mono); word-break: break-all; margin-top: 2px; }
-.runtime-hint { font-size: 11.5px; color: var(--app-text-muted); margin-top: 4px; }
+.runtime-hint { font-size: var(--app-font-size-sm); color: var(--app-text-muted); margin-top: 4px; }
 /* local service (version / status / directory) */
 .svc-row { display: flex; align-items: center; gap: 12px; padding: 6px 4px; }
 .svc-label { font-size: 13px; color: var(--app-text-muted); min-width: 88px; }

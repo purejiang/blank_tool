@@ -147,7 +147,7 @@ const healthTitle = computed(() =>
 .version-text {
   font-family: var(--app-font-mono);
   color: var(--app-text-dim);
-  font-size: 10px;
+  font-size: var(--app-font-size-xs);
 }
 .health-dot {
   display: inline-block;

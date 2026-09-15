@@ -363,7 +363,7 @@ async function importScriptsTo(p: { id: string; scripts: any[] }) {
 }
 .proj-row.active { background: var(--app-blue-bg); }
 .proj-main { flex: 1; min-width: 0; }
-.proj-name { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12.5px; color: var(--app-text-primary); overflow: hidden; min-width: 0; }
+.proj-name { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: var(--app-font-size-md); color: var(--app-text-primary); overflow: hidden; min-width: 0; }
 .proj-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-actions { display: flex; gap: 1px; opacity: 0; flex: none; }
 .proj-row:hover .row-actions { opacity: 1; }

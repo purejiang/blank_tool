@@ -847,7 +847,7 @@ onMounted(() => {
    (the panel itself absorbs the slack) */
 .col-right { gap: 8px; }
 .steps-json { font-family: var(--app-font-mono); font-size: 12px; }
-.json-status { font-size: 11.5px; margin-top: 4px; }
+.json-status { font-size: var(--app-font-size-sm); margin-top: 4px; }
 .json-status.ok { color: var(--app-green); }
 .json-status.bad { color: var(--app-red); }
 .editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }

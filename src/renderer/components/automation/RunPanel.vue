@@ -577,14 +577,14 @@ watch(visibleLogs, async () => {
 .run-status.run .st-label { color: var(--app-blue); }
 /* min-width stays auto: the summary must keep its min-content width so it
    wraps to the next line as a whole instead of breaking between numbers */
-.st-meta { font-size: 11.5px; color: var(--app-text-secondary); flex: 1 1 auto; }
+.st-meta { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); flex: 1 1 auto; }
 .st-meta .sep { color: var(--app-text-muted); margin: 0 3px; }
 /* right half: 详情 + report actions — never wraps, always flush right */
 .st-acts { display: flex; align-items: center; gap: 5px; flex: none; }
 
 /* ---- details popover ---- */
 .detail-pop { display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
-.dp-row { display: flex; gap: 8px; font-size: 11.5px; align-items: baseline; }
+.dp-row { display: flex; gap: 8px; font-size: var(--app-font-size-sm); align-items: baseline; }
 .dp-k { flex: none; color: var(--app-text-muted); min-width: 62px; }
 .dp-v { color: var(--app-text-secondary); word-break: break-all; }
 .dp-v.path { cursor: copy; }
@@ -609,7 +609,7 @@ watch(visibleLogs, async () => {
 .tab:hover { color: var(--app-text-primary); }
 .tab.on { color: var(--app-blue); font-weight: 600; border-bottom-color: var(--app-blue); }
 .tab-n {
-  font-size: 10.5px; font-weight: 400; color: var(--app-text-muted);
+  font-size: var(--app-font-size-xs); font-weight: 400; color: var(--app-text-muted);
   background: var(--app-blue-bg); border-radius: 8px; padding: 0 5px; line-height: 15px;
 }
 .only-err { display: flex; align-items: center; padding-bottom: 2px; }
@@ -634,7 +634,7 @@ watch(visibleLogs, async () => {
   padding: 4px 2px; font-size: 12px; cursor: pointer; border-radius: 5px;
 }
 .srow:hover { background: var(--app-blue-bg); }
-.s-rel { flex: none; width: 48px; font-size: 10.5px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
+.s-rel { flex: none; width: 48px; font-size: var(--app-font-size-xs); color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
 .s-idx { flex: none; font-weight: 600; color: var(--app-text-muted); }
 .srow.ok .s-idx { color: var(--app-green); }
 .srow.bad .s-idx { color: var(--app-red); }
@@ -644,27 +644,27 @@ watch(visibleLogs, async () => {
 .srow.pending .s-msg { color: var(--app-blue); font-style: italic; }
 .s-shots {
   flex: none; display: flex; align-items: center; gap: 2px;
-  font-size: 10.5px; color: var(--app-text-muted);
+  font-size: var(--app-font-size-xs); color: var(--app-text-muted);
   background: var(--app-blue-bg); border-radius: 6px; padding: 0 5px;
 }
-.s-dur { flex: none; font-size: 10.5px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
+.s-dur { flex: none; font-size: var(--app-font-size-xs); color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
 .sdetail {
   margin: 0 0 6px 55px; padding: 6px 8px;
   background: var(--app-blue-bg); border-radius: 6px;
 }
-.sd-msg { font-size: 11.5px; color: var(--app-text-secondary); word-break: break-all; }
+.sd-msg { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); word-break: break-all; }
 .sd-shots { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .sd-empty { font-size: 11px; color: var(--app-text-muted); margin-top: 4px; }
 
 /* ---- requests ---- */
 .req-list { display: flex; flex-direction: column; }
-.req-row { display: flex; gap: 7px; align-items: baseline; font-size: 11.5px; padding: 2px 0; cursor: pointer; }
+.req-row { display: flex; gap: 7px; align-items: baseline; font-size: var(--app-font-size-sm); padding: 2px 0; cursor: pointer; }
 .req-row:hover .req-u { color: var(--app-text-primary); }
 .req-row.open .req-u { color: var(--app-blue); }
 .req-row.ok .req-s { color: var(--app-green); }
 .req-row.warn .req-s { color: var(--app-yellow); }
 .req-row.bad .req-s { color: var(--app-red); }
-.req-t { flex: none; width: 50px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; font-size: 10.5px; }
+.req-t { flex: none; width: 50px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; font-size: var(--app-font-size-xs); }
 .req-m { flex: none; width: 48px; font-weight: 600; color: var(--app-text-primary); }
 .req-s { flex: none; width: 32px; }
 .req-u { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--app-text-muted); }
@@ -672,7 +672,7 @@ watch(visibleLogs, async () => {
   margin: 2px 0 6px 55px; padding: 6px 8px;
   background: var(--app-blue-bg); border-radius: 6px;
 }
-.rd-sec { font-size: 10.5px; font-weight: 600; color: var(--app-text-secondary); margin: 6px 0 2px; }
+.rd-sec { font-size: var(--app-font-size-xs); font-weight: 600; color: var(--app-text-secondary); margin: 6px 0 2px; }
 .rd-sec:first-child { margin-top: 0; }
 .rd-pre {
   margin: 0; padding: 5px 7px; max-height: 180px; overflow: auto;
@@ -685,7 +685,7 @@ watch(visibleLogs, async () => {
 
 /* ---- logs ---- */
 .log-scroll { background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px 8px; }
-.log-line { display: flex; gap: 8px; font-family: var(--app-font-mono); font-size: 11.5px; line-height: 1.55; }
+.log-line { display: flex; gap: 8px; font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); line-height: 1.55; }
 .ll-ts { flex: none; width: 46px; color: var(--app-console-dim); font-variant-numeric: tabular-nums; }
 .ll-text { flex: 1; min-width: 0; color: var(--app-console-fg); white-space: pre-wrap; word-break: break-all; }
 .log-line.error .ll-text { color: var(--app-console-err); }

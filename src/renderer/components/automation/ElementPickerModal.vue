@@ -55,8 +55,8 @@ const { t } = useI18n()
 .elem-main { display: flex; flex-direction: column; min-width: 0; }
 .elem-label-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .elem-label { font-size: 13px; color: var(--app-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.elem-click { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-green); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
-.elem-multi { flex: 0 0 auto; font-size: 10px; line-height: 16px; color: var(--app-yellow); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.elem-click { flex: 0 0 auto; font-size: var(--app-font-size-xs); line-height: 16px; color: var(--app-green); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.elem-multi { flex: 0 0 auto; font-size: var(--app-font-size-xs); line-height: 16px; color: var(--app-yellow); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .elem-by { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.elem-bounds { font-size: 10.5px; color: var(--app-text-muted); flex: 0 0 auto; }
+.elem-bounds { font-size: var(--app-font-size-xs); color: var(--app-text-muted); flex: 0 0 auto; }
 </style>

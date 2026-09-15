@@ -104,8 +104,8 @@ function fmtDur(ms: number): string {
 .run-row.ok .run-dot { background: var(--app-green); }
 .run-row.bad .run-dot { background: var(--app-red); }
 .run-row.warn .run-dot { background: var(--app-yellow); }
-.run-time { color: var(--app-text-primary); flex: none; font-variant-numeric: tabular-nums; font-size: 11.5px; }
-.run-counts { flex: 1; text-align: right; font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.run-time { color: var(--app-text-primary); flex: none; font-variant-numeric: tabular-nums; font-size: var(--app-font-size-sm); }
+.run-counts { flex: 1; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--app-font-size-sm); }
 .run-row.ok .run-counts { color: var(--app-green); }
 .run-row.bad .run-counts { color: var(--app-red); }
 .run-row.warn .run-counts { color: var(--app-yellow); }
