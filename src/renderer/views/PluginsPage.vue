@@ -764,7 +764,7 @@ onUnmounted(() => {
 
 /* left list */
 .pl-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
-.pl-item:hover { background: rgba(128, 128, 128, 0.08); }
+.pl-item:hover { background: var(--app-hover); }
 .pl-item.active { background: var(--app-blue-bg); border-color: var(--app-blue); }
 .pl-item-head { display: flex; align-items: center; gap: 6px; }
 .pl-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--app-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

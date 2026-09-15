@@ -726,7 +726,7 @@ const takeScreenshot = async () => {
   padding: 6px 12px;
   font-size: 11px;
   color: var(--app-text-muted);
-  background: rgba(34,197,94,0.06);
+  background: var(--app-green-bg-hover);
   border-bottom: 1px solid var(--app-card-bg);
 }
 .shell-output-text {

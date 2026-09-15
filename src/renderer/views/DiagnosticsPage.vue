@@ -633,7 +633,7 @@ onUnmounted(() => {
 <style scoped>
 .diagnostics-content { display: flex; flex-direction: column; gap: 16px; }
 .diag-card { background: var(--app-card-bg); border-radius: 10px; text-align: left; transition: box-shadow 0.2s ease; }
-.diag-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08); }
+.diag-card:hover { box-shadow: var(--app-shadow-md); }
 .header-action { margin-left: auto; }
 
 /* Health */

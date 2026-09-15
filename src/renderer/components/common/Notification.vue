@@ -339,7 +339,7 @@ defineExpose({
 
 .notification-action-btn.primary {
   background: var(--app-blue);
-  color: #fff;
+  color: var(--app-text-inverse);
 }
 
 .notification-action-btn.primary:hover {

@@ -376,6 +376,6 @@ const handleDeviceSelection = async (id: string) => {
 .device-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .device-serial { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text-dim); }
 :deep(.device-list .n-list-item) { background: transparent !important; }
-:deep(.device-list .n-list-item:hover) { background: rgba(255,255,255,0.03) !important; }
-:deep(.device-list .n-list-item.selected) { background: rgba(34,197,94,0.08) !important; }
+:deep(.device-list .n-list-item:hover) { background: var(--app-hover) !important; }
+:deep(.device-list .n-list-item.selected) { background: var(--app-green-bg) !important; }
 </style>
