@@ -15,15 +15,19 @@ directory, and registers a stop_event the orchestrator polls for cancel.
 """
 
 import os
+import subprocess
+import sys
 
 from app.automation.input import ime_status as ime_status_impl
 from app.automation.orchestrator import run as run_orchestration
 from app.automation.traffic import status as traffic_status_impl
+from app.automation.traffic import any_capture_active
 from app.automation.traffic import ca_cert_path
 from app.automation.traffic import install_ca as install_ca_impl
 from app.common.decorators import logs_errors, streaming
 from app.common.exceptions import ToolException
 from app.common.stream_context import StreamContext
+from app.utils.env import get_runtime_dir
 from app.utils.logger import Logger
 
 logger = Logger.get_logger("AutomationHandler")
@@ -84,9 +88,124 @@ def install_ca(params, stream_handler=None):
     return install_ca_impl(device_id)
 
 
+def _pip_available() -> bool:
+    """True when this interpreter can run ``pip`` at all.
+
+    The packaged ``runtime/python`` may ship without pip (unverifiable from
+    the repo), so every probe failure — missing module, timeout, any OS
+    error — degrades to the manual-command path instead of crashing.
+    """
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "pip", "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        return False
+    try:
+        proc.communicate(timeout=30)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return False
+    return proc.returncode == 0
+
+
+def _pip_install(lib_path: str, on_line) -> int:
+    """``pip install --target`` mitmproxy into ``lib_path``.
+
+    Streams every stdout/stderr line through ``on_line``. Returns the exit
+    code; ANY exception (spawn failure, broken pipe, ...) counts as a
+    non-zero code so the caller degrades to the manual command.
+    """
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "pip", "install", "--target", lib_path,
+             "--upgrade", "mitmproxy"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        return 1
+    try:
+        for line in proc.stdout:
+            line = line.rstrip("\r\n")
+            if line:
+                on_line(line)
+        proc.wait()
+        return proc.returncode if proc.returncode is not None else 1
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return 1
+
+
+@streaming
+@logs_errors("AutomationHandler")
+def install_mitmproxy(params, stream_handler):
+    """Install mitmproxy into the bundled runtime via pip (streaming).
+
+    Order matters: refuse while a capture runs (Windows locks mitmdump's
+    .pyd/.dll), bail without a runtime dir, then probe pip. Any pip failure
+    — probe or install — degrades to a copy-pasteable manual command with
+    both paths double-quoted (space-safe). Never generates the CA; the
+    first capture run does that.
+    """
+    ctx = StreamContext("automation", stream_handler)
+
+    if any_capture_active():
+        ctx.error("请先停止运行中的抓包再安装")
+        return
+
+    runtime = get_runtime_dir()
+    if not runtime:
+        ctx.error("runtime 目录缺失，无法安装 mitmproxy")
+        return
+
+    lib = os.path.join(runtime, "mitmproxy", "lib")
+    python_bin = sys.executable
+    manual_command = f'"{python_bin}" -m pip install --target "{lib}" --upgrade mitmproxy'
+
+    def degraded() -> None:
+        ctx.complete({
+            "success": False,
+            "degraded": True,
+            "manual_command": manual_command,
+            "lib_path": lib,
+            "python_bin": python_bin,
+        })
+
+    if not _pip_available():
+        degraded()
+        return
+
+    code = _pip_install(lib, ctx.log)
+    if code != 0:
+        degraded()
+        return
+
+    marker_dir = os.path.join(runtime, "mitmproxy")
+    os.makedirs(marker_dir, exist_ok=True)
+    marker = os.path.join(marker_dir, "PYTHON_MARKER")
+    with open(marker, "w", encoding="utf-8") as f:
+        f.write(f"{sys.version_info[0]}.{sys.version_info[1]}")
+
+    ctx.complete({"success": True, **traffic_status_impl()})
+
+
 API_MAP = {
     "automation.run": run_automation,
     "automation.traffic_status": traffic_status,
     "automation.ime_status": ime_status,
     "automation.install_ca": install_ca,
+    "automation.install_mitmproxy": install_mitmproxy,
 }

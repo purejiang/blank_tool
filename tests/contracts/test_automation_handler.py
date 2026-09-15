@@ -209,6 +209,231 @@ class TestInstallCa:
         assert data["result"]["type"] == "success"
 
 
+class TestInstallMitmproxy:
+    """automation.install_mitmproxy — streaming pip install + full degrade.
+
+    Direct-call style (test_download_handler pattern): the ``@streaming``
+    wrapper runs synchronously, so a plain events-lambda collects everything.
+    All seams are module-level so monkeypatching never touches the real
+    runtime dir or a real pip.
+    """
+
+    def test_install_mitmproxy_refuses_while_capture_active(self, monkeypatch):
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "any_capture_active", lambda: True)
+        pip_calls = []
+        monkeypatch.setattr(
+            mod, "_pip_install",
+            lambda lib, on_line: pip_calls.append(lib) or 0,
+        )
+
+        mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        assert events[0]["type"] == "error"
+        # Message must tell the user to stop the running capture first.
+        assert "请先停止运行中的抓包再安装" in events[0]["payload"]
+        assert not any(e["type"] == "complete" for e in events)
+        assert pip_calls == [], "no install may be attempted during a capture"
+
+    def test_install_mitmproxy_errors_when_runtime_dir_missing(self, monkeypatch):
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: "")
+        monkeypatch.setattr(mod, "_pip_available", lambda: False)
+
+        mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        assert any(e["type"] == "error" for e in events)
+        assert not any(e["type"] == "complete" for e in events)
+
+    def test_install_mitmproxy_pip_probe_failure_degrades_with_manual_command(
+        self, monkeypatch, tmp_path
+    ):
+        import os
+        import sys
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: False)
+
+        mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        payload = completes[0]["payload"]
+        assert set(payload.keys()) == {
+            "success", "degraded", "manual_command", "lib_path", "python_bin",
+        }
+        assert payload["success"] is False
+        assert payload["degraded"] is True
+        lib = os.path.join(str(tmp_path), "mitmproxy", "lib")
+        expected = f'"{sys.executable}" -m pip install --target "{lib}" --upgrade mitmproxy'
+        assert payload["manual_command"] == expected
+        assert payload["lib_path"] == lib
+        assert payload["python_bin"] == sys.executable
+
+    def test_install_mitmproxy_pip_install_failure_degrades(self, monkeypatch, tmp_path):
+        import os
+        import sys
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: True)
+        monkeypatch.setattr(mod, "_pip_install", lambda lib, on_line: 1)
+
+        mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        payload = completes[0]["payload"]
+        assert payload["success"] is False
+        assert payload["degraded"] is True
+        assert set(payload.keys()) == {
+            "success", "degraded", "manual_command", "lib_path", "python_bin",
+        }
+        lib = os.path.join(str(tmp_path), "mitmproxy", "lib")
+        assert payload["manual_command"] == (
+            f'"{sys.executable}" -m pip install --target "{lib}" --upgrade mitmproxy'
+        )
+
+    def test_install_mitmproxy_success_writes_marker_and_reports_status(
+        self, monkeypatch, tmp_path
+    ):
+        import os
+        import sys
+
+        import app.handlers.automation_handler as mod
+
+        events = []
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: True)
+
+        pip_calls = {}
+
+        def fake_install(lib, on_line):
+            pip_calls["lib"] = lib
+            on_line("Collecting mitmproxy")
+            on_line("Successfully installed mitmproxy-10.4.2")
+            return 0
+
+        monkeypatch.setattr(mod, "_pip_install", fake_install)
+        monkeypatch.setattr(mod, "traffic_status_impl", lambda: {
+            "installed": True,
+            "ready": True,
+            "lib_path": os.path.join(str(tmp_path), "mitmproxy", "lib"),
+            "python_mismatch": None,
+            "ca_cert_exists": False,
+        })
+
+        mod.install_mitmproxy({}, lambda e: events.append(e))
+
+        completes = [e for e in events if e["type"] == "complete"]
+        assert len(completes) == 1
+        payload = completes[0]["payload"]
+        assert set(payload.keys()) == {
+            "success", "installed", "ready", "lib_path",
+            "python_mismatch", "ca_cert_exists",
+        }
+        assert payload["success"] is True
+        assert payload["installed"] is True
+        assert payload["ready"] is True
+
+        marker = os.path.join(str(tmp_path), "mitmproxy", "PYTHON_MARKER")
+        assert os.path.isfile(marker)
+        with open(marker, "r", encoding="utf-8") as f:
+            assert f.read() == f"{sys.version_info[0]}.{sys.version_info[1]}"
+
+        assert pip_calls["lib"] == os.path.join(str(tmp_path), "mitmproxy", "lib")
+        logs = [e for e in events if e["type"] == "log"]
+        assert any("Successfully installed" in e["payload"] for e in logs)
+
+    def test_install_mitmproxy_pip_probe_timeout_returns_false(self, monkeypatch):
+        """hung_long_commands probe: a hanging/raising pip probe must yield
+        False (degraded path) instead of hanging or crashing."""
+        import subprocess
+
+        import app.handlers.automation_handler as mod
+
+        def raise_timeout(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="pip --version", timeout=30)
+
+        monkeypatch.setattr(subprocess, "Popen", raise_timeout)
+        assert mod._pip_available() is False
+
+    def test_install_mitmproxy_overwrites_stale_marker(self, monkeypatch, tmp_path):
+        """stale_state probe: a rerun after a prior (foreign) install rewrites
+        the marker instead of leaving stale content behind."""
+        import os
+        import sys
+
+        import app.handlers.automation_handler as mod
+
+        marker = tmp_path / "mitmproxy" / "PYTHON_MARKER"
+        marker.parent.mkdir(parents=True)
+        marker.write_text("9.9-stale", encoding="utf-8")
+
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: True)
+        monkeypatch.setattr(mod, "_pip_install", lambda lib, on_line: 0)
+        monkeypatch.setattr(mod, "traffic_status_impl", lambda: {
+            "installed": True, "ready": True, "lib_path": "x",
+            "python_mismatch": None, "ca_cert_exists": False,
+        })
+
+        mod.install_mitmproxy({}, lambda e: None)
+
+        assert marker.read_text(encoding="utf-8") == (
+            f"{sys.version_info[0]}.{sys.version_info[1]}"
+        )
+
+    def test_install_mitmproxy_repeat_call_single_terminal_complete(
+        self, monkeypatch, tmp_path
+    ):
+        """repeated_interruptions probe: two successive calls each produce
+        exactly one terminal complete event — no double terminal."""
+        import app.handlers.automation_handler as mod
+
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: False)
+
+        events_one, events_two = [], []
+        mod.install_mitmproxy({}, lambda e: events_one.append(e))
+        mod.install_mitmproxy({}, lambda e: events_two.append(e))
+
+        for events in (events_one, events_two):
+            terminals = [e for e in events if e["type"] in ("complete", "error")]
+            assert len(terminals) == 1
+            assert terminals[0]["type"] == "complete"
+
+    def test_install_mitmproxy_empty_and_extra_params_degrade_normally(
+        self, monkeypatch, tmp_path
+    ):
+        """malformed_input probe: empty params, missing device_id and unknown
+        extras are all ignored — the handler degrades normally, no crash."""
+        import app.handlers.automation_handler as mod
+
+        monkeypatch.setattr(mod, "get_runtime_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(mod, "_pip_available", lambda: False)
+
+        for params in ({}, {"device_id": "emulator-5554"}, {
+            "device_id": "emulator-5554", "apk_path": 123,
+            "unknown": {"x": 1},
+        }):
+            events = []
+            mod.install_mitmproxy(params, lambda e: events.append(e))
+            terminals = [e for e in events if e["type"] in ("complete", "error")]
+            assert len(terminals) == 1
+            assert terminals[0]["type"] == "complete"
+            assert terminals[0]["payload"]["degraded"] is True
+
+
 class TestResponseShape:
     METHODS = [
         "automation.traffic_status",
