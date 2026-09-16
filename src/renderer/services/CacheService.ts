@@ -21,7 +21,7 @@ class CacheService {
         }
 
         try {
-            this.cacheInfo = await requireApiMethod('getCacheInfo')();
+            this.cacheInfo = await requireApiMethod('getCacheInfo')(force);
             return this.cacheInfo;
         } catch (error) {
             log.error('获取缓存信息失败:', error);

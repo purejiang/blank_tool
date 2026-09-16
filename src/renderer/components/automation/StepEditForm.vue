@@ -122,6 +122,19 @@
       />
     </div>
 
+    <!-- 失败策略：和备注一样是「通用」字段（每个动作都有），所以不进
+         per-action schema —— 渲染在字段区之后。inherit = 跟随运行级设置。 -->
+    <div class="form-field">
+      <label>{{ t('automation.f.onError') }}</label>
+      <n-select
+        :value="onError"
+        size="small"
+        :options="onErrorOptions"
+        class="field-ctl"
+        @update:value="(v: string) => setOnError(v)"
+      />
+    </div>
+
     <div v-if="error" class="form-error">{{ error }}</div>
 
     <div class="form-actions">
@@ -231,6 +244,21 @@ function setNote(v: string) {
   note.value = v
 }
 
+/**
+ * 失败策略（`on_error`）是每个动作都有的通用字段 —— 和备注一样不写进
+ * per-action schema，因此独立维护并在 save() 里显式写回。
+ * `inherit` 表示**不写这个键**，即跟随运行级 `continue_on_error`。
+ */
+const onError = ref(String(props.step.on_error ?? 'inherit'))
+function setOnError(v: string) {
+  onError.value = v
+}
+const onErrorOptions = computed(() => [
+  { value: 'inherit', label: t('automation.f.onErrorInherit') },
+  { value: 'continue', label: t('automation.f.onErrorContinue') },
+  { value: 'abort', label: t('automation.f.onErrorAbort') },
+])
+
 // Switching to element mode auto-fills the timeout from the right-column
 // default (only when empty — never overwrite a user-entered value).
 watch(() => String(getPath(form, 'mode') ?? ''), (m) => {
@@ -245,6 +273,7 @@ watch(() => props.step, () => {
   // 备注 lives outside `form`, so it needs its own re-sync when the step is
   // replaced externally (e.g. an element picked from the UI dump).
   note.value = String(props.step.note ?? '')
+  onError.value = String(props.step.on_error ?? 'inherit')
   Object.assign(form, buildForm())
 })
 
@@ -282,6 +311,11 @@ function save() {
   // 备注 is NOT a schema field — write it back explicitly or the rebuild below
   // drops it; whitespace-only is omitted so it never litters the JSON.
   if (note.value.trim()) next.note = note.value
+  // Same for the failure policy: only an EXPLICIT choice is stored, so
+  // "inherit" keeps following the run-level setting instead of pinning it.
+  if (onError.value === 'continue' || onError.value === 'abort') {
+    next.on_error = onError.value
+  }
   for (const f of fields.value) {
     if (f.type === 'number') {
       const n = Number(getPath(form, f.key))

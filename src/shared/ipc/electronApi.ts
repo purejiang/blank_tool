@@ -123,7 +123,7 @@ export interface ToolApiGroup {
 
 /** Storage / cache size reporting and clearing. */
 export interface CacheApiGroup {
-  getCacheInfo: () => Promise<any>
+  getCacheInfo: (force?: boolean) => Promise<any>
   clearOutput: () => Promise<any>
   clearStorage: (target?: string) => Promise<any>
 }

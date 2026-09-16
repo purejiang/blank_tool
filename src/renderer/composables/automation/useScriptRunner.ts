@@ -15,6 +15,10 @@ export interface RunPayload {
   capture_traffic: boolean
   /** Comma-separated host substrings; empty string = record everything. */
   traffic_host_filter?: string
+  /** 步骤失败后继续执行（默认 false：首个失败即中止）。 */
+  continue_on_error?: boolean
+  /** 目标应用进程消失/重启时中止（默认 true）。 */
+  abort_on_crash?: boolean
 }
 
 /** One console line. `ts` is epoch **seconds** (renderer clock on receipt,
@@ -24,6 +28,16 @@ export interface LogLine {
   ts: number
   text: string
 }
+
+/**
+ * Ring-buffer bound on the live console. A long run (element polling, a
+ * verbosity-heavy script, shell probes) can emit tens of thousands of lines;
+ * without a cap the array grows for the whole run and every push re-renders a
+ * virtual list over all of it. The FULL feed stays available in the run's
+ * `report.json` (backend side), so dropping the oldest lines here loses
+ * nothing permanent. Mirrors the backend's `DEFAULT_LOG_LIMIT`.
+ */
+export const LOG_LIMIT = 5000
 
 export function useScriptRunner() {
   const running = ref(false)
@@ -35,9 +49,17 @@ export function useScriptRunner() {
   const liveSteps = ref<any[]>([])
   /** 本次运行的起点（渲染进程时钟，epoch 秒）——实时日志算相对时间的基准 */
   const runStartedTs = ref(0)
+  /** 日志已超过 {@link LOG_LIMIT}，最早的行被丢弃（控制台提示用） */
+  const droppedLogs = ref(false)
 
   function pushLog(text: string) {
     logs.value.push({ ts: Date.now() / 1000, text: String(text) })
+    // Ring buffer: keep the newest LOG_LIMIT lines (drop from the front, so
+    // the console still ends on the line that just arrived).
+    if (logs.value.length > LOG_LIMIT) {
+      logs.value.splice(0, logs.value.length - LOG_LIMIT)
+      droppedLogs.value = true
+    }
   }
 
   /**
@@ -53,6 +75,7 @@ export function useScriptRunner() {
     screenshots.value = []
     liveSteps.value = []
     runStartedTs.value = Date.now() / 1000
+    droppedLogs.value = false
 
     const id = genId()
     taskId.value = id
@@ -106,7 +129,11 @@ export function useScriptRunner() {
         device_id: payload.device_id,
         package_name: payload.package_name,
         steps: plainSteps,
-        continue_on_error: false,
+        // Defaults match both the backend signature and the pre-existing
+        // behaviour (abort on first failure / abort on crash); the run
+        // settings dialog is what turns them off.
+        continue_on_error: payload.continue_on_error === true,
+        abort_on_crash: payload.abort_on_crash !== false,
         capture_traffic: payload.capture_traffic,
         traffic_host_filter: payload.traffic_host_filter || '',
         task_id: id,
@@ -123,6 +150,11 @@ export function useScriptRunner() {
         // error event that fired the callback — that used to log twice).
         const line = '[ERROR] ' + (m || String(e))
         if (logs.value[logs.value.length - 1]?.text !== line) pushLog(line)
+        // The stream will never report this task again (the backend never
+        // started it, or the response was lost): drop the listener + latch now
+        // instead of leaving the task registered for the whole session.
+        // `unbindTask` is idempotent, so the already-unbound paths are safe.
+        taskStream.unbindTask(id)
         throw e
       }
     } finally {
@@ -157,6 +189,7 @@ export function useScriptRunner() {
     screenshots,
     liveSteps,
     runStartedTs,
+    droppedLogs,
     runScript,
     stopRun,
   })

@@ -105,6 +105,26 @@ describe('OtherToolsPage — project creation', () => {
     expect(cloneable(last.value)).toBe(true)
   })
 
+  it('persists the page preferences in the SAME document (storage v3)', async () => {
+    // `persist()` replaces the whole app-config value, so a write that forgot
+    // the `ui` bag would silently reset the user's device/capture/timeout
+    // settings on every "new project" click.
+    const wrapper = mountPage()
+    await flushPromises()
+
+    await click(wrapper, '[data-testid="new-project"]')
+
+    const last = setCalls[setCalls.length - 1]
+    expect(last.value.version).toBe(3)
+    expect(last.value.ui).toMatchObject({
+      deviceId: expect.any(String),
+      captureTraffic: expect.any(Boolean),
+      elementTimeoutMs: expect.any(Number),
+      continueOnError: false,
+      abortOnCrash: true,
+    })
+  })
+
   it('new script: appended under the selected project, still no toast', async () => {
     const wrapper = mountPage()
     await flushPromises()

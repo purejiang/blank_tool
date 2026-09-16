@@ -31,15 +31,28 @@ interface PhaseState {
   operation: PhaseSlot
 }
 
+/**
+ * Latch retention. `unbindTask` deliberately KEEPS the phase slots so a late
+ * `waitForPhase` can still read the stashed result, but nothing used to remove
+ * them: every task the app ever streamed stayed in the map for the whole
+ * session. Entries are now dropped once they are finished and older than
+ * {@link PHASE_LATCH_TTL_MS} (and, past {@link MAX_PHASE_ENTRIES}, oldest
+ * first). Evicting a stale latch is safe — `waitForPhase` on an evicted id
+ * rejects with `'unbound'`, exactly what a caller already handles — and an
+ * ACTIVE task (still bound, or with a pending waiter) is never evicted.
+ */
+export const PHASE_LATCH_TTL_MS = 10 * 60_000
+export const MAX_PHASE_ENTRIES = 200
+
 export interface TaskCallbacks {
   onDownloadProgress?: (progress: number, downloaded: number, total: number, speed: number) => void
   onComplete?: (payload: any, phase: 'download' | 'operation') => void
   onError?: (message: string, phase: 'download' | 'operation') => void
   onCancelled?: () => void
   onLog?: (line: string) => void
-  /** Streaming per-step progress (adb_auto): a step started executing. */
+  /** Streaming per-step progress (automation run): a step started executing. */
   onStepStart?: (payload: any) => void
-  /** Streaming per-step progress (adb_auto): a step finished. */
+  /** Streaming per-step progress (automation run): a step finished. */
   onStep?: (payload: any) => void
 }
 
@@ -73,6 +86,8 @@ class TaskStreamService {
   private unsubscribe: (() => void) | null = null
   private listeners: Map<string, TaskCallbacks> = new Map()
   private phaseState: Map<string, PhaseState> = new Map()
+  /** taskId → epoch ms of unbind, for TTL pruning of the latch entries. */
+  private unboundAt: Map<string, number> = new Map()
   private fakeProgressTimers: Map<string, ReturnType<typeof setInterval>> = new Map()
 
   /** Subscribe to stream-event IPC (idempotent). */
@@ -100,6 +115,10 @@ class TaskStreamService {
     }
     this.listeners.set(id, {})
     this.phaseState.set(id, createPhaseState())
+    this.unboundAt.delete(id)
+    // A new run is the natural moment to drop the latches of long-finished
+    // runs (cheap, and keeps this off any hot per-event path).
+    this.prunePhaseState()
   }
 
   /** Register callback handlers for a bound task. */
@@ -169,8 +188,56 @@ class TaskStreamService {
         ps.operation.reject(unboundErr)
         ps.operation.promise.catch(() => {})
       }
+      // Keep the phaseState entry — settled slots are the latch — but stamp
+      // it so `prunePhaseState` can age it out later.
+      this.unboundAt.set(id, Date.now())
     }
-    // Keep phaseState entry — settled slots are the latch
+  }
+
+  /**
+   * Drop finished, aged-out latch entries. Called from `bindTask` (once per
+   * run) — never per stream event.
+   *
+   * An entry is evictable only when the task is unbound AND both slots are
+   * settled, i.e. nothing is waiting on it: a pending `waitForPhase` keeps the
+   * entry alive forever. Past {@link MAX_PHASE_ENTRIES} the oldest evictable
+   * entries are dropped first (Map iteration is bind order).
+   */
+  private prunePhaseState(now: number = Date.now()): void {
+    const evictable = (id: string, ps: PhaseState) =>
+      !this.listeners.has(id) && ps.download.settled && ps.operation.settled
+
+    const doomed: string[] = []
+    for (const [id, ps] of this.phaseState) {
+      if (!evictable(id, ps)) continue
+      const at = this.unboundAt.get(id)
+      if (at === undefined) {
+        // Pre-existing entry from a build that did not stamp: age it from now.
+        this.unboundAt.set(id, now)
+        continue
+      }
+      if (now - at > PHASE_LATCH_TTL_MS) doomed.push(id)
+    }
+
+    let remaining = this.phaseState.size - doomed.length
+    if (remaining > MAX_PHASE_ENTRIES) {
+      for (const [id, ps] of this.phaseState) {
+        if (remaining <= MAX_PHASE_ENTRIES) break
+        if (doomed.includes(id) || !evictable(id, ps)) continue
+        doomed.push(id)
+        remaining--
+      }
+    }
+
+    for (const id of doomed) {
+      this.phaseState.delete(id)
+      this.unboundAt.delete(id)
+    }
+  }
+
+  /** Test/diagnostics hook: how many latch entries are currently retained. */
+  _phaseEntryCount(): number {
+    return this.phaseState.size
   }
 
   // ----------------------------------------------------------------
@@ -275,7 +342,7 @@ class TaskStreamService {
           break
         }
 
-        // Streaming step progress (adb_auto plugin).
+        // Streaming step progress (automation run).
         // 'step_start' renders a pending row immediately, 'step' replaces it
         // with the finished record so results appear one by one during a run.
         case 'step_start': {
@@ -294,8 +361,9 @@ class TaskStreamService {
           // process forwards these verbatim on streamEvent; the backend
           // already persisted the line, so the renderer only mirrors it
           // into memory for live display (no disk write — see taskStore).
-          // Plugins (e.g. adb_auto) send the line as a bare string payload
-          // ("[plugin] msg"); tolerate both string and {line} payloads.
+          // Streaming handlers (e.g. the automation run) send the line as a
+          // bare string payload ("[automation] msg"); tolerate both string and
+          // {line} payloads.
           let line: any = data.line
           if (line === undefined) {
             const p = data.payload
@@ -397,6 +465,7 @@ class TaskStreamService {
 
     this.listeners.clear()
     this.phaseState.clear()
+    this.unboundAt.clear()
     this.fakeProgressTimers.clear()
   }
 }

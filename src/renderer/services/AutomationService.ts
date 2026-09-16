@@ -18,11 +18,14 @@
  * Envelope contract (the main process forwards `{ stream_id, data: result }`
  * where result = { type, payload, task_id }):
  *   { stream_id, data: { type, payload, task_id } }
- * with type ∈ 'log' | 'progress' | 'complete' | 'error'.
+ * with type ∈ 'log' | 'progress' | 'complete' | 'error' | 'cancelled'.
  */
 import { log } from '@utils/logger'
 import { genId } from '@utils/id'
 import { requireApiMethod } from '../api/apiAccess';
+
+/** Message a cancelled install rejects with — the modal maps it to 已取消. */
+export const INSTALL_CANCELLED = 'cancelled'
 
 export interface TrafficStatus {
     installed: boolean
@@ -54,6 +57,22 @@ export interface ImeStatus {
     package: string
     installed: boolean
     active: boolean
+}
+
+/** One device repaired by ``resetTraffic`` (see ``automation.traffic_reset``). */
+export interface TrafficRecovery {
+    device_id: string
+    proxy_restored: boolean
+    reverse_removed: boolean
+    /** `null` = nothing was listening on the port; `false` = it could not be freed. */
+    port_freed: boolean | null
+    error?: string
+}
+
+export interface TrafficResetResult {
+    success: boolean
+    restored: TrafficRecovery[]
+    error?: string
 }
 
 /**
@@ -121,6 +140,28 @@ class AutomationService {
     }
 
     /**
+     * Repair device-side traffic-capture wiring left by a killed backend.
+     *
+     * A capture in flight when the app is force-closed leaves the device's
+     * `global http_proxy` pointing at a dead local proxy — the device is then
+     * offline until this is undone. The backend also runs the same recovery
+     * automatically at startup; this is the manual escape hatch. Idempotent:
+     * `restored` is empty when nothing was stale. Never throws — failures are
+     * reported so the settings page can show them instead of a dead button.
+     */
+    async resetTraffic(deviceId?: string): Promise<TrafficResetResult> {
+        try {
+            return await requireApiMethod('callBackendAPI')(
+                'automation.traffic_reset',
+                deviceId ? { device_id: deviceId } : {},
+            ) as TrafficResetResult;
+        } catch (error: any) {
+            log.error('修复设备代理失败:', error);
+            return { success: false, restored: [], error: error?.message || String(error) };
+        }
+    }
+
+    /**
      * Subscribe to stream-event IPC (idempotent). ServiceManager calls this
      * automatically on first getService() — no manual wiring elsewhere.
      */
@@ -161,12 +202,14 @@ class AutomationService {
         // settlement so it never surfaces as "Uncaught (in promise)". The
         // caller still observes the rejection through the returned promise.
         promise.catch(() => {})
+        this.trackInstall(taskId, promise)
         try {
             await requireApiMethod('callBackendAPI')('automation.install_mitmproxy', { task_id: taskId })
         } catch (err) {
             // Do not leak the slot (and its callback closures) for a failed start.
             this.clearIdleWatchdog(taskId)
             this.handlers.delete(taskId)
+            this.installing.delete(taskId)
             throw err
         }
         return promise
@@ -181,11 +224,16 @@ class AutomationService {
         deviceId: string,
         callbacks?: { onLog?: (line: string) => void; onProgress?: (progress: any) => void },
         apkPath?: string,
+        /** Force a fresh APK download even when the cache is populated. */
+        redownload = false,
     ): Promise<TerminalPayload> {
         const taskId = genId('toolinstall')
         const params: Record<string, unknown> = { device_id: deviceId, task_id: taskId }
         if (apkPath) {
             params.apk_path = apkPath
+        }
+        if (redownload) {
+            params.redownload = true
         }
         const promise = new Promise<TerminalPayload>((resolve, reject) => {
             const slot: InstallSlot = {
@@ -198,14 +246,59 @@ class AutomationService {
             this.armIdleWatchdog(taskId, slot)
         })
         promise.catch(() => {})
+        this.trackInstall(taskId, promise)
         try {
             await requireApiMethod('callBackendAPI')('automation.install_ime', params)
         } catch (err) {
             this.clearIdleWatchdog(taskId)
             this.handlers.delete(taskId)
+            this.installing.delete(taskId)
             throw err
         }
         return promise
+    }
+
+    /**
+     * Cancel every in-flight streaming tool install (IME / mitmproxy).
+     *
+     * Installs can spend minutes downloading an APK or running pip, and the
+     * modal used to offer no way out at all. `request.cancel` is the only path
+     * that reaches the backend's stop_event / process holder, and the backend
+     * answers with a terminal `cancelled` event which rejects these promises.
+     *
+     * Returns the number of tasks signalled (0 = nothing was running).
+     */
+    async cancelInstalls(): Promise<number> {
+        const ids = [...this.installing]
+        if (!ids.length) return 0
+        const api = window.electronAPI as any
+        if (!api || typeof api.cancelRequest !== 'function') return 0
+        let signalled = 0
+        for (const id of ids) {
+            try {
+                await api.cancelRequest(id)
+                signalled++
+            } catch (error) {
+                log.warn('[AutomationService] cancel install failed:', error)
+            }
+        }
+        return signalled
+    }
+
+    /** True while at least one install stream is live (drives the modal's
+     *  cancel affordance without the caller tracking task ids). */
+    hasRunningInstall(): boolean {
+        return this.installing.size > 0
+    }
+
+    /**
+     * Remember a live install task id and drop it as soon as its promise
+     * settles — either way, so a failed install never stays cancelable.
+     */
+    private trackInstall(taskId: string, promise: Promise<unknown>): void {
+        this.installing.add(taskId)
+        const drop = () => this.installing.delete(taskId)
+        promise.then(drop, drop)
     }
 
     /**
@@ -299,6 +392,17 @@ class AutomationService {
                     break
                 }
 
+                case 'cancelled': {
+                    // The user stopped the install. Terminal — never resolve
+                    // with a result, or the UI would report the half-finished
+                    // install as done (which is exactly what the idle-timeout
+                    // watchdog used to mask, 180s later).
+                    this.clearIdleWatchdog(tid)
+                    this.handlers.delete(tid)
+                    slot.reject(new Error(INSTALL_CANCELLED))
+                    break
+                }
+
                 // Unknown types are ignored — the backend may grow new event
                 // kinds without a renderer update.
                 default:
@@ -312,6 +416,8 @@ class AutomationService {
 
     private unsubscribe: (() => void) | null = null;
     private handlers: Map<string, InstallSlot> = new Map();
+    /** task ids of live streaming installs — the cancel button's targets. */
+    private installing: Set<string> = new Set();
     private trafficStatus: TrafficStatus | null = null;
 }
 

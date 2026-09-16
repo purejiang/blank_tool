@@ -223,8 +223,26 @@ const schema = {
         default: []
     },
     automation: {
+        // v3: `projects` + the `ui` page-preference bag (which used to be six
+        // ad-hoc `bt:*` localStorage keys on the renderer side). The nested
+        // defaults are merged into an existing document by
+        // `mergeMissingDefaults`, so `projects` and the user's saved values
+        // survive the upgrade.
         type: 'object',
-        default: { projects: [] }
+        default: {
+            version: 3,
+            projects: [],
+            ui: {
+                deviceId: '',
+                captureTraffic: false,
+                trafficHostFilter: '',
+                elementTimeoutMs: 10000,
+                colLeft: 240,
+                colRight: 320,
+                continueOnError: false,
+                abortOnCrash: true
+            }
+        }
     }
 };
 

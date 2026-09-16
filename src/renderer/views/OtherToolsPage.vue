@@ -133,6 +133,8 @@
           v-model:auto-device-id="autoDeviceId"
           v-model:capture-traffic="captureTraffic"
           v-model:traffic-host-filter="trafficHostFilter"
+          v-model:continue-on-error="continueOnError"
+          v-model:abort-on-crash="abortOnCrash"
           :running="runner.running"
           :can-run="canRun"
           :hints="runHints"
@@ -147,6 +149,7 @@
           :run-result="runner.runResult"
           :live-steps="runner.liveSteps"
           :logs="runner.logs"
+          :dropped-logs="runner.droppedLogs"
           :screenshots="runner.screenshots"
           :run-started-ts="runner.runStartedTs"
           :live-traffic="liveTraffic"
@@ -292,8 +295,17 @@ const COL_MAX = 520
 function clampCol(v: number) {
   return Math.max(COL_MIN, Math.min(COL_MAX, Math.round(v)))
 }
-const colLeft = ref(clampCol(Number(localStorage.getItem('bt:autoColLeft')) || 240))
-const colRight = ref(clampCol(Number(localStorage.getItem('bt:autoColRight')) || 320))
+// Column widths live in the automation `ui` bag (storage v3) — see
+// `store.ui`. The drag updates the refs on every pointer move; the debounced
+// `persistUiSoon()` is what turns that into (at most) one config write.
+const colLeft = computed({
+  get: () => clampCol(store.ui.colLeft),
+  set: (v: number) => { store.ui.colLeft = clampCol(v) },
+})
+const colRight = computed({
+  get: () => clampCol(store.ui.colRight),
+  set: (v: number) => { store.ui.colRight = clampCol(v) },
+})
 const gridStyle = computed(() => ({
   gridTemplateColumns: `${colLeft.value}px 12px minmax(0, 1fr) 12px ${colRight.value}px`,
 }))
@@ -315,36 +327,44 @@ function startResize(side: 'left' | 'right', e: PointerEvent) {
     window.removeEventListener('pointerup', onUp)
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
-    try {
-      localStorage.setItem('bt:autoColLeft', String(colLeft.value))
-      localStorage.setItem('bt:autoColRight', String(colRight.value))
-    } catch {}
+    store.persistUiSoon(0)
   }
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
 }
 
 // ---------------- page-local state ----------------
+// Everything here is persisted in the app-config `automation.ui` bag
+// (storage v3) instead of page-local `bt:*` localStorage keys, so one schema
+// owns the whole feature. The v2 keys are adopted once on first load — see
+// `adoptLegacyUi` in useAutomationStore.
+//
 // Automation-page device selection — deliberately DECOUPLED from the
 // device page's list selection (which is only for the detail panel).
-// Persisted locally so the page remembers the last device used.
-const autoDeviceId = ref(localStorage.getItem('bt:automationDeviceId') || '')
-watch(autoDeviceId, (v) => {
-  try { localStorage.setItem('bt:automationDeviceId', v) } catch {}
+const autoDeviceId = computed({
+  get: () => store.ui.deviceId,
+  set: (v: string) => { store.ui.deviceId = v; store.persistUiSoon() },
 })
-// Traffic capture (mitmdump) — persisted like the device selection so the
-// run-settings dialog doesn't reset on every session (the settings button's
-// tooltip + the hints keep an active capture visible). The backend still
-// restores the device proxy in a finally block on every exit path.
-const captureTraffic = ref(localStorage.getItem('bt:autoCaptureTraffic') === '1')
-watch(captureTraffic, (v) => {
-  try { localStorage.setItem('bt:autoCaptureTraffic', v ? '1' : '0') } catch {}
+// Traffic capture (mitmdump) — the backend still restores the device proxy
+// in a finally block on every exit path.
+const captureTraffic = computed({
+  get: () => store.ui.captureTraffic,
+  set: (v: boolean) => { store.ui.captureTraffic = v; store.persistUiSoon() },
 })
 // Filter conditions, comma-joined (the tags input in the run settings dialog
-// edits this string). Persisted alongside the switch.
-const trafficHostFilter = ref(localStorage.getItem('bt:autoTrafficHostFilter') || '')
-watch(trafficHostFilter, (v) => {
-  try { localStorage.setItem('bt:autoTrafficHostFilter', v) } catch {}
+// edits this string).
+const trafficHostFilter = computed({
+  get: () => store.ui.trafficHostFilter,
+  set: (v: string) => { store.ui.trafficHostFilter = v; store.persistUiSoon() },
+})
+// 失败策略：默认与历史行为完全一致（首错中止 / 崩溃中止）。
+const continueOnError = computed({
+  get: () => store.ui.continueOnError,
+  set: (v: boolean) => { store.ui.continueOnError = v; store.persistUiSoon() },
+})
+const abortOnCrash = computed({
+  get: () => store.ui.abortOnCrash,
+  set: (v: boolean) => { store.ui.abortOnCrash = v; store.persistUiSoon() },
 })
 
 // ---------------- preflight capability probes (read-only) ----------------
@@ -423,14 +443,12 @@ watch(captureTraffic, (on) => { if (on) void refreshTrafficStatus() })
 watch(autoDeviceId, (id) => { void refreshImeStatus(id) }, { immediate: true })
 // Default element-poll timeout (ms): applied when a step switches to
 // element mode / picks an element; editable in the right column.
-const elementTimeoutMs = ref(
-  clampTimeout(Number(localStorage.getItem('bt:autoElementTimeoutMs')) || 10000)
-)
 function clampTimeout(v: number): number {
   return Math.max(500, Math.min(120000, Math.round(v)))
 }
-watch(elementTimeoutMs, (v) => {
-  try { localStorage.setItem('bt:autoElementTimeoutMs', String(v)) } catch {}
+const elementTimeoutMs = computed({
+  get: () => clampTimeout(store.ui.elementTimeoutMs),
+  set: (v: number) => { store.ui.elementTimeoutMs = clampTimeout(v); store.persistUiSoon() },
 })
 // Drop the selection when the device vanishes from the live list.
 watch(() => deviceStore.devices, (list) => {
@@ -585,19 +603,26 @@ async function loadFinishedTraffic(taskId: string) {
  * `report.json` 是插件在 `finally` 里写的 —— 也就是**在 `complete` 事件之后**
  * 一点点。所以「收到 complete 就立刻刷一次列表」必然和写盘抢跑：列表里看不到
  * 刚跑完的那条（这就是「运行记录不会自动刷新」的原因）。
- * 这里轮询到记录真的落盘为止，再刷一次列表。
+ *
+ * 注意：自从后端在**开跑时**就写 `summary.json`（status=running），这条记录
+ * 一开始就会出现在列表里 —— 所以对账不能只看「有没有这条」，必须等它变成
+ * `finished`（不是 running / orphan），否则会拿一个还没落盘的报告去回放。
+ * 轮询封顶 4 次：报告就在 complete 之前写盘，正常情况下第 1 次就命中。
  *
  * 另外：如果实时控制台什么都没收到（没有日志也没有步骤），但磁盘上有这次运行
  * 的记录，就把落盘的报告回放到面板里 —— 保证「运行完，运行信息里有日志和步骤」。
  */
 async function reconcileFinishedRun() {
   const taskId = String(runner.runResult?.task_id || runner.taskId || '')
-  for (let i = 0; i < 20; i++) {
+  const isFinal = (r: any) =>
+    String(r?.task_id) === taskId && !r?.running && !r?.orphan
+  let persisted = false
+  for (let i = 0; i < 4; i++) {
     await fetchRuns()
-    if (!taskId || runs.value.some(r => String(r.task_id) === taskId)) break
+    persisted = !!taskId && runs.value.some(isFinal)
+    if (persisted) break
     await sleep(200)
   }
-  const persisted = !!taskId && runs.value.some(r => String(r.task_id) === taskId)
   // 报告落盘了就把抓包明细补进实时视图 —— 「请求」页签跑完才有数据靠的就是这一步
   if (persisted) void loadFinishedTraffic(taskId)
   // 实时流一条都没到（既没日志也没步骤）：用落盘报告回放面板，并明确提示 ——
@@ -740,6 +765,8 @@ async function runScript() {
       steps: s.steps,
       capture_traffic: captureTraffic.value,
       traffic_host_filter: trafficHostFilter.value.trim(),
+      continue_on_error: continueOnError.value,
+      abort_on_crash: abortOnCrash.value,
     })
   } catch (e: any) {
     message.error(e?.message || String(e))
@@ -912,7 +939,7 @@ onMounted(() => {
 .auto-page { height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .three-cols {
   flex: 1; display: grid;
-  /* 列宽由 gridStyle 内联给定：两侧列可拖拽调宽（localStorage 持久化），
+  /* 列宽由 gridStyle 内联给定：两侧列可拖拽调宽（automation.ui.columns 持久化），
      中栏 minmax(0,1fr) 吸收剩余空间——1fr 的 min-width 是 auto，内容会顶开
      轨道压到相邻列，因此必须 minmax(0,1fr)。
      行高同理用 minmax(0,1fr) 锁死：否则某列内容一高，auto 行就顶破容器，

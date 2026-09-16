@@ -29,6 +29,8 @@ function mountControls(props: Record<string, unknown> = {}) {
       autoDeviceId: '',
       captureTraffic: false,
       trafficHostFilter: '',
+      continueOnError: false,
+      abortOnCrash: true,
       running: false,
       canRun: true,
       ...props,
@@ -128,13 +130,14 @@ describe('RunControls — 「功能」 menu', () => {
 })
 
 describe('RunControls — run settings dialog', () => {
-  it('is closed by default and opens with both blocks', async () => {
+  it('is closed by default and opens with every block', async () => {
     const w = mountControls()
     expect(w.find('.rcf-block').exists()).toBe(false)
 
     await pickMenu(w, 'settings')
 
-    expect(w.findAll('.rcf-block').length).toBe(2)
+    // capture switch · host filter · 失败后继续 · 崩溃即中止
+    expect(w.findAll('.rcf-block').length).toBe(4)
     expect(w.get('.n-switch').exists()).toBe(true)
     expect(w.get('.rcf-input').exists()).toBe(true)
   })
@@ -167,6 +170,25 @@ describe('RunControls — run settings dialog', () => {
 
     await w.get('.n-switch').trigger('click')
     expect(w.emitted('update:captureTraffic')).toEqual([[false]])
+  })
+
+  it('offers both failure-policy switches, defaulting to the old behaviour', async () => {
+    // The dialog is live-bound: no confirm step, the page reads the values
+    // when a run starts. Defaults must be "abort on first failure" + "abort
+    // on crash", i.e. exactly what the renderer used to hard-code.
+    const w = mountControls()
+    await pickMenu(w, 'settings')
+
+    const switches = w.findAll('.n-switch')
+    expect(switches.length).toBe(3)
+    // [0] capture · [1] 失败后继续 (off) · [2] 崩溃即中止 (on)
+    expect(switches[1].classes()).not.toContain('n-switch--active')
+    expect(switches[2].classes()).toContain('n-switch--active')
+
+    await switches[1].trigger('click')
+    expect(w.emitted('update:continueOnError')).toEqual([[true]])
+    await switches[2].trigger('click')
+    expect(w.emitted('update:abortOnCrash')).toEqual([[false]])
   })
 
   it('filter is a tag list, not a comma-separated string field', async () => {

@@ -532,7 +532,11 @@ export interface ApiMethodMap {
       device_id?: string
       package_name?: string
       steps?: Array<Record<string, unknown>>
+      /** 步骤失败后继续（默认 false：首个失败即中止）。单个步骤可用
+       *  `on_error: 'continue' | 'abort'` 覆盖这一设置。 */
       continue_on_error?: boolean
+      /** 目标应用进程消失/重启时中止并导出日志（默认 true）。 */
+      abort_on_crash?: boolean
       capture_traffic?: boolean
       /** Comma-separated host substrings; only matching hosts are recorded. */
       traffic_host_filter?: string
@@ -546,11 +550,28 @@ export interface ApiMethodMap {
   // automation page's non-blocking run hints.
   'automation.traffic_status': {
     params: Record<string, never>
-    result: { installed: boolean; ready: boolean; lib_path: string; python_mismatch: string | null }
+    result: { installed: boolean; ready: boolean; lib_path: string; python_mismatch: string | null; ca_cert_exists: boolean }
   }
   'automation.ime_status': {
     params: { device_id: string }
     result: { device_id: string; package: string; installed: boolean; active: boolean }
+  }
+  // Undo device-side capture wiring left by a hard-killed backend (device
+  // stuck on a dead HTTP proxy / orphaned mitmdump holding the port).
+  // Idempotent and safe when nothing is stale — restored stays [].
+  'automation.traffic_reset': {
+    params: { device_id?: string }
+    result: {
+      success: boolean
+      restored: Array<{
+        device_id: string
+        proxy_restored: boolean
+        reverse_removed: boolean
+        port_freed: boolean | null
+        error?: string
+      }>
+      error?: string
+    }
   }
 
   // --- automation_handler.py (tool installs) ---
@@ -565,12 +586,29 @@ export interface ApiMethodMap {
   // Run history / report viewer. Consumed by OtherToolsPage.vue; shaped after
   // the handlers' actual return dicts (they never raise — they return a
   // `success`/`deleted` flag plus an optional `error`).
+  //
+  // `orphans` counts the interrupted leftovers inside `runs` (a run whose
+  // summary still says `running` while nothing executes — the backend was
+  // killed mid-run). They carry `orphan: true` and no steps/report.
   'automation.list_runs': {
     params: Record<string, never>
-    result: { success: boolean; runs: Array<Record<string, unknown>>; error?: string }
+    result: {
+      success: boolean
+      runs: Array<Record<string, unknown>>
+      total?: number
+      orphans?: number
+      error?: string
+    }
   }
   'automation.read_run': {
-    params: { task_id: string; traffic_limit?: number }
+    params: {
+      task_id: string
+      traffic_limit?: number
+      /** false → omit `report.logs` entirely (metadata only). */
+      include_logs?: boolean
+      /** Return only the LAST N log lines; 0 = unlimited. Default 5000. */
+      log_limit?: number
+    }
     result: { success: boolean; report: Record<string, unknown> | null; error?: string }
   }
   'automation.traffic_detail': {
@@ -579,7 +617,34 @@ export interface ApiMethodMap {
   }
   'automation.delete_run': {
     params: { task_id: string }
-    result: { deleted: boolean; error?: string }
+    result: { deleted: boolean; size?: number; error?: string }
+  }
+  // Storage reclamation by rule. Every rule is optional and they are ANDed;
+  // a run executing right now is never touched, and a call with NO rule is
+  // refused by the backend (a stray request must not wipe the history).
+  'automation.prune_runs': {
+    params: {
+      /** Keep the N most recent runs (orphans included). */
+      keep_last?: number
+      /** Only delete runs older than N days. */
+      older_than_days?: number
+      /** Restrict to interrupted leftovers. */
+      orphans_only?: boolean
+      /** Report what would be deleted without deleting anything. */
+      dry_run?: boolean
+    }
+    result: {
+      success: boolean
+      dry_run?: boolean
+      deleted?: Array<{ task_id: string; orphan: boolean; size?: number | null }>
+      deleted_count?: number
+      kept?: number
+      skipped_active?: number
+      freed_bytes?: number
+      errors?: Array<{ task_id: string; error: string }>
+      error_count?: number
+      error?: string
+    }
   }
   'automation.export_run': {
     params: { task_id: string; target?: string }

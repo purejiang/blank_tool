@@ -14,8 +14,8 @@
  *    reset to v2 (user decision: no backwards compatibility).
  *
  * Step objects are persisted verbatim into the script (app-config key
- * `automation`, `version: 2`) and forwarded to the backend plugin
- * `adb_auto`, whose step executor consumes exactly this shape.
+ * `automation`, storage `version: 3`) and forwarded to the backend's
+ * `app.automation.steps` executor, which consumes exactly this shape.
  */
 
 import { genId } from '@utils/id'
@@ -69,6 +69,12 @@ export interface Step {
   ts?: number
   /** user note — what this step is for (metadata only, ignored at replay) */
   note?: string
+  /**
+   * Failure policy for THIS step, overriding the run-level
+   * `continue_on_error`: `continue` = log the failure and run the next step,
+   * `abort` = stop the run. Absent = inherit the run setting (default abort).
+   */
+  on_error?: 'continue' | 'abort'
   [key: string]: unknown
 }
 

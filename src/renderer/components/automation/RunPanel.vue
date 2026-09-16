@@ -190,6 +190,8 @@
         <div v-if="!visibleLogs.length" class="empty">
           {{ logs.length ? t('automation.noErrorLines') : t('automation.noLogs') }}
         </div>
+        <!-- 实时日志是有上限的环形缓冲：先丢最早的行，完整日志在报告里 -->
+        <div v-if="droppedLogs" class="log-truncated">{{ t('automation.logsTruncated') }}</div>
         <div v-for="(l, i) in visibleLogs" :key="i" class="log-line" :class="l.level">
           <span class="ll-ts">{{ logTime(l.ts) }}</span>
           <span class="ll-text">{{ l.body }}</span>
@@ -213,6 +215,8 @@ const props = defineProps<{
   liveSteps: any[]
   /** live console lines (renderer clock, epoch seconds) */
   logs: { ts: number; text: string }[]
+  /** 实时日志超过上限、最早的行已被丢弃（历史报告里仍是完整日志） */
+  droppedLogs?: boolean
   screenshots: string[]
   /** run start (renderer clock, epoch seconds) — baseline for the live log tab */
   runStartedTs: number
@@ -428,7 +432,7 @@ const shotCount = computed(() => {
 })
 
 // ------------------------------------------------------------------- logs --
-/** `[adb_auto] msg` → level + body. The plugin tag is noise; level words
+/** `[automation] msg` → level + body. The emitter tag is noise; level words
  *  ([FAIL]/[ERROR]/[WARN]/[CANCELLED]) are what the eye needs to catch. */
 function normalizeLog(text: string) {
   let body = String(text)
@@ -728,6 +732,12 @@ watch(visibleLogs, async () => {
 
 /* ---- logs ---- */
 .log-scroll { background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px 8px; }
+.log-truncated {
+  font-family: var(--app-font-mono);
+  font-size: var(--app-font-size-sm);
+  color: var(--app-console-warn);
+  padding-bottom: 4px;
+}
 .log-line { display: flex; gap: 8px; font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); line-height: 1.55; }
 .ll-ts { flex: none; width: 46px; color: var(--app-console-dim); font-variant-numeric: tabular-nums; }
 .ll-text { flex: 1; min-width: 0; color: var(--app-console-fg); white-space: pre-wrap; word-break: break-all; }

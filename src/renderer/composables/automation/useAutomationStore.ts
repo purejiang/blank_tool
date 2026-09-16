@@ -31,6 +31,65 @@ export interface Project {
 }
 
 /**
+ * Page preferences that used to be six ad-hoc `localStorage` keys
+ * (`bt:automationDeviceId`, `bt:autoCaptureTraffic`, …). They live in the
+ * `automation` app-config document as of storage v3 so that ONE schema owns
+ * the whole feature and export/backup of the config carries them too.
+ */
+export interface AutomationUiState {
+  /** last device used on the automation page (decoupled from the device page) */
+  deviceId: string
+  captureTraffic: boolean
+  trafficHostFilter: string
+  /** default element-poll timeout applied to new element steps */
+  elementTimeoutMs: number
+  /** 三列布局宽度（px） */
+  colLeft: number
+  colRight: number
+  /** 步骤失败后继续（默认 false：首个失败即中止） */
+  continueOnError: boolean
+  /** 目标进程消失/重启即中止（默认 true） */
+  abortOnCrash: boolean
+}
+
+export const AUTOMATION_UI_DEFAULTS: AutomationUiState = {
+  deviceId: '',
+  captureTraffic: false,
+  trafficHostFilter: '',
+  elementTimeoutMs: 10000,
+  colLeft: 240,
+  colRight: 320,
+  continueOnError: false,
+  abortOnCrash: true,
+}
+
+/** `bt:*` keys the v2 build wrote; adopted once, then removed. */
+export const LEGACY_UI_KEYS: Record<string, keyof AutomationUiState> = {
+  'bt:automationDeviceId': 'deviceId',
+  'bt:autoCaptureTraffic': 'captureTraffic',
+  'bt:autoTrafficHostFilter': 'trafficHostFilter',
+  'bt:autoElementTimeoutMs': 'elementTimeoutMs',
+  'bt:autoColLeft': 'colLeft',
+  'bt:autoColRight': 'colRight',
+}
+
+/** Coerce whatever is on disk into a usable UI bag (never throws). */
+export function sanitizeUi(raw: any): AutomationUiState {
+  const out: AutomationUiState = { ...AUTOMATION_UI_DEFAULTS }
+  if (!raw || typeof raw !== 'object') return out
+  if (typeof raw.deviceId === 'string') out.deviceId = raw.deviceId
+  if (typeof raw.captureTraffic === 'boolean') out.captureTraffic = raw.captureTraffic
+  if (typeof raw.trafficHostFilter === 'string') out.trafficHostFilter = raw.trafficHostFilter
+  for (const key of ['elementTimeoutMs', 'colLeft', 'colRight'] as const) {
+    const n = Number(raw[key])
+    if (Number.isFinite(n) && n > 0) out[key] = Math.round(n)
+  }
+  if (typeof raw.continueOnError === 'boolean') out.continueOnError = raw.continueOnError
+  if (typeof raw.abortOnCrash === 'boolean') out.abortOnCrash = raw.abortOnCrash
+  return out
+}
+
+/**
  * Insert fixed-wait steps between recorded steps to reproduce the TRUE
  * recorded pace. Uses each step's `ts` (device-time seconds of the touch
  * END marker); a swipe's own duration is subtracted so the wait measures
@@ -148,11 +207,51 @@ export function useAutomationStore(isBusy?: () => boolean) {
   }
 
   // ---------------- persistence ----------------
-  const STORAGE_VERSION = 2
+  // v3 = v2 + the `ui` bag (page preferences moved out of localStorage).
+  // v1 and anything unversioned stay DROPPED: the v2 step model is not
+  // backwards compatible by design, and adopting a legacy project list would
+  // produce steps the backend cannot execute.
+  const STORAGE_VERSION = 3
 
+  const ui = reactive<AutomationUiState>({ ...AUTOMATION_UI_DEFAULTS })
+  let uiDirty = false
+  let uiTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * One-shot adoption of the six `bt:*` keys the v2 build wrote.
+   *
+   * Runs only when the stored document has no `ui` bag yet — i.e. exactly on
+   * the first load after the upgrade — so a later deliberately-reset value
+   * can never be overwritten by a stale key. The keys are removed afterwards.
+   */
+  function adoptLegacyUi() {
+    let adopted = 0
+    for (const [key, field] of Object.entries(LEGACY_UI_KEYS)) {
+      let stored: string | null = null
+      try { stored = localStorage.getItem(key) } catch { stored = null }
+      if (stored === null) continue
+      const fallback = (AUTOMATION_UI_DEFAULTS as any)[field]
+      if (typeof fallback === 'boolean') (ui as any)[field] = stored === '1'
+      else if (typeof fallback === 'number') {
+        const n = Number(stored)
+        if (Number.isFinite(n) && n > 0) (ui as any)[field] = Math.round(n)
+      } else (ui as any)[field] = stored
+      adopted++
+      try { localStorage.removeItem(key) } catch { /* private mode */ }
+    }
+    if (adopted) uiDirty = true
+  }
+
+  /** serialize the whole document — `ui` included, or a project save would
+   *  wipe the preferences (app-config `set` replaces the value). */
   async function persist() {
     try {
-      await config.setAppConfig('automation', { version: STORAGE_VERSION, projects: projects.value })
+      await config.setAppConfig('automation', {
+        version: STORAGE_VERSION,
+        projects: projects.value,
+        ui: { ...ui },
+      })
+      uiDirty = false
     } catch (e) {
       message.error(String((e as any)?.message || e))
     }
@@ -161,16 +260,44 @@ export function useAutomationStore(isBusy?: () => boolean) {
   async function loadConfig() {
     try {
       const raw = (await config.getAppConfig('automation')) as any
-      // v2-only: anything else (missing version / legacy format) is dropped —
-      // the v2 data model is not backwards compatible by design.
       if (raw?.version === STORAGE_VERSION && Array.isArray(raw.projects)) {
         projects.value = raw.projects as Project[]
+        Object.assign(ui, sanitizeUi(raw.ui))
+      } else if (raw?.version === 2 && Array.isArray(raw.projects)) {
+        // v2 → v3 upgrade: projects survive untouched, the preferences come
+        // from the legacy localStorage keys.
+        //
+        // Deliberately NOT keyed on `raw.ui`: the main process' appStore runs
+        // `syncStoreDefaults()` at startup and MERGES the schema defaults into
+        // this document, so a stored v2 document already carries a `ui` bag
+        // full of DEFAULTS while `version` is still 2 (numbers are never
+        // overwritten by the merge). Trusting that bag would silently reset
+        // the user's device / capture / timeout settings to defaults. The
+        // version field is the only trustworthy discriminator.
+        projects.value = raw.projects as Project[]
+        adoptLegacyUi()
       } else {
         projects.value = []
+        adoptLegacyUi()
       }
+      if (uiDirty) void persist()
     } catch {
       projects.value = []
     }
+  }
+
+  /**
+   * Persist UI changes on a short debounce: the column widths update on every
+   * pointer move during a drag, which must not become one config write per
+   * pixel. Any project save flushes the pending value too (`persist()`).
+   */
+  function persistUiSoon(delay = 500) {
+    uiDirty = true
+    if (uiTimer) clearTimeout(uiTimer)
+    uiTimer = setTimeout(() => {
+      uiTimer = null
+      if (uiDirty) void persist()
+    }, delay)
   }
 
   // ---------------- helpers ----------------
@@ -511,6 +638,9 @@ export function useAutomationStore(isBusy?: () => boolean) {
     savedFlash,
     selectedStepIndex,
     showMeta,
+    // page preferences (storage v3); mutate + call persistUiSoon()
+    ui,
+    persistUiSoon,
     metaForm,
     // computed / finders
     selectedProject,

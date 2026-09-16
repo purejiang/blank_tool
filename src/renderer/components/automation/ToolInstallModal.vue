@@ -39,6 +39,16 @@
             >
               {{ t(trafficStatus?.installed ? 'automation.tools.reinstall' : 'automation.tools.installNow') }}
             </n-button>
+            <!-- pip 装 mitmproxy 可能要几分钟；取消会终止子进程 -->
+            <n-button
+              v-if="installingMitm"
+              data-testid="mitm-cancel-btn"
+              size="small"
+              :disabled="cancellingInstall"
+              @click="cancelInstall"
+            >
+              {{ t('automation.tools.cancelInstall') }}
+            </n-button>
           </div>
 
           <!-- streaming install log (last N lines, auto-scroll) -->
@@ -144,7 +154,7 @@
                     type="primary"
                     :loading="installingIme"
                     :disabled="installingIme || !deviceId"
-                    @click="installImeOnline"
+                    @click="installImeOnline()"
                   >
                     {{ t('automation.tools.imeDownloadInstall') }}
                   </n-button>
@@ -152,6 +162,17 @@
               </template>
               {{ t('automation.tools.imeNeedDevice') }}
             </n-tooltip>
+            <!-- 取消：下载 APK / 装 pip 都可能耗上几分钟，没有出口就只能干等
+                 （或等 180s 的空闲看门狗）。 -->
+            <n-button
+              v-if="installingIme"
+              data-testid="install-cancel-btn"
+              size="small"
+              :disabled="cancellingInstall"
+              @click="cancelInstall"
+            >
+              {{ t('automation.tools.cancelInstall') }}
+            </n-button>
             <n-tooltip :disabled="!!deviceId" placement="top">
               <template #trigger>
                 <span class="tim-btn-wrap">
@@ -167,6 +188,16 @@
               </template>
               {{ t('automation.tools.imeNeedDevice') }}
             </n-tooltip>
+            <!-- 强制重新下载：缓存命中后默认复用（省流量），缓存损坏时需要这个出口 -->
+            <n-button
+              data-testid="ime-redownload-btn"
+              size="small"
+              quaternary
+              :disabled="installingIme || !deviceId"
+              @click="installImeOnline(true)"
+            >
+              {{ t('automation.tools.imeRedownload') }}
+            </n-button>
           </div>
 
           <!-- download progress (only flows in the online-download phase) -->
@@ -220,6 +251,7 @@ import { AlertCircle, CheckCircle, Copy } from 'lucide-vue-next'
 import IconButton from '@components/common/IconButton.vue'
 import serviceManager from '@services/ServiceManager'
 import {
+  INSTALL_CANCELLED,
   INSTALL_IDLE_TIMEOUT,
   type TerminalPayload,
   type TrafficStatus,
@@ -259,6 +291,7 @@ const imeStatus = ref<ImeStatus | null>(null)
 const installingMitm = ref(false)
 const installingIme = ref(false)
 const installingCa = ref(false)
+const cancellingInstall = ref(false)
 
 const mitmLogs = ref<string[]>([])
 const imeLogs = ref<string[]>([])
@@ -313,6 +346,7 @@ watch(() => props.show, (v) => {
   installingMitm.value = false
   installingIme.value = false
   installingCa.value = false
+  cancellingInstall.value = false
   mitmLogs.value = []
   imeLogs.value = []
   imeProgress.value = null
@@ -355,7 +389,26 @@ function pushLog(list: Ref<string[]>, line: string) {
  *  running in the background); any other error keeps its raw message. */
 function errorMessage(e: unknown): string {
   const msg = (e as any)?.message || String(e)
+  if (msg === INSTALL_CANCELLED) return t('automation.tools.installCancelled')
   return msg === INSTALL_IDLE_TIMEOUT ? t('automation.tools.installIdleTimeout') : msg
+}
+
+/**
+ * Cancel the running install. The backend answers with a terminal `cancelled`
+ * event, which rejects the install promise and lands in the `catch` of the
+ * handler that started it — so this only has to send the signal.
+ */
+async function cancelInstall() {
+  if (cancellingInstall.value) return
+  cancellingInstall.value = true
+  try {
+    const automation = await autoSvc()
+    await automation.cancelInstalls()
+  } catch (e: any) {
+    imeError.value = errorMessage(e)
+  } finally {
+    cancellingInstall.value = false
+  }
 }
 
 async function installMitm() {
@@ -383,7 +436,7 @@ async function installMitm() {
   }
 }
 
-async function installImeOnline() {
+async function installImeOnline(redownload = false) {
   if (installingIme.value || !props.deviceId) return
   installingIme.value = true
   imeError.value = ''
@@ -394,7 +447,7 @@ async function installImeOnline() {
     const payload = await automation.installIme(props.deviceId, {
       onLog: (line) => pushLog(imeLogs, line),
       onProgress: (p: any) => { imeProgress.value = p },
-    })
+    }, undefined, redownload)
     if (payload?.success === false) {
       imeError.value = payload?.error || payload?.message || t('automation.tools.installFailed')
     } else {

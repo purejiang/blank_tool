@@ -26,6 +26,7 @@ const mockAutomation = {
   installIme: vi.fn(),
   installCa: vi.fn(),
   clearTrafficCache: vi.fn(),
+  cancelInstalls: vi.fn(),
 }
 const mockSystem = {
   selectFile: vi.fn(),
@@ -555,3 +556,83 @@ describe('ToolInstallModal — tutorials', () => {
     expect(ime.text()).toContain('automation.tools.tutorial.ime.s3')
   })
 })
+
+describe('ToolInstallModal — cancel & re-download', () => {
+  /** A promise that settles only when the test resolves it. */
+  function deferred<T>() {
+    let resolve!: (v: T) => void
+    let reject!: (e: unknown) => void
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej })
+    return { promise, resolve, reject }
+  }
+
+  it('shows no cancel button while nothing is installing', async () => {
+    const w = mountModal()
+    await open(w)
+    expect(w.find('[data-testid="mitm-cancel-btn"]').exists()).toBe(false)
+    expect(w.find('[data-testid="install-cancel-btn"]').exists()).toBe(false)
+  })
+
+  it('offers a cancel button per running install and signals the service', async () => {
+    const d = deferred<any>()
+    mockAutomation.installMitmproxy.mockReturnValue(d.promise)
+    mockAutomation.cancelInstalls.mockResolvedValue(1)
+
+    const w = mountModal()
+    await open(w)
+    await w.get('[data-testid="install-mitmproxy-btn"]').trigger('click')
+    await flushPromises()
+
+    const cancel = w.get('[data-testid="mitm-cancel-btn"]')
+    expect(cancel.exists()).toBe(true)
+    await cancel.trigger('click')
+    await flushPromises()
+    expect(mockAutomation.cancelInstalls).toHaveBeenCalledTimes(1)
+
+    d.resolve({ success: true })
+    await flushPromises()
+  })
+
+  it('renders the cancelled sentinel as the localized message, not the raw string', async () => {
+    const d = deferred<any>()
+    mockAutomation.installMitmproxy.mockReturnValue(d.promise)
+
+    const w = mountModal()
+    await open(w)
+    await w.get('[data-testid="install-mitmproxy-btn"]').trigger('click')
+    await flushPromises()
+
+    d.reject(new Error('cancelled'))
+    await flushPromises()
+
+    const err = w.get('[data-testid="mitm-error"]')
+    expect(err.text()).toBe('automation.tools.installCancelled')
+    // the button is usable again — a cancel is not a wedged state
+    expect(isDisabled(w.get('[data-testid="install-mitmproxy-btn"]'))).toBe(false)
+  })
+
+  it('re-download passes redownload=true; the primary install button does not', async () => {
+    mockAutomation.installIme.mockResolvedValue({ success: true, installed: true })
+
+    const w = mountModal()
+    await open(w)
+    await w.get('[data-testid="install-ime-btn"]').trigger('click')
+    await flushPromises()
+    expect(mockAutomation.installIme).toHaveBeenLastCalledWith(
+      'emulator-5554', expect.anything(), undefined, false,
+    )
+
+    await w.get('[data-testid="ime-redownload-btn"]').trigger('click')
+    await flushPromises()
+    expect(mockAutomation.installIme).toHaveBeenLastCalledWith(
+      'emulator-5554', expect.anything(), undefined, true,
+    )
+  })
+
+  it('re-download is disabled without a device (nothing to install onto)', async () => {
+    const w = mountModal({ deviceId: '' })
+    await open(w)
+    expect(isDisabled(w.get('[data-testid="ime-redownload-btn"]'))).toBe(true)
+  })
+})
+

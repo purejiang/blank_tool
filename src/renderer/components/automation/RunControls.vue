@@ -84,6 +84,31 @@
         />
         <div class="rcf-hint">{{ t('automation.captureFilterHint') }}</div>
       </div>
+
+      <!-- 失败策略：这两项决定脚本遇到失败时是继续还是停下。
+           默认与历史行为完全一致（首错中止 / 崩溃中止）。 -->
+      <div class="rcf-block">
+        <div class="rcf-head">
+          <span class="rcf-label">{{ t('automation.continueOnError') }}</span>
+          <n-switch
+            size="small"
+            :value="continueOnError"
+            @update:value="emit('update:continueOnError', $event)"
+          />
+        </div>
+        <div class="rcf-hint">{{ t('automation.continueOnErrorHint') }}</div>
+      </div>
+      <div class="rcf-block">
+        <div class="rcf-head">
+          <span class="rcf-label">{{ t('automation.abortOnCrash') }}</span>
+          <n-switch
+            size="small"
+            :value="abortOnCrash"
+            @update:value="emit('update:abortOnCrash', $event)"
+          />
+        </div>
+        <div class="rcf-hint">{{ t('automation.abortOnCrashHint') }}</div>
+      </div>
       <template #footer>
         <n-space justify="end">
           <n-button size="small" @click="configOpen = false">{{ t('common.close') }}</n-button>
@@ -107,6 +132,10 @@ const props = defineProps<{
   captureTraffic: boolean
   /** Comma-separated host substrings; only matching hosts are recorded. */
   trafficHostFilter: string
+  /** 步骤失败后继续执行下一步（默认 false：首个失败就中止运行）。 */
+  continueOnError?: boolean
+  /** 目标应用进程消失/重启时中止运行（默认 true）。 */
+  abortOnCrash?: boolean
   running: boolean
   canRun: boolean
   /** Non-blocking preflight warnings rendered under the controls row. */
@@ -122,6 +151,8 @@ const emit = defineEmits<{
   (e: 'update:autoDeviceId', v: string): void
   (e: 'update:captureTraffic', v: boolean): void
   (e: 'update:trafficHostFilter', v: string): void
+  (e: 'update:continueOnError', v: boolean): void
+  (e: 'update:abortOnCrash', v: boolean): void
   (e: 'run'): void
   (e: 'stop'): void
   /** 菜单里选了「运行记录」—— 列表数据在页面，这里只发请求 */

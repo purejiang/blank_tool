@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { NTooltip } from 'naive-ui'
+import { NSelect, NTooltip } from 'naive-ui'
 
 vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
@@ -206,5 +206,95 @@ describe('StepEditForm note', () => {
     await w.findAll('.form-field input')[0].setValue('点了登录按钮')
     await confirm(w)
     expect(w.emitted('save')![0][0]).toMatchObject({ note: '点了登录按钮' })
+  })
+})
+
+/**
+ * 失败策略 (`on_error`) is a per-step override of the run-level
+ * `continue_on_error`, and — like 备注 — is NOT part of STEP_FIELDS, so
+ * `save()` must write it back explicitly. `inherit` must store NOTHING, or
+ * changing the run-level setting later would have no effect on this step.
+ */
+describe('StepEditForm failure policy', () => {
+  const coordTap = (): Step => ({ id: 't', action: 'tap', mode: 'coord', coord: { x: 1, y: 2 } })
+
+  /** the on_error n-select is the last select in the form */
+  function policySelect(w: ReturnType<typeof mountForm>) {
+    const selects = w.findAllComponents(NSelect)
+    expect(selects.length).toBeGreaterThan(0)
+    return selects[selects.length - 1]
+  }
+
+  async function confirm(w: ReturnType<typeof mountForm>) {
+    const btn = w.findAll('button').find((b) => b.text() === 'common.confirm')!
+    await btn.trigger('click')
+  }
+
+  it('renders the policy select for every action, including ones with no fields', () => {
+    for (const step of [
+      coordTap(),
+      { id: 'b', action: 'back' } as Step,
+      { id: 'w', action: 'wait', mode: 'time', ms: 100 } as Step,
+    ]) {
+      const w = mountForm(step)
+      expect(w.find('.form-field .n-select').exists()).toBe(true)
+    }
+  })
+
+  it('shows no policy select when there are no fields at all', () => {
+    // guard against the field count assertion above becoming vacuous: `back`
+    // has zero schema fields, so the ONLY select is the policy one.
+    const w = mountForm({ id: 'b', action: 'back' } as Step)
+    expect(w.findAll('.n-select').length).toBe(1)
+  })
+
+  it('defaults to inherit and stores nothing on save', async () => {
+    const w = mountForm(coordTap())
+    await confirm(w)
+    const saved = w.emitted('save')![0][0] as Record<string, unknown>
+    expect('on_error' in saved).toBe(false)
+  })
+
+  it('keeps an existing explicit policy through save', async () => {
+    const w = mountForm({ ...coordTap(), on_error: 'continue' } as Step)
+    await confirm(w)
+    expect(w.emitted('save')![0][0]).toMatchObject({ on_error: 'continue' })
+  })
+
+  it('re-syncs the policy when the step is replaced', async () => {
+    const w = mountForm({ ...coordTap(), on_error: 'abort' } as Step)
+    await w.setProps({ step: { ...coordTap(), on_error: 'continue' } as Step })
+    await confirm(w)
+    expect(w.emitted('save')![0][0]).toMatchObject({ on_error: 'continue' })
+  })
+
+  it('offers exactly the three choices with i18n labels', () => {
+    const w = mountForm(coordTap())
+    const select = policySelect(w)
+    const options = select.props('options') as Array<{ value: string; label: string }>
+    expect(options.map((o) => o.value)).toEqual(['inherit', 'continue', 'abort'])
+    expect(options.map((o) => o.label)).toEqual([
+      'automation.f.onErrorInherit',
+      'automation.f.onErrorContinue',
+      'automation.f.onErrorAbort',
+    ])
+  })
+
+  it('writes an explicit choice picked in the dropdown', async () => {
+    const w = mountForm(coordTap())
+    // drive the underlying n-select the same way its option click would
+    policySelect(w).vm.$emit('update:value', 'abort')
+    await w.vm.$nextTick()
+    await confirm(w)
+    expect(w.emitted('save')![0][0]).toMatchObject({ on_error: 'abort' })
+  })
+
+  it('drops a stale on_error when the user switches back to inherit', async () => {
+    const w = mountForm({ ...coordTap(), on_error: 'continue' } as Step)
+    policySelect(w).vm.$emit('update:value', 'inherit')
+    await w.vm.$nextTick()
+    await confirm(w)
+    const saved = w.emitted('save')![0][0] as Record<string, unknown>
+    expect('on_error' in saved).toBe(false)
   })
 })

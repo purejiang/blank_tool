@@ -230,6 +230,10 @@
         <div class="dep-sub-head app-subhead app-subhead--sm app-subhead--muted">{{ t('settings.automationComponents') }}</div>
         <div class="card-toolbar">
           <div class="card-toolbar-actions">
+            <n-button size="tiny" quaternary :loading="isResettingTraffic" @click="resetTrafficProxy">
+              <template #icon><n-icon size="14"><Wrench /></n-icon></template>
+              {{ t('settings.trafficReset') }}
+            </n-button>
             <n-button size="tiny" quaternary :loading="isLoadingCapabilities" @click="refreshCapabilities">
               <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
               {{ t('settings.refreshStatus') }}
@@ -397,6 +401,69 @@
               type="error"
               @click="confirmClear(cat.key)"
             />
+          </div>
+        </div>
+
+        <!-- Run-history retention: rule-based cleanup of auto_tasks/.
+             `storage.clear auto_tasks` throws away EVERY run; these rules let
+             the user keep the recent ones and drop the rest. The backend
+             refuses a rule-less request and never touches a run that is
+             executing right now. -->
+        <div class="prune-block">
+          <div class="prune-head">
+            <span class="app-subhead app-subhead--sm app-subhead--muted">{{ t('settings.pruneTitle') }}</span>
+            <span v-if="orphanCount > 0" class="prune-orphans">{{ t('settings.orphanRuns', { count: orphanCount }) }}</span>
+          </div>
+          <div class="prune-hint">{{ t('settings.pruneHint') }}</div>
+          <div class="prune-controls">
+            <span class="prune-label">{{ t('settings.pruneKeepLast') }}</span>
+            <n-input-number
+              v-model:value="pruneKeepLast"
+              size="tiny"
+              :min="0"
+              :max="1000"
+              :show-button="false"
+              class="prune-num"
+              :placeholder="t('settings.pruneOff')"
+            />
+            <span class="prune-label">{{ t('settings.pruneKeepLastUnit') }}</span>
+            <span class="prune-sep" />
+            <span class="prune-label">{{ t('settings.pruneOlderDays') }}</span>
+            <n-input-number
+              v-model:value="pruneOlderDays"
+              size="tiny"
+              :min="0"
+              :max="3650"
+              :show-button="false"
+              class="prune-num"
+              :placeholder="t('settings.pruneOff')"
+            />
+            <span class="prune-label">{{ t('settings.pruneOlderUnit') }}</span>
+            <span class="prune-sep" />
+            <n-checkbox v-model:checked="pruneOrphansOnly" size="small">
+              {{ t('settings.pruneOrphansOnly') }}
+            </n-checkbox>
+          </div>
+          <div class="prune-actions">
+            <n-button
+              size="tiny"
+              secondary
+              :loading="pruning === 'dry'"
+              :disabled="!pruneRuleSet"
+              @click="runPrune(true)"
+            >
+              {{ t('settings.prunePreview') }}
+            </n-button>
+            <n-button
+              size="tiny"
+              type="error"
+              secondary
+              :loading="pruning === 'run'"
+              :disabled="!pruneRuleSet"
+              @click="confirmPrune"
+            >
+              {{ t('settings.pruneApply') }}
+            </n-button>
           </div>
         </div>
       </n-card>
@@ -778,6 +845,38 @@ const refreshCapabilities = async () => {
   finally { isLoadingCapabilities.value = false }
 }
 
+/**
+ * Manual repair for a device left pointing at a dead capture proxy.
+ *
+ * The backend already self-heals at startup; this covers the case where the
+ * proxy is stuck while the app keeps running (mitmdump killed externally).
+ * Idempotent — `restored: []` means there was nothing stale.
+ */
+const isResettingTraffic = ref(false)
+const resetTrafficProxy = async () => {
+  if (isResettingTraffic.value) return
+  isResettingTraffic.value = true
+  try {
+    const svc = await serviceManager.getService('automation')
+    const res = await svc.resetTraffic()
+    if (!res?.success) {
+      showError(res?.error || t('settings.trafficResetFailed'))
+      return
+    }
+    const restored = res.restored || []
+    if (!restored.length) {
+      showInfo(t('settings.trafficResetNothing'))
+      return
+    }
+    showSuccess(t('settings.trafficResetDone', { count: restored.length }))
+    await refreshCapabilities()
+  } catch (e: any) {
+    showError(e?.message || String(e))
+  } finally {
+    isResettingTraffic.value = false
+  }
+}
+
 const langOptions = computed(() => [
   { label: t('settings.simplifiedChinese'), value: 'zh-CN' },
   { label: t('settings.english'), value: 'en-US' },
@@ -929,6 +1028,81 @@ const confirmClear = (target: string) => {
   })
 }
 
+// ---------------- run-history retention (prune) ----------------
+// `storage.clear auto_tasks` throws away EVERY run. These rules keep the
+// recent ones and drop the rest; the backend refuses a rule-less request and
+// never deletes a run that is executing right now.
+const pruneKeepLast = ref<number | null>(null)
+const pruneOlderDays = ref<number | null>(null)
+const pruneOrphansOnly = ref(false)
+const pruning = ref<'' | 'dry' | 'run'>('')
+const orphanCount = ref(0)
+
+const pruneRuleSet = computed(() =>
+  pruneKeepLast.value !== null || pruneOlderDays.value !== null || pruneOrphansOnly.value
+)
+
+const pruneParams = (dryRun: boolean) => ({
+  dry_run: dryRun,
+  keep_last: pruneKeepLast.value === null ? undefined : pruneKeepLast.value,
+  older_than_days: pruneOlderDays.value === null ? undefined : pruneOlderDays.value,
+  orphans_only: pruneOrphansOnly.value || undefined,
+})
+
+/** 残留条数（被中断的运行）：只在存储面板里做一个提示 */
+const loadRunStats = async () => {
+  try {
+    const api = window.electronAPI as any
+    const res = await api.callBackendAPI('automation.list_runs', {})
+    orphanCount.value = Number(res?.orphans) || 0
+  } catch { /* 计数只是提示，失败就当作 0 */ }
+}
+
+/** 返回 `{ count, size }`（预览与实际执行同一套规则）；失败返回 null */
+const runPrune = async (dryRun: boolean) => {
+  pruning.value = dryRun ? 'dry' : 'run'
+  try {
+    const api = window.electronAPI as any
+    const res = await api.callBackendAPI('automation.prune_runs', pruneParams(dryRun))
+    if (!res?.success) {
+      showError(t('settings.pruneFailed'), res?.error || '')
+      return null
+    }
+    const info = {
+      count: Number(res.deleted_count) || 0,
+      size: formatBytes(Number(res.freed_bytes) || 0),
+    }
+    if (!dryRun) {
+      if (info.count) showSuccess(t('settings.pruneDone', info))
+      else showInfo(t('settings.pruneNothing'))
+      await Promise.all([refreshCache(), loadRunStats()])
+    }
+    return info
+  } catch (e: any) {
+    showError(t('settings.pruneFailed'), e?.message || String(e))
+    return null
+  } finally {
+    pruning.value = ''
+  }
+}
+
+/** 先干跑一次拿到准确条数/体积，再让用户确认 —— 删除不可恢复 */
+const confirmPrune = async () => {
+  const preview = await runPrune(true)
+  if (!preview) return
+  if (!preview.count) {
+    showInfo(t('settings.pruneNothing'))
+    return
+  }
+  dialog.warning({
+    title: t('settings.pruneConfirmTitle'),
+    content: t('settings.pruneConfirmContent', preview),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => { await runPrune(false) },
+  })
+}
+
 const handleToolPathChange = async (toolName: string, path: string) => {
   if (!path.trim()) return
   validatingTool.value = toolName
@@ -975,6 +1149,7 @@ onMounted(() => {
   loadSettings()
   refreshCache()
   refreshCapabilities()
+  void loadRunStats()
   // Runtime versions/paths and the service version are cached in the system
   // store, but a direct landing on this page can race the bootstrap — refetch.
   void systemStore.fetchBuildInfo()
@@ -1040,4 +1215,14 @@ onMounted(() => {
 .svc-dot { display: flex; align-items: center; }
 /* tools & dependencies: sub-group headings（只放标题，动作进卡片内容区） */
 .dep-sub-head { margin: 10px 0 4px; }
+/* ---- run-history retention（按规则清理 auto_tasks） ---- */
+.prune-block { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--app-card-border); }
+.prune-head { display: flex; align-items: center; gap: 8px; }
+.prune-orphans { font-size: var(--app-font-size-xs); color: var(--app-yellow); }
+.prune-hint { font-size: var(--app-font-size-sm); color: var(--app-text-muted); margin-top: 2px; }
+.prune-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.prune-label { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
+.prune-num { width: 92px; }
+.prune-sep { width: 1px; height: 14px; background: var(--app-card-border); margin: 0 4px; }
+.prune-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 </style>

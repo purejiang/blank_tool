@@ -11,6 +11,7 @@ vi.mock('@utils/logger', () => ({
 }))
 
 import AutomationService, {
+  INSTALL_CANCELLED,
   INSTALL_IDLE_TIMEOUT,
   INSTALL_IDLE_TIMEOUT_MS,
 } from '@/renderer/services/AutomationService'
@@ -91,6 +92,64 @@ describe('AutomationService', () => {
       mockCallBackendAPI.mockRejectedValue(new Error('adb not found'))
       const status = await service.getImeStatus('emulator-5554')
       expect(status).toBeNull()
+    })
+  })
+
+  describe('resetTraffic', () => {
+    it('recovers every device when no id is given', async () => {
+      mockCallBackendAPI.mockResolvedValue({
+        success: true,
+        restored: [{
+          device_id: 'emulator-5554',
+          proxy_restored: true,
+          reverse_removed: true,
+          port_freed: true,
+        }],
+      })
+
+      const res = await service.resetTraffic()
+
+      expect(mockCallBackendAPI).toHaveBeenCalledWith('automation.traffic_reset', {})
+      expect(res.success).toBe(true)
+      expect(res.restored).toHaveLength(1)
+      expect(res.restored[0].proxy_restored).toBe(true)
+    })
+
+    it('scopes the repair to one device when an id is given', async () => {
+      mockCallBackendAPI.mockResolvedValue({ success: true, restored: [] })
+
+      await service.resetTraffic('emulator-5554')
+
+      expect(mockCallBackendAPI).toHaveBeenCalledWith(
+        'automation.traffic_reset', { device_id: 'emulator-5554' },
+      )
+    })
+
+    it('reports nothing-to-repair as success with an empty list', async () => {
+      mockCallBackendAPI.mockResolvedValue({ success: true, restored: [] })
+
+      const res = await service.resetTraffic()
+
+      expect(res).toEqual({ success: true, restored: [] })
+    })
+
+    it('never throws — a backend failure becomes { success: false, error }', async () => {
+      mockCallBackendAPI.mockRejectedValue(new Error('backend down'))
+
+      const res = await service.resetTraffic()
+
+      expect(res.success).toBe(false)
+      expect(res.restored).toEqual([])
+      expect(res.error).toContain('backend down')
+    })
+
+    it('tolerates a payload without a restored array', async () => {
+      mockCallBackendAPI.mockResolvedValue({ success: true })
+
+      const res = await service.resetTraffic()
+
+      expect(res.success).toBe(true)
+      expect(res.restored).toBeUndefined()
     })
   })
 
@@ -461,6 +520,97 @@ describe('AutomationService', () => {
 
       capturedCb!(envelope(taskId, 'complete', { success: true }))
       await promise
+    })
+  })
+
+  describe('install cancellation', () => {
+    let capturedCb: ((raw: any) => void) | null
+    let cancelRequest: ReturnType<typeof vi.fn>
+
+    beforeEach(async () => {
+      capturedCb = null
+      cancelRequest = vi.fn(async () => ({}))
+      ;(window as any).electronAPI = {
+        onStreamEvent: (cb: (raw: any) => void) => {
+          capturedCb = cb
+          return () => {}
+        },
+        callBackendAPI: mockCallBackendAPI,
+        cancelRequest,
+      }
+      mockCallBackendAPI.mockResolvedValue(undefined)
+      await service.initialize()
+    })
+
+    it('a cancelled event rejects with the sentinel (never resolves a partial install)', async () => {
+      const onLog = vi.fn()
+      const promise = service.installMitmproxy({ onLog })
+      const taskId = mockCallBackendAPI.mock.calls[0][1].task_id
+
+      capturedCb!(envelope(taskId, 'cancelled', { task_id: taskId }))
+
+      await expect(promise).rejects.toThrow(INSTALL_CANCELLED)
+    })
+
+    it('clears the slot and the watchdog on cancel — a later complete cannot resolve it', async () => {
+      vi.useFakeTimers()
+      try {
+        const promise = service.installMitmproxy()
+        promise.catch(() => {})
+        const taskId = mockCallBackendAPI.mock.calls[0][1].task_id
+
+        capturedCb!(envelope(taskId, 'cancelled', { task_id: taskId }))
+        await expect(promise).rejects.toThrow(INSTALL_CANCELLED)
+
+        // the whole watchdog window passes with nothing left armed
+        await vi.advanceTimersByTimeAsync(INSTALL_IDLE_TIMEOUT_MS + 1000)
+        capturedCb!(envelope(taskId, 'complete', { success: true }))
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('cancelInstalls signals the live task id through request.cancel', async () => {
+      const promise = service.installIme('emulator-5554')
+      const taskId = mockCallBackendAPI.mock.calls[0][1].task_id
+      expect(service.hasRunningInstall()).toBe(true)
+
+      await expect(service.cancelInstalls()).resolves.toBe(1)
+      expect(cancelRequest).toHaveBeenCalledWith(taskId)
+
+      capturedCb!(envelope(taskId, 'cancelled', { task_id: taskId }))
+      await expect(promise).rejects.toThrow(INSTALL_CANCELLED)
+      // settled installs are no longer cancelable
+      await Promise.resolve()
+      expect(service.hasRunningInstall()).toBe(false)
+    })
+
+    it('cancelInstalls covers every live install and reports 0 when idle', async () => {
+      expect(await service.cancelInstalls()).toBe(0)
+
+      const p1 = service.installMitmproxy()
+      const p2 = service.installIme('emulator-5554')
+      p1.catch(() => {})
+      p2.catch(() => {})
+      const ids = mockCallBackendAPI.mock.calls.map((c: any[]) => c[1].task_id)
+      expect(ids).toHaveLength(2)
+
+      expect(await service.cancelInstalls()).toBe(2)
+      expect(cancelRequest.mock.calls.map((c: any[]) => c[0])).toEqual(ids)
+    })
+
+    it('a cancel that fails to reach the backend does not throw', async () => {
+      const promise = service.installMitmproxy()
+      promise.catch(() => {})
+      cancelRequest.mockRejectedValue(new Error('ipc down'))
+      await expect(service.cancelInstalls()).resolves.toBe(0)
+    })
+
+    it('a fast-refusing start leaves nothing cancelable', async () => {
+      mockCallBackendAPI.mockRejectedValue(new Error('backend down'))
+      await expect(service.installMitmproxy()).rejects.toThrow('backend down')
+      expect(service.hasRunningInstall()).toBe(false)
+      expect(await service.cancelInstalls()).toBe(0)
     })
   })
 
