@@ -73,6 +73,40 @@ describe('StepEditForm pick buttons', () => {
 })
 
 /**
+ * assert_element is an unconditional element target (no mode discriminator),
+ * so its `target.value` row must carry the same UI-dump pick button as
+ * input/tap-element. assert_activity is an Activity-string assertion — it has
+ * no element target and must never grow an element-pick button.
+ */
+describe('StepEditForm pick buttons — assert_element', () => {
+  const assertElement = (): Step => ({
+    id: 'ae',
+    action: 'assert_element',
+    target: { by: 'text', value: '首页', timeout_ms: 10000 },
+  })
+
+  it('renders the UI-dump pick button for an assert_element step', () => {
+    const w = mountForm(assertElement())
+    expect(buttonTexts(w)).toContain(ELEMENT_BTN)
+    expect(buttonTexts(w)).not.toContain(COORD_BTN)
+  })
+
+  it('emits pick { mode: "element" } from the assert_element pick button', async () => {
+    const w = mountForm(assertElement())
+    const btn = w.findAll('button').find((b) => b.text() === ELEMENT_BTN)
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(w.emitted('pick')![0][0]).toEqual({ mode: 'element' })
+  })
+
+  it('renders no element-pick button for an assert_activity step', () => {
+    const w = mountForm({ id: 'aa', action: 'assert_activity', activity: '' })
+    expect(buttonTexts(w)).not.toContain(ELEMENT_BTN)
+    expect(buttonTexts(w)).not.toContain(COORD_BTN)
+  })
+})
+
+/**
  * 备注 is metadata that is NOT part of STEP_FIELDS. `save()` rebuilds the step
  * from the visible schema fields only, so an un-preserved note is silently
  * dropped the moment the user saves — exactly what these tests lock down.

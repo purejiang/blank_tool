@@ -145,6 +145,9 @@ const fields = computed(() =>
  * the UI dump; a coordinate tap picks from a screenshot instead — games
  * (SurfaceView) expose no UI hierarchy, so coords are the only option there.
  * Fixed-duration waits have nothing to pick.
+ *
+ * assert_element is an unconditional element target (no mode discriminator),
+ * so it is pickable exactly like input's focus field.
  */
 const pickable = computed(() => {
   const a = props.step.action
@@ -152,6 +155,8 @@ const pickable = computed(() => {
   if (a === 'input') return true
   // tap is pickable in BOTH modes: coord → screenshot, element → UI dump
   if (a === 'tap') return true
+  // assert_element always asserts against an element target
+  if (a === 'assert_element') return true
   if (a !== 'wait') return false
   return String(getPath(form, 'mode') ?? '') === 'element'
 })
