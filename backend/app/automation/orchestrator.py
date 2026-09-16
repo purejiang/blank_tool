@@ -34,6 +34,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from app.utils.env import get_auto_task_dir, get_auto_tasks_root, get_output_dir
+from app.automation import runstate
 from app.automation import traffic as traffic_capture
 from app.automation.apps import get_app_pid, take_screenshot
 from app.automation.crash import dump_crash_log
@@ -43,6 +44,21 @@ from app.automation.steps import execute_step
 from app.utils.logger import Logger
 
 logger = Logger.get_logger("automation")
+
+# Steps that intentionally kill / replace the target process. The crash watch
+# must re-anchor after these, otherwise a scripted restart looks exactly like
+# a crash (`clear_app_data` -> pid gone -> next step's check aborts the run).
+_RESTART_ACTIONS = frozenset({"clear_app_data", "launch_app"})
+
+# Fields `automation.list_runs` needs for the history list. The full report
+# also carries steps / logs / screenshots / traffic, which is why the index is
+# a separate (small) file: listing 100 runs used to parse 100 full reports.
+SUMMARY_NAME = "summary.json"
+_SUMMARY_KEYS = (
+    "kind", "task_id", "device_id", "package_name", "started_at", "finished_at",
+    "started_ts", "finished_ts", "duration_ms", "success", "cancelled",
+    "aborted_by_crash", "total", "passed", "failed", "run_dir",
+)
 
 
 def _fallback_run_dir() -> str:
@@ -138,6 +154,33 @@ def run(
         })
         return path
 
+    def _write_summary(report: Dict[str, Any], status: str) -> None:
+        """Persist ``summary.json`` — the small index the history list reads.
+
+        Written at run START (status ``running``) and again by
+        ``_write_report`` (status ``finished``). The start marker is what makes
+        an interrupted run identifiable at all: after a force-quit the file
+        still says ``running`` while nothing is executing, which is how
+        ``list_runs`` spots the orphan. Atomic (tmp + replace) so a kill can
+        never leave a half-written index behind.
+        """
+        summary = {k: report.get(k) for k in _SUMMARY_KEYS}
+        summary["status"] = status
+        summary["screenshot_count"] = len(report.get("screenshots") or [])
+        path = os.path.join(run_dir, SUMMARY_NAME)
+        tmp = f"{path}.{uuid.uuid4().hex[:6]}.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(summary, f, ensure_ascii=False)
+            os.replace(tmp, path)
+        except OSError as e:
+            logger.warning(f"failed to write {SUMMARY_NAME}: {e}")
+            try:
+                if os.path.isfile(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+
     def _write_report() -> None:
         """Persist ``report.json`` — machine-readable summary of this run."""
         try:
@@ -156,6 +199,11 @@ def run(
                 "success": bool(result.get("success")),
                 "cancelled": bool(result.get("cancelled")),
                 "aborted_by_crash": bool(result.get("aborted_by_crash")),
+                # the failure policy in force for this run — a report that
+                # says "2 passed / 1 failed, success=false" is much easier to
+                # read once you know whether continuing was intended.
+                "continue_on_error": bool(continue_on_error),
+                "abort_on_crash": bool(abort_on_crash),
                 "total": result.get("total", 0),
                 "passed": result.get("passed", 0),
                 "failed": result.get("failed", 0),
@@ -171,8 +219,35 @@ def run(
             }
             with open(os.path.join(run_dir, "report.json"), "w", encoding="utf-8") as f:
                 json.dump(report, f, ensure_ascii=False, indent=2)
+            # Index AFTER the report: a dir with report.json but a stale
+            # `running` summary still lists correctly (the handler prefers the
+            # report when the summary claims a run that is not executing).
+            _write_summary(report, "finished")
         except Exception as e:  # never let reporting break the run
             logger.warning(f"failed to write report.json: {e}")
+        finally:
+            # `_write_report` is the run's terminal write on EVERY exit path
+            # (normal / cancel / crash / abort / raise), so deregistering here
+            # keeps the in-process registry and the on-disk `finished` summary
+            # in lockstep. A run that never deregisters would block its own
+            # deletion and hide itself from the prune rules.
+            runstate.mark_finished(str(task_id or ""))
+
+    # Interrupted-run marker: from here on the history handler can tell this
+    # run apart from a leftover directory. `_write_report` (every exit path)
+    # rewrites it as finished, and the finally block deregisters the run.
+    runstate.mark_started(str(task_id or ""), run_dir)
+    _write_summary({
+        "kind": "automation_run",
+        "task_id": str(task_id or ""),
+        "device_id": device_id or "",
+        "package_name": package_name or "",
+        "started_at": started_iso,
+        "started_ts": started_t,
+        "run_dir": run_dir,
+        "total": len(steps),
+        "screenshots": [],
+    }, "running")
 
     if not device_id:
         _log("[FAIL] missing device_id")
@@ -251,7 +326,6 @@ def run(
                 _shot(f"cancel-{i + 1}", i + 1)
                 result["cancelled"] = True
                 result["success"] = False
-                restore_ime(device_id)  # CJK input path may have switched the IME
                 return result
 
             # Crash check — only once the app was seen alive at least once
@@ -286,7 +360,6 @@ def run(
                     result["failed"] += 1
                     result["success"] = False
                     result["aborted_by_crash"] = True
-                    restore_ime(device_id)
                     return result
                 if cur is not None:
                     watch_pid = cur
@@ -315,7 +388,6 @@ def run(
                 _shot(f"cancel-{i + 1}", i + 1)
                 result["cancelled"] = True
                 result["success"] = False
-                restore_ime(device_id)
                 return result
 
             step_rec: Dict[str, Any] = {
@@ -341,22 +413,35 @@ def run(
             # Live progress: one event per finished step.
             context.step(step_rec)
 
+            # Re-anchor the crash watch after a step that legitimately
+            # restarted the target (clear_app_data / launch_app). Without
+            # this, the next iteration sees "pid gone/changed" and aborts the
+            # run as a crash — the normal way a script relaunches an app.
+            if watch and action in _RESTART_ACTIONS:
+                watch_pid = get_app_pid(device_id, package_name)
+
             if ok:
                 result["passed"] += 1
                 continue
 
             # Step failed.
             result["failed"] += 1
-            step_on_error = step.get("on_error") or (
-                "continue" if continue_on_error else "abort"
-            )
+            # A run with a failed step is never a success — including when the
+            # policy is "continue": the remaining steps ran, but the outcome
+            # the report records must not read as a clean pass.
+            result["success"] = False
+            # Per-step policy wins over the run-level flag; an unrecognised
+            # value (typo, old script) falls back to the run setting instead of
+            # being treated as "continue" — silently running on after a
+            # failure the user asked to stop on is the expensive mistake.
+            step_on_error = step.get("on_error")
+            if step_on_error not in ("continue", "abort"):
+                step_on_error = "continue" if continue_on_error else "abort"
             if step_on_error == "abort":
                 _log(f"[FAIL] step {i + 1} aborted ({action}): {message}")
                 sp = _shot(f"fail-{i + 1}", i + 1)
                 if sp:
                     step_rec["screenshot"] = sp
-                result["success"] = False
-                restore_ime(device_id)
                 context.step(step_rec)
                 return result
             _log(f"[FAIL] step {i + 1} continued ({action}): {message}")
@@ -365,9 +450,12 @@ def run(
             f"done: {result['passed']}/{result['total']} passed"
             + (f", {result['failed']} failed" if result["failed"] else "")
         )
-        restore_ime(device_id)
         return result
     finally:
+        # IME restore lives here (not on each return path) so a step that
+        # RAISES — execute_step swallows exceptions, but a stream/socket
+        # error can still escape — cannot leave the device on ADBKeyboard.
+        restore_ime(device_id)
         if capture_on:
             stopped = traffic_capture.stop_capture(device_id)
             result["traffic_requests"] = stopped.get("requests", 0)
@@ -386,4 +474,3 @@ def run(
         # write-then-notify sequence.
         _write_report()
         context.complete(result)
-

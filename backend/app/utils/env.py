@@ -154,17 +154,19 @@ def get_runtime_dir() -> str:
         
     return ""
 
-def get_cache_dir() -> str:
+def get_cache_dir(create: bool = True) -> str:
     """
     Return the resolved cache directory path.
 
     Uses the ``BT_CACHE_DIR`` environment variable, falling back to ``./cache``
     (resolved relative to the backend root). Creates the directory on disk if
-    it does not exist.
+    it does not exist — pass ``create=False`` from pure read probes that must
+    not have a mkdir side effect.
     """
     cache_dir = get_env("BT_CACHE_DIR", "./cache")
     root = resolve_path(cache_dir)
-    os.makedirs(root, exist_ok=True)
+    if create:
+        os.makedirs(root, exist_ok=True)
     return root
 
 

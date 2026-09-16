@@ -15,6 +15,12 @@ from app.utils.png import recompress_png_lossless_async
 
 logger = Logger.get_logger("Automation")
 
+# Resumed-activity key → the ``pkg/activity`` token that follows it. See
+# ``current_activity`` for why three spellings are accepted.
+_RESUMED_ACTIVITY_RE = re.compile(
+    r"(?:topResumedActivity|mResumedActivity|ResumedActivity)\b.*?(\S+/\S+)"
+)
+
 
 def launch_app(device_id: str, package_name: str) -> Dict[str, Any]:
     if not package_name:
@@ -37,15 +43,36 @@ def clear_app_data(device_id: str, package_name: str) -> Dict[str, Any]:
 
 
 def current_activity(device_id: str, timeout_ms: int = 3000) -> Dict[str, Any]:
-    """Get the resumed activity via ``dumpsys activity activities``."""
-    r = run_adb(device_id, ["shell", "dumpsys", "activity", "activities"])
-    out = (r.get("stdout", "") or r.get("stderr", ""))
-    m = re.search(r"mResumedActivity.*?(\S+/\S+)", out)
-    if m:
-        activity = m.group(1).split(" ")[0]
-        return {"success": True, "activity": activity, "error": ""}
-    return {"success": False, "activity": "",
-            "error": "mResumedActivity not found"}
+    """Get the resumed activity via ``dumpsys activity activities``.
+
+    Polls until the activity resolves or ``timeout_ms`` elapses. Callers are
+    assertions fired right after a navigation, so a single shot failed
+    whenever the transition had not settled — ``timeout_ms`` used to be
+    accepted and then ignored.
+
+    The resumed-activity KEY differs by ROM/API level: ``mResumedActivity``
+    is the legacy spelling, Android 10+ prints ``topResumedActivity`` and
+    some vendor builds emit a bare ``ResumedActivity``. Matching only the
+    legacy key made this fail on every modern device.
+    """
+    try:
+        budget = max(0, int(timeout_ms))
+    except (TypeError, ValueError):
+        budget = 3000
+    deadline = time.time() + budget / 1000.0
+    last_error = "resumed activity not found in dumpsys output"
+    while True:
+        r = run_adb(device_id, ["shell", "dumpsys", "activity", "activities"])
+        out = (r.get("stdout", "") or r.get("stderr", ""))
+        m = _RESUMED_ACTIVITY_RE.search(out or "")
+        if m:
+            activity = m.group(1).split(" ")[0]
+            return {"success": True, "activity": activity, "error": ""}
+        if r.get("returncode", 1) != 0:
+            last_error = (r.get("stderr") or "").strip() or "dumpsys failed"
+        if time.time() >= deadline:
+            return {"success": False, "activity": "", "error": last_error}
+        time.sleep(0.25)
 
 
 def take_screenshot(
@@ -63,7 +90,11 @@ def take_screenshot(
     file_path = os.path.join(
         screenshots_dir, f"auto-{ts}{suffix}-{uuid.uuid4().hex[:6]}.png"
     )
-    remote = "/sdcard/blank_tool_auto_shot.png"
+    # UNIQUE remote name: a fixed /sdcard path is shared by every device and
+    # by every concurrent capture (a step screenshot racing the crash-log shot
+    # on the same device), so one capture could pull another's image — or have
+    # it deleted by that capture's cleanup `rm`.
+    remote = f"/sdcard/blank_tool_shot_{uuid.uuid4().hex}.png"
     cap = run_adb(device_id, ["shell", "screencap", "-p", remote])
     if cap.get("returncode", 1) != 0:
         return {"success": False, "file_path": "",
