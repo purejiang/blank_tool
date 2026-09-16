@@ -341,6 +341,33 @@ describe('commandHandlers transport', () => {
         })
     })
 
+    describe('late timeout timer after a normal completion', () => {
+        it('is a no-op once the stream finished and its entry was reaped', async () => {
+            const sender = makeSender()
+            const promise = handler(
+                { sender },
+                { id: 'req-1', method: 'download.file', params: { url: 'https://example.com/a.apk', task_id: 'task-1' } }
+            )
+            await vi.advanceTimersByTimeAsync(0)
+            emitBackendLine(proc, { id: 'req-1', result: { stream_id: 'stream-1' }, finished: false })
+            await expect(promise).resolves.toEqual({ stream_id: 'stream-1' })
+
+            // Normal completion: the terminal `finished:true` line reaps the
+            // request entry (the invoke was already resolved by the init).
+            emitBackendLine(proc, { id: 'req-1', finished: true })
+            const sendsAfterCompletion = sendCount(sender)
+
+            // The per-request timer now fires LATE. With the entry gone the
+            // synthetic send must be skipped: no extra stream event, no
+            // re-resolve with the timeout envelope, and nothing throws.
+            await vi.advanceTimersByTimeAsync(TIMEOUT_MS + 1)
+
+            expect(sendCount(sender)).toBe(sendsAfterCompletion)
+            expect(streamEvents(sender)).toHaveLength(0)
+            await expect(promise).resolves.toEqual({ stream_id: 'stream-1' })
+        })
+    })
+
     describe('behaviours that must not change', () => {
         it('timeout before the init resolves the error envelope (pre-init path unchanged)', async () => {
             const sender = makeSender()
