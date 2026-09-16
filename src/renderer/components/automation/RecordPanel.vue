@@ -53,8 +53,9 @@
       </n-button>
     </div>
 
-    <!-- 录制只记录「操作」本身：步骤之间的等待由运行配置里的默认步骤间隔统一控制，
-         不再按录制节奏合成等待步骤 —— 改一处生效，脚本也保持干净。 -->
+    <!-- 录制只记录「操作」本身，不合成等待步骤 —— 但每步的实际停顿会随步骤一起
+         记下来（store 由 ts 差值算出 recorded_gap_ms），运行时叠加在运行配置的
+         默认步骤间隔之上：节奏不丢，脚本里也不会凭空多出一堆 wait 步骤。 -->
     <div class="record-hint">{{ t('automation.recordIntervalHint') }}</div>
   </div>
 </template>
@@ -83,8 +84,9 @@ export type InsertAt = 'end' | 'start' | 'after'
 
 const emit = defineEmits<{
   (e: 'recording-start'): void
-  /** 录到的原始步骤（扁平形状，由 store 转成 v2）+ 落点；**没有**等待信息 ——
-   *  步骤之间的节奏由运行配置的默认步骤间隔统一控制。 */
+  /** 录到的原始步骤（扁平形状，由 store 转成 v2）。这里**原样透传**，包括 `ts`：
+   *  面板不做等待合成，实测停顿由 store 换算成 `recorded_gap_ms`，运行时叠加在
+   *  默认步骤间隔之上。 */
   (e: 'recorded', payload: { steps: any[]; insertAt: InsertAt }): void
   (e: 'recording-end'): void
 }>()
@@ -99,9 +101,10 @@ const ended = ref(false)
 let svc: any = null
 
 /**
- * 录制只暂存步骤本身（不再按录制节奏合成等待步骤）：步骤之间的等待由运行配置
- * 里的默认步骤间隔控制，个别需要更久等待的步骤在自己的编辑表单里设「间隔」。
- * 所以这里没有阈值/上限这类设置 —— 它们只在合成等待时才有意义。
+ * 录制只暂存步骤本身（不合成等待步骤）：每步的实测停顿随步骤一起交给 store
+ * 落成 `recorded_gap_ms`，运行时叠加在运行配置的默认步骤间隔之上；个别需要
+ * 更久等待的步骤在自己的编辑表单里设「间隔」（那会整体覆盖这两者）。
+ * 所以这里没有阈值/上限这类设置 —— 它们只在合成等待步骤时才有意义。
  */
 const lastRecord = ref<{ steps: any[] } | null>(null)
 
@@ -299,7 +302,7 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 .insert-pos { flex: none; width: 168px; }
-/* 节奏解释：录制不再合成等待步骤，等待统一在运行配置里设 */
+/* 节奏解释：录制不合成等待步骤，实测停顿由 store 记进步骤并叠加默认间隔 */
 .record-hint {
   font-size: var(--app-font-size-xs);
   line-height: 1.55;

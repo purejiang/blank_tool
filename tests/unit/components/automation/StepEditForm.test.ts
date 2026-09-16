@@ -315,3 +315,59 @@ describe('StepEditForm failure policy', () => {
     expect('on_error' in saved).toBe(false)
   })
 })
+
+/**
+ * 录制带入的实测停顿（`recorded_gap_ms`）是**只读**的：它由录制时间线算出，
+ * 显示出来是为了让用户看得见录制节奏（也看得见它会叠加在默认间隔之上）。
+ * `save()` 从可见 schema 字段重建步骤，所以这个键必须显式写回 —— 否则用户点
+ * 一次「确定」就把它静默丢掉（与 note / on_error 完全同一类坑）。
+ */
+describe('StepEditForm recorded pause', () => {
+  async function confirm(w: ReturnType<typeof mountForm>) {
+    const btn = w.findAll('button').find((b) => b.text() === 'common.confirm')!
+    await btn.trigger('click')
+  }
+  const coordTap = (): Step => ({ id: 't', action: 'tap', mode: 'coord', coord: { x: 1, y: 2 } })
+
+  it('shows the recorded pause as read-only text, not as another input', () => {
+    const w = mountForm({ ...coordTap(), recorded_gap_ms: 1500 } as Step)
+    const line = w.get('.form-readonly')
+    expect(line.text()).toBe('automation.f.intervalRecordedValue')
+    expect(line.attributes('title')).toBe('automation.f.intervalRecordedHint')
+    // 只读：一个输入框都不许多出来（x + y + 间隔 = 3 个数字输入）
+    expect(w.findAll('.n-input-number').length).toBe(3)
+  })
+
+  it('renders no such line for a hand-written step', () => {
+    const w = mountForm(coordTap())
+    expect(w.find('.form-readonly').exists()).toBe(false)
+  })
+
+  it('hides the line for a non-positive / malformed value (nothing to add on top)', () => {
+    for (const v of [0, -5, Number.NaN, '1500' as unknown as number]) {
+      const w = mountForm({ ...coordTap(), recorded_gap_ms: v } as Step)
+      expect(w.find('.form-readonly').exists()).toBe(false)
+    }
+  })
+
+  it('keeps the recorded pause through save', async () => {
+    const w = mountForm({ ...coordTap(), recorded_gap_ms: 1500 } as Step)
+    await confirm(w)
+    expect(w.emitted('save')![0][0]).toMatchObject({ action: 'tap', recorded_gap_ms: 1500 })
+  })
+
+  it('writes nothing when the step has no recorded pause', async () => {
+    const w = mountForm(coordTap())
+    await confirm(w)
+    const saved = w.emitted('save')![0][0] as Record<string, unknown>
+    expect('recorded_gap_ms' in saved).toBe(false)
+  })
+
+  it('keeps BOTH the manual interval and the recorded pause (delay_ms does not delete it)', async () => {
+    // 语义上 delay_ms 会在运行时取代实测停顿，但步骤数据里两者都该留着 ——
+    // 用户清空「间隔」时，录制节奏必须还在。
+    const w = mountForm({ ...coordTap(), delay_ms: 120, recorded_gap_ms: 1500 } as Step)
+    await confirm(w)
+    expect(w.emitted('save')![0][0]).toMatchObject({ delay_ms: 120, recorded_gap_ms: 1500 })
+  })
+})

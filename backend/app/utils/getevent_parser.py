@@ -13,7 +13,8 @@ renderer's step editor):
   * ``GeteventStatefulParser`` — feed ``getevent -lt`` lines, pop completed
     tap/swipe steps (tap: ``x``/``y``; swipe: ``x1``/``y1``/``x2``/``y2``/
     ``duration_ms``; every step carries ``ts`` — device-time seconds of the
-    touch END marker, used by the frontend to synthesize ``wait`` gaps).
+    touch END marker, from which the renderer derives the RECORDED PAUSE
+    (``recorded_gap_ms``) between two consecutive operations).
 
 Strings in, data out. Unparseable lines are silently skipped and never raise;
 incomplete touches (no UP before the stream ends) are never emitted.
@@ -162,7 +163,9 @@ class GeteventStatefulParser:
       * classification: screen-space displacement <= 10 px and duration
         < 300 ms -> tap (first point); otherwise swipe (first -> last).
       * every emitted step carries ``ts`` (float, device-time seconds of the
-        touch END marker) so consumers can synthesize inter-step waits.
+        touch END marker) so consumers can measure the real pause between two
+        consecutive operations (the renderer stores it as ``recorded_gap_ms``,
+        which the orchestrator ADDS on top of the run-level step interval).
       * garbage lines are skipped silently; a touch that never ends is
         discarded (never emitted, never raised).
     """

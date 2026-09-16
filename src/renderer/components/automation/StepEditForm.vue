@@ -160,6 +160,16 @@
       <span class="form-actions-cell" />
     </div>
 
+    <!-- 录制带入的实测停顿：只读展示（它会叠加在默认间隔之上）。要改就在上面的
+         「间隔」里填值 —— 那会整体覆盖它，所以这里不提供输入框。 -->
+    <div v-if="recordedGap !== null" class="form-row">
+      <label class="form-label">{{ t('automation.f.intervalRecorded') }}</label>
+      <span class="form-readonly" :title="t('automation.f.intervalRecordedHint')">
+        {{ t('automation.f.intervalRecordedValue', { n: recordedGap }) }}
+      </span>
+      <span class="form-actions-cell" />
+    </div>
+
     <!-- 失败策略：和备注一样是「通用」字段（每个动作都有），所以不进
          per-action schema —— 渲染在字段区之后。inherit = 跟随运行级设置。 -->
     <div class="form-row">
@@ -319,6 +329,17 @@ function setInterval(v: number | null) {
   interval.value = v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v)
 }
 
+/**
+ * 录制带入的实测停顿（`recorded_gap_ms`）——**只读**：它由录制时间线算出，
+ * 不是让用户手填的参数（要覆盖它就在上面的「间隔」里填值，那会整体取代它）。
+ * 所以这里只渲染一行文本；`save()` 里还必须把它原样写回，否则用户点一次
+ * 「确定」就把录制节奏静默丢了（save 只重建可见 schema 字段）。
+ */
+const recordedGap = computed<number | null>(() => {
+  const v = (props.step as any).recorded_gap_ms
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : null
+})
+
 // Switching to element mode auto-fills the timeout from the right-column
 // default (only when empty — never overwrite a user-entered value).
 watch(() => String(getPath(form, 'mode') ?? ''), (m) => {
@@ -380,6 +401,9 @@ function save() {
   if (interval.value !== null && Number.isFinite(Number(interval.value)) && Number(interval.value) >= 0) {
     next.delay_ms = Math.round(Number(interval.value))
   }
+  // 录制带入的实测停顿是只读的，但下面的重建只覆盖可见 schema 字段 ——
+  // 不显式写回，用户点一次「确定」就把它静默丢了（同 note / on_error）。
+  if (recordedGap.value !== null) next.recorded_gap_ms = recordedGap.value
   for (const f of fields.value) {
     if (f.type === 'number') {
       const n = Number(getPath(form, f.key))
@@ -426,6 +450,15 @@ function save() {
 }
 .req { color: var(--app-red); margin-left: 2px; }
 .form-ctl { min-width: 0; }
+/* 只读值（录制带入的实测停顿）：与输入框同列，但不可编辑，所以样式上要能
+   一眼看出「这不是输入框」—— 用弱化文本，不加边框。 */
+.form-readonly {
+  min-width: 0;
+  font-size: var(--app-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text-muted);
+  overflow-wrap: anywhere;
+}
 /* 坐标对：两个等宽输入（各自带 X / Y 前缀），中间列内再分两列 */
 .coord-pair {
   display: grid;

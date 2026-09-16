@@ -13,6 +13,10 @@ Two capabilities that make a long script debuggable without editing it:
   executed one), overridable per step with ``delay_ms`` (``0`` = no wait for
   that step). Without it a script needs a hand-written ``wait`` step between
   every pair of actions.
+* ``recorded_gap_ms`` — the pause the recorder measured between two real
+  operations. It is **additive** on top of ``step_interval_ms`` (recording keeps
+  its true rhythm AND still gets the run-level interval); an explicit
+  ``delay_ms`` replaces both.
 
 The UI half of the contract is pinned at the bottom (renderer source checks).
 """
@@ -219,6 +223,61 @@ class TestStepInterval:
         _, _, slept, _ = _run(monkeypatch, tmp_path, steps, step_interval_ms=300)
         assert slept == [300]
 
+    # ---- recorded pause (recorded_gap_ms) is ADDITIVE ----------------
+
+    def test_a_recorded_pause_adds_to_the_run_interval(self, monkeypatch, tmp_path):
+        """录制的实测节奏不能被默认间隔「二选一」掉：实际等待 = 默认 + 实测。"""
+        steps = _steps(3)
+        steps[1]["recorded_gap_ms"] = 1500
+        steps[2]["recorded_gap_ms"] = 400
+        _, _, slept, _ = _run(monkeypatch, tmp_path, steps, step_interval_ms=300)
+        # i=0 first executed → none; i=1 → 300 + 1500; i=2 → 300 + 400
+        assert slept == [1800, 700]
+
+    def test_the_recorded_pause_survives_a_zero_default_interval(self, monkeypatch, tmp_path):
+        """默认间隔关掉（0 = 不插入等待）时实测停顿照样生效 —— 两项独立相加。"""
+        steps = _steps(2)
+        steps[1]["recorded_gap_ms"] = 1500
+        _, _, slept, _ = _run(monkeypatch, tmp_path, steps, step_interval_ms=0)
+        assert slept == [1500]
+
+    def test_delay_ms_replaces_the_recorded_pause_too(self, monkeypatch, tmp_path):
+        """手工填的 delay_ms 是「我说了算」：默认间隔与实测停顿都被它取代。"""
+        steps = _steps(4)
+        steps[1]["recorded_gap_ms"] = 1500
+        steps[1]["delay_ms"] = 0        # 显式「这一步不等待」→ 实测停顿也被压掉
+        steps[2]["recorded_gap_ms"] = 1500
+        steps[2]["delay_ms"] = 120      # 显式值 → 就是 120，不是 120 + 1500
+        steps[3]["recorded_gap_ms"] = 1500
+        _, _, slept, _ = _run(monkeypatch, tmp_path, steps, step_interval_ms=300)
+        # i=0 first executed → none; i=1 explicit 0 → no sleep at all;
+        # i=2 explicit 120; i=3 additive → 300 + 1500
+        assert slept == [120, 1800]
+
+    def test_a_malformed_recorded_pause_is_ignored(self, monkeypatch, tmp_path):
+        steps = _steps(4)
+        steps[1]["recorded_gap_ms"] = "soon"
+        steps[2]["recorded_gap_ms"] = None
+        steps[3]["recorded_gap_ms"] = True      # bool 是畸形载荷，不是 1ms
+        _, _, slept, _ = _run(monkeypatch, tmp_path, steps, step_interval_ms=300)
+        assert slept == [300, 300, 300]
+
+    def test_a_negative_recorded_pause_collapses_to_zero(self, monkeypatch, tmp_path):
+        steps = _steps(2)
+        steps[1]["recorded_gap_ms"] = -900
+        _, _, slept, _ = _run(monkeypatch, tmp_path, steps, step_interval_ms=300)
+        assert slept == [300]
+
+    def test_run_from_step_drops_the_first_recorded_pause(self, monkeypatch, tmp_path):
+        """中途起跑时第一步不等待（它前面那步根本没执行）—— 实测停顿一并丢掉。"""
+        steps = _steps(3)
+        steps[1]["recorded_gap_ms"] = 1500
+        steps[2]["recorded_gap_ms"] = 900
+        _, _, slept, _ = _run(
+            monkeypatch, tmp_path, steps, start_index=1, step_interval_ms=300,
+        )
+        assert slept == [1200]
+
     def test_the_interval_is_announced_in_the_run_log(self, monkeypatch, tmp_path):
         _, _, _, ctx = _run(monkeypatch, tmp_path, _steps(2), step_interval_ms=300)
         assert any("step interval 300ms" in line for line in ctx.logs), ctx.logs
@@ -253,6 +312,17 @@ class TestStepInterval:
         ({"delay_ms": None}, False, 300),  # null = inherit
         ({"delay_ms": True}, False, 300),  # a bool is a malformed payload, not 1ms
         ({"delay_ms": "x"}, False, 300),   # garbage = inherit
+        # recorded pause: ADDITIVE on top of the run-level interval
+        ({"recorded_gap_ms": 1500}, False, 1800),
+        ({"recorded_gap_ms": 1500}, True, 0),     # no pause before the first executed step
+        ({"recorded_gap_ms": 0}, False, 300),     # no recorded pause → run default only
+        ({"recorded_gap_ms": -5}, False, 300),    # negative collapses to 0
+        ({"recorded_gap_ms": None}, False, 300),   # null = no recorded pause
+        ({"recorded_gap_ms": True}, False, 300),   # bool is malformed, not 1ms
+        ({"recorded_gap_ms": "x"}, False, 300),    # garbage = no recorded pause
+        # an explicit delay_ms still REPLACES both
+        ({"delay_ms": 0, "recorded_gap_ms": 1500}, False, 0),
+        ({"delay_ms": 120, "recorded_gap_ms": 1500}, False, 120),
     ])
     def test_step_gap_ms_resolution(self, step, is_first, expected):
         assert orchestrator._step_gap_ms(step, 300, is_first) == expected
@@ -328,16 +398,17 @@ class TestUiContract:
         schema = self._read("src/main/stores/appStore.ts")
         assert "stepIntervalMs: 300" in schema, "app-config schema 也要有默认值"
 
-    def test_recording_does_not_synthesize_wait_steps(self):
-        """录制只记录操作本身。
+    def test_recording_keeps_the_pause_without_synthesizing_wait_steps(self):
+        """录制只记录操作本身，但不再丢掉实测节奏。
 
-        等待由**运行配置里的步骤间隔**统一控制（个别步骤用 `delay_ms` 覆盖），
-        所以录制侧不再有「按录制节奏合成等待步骤」这条路 —— 一份节奏设置，
-        脚本里也不会凭空多出一堆 wait 步骤。
+        录制侧**不合成 wait 步骤**（脚本里不会凭空多出一堆等待行）；取而代之，
+        每步的实测停顿写进步骤自己的 `recorded_gap_ms`，运行时由后端叠加在默认
+        步骤间隔之上（见 TestStepInterval 的相加用例）。
         """
         store = self._read("src/renderer/composables/automation/useAutomationStore.ts")
         assert "withWaits" not in store, "录制不再合成等待步骤"
         assert "thresholdMs" not in store and "payload.gap" not in store
+        assert "recorded_gap_ms" in store, "实测停顿要随步骤落库（不是合成 wait 步骤）"
         assert "message.success(t('automation.recordApplied'))" in store, (
             "录制落库后仍然只报「已应用」"
         )
@@ -345,9 +416,37 @@ class TestUiContract:
         panel = self._read("src/renderer/components/automation/RecordPanel.vue")
         for gone in ("autoWaitEnabled", "waitThreshold", "waitMaxCap", "thresholdMs"):
             assert gone not in panel, f"录制面板不该再有 {gone}"
-        assert "recordIntervalHint" in panel, "面板要说明等待改由运行配置控制"
+        assert "recordIntervalHint" in panel, "面板要说明等待怎么来的"
 
-        # 录制时间线（设备时间 ts）不再进入步骤模型：它只服务于旧的等待合成
-        assert "ts?: number" not in self._read(
-            "src/renderer/components/automation/stepTypes.ts"
+        # 录制时间线（ts）不进入步骤模型：它只用于换算 recorded_gap_ms
+        step_types = self._read("src/renderer/components/automation/stepTypes.ts")
+        assert "ts?: number" not in step_types
+        assert "recorded_gap_ms?: number" in step_types, (
+            "Step 要声明 recorded_gap_ms（录制带入的实测停顿）"
         )
+        assert "_recorded_gap_ms" in self._read("backend/app/automation/orchestrator.py"), (
+            "后端要按叠加语义读取 recorded_gap_ms"
+        )
+
+    def test_step_editor_shows_the_recorded_pause_read_only(self):
+        """实测停顿在编辑表单里只读展示；save() 必须把它原样写回。
+
+        save() 是从**可见 schema 字段**重建步骤的，不显式写回就会在用户点一次
+        「确定」之后静默丢掉录制节奏（与 note / on_error 同一类坑）。
+        """
+        src = self._read("src/renderer/components/automation/StepEditForm.vue")
+        assert "automation.f.intervalRecorded" in src
+        assert "next.recorded_gap_ms = recordedGap.value" in src
+        # 只读：这一行必须是文本，不能长成输入框（否则用户能改，且与叠加语义冲突）
+        assert "form-readonly" in src
+
+    def test_locales_explain_the_additive_semantics(self):
+        for rel in (
+            "src/renderer/i18n/locales/zh-CN.ts",
+            "src/renderer/i18n/locales/en-US.ts",
+        ):
+            src = self._read(rel)
+            for key in ("intervalRecorded:", "intervalRecordedValue:", "intervalRecordedHint:"):
+                assert key in src, f"{rel} 缺 {key}"
+            # 旧的「等待只由运行配置统一控制」文案必须改掉
+            assert "统一控制" not in src

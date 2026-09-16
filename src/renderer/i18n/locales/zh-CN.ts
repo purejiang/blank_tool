@@ -778,7 +778,7 @@ export default {
     collapseProject: '收起项目',
     noStepsHint: '暂无步骤——录制或点击「添加步骤」',
     // 录制只记录操作本身：等待统一由运行配置的「步骤间隔」控制（可单步覆盖）
-    recordIntervalHint: '录制只记录操作步骤；步骤之间的等待由运行配置里的「步骤间隔」统一控制',
+    recordIntervalHint: '录制会连每步的实际停顿一起记下来；运行时「实测停顿 + 步骤间隔」叠加生效',
     // 步骤参数字段
     f: {
       required: '请填写 {field}',
@@ -807,7 +807,10 @@ export default {
       onErrorAbort: '中止运行',
       intervalMs: '间隔 (ms)',
       intervalDefault: '默认 {n}',
-      intervalHint: '该步骤执行前额外等待的时间（毫秒）；0 = 这一步不等待，留空 = 用运行配置里的默认间隔',
+      intervalHint: '该步骤执行前额外等待的时间（毫秒）；0 = 这一步不等待（连录制带入的实测停顿一起覆盖掉），留空 = 用运行配置里的默认间隔（录制步骤再叠加它的实测停顿）',
+      intervalRecorded: '实测停顿',
+      intervalRecordedValue: '录制带入 {n} ms',
+      intervalRecordedHint: '录制时「上一步操作结束 → 这一步操作结束」的实际间隔（只读）；运行时它叠加在默认间隔之上。想覆盖它，就在上面的「间隔」里填值。',
     },
     // 步骤动作中文名
     act: {
@@ -833,7 +836,7 @@ export default {
     runConfigExec: '执行',
     runConfigErrors: '异常处理',
     stepInterval: '步骤间隔',
-    stepIntervalHint: '每个步骤执行前等待的默认时间（毫秒）；0 = 不插入等待。单个步骤可在它的编辑表单里覆盖这个值。',
+    stepIntervalHint: '每个步骤执行前等待的默认时间（毫秒）；0 = 不插入等待。录制带入的实测停顿会叠加在它之上；单个步骤填了「间隔」则整体覆盖这两者。',
     stepIntervalStartHint: '想从中途开始跑？点步骤行右侧的「⋮」→「从此步开始运行」，前面的步骤不会执行。',
     startIndexLabel: '运行起点',
     startIndexShort: '第 {n} 步起',

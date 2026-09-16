@@ -778,7 +778,7 @@ export default {
     collapseProject: 'Collapse project',
     noStepsHint: 'No steps yet — record or click "Add Step"',
     // Recording captures actions only: pacing comes from the run settings "Step interval"
-    recordIntervalHint: 'Recording captures the actions only — the wait between steps comes from the run settings "Step interval"',
+    recordIntervalHint: 'Recording also captures each step\'s real pause; at replay "recorded pause + step interval" are added together',
     // Step parameter fields
     f: {
       required: 'Please fill in {field}',
@@ -807,7 +807,10 @@ export default {
       onErrorAbort: 'Abort the run',
       intervalMs: 'Interval (ms)',
       intervalDefault: 'Default {n}',
-      intervalHint: 'Extra wait before this step (ms); 0 = no wait for this step, empty = use the run default interval',
+      intervalHint: 'Extra wait before this step (ms); 0 = no wait for this step (it also overrides any recorded pause), empty = use the run default interval (a recorded step adds its own recorded pause on top)',
+      intervalRecorded: 'Recorded pause',
+      intervalRecordedValue: 'Recorded {n} ms',
+      intervalRecordedHint: 'The real gap between the previous operation and this one, measured while recording (read-only); at replay it is added on top of the default interval. To override it, fill the "Interval" field above.',
     },
     // Step action labels
     act: {
@@ -833,7 +836,7 @@ export default {
     runConfigExec: 'Execution',
     runConfigErrors: 'Error handling',
     stepInterval: 'Step interval',
-    stepIntervalHint: 'Default wait before every step (ms); 0 = no interval. A single step can override it in its own editor.',
+    stepIntervalHint: 'Default wait before every step (ms); 0 = no interval. A recorded pause is added on top of it; filling a step\'s own "Interval" overrides both.',
     stepIntervalStartHint: 'Want to start midway? Use the "⋮" menu on a step row → Run from this step; earlier steps are skipped.',
     startIndexLabel: 'Started at step',
     startIndexShort: 'from #{n}',

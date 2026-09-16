@@ -906,8 +906,9 @@ function runFromStep(index: number) {
 }
 
 /**
- * 运行配置里的「步骤间隔」：写进页面偏好并持久化。单独一步可以用自己的
- * `delay_ms` 覆盖它（0 = 该步不等待）。
+ * 运行配置里的「步骤间隔」：写进页面偏好并持久化。实际等待是**叠加**的 ——
+ * `默认间隔 + 步骤的 recorded_gap_ms`（录制带入的实测停顿）；单独一步填了
+ * `delay_ms` 则整体覆盖这两者（0 = 该步不等待）。
  */
 function onStepIntervalChange(v: number) {
   const n = Math.max(0, Math.round(Number(v) || 0))

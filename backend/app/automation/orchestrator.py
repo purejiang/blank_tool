@@ -35,6 +35,11 @@ Run span / pacing:
     (except the first executed one) so a script does not need hand-written
     ``wait`` steps between every action. A step may override it with its own
     ``delay_ms`` (0 = no wait for that step).
+  * ``recorded_gap_ms`` (recorded steps only) is the pause the recorder
+    measured between two real operations. It is ADDITIVE: a recorded step
+    waits ``step_interval_ms + recorded_gap_ms``, so recording keeps its true
+    rhythm AND still gets the run-level interval. An explicit ``delay_ms``
+    replaces both.
 """
 
 import json
@@ -119,14 +124,38 @@ def _interruptible_sleep(ctx, ms: int) -> None:
         time.sleep(min(_INTERVAL_SLICE_S, max(0.0, deadline - time.time())))
 
 
+def _recorded_gap_ms(step: Dict[str, Any]) -> int:
+    """Pause measured while recording this step, in ms (``recorded_gap_ms``).
+
+    Written only by the recorder (上一步触摸结束 → 这一步触摸结束 的设备时间差),
+    so hand-written steps simply have no such key. Malformed / negative /
+    boolean payloads collapse to 0 — same defensive stance as ``delay_ms``.
+    """
+    raw = step.get("recorded_gap_ms")
+    if raw is None or isinstance(raw, bool):
+        return 0
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _step_gap_ms(step: Dict[str, Any], run_interval_ms: int, is_first: bool) -> int:
     """Wait BEFORE this step, in ms.
 
-    An explicit ``delay_ms`` on the step always wins (``0`` = this step needs
-    no wait). Otherwise the run-level ``step_interval_ms`` applies — except
-    before the FIRST executed step: there is no previous step to space away
-    from, which is exactly the case when a run starts midway (``start_index``)
-    or when the script's first step launches the app.
+    Resolution order:
+
+    1. An explicit ``delay_ms`` on the step always wins (``0`` = this step needs
+       no wait). It REPLACES the run-level interval and any recorded pause —
+       that is how a user silences one step's pacing.
+    2. Otherwise the wait is ADDITIVE: ``step_interval_ms`` + ``recorded_gap_ms``.
+       录制的实测节奏因此不会被默认间隔抹掉（也不是二选一），默认间隔对**每**
+       一步都照常生效。
+    3. Before the FIRST executed step there is nothing to space away from, so
+       the wait is 0 — exactly the case when a run starts midway
+       (``start_index``) or when the script's first step launches the app.
+       A recorded pause is dropped there too: it was measured against a
+       previous step this run never executed.
     """
     raw = step.get("delay_ms")
     if not isinstance(raw, bool):
@@ -135,7 +164,9 @@ def _step_gap_ms(step: Dict[str, Any], run_interval_ms: int, is_first: bool) -> 
                 return max(0, int(raw))
         except (TypeError, ValueError):
             pass
-    return 0 if is_first else run_interval_ms
+    if is_first:
+        return 0
+    return run_interval_ms + _recorded_gap_ms(step)
 
 
 def run(
@@ -426,10 +457,11 @@ def run(
         for i in range(start_index, n):
             step = steps[i]
 
-            # Inter-step interval (run-level default, per-step `delay_ms`
-            # overrides). Done BEFORE the cancel check on purpose: the sleep is
-            # sliced, so a Stop pressed during it lands here within ~50ms and
-            # the check right below reports "cancelled before step N".
+            # Inter-step interval: run-level default + the recorded pause
+            # (`recorded_gap_ms`, recording only), with per-step `delay_ms`
+            # overriding both. Done BEFORE the cancel check on purpose: the
+            # sleep is sliced, so a Stop pressed during it lands here within
+            # ~50ms and the check right below reports "cancelled before step N".
             gap_ms = _step_gap_ms(step, interval_ms, i == start_index)
             if gap_ms > 0:
                 _interruptible_sleep(context, gap_ms)

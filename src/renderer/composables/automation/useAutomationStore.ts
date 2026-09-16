@@ -54,7 +54,8 @@ export interface AutomationUiState {
   enableChineseInput: boolean
   /**
    * 步骤之间的默认等待（ms）。**0 = 不等待**，所以它是唯一允许为 0 的数值项
-   * （sanitize 里单独处理）。单个步骤可以用自己的 `delay_ms` 覆盖它。
+   * （sanitize 里单独处理）。录制步骤的实测停顿（`recorded_gap_ms`）**叠加**
+   * 在它之上；单个步骤用自己的 `delay_ms` 则整体覆盖这两者。
    */
   stepIntervalMs: number
 }
@@ -543,11 +544,16 @@ export function useAutomationStore(isBusy?: () => boolean) {
    * ({action:'tap', x, y, ts} / {action:'swipe', x1..y2, duration_ms, ts});
    * convert them into the v2 nested model here, at the boundary.
    *
-   * `ts` (device time) is deliberately DROPPED: 录制只记录操作本身，步骤之间的
-   * 节奏由运行配置里的默认步骤间隔（ui.stepIntervalMs）+ 单步 `delay_ms` 控制，
-   * 所以脚本里不需要（也不再使用）录制时间线。
+   * `ts` (device time, seconds of the touch END marker) is NOT stored on the
+   * step — it only feeds `recorded_gap_ms`：与**上一步**的 ts 差值 = 录制时的
+   * 实测停顿。后端把它叠加在运行级默认间隔**之上**（orchestrator._step_gap_ms），
+   * 所以录制既保住真实节奏，也照常吃默认间隔；手工步骤没有这个键，行为不变。
+   *
+   * 差值取的是「上一步触摸结束 → 这一步触摸结束」，因此这一步自身的滑动时长也
+   * 被算进去了（上限就是这一下的手势时长，两步之间没停顿时会略微偏大）。
+   * 第一步没有前序可比，不写这个键。
    */
-  function toV2Step(raw: any): Step {
+  function toV2Step(raw: any, prevTs?: number): Step {
     const base: any = { id: genId(), action: raw?.action }
     if (raw?.action === 'tap') {
       base.mode = 'coord'
@@ -558,6 +564,12 @@ export function useAutomationStore(isBusy?: () => boolean) {
         x2: Number(raw.x2) || 0, y2: Number(raw.y2) || 0,
         duration_ms: Number(raw.duration_ms) || 300,
       }
+    }
+    const ts = Number(raw?.ts)
+    if (prevTs !== undefined && Number.isFinite(ts) && Number.isFinite(prevTs)) {
+      const gap = Math.round((ts - prevTs) * 1000)
+      // 0 / 负数（时钟回跳、同一时刻的两步）不写：没有停顿就没有可叠加的量。
+      if (gap > 0) base.recorded_gap_ms = gap
     }
     return base
   }
@@ -582,8 +594,10 @@ export function useAutomationStore(isBusy?: () => boolean) {
     }
 
     const raw = Array.isArray(payload?.steps) ? payload.steps : []
-    // 直接插入录到的操作：等待不再合成步骤（见 toV2Step 的注释）
-    const add = raw.map(toV2Step)
+    // 直接插入录到的操作：等待不再合成步骤，但每步的实测停顿随步骤一起落库
+    // （`recorded_gap_ms`，见 toV2Step），运行时叠加在默认间隔之上。
+    const add = raw.map((s: any, i: number) =>
+      toV2Step(s, i > 0 ? Number(raw[i - 1]?.ts) : undefined))
 
     const old = editor.value.steps
     const at = payload?.insertAt || 'end'

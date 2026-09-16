@@ -78,6 +78,14 @@ export interface Step {
    * （`ui.stepIntervalMs`）；`0` = 这一步不等待（显式覆盖默认值）。
    */
   delay_ms?: number
+  /**
+   * 录制带入的**实测停顿**（ms）：录制时「上一步触摸结束 → 这一步触摸结束」的
+   * 设备时间差。只有录制写入（编辑表单里只读展示），手工步骤没有这个键。
+   *
+   * 运行时它是**叠加**的：实际等待 = `ui.stepIntervalMs` + `recorded_gap_ms`；
+   * 一旦手工填了 `delay_ms`，两者都被它整体取代（见后端 orchestrator._step_gap_ms）。
+   */
+  recorded_gap_ms?: number
   [key: string]: unknown
 }
 

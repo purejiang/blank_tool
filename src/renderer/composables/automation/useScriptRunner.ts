@@ -23,7 +23,8 @@ export interface RunPayload {
   use_ime?: boolean
   /** 从脚本的第几步开始执行（0 基，缺省 0 = 从头跑）。 */
   start_index?: number
-  /** 步骤之间的默认等待（ms，0 = 不等待）。单步可用 `delay_ms` 覆盖。 */
+  /** 步骤之间的默认等待（ms，0 = 不等待）。录制带入的实测停顿
+   *  (`recorded_gap_ms`) 叠加在它之上；单步可用 `delay_ms` 覆盖这两者。 */
   step_interval_ms?: number
 }
 
