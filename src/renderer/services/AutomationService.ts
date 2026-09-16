@@ -35,11 +35,15 @@ export interface TrafficStatus {
 
 /**
  * Sentinel message the install watchdog rejects with when a stream has been
- * totally silent for INSTALL_IDLE_TIMEOUT_MS. The main process deletes a
- * request entry on its per-request timeout WITHOUT emitting a terminal
- * event, so the stream's `complete` may never reach us — without the
- * watchdog the returned Promise would never settle and the install modal's
- * buttons would stay wedged until app reload.
+ * totally silent for INSTALL_IDLE_TIMEOUT_MS. The main process now emits a
+ * synthetic terminal `error` when it drops a stream — timeout `-32003` or
+ * backend exit `-32002` — carrying `stream_id` + `task_id`, so a dead
+ * transport normally settles the returned Promise. The renderer-side
+ * watchdog stays as DEFENSE-IN-DEPTH: it still covers the edges the
+ * synthetic cannot — the sender WebContents was destroyed, or the stream
+ * goes silent without its entry ever being reaped — where the Promise would
+ * otherwise never settle and the install modal's buttons would stay wedged
+ * until app reload.
  */
 export const INSTALL_IDLE_TIMEOUT = 'install-idle-timeout'
 /** Total silence (no stream event for the task_id) before the watchdog fires. */
