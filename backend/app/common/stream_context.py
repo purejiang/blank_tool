@@ -97,6 +97,20 @@ class StreamContext:
             "payload": payload,
         })
 
+    def cancelled(self, payload: Optional[dict] = None):
+        """Emit the terminal ``cancelled`` event (the user stopped the task).
+
+        Distinct from ``complete``: the payload carries no result, and the
+        consumers render "已取消" instead of a (possibly empty) result. Like
+        ``complete`` it is terminal — emit it instead of, never in addition to,
+        a ``complete``.
+        """
+        self._logger.info(f"[{self.name}] cancelled")
+        self._emit({
+            "type": "cancelled",
+            "payload": payload or {},
+        })
+
     def is_cancelled(self) -> bool:
         """Return True if the task was cancelled (stop_event set).
 

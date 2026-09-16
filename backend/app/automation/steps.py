@@ -75,6 +75,34 @@ def _err(r: Dict[str, Any], default: str) -> str:
     return "" if r.get("success", False) else (r.get("error") or default)
 
 
+# A step must never be able to flood the run log: shell output is capped here
+# (the console keeps ~5000 lines and the report is persisted to disk).
+_SHELL_LOG_MAX_CHARS = 4000
+
+
+def _log(ctx, message: str) -> None:
+    """Best-effort ``ctx.log``: handlers are also driven by tests with no ctx."""
+    fn = getattr(ctx, "log", None)
+    if callable(fn):
+        try:
+            fn(message)
+        except Exception:
+            pass
+
+
+def _truncate_output(text: str) -> str:
+    if len(text) <= _SHELL_LOG_MAX_CHARS:
+        return text
+    return text[:_SHELL_LOG_MAX_CHARS] + (
+        f"\n… (输出已截断，共 {len(text)} 字符)"
+    )
+
+
+def _first_line(text: str, max_chars: int = 200) -> str:
+    line = (text or "").strip().splitlines()[0].strip() if text else ""
+    return line[:max_chars]
+
+
 # ----------------------------------------------------------------------
 # action handlers
 # ----------------------------------------------------------------------
@@ -152,8 +180,21 @@ def _clear_app_data(ctx, device_id, package_name, step, dt) -> StepHandlerReturn
 
 
 def _shell(ctx, device_id, package_name, step, dt) -> StepHandlerReturn:
-    r = shell(device_id, str(step.get("command", "")))
-    return _ok(r), _err(r, "shell failed"), None
+    command = str(step.get("command", ""))
+    r = shell(device_id, command)
+    ok = _ok(r)
+    out = str(r.get("stdout") or "").strip()
+    if out:
+        # Surface the command's output in the run log. A shell step is almost
+        # always a probe (`getprop`, `dumpsys`, `pm list`) whose VALUE is the
+        # answer — swallowing it made the step useless for diagnostics and
+        # forced a manual `adb shell` outside the app.
+        _log(ctx, f"$ {command}\n{_truncate_output(out)}")
+        if ok:
+            # keep the first line on the step row as well: the report then
+            # shows what the command answered, not just that it succeeded.
+            return True, _first_line(out), None
+    return ok, _err(r, "shell failed"), None
 
 
 def _wait(ctx, device_id, package_name, step, dt) -> StepHandlerReturn:

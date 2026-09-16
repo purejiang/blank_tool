@@ -56,8 +56,9 @@ def input_text(device_id: str, text: str) -> Dict[str, Any]:
             return {
                 "success": False,
                 "error": (
-                    "non-ASCII input requires ADBKeyboard ({err}); install "
-                    "ADBKeyBoard.apk from github.com/senzhk/ADBKeyBoard"
+                    "non-ASCII input requires ADBKeyboard ({err}); install the "
+                    "APK from github.com/senzhk/ADBKeyBoard "
+                    "(ADBKeyboard.apk, or the release's keyboardservice-debug.apk)"
                 ).format(err=err),
             }
         b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
