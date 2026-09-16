@@ -220,6 +220,63 @@ describe('ProjectTree — keyboard accessibility', () => {
   })
 })
 
+describe('ProjectTree — 展开/收起、行内信息与滚动', () => {
+  it('箭头独立控制开合：aria-expanded 跟着变，收起后脚本行消失', async () => {
+    const { w } = mountTree()
+    expect(w.get('.proj-caret').attributes('aria-expanded')).toBe('true')
+    expect(w.find('.script-row').exists()).toBe(true)
+
+    await w.get('.proj-caret').trigger('click')
+    expect(w.get('.proj-caret').attributes('aria-expanded')).toBe('false')
+    expect(w.find('.script-row').exists()).toBe(false)
+  })
+
+  it('点箭头不会顺带选中项目（开合与选中解耦）', async () => {
+    const { w, store } = mountTree()
+    await w.get('.proj-caret').trigger('click')
+    expect(store.selectProject).not.toHaveBeenCalled()
+  })
+
+  it('当前项目行与正在编辑的脚本行用不同的选中态', () => {
+    const store = makeStore([structuredClone(PROJECT)])
+    store.selectedScriptId = 's1'
+    const { w } = mountTree(store)
+    // 项目行 = 当前项目（current），脚本行 = 正在编辑（active）
+    expect(w.get('.proj-row').classes()).toContain('current')
+    expect(w.get('.script-row').classes()).toContain('active')
+  })
+
+  it('行内徽标：项目行显示脚本数、脚本行显示步骤数', () => {
+    const { w } = mountTree()
+    const pills = w.findAll('.app-pill')
+    expect(pills.map((p) => p.text())).toEqual(['1', '1'])
+    expect(pills[0].attributes('title')).toBe('automation.scriptCountBadge')
+    expect(pills[1].attributes('title')).toBe('automation.stepCountBadge')
+  })
+
+  it('项目下没有脚本时给一行提示，新建脚本按钮仍在', () => {
+    const store = makeStore([{ id: 'p9', name: 'empty', scripts: [] }])
+    const { w } = mountTree(store)
+    expect(w.get('.scripts-empty').text()).toBe('automation.noScript')
+    expect(w.find('.scripts button').exists()).toBe(true)
+  })
+
+  it('滚动容器是 n-scrollbar（不再预留原生滚动条车道）', () => {
+    const { w } = mountTree()
+    expect(w.find('.n-scrollbar').exists()).toBe(true)
+    expect(w.find('.tree-body').exists()).toBe(true)
+  })
+
+  it('无项目时给出可直接新建的空态', async () => {
+    const store = makeStore([])
+    const { w } = mountTree(store)
+    const btn = w.findAll('button').find((b) => b.text().includes('automation.newProject'))
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(store.newProject).toHaveBeenCalled()
+  })
+})
+
 describe('ProjectTree — id helper sanity', () => {
   it('genId produces distinct ids (the import fallback relies on it)', () => {
     expect(genId()).not.toBe(genId())

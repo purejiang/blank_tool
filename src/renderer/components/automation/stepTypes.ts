@@ -65,8 +65,6 @@ export interface Step {
   expect?: 'exists' | 'not_exists'
   activity?: string
   name?: string
-  /** device-time seconds of the touch END marker (recorded steps only) */
-  ts?: number
   /** user note — what this step is for (metadata only, ignored at replay) */
   note?: string
   /**
@@ -75,6 +73,11 @@ export interface Step {
    * `abort` = stop the run. Absent = inherit the run setting (default abort).
    */
   on_error?: 'continue' | 'abort'
+  /**
+   * 该步骤**执行前**额外等待的时间（ms）。Absent = 用运行配置里的默认间隔
+   * （`ui.stepIntervalMs`）；`0` = 这一步不等待（显式覆盖默认值）。
+   */
+  delay_ms?: number
   [key: string]: unknown
 }
 

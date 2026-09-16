@@ -9,14 +9,20 @@
     </div>
 
     <div class="settings-body">
-      <!-- 左侧导航：组级切换，组内所有设置卡一起展示 -->
-      <aside class="settings-nav" :style="{ top: navTop + 'px' }">
+      <!-- 左侧导航：组级切换，组内所有设置卡一起展示。
+           tablist 语义 + 键盘操作（方向键/Home/End 切换，Enter/Space 选中）：
+           roving tabindex —— 只有当前项可 Tab 到，其余用方向键进入。 -->
+      <aside class="settings-nav" role="tablist" aria-orientation="vertical" :style="{ top: navTop + 'px' }">
         <div
           v-for="item in navItems"
           :key="item.key"
           class="app-nav-item"
           :class="{ active: activePanel === item.key }"
+          role="tab"
+          :aria-selected="activePanel === item.key"
+          :tabindex="activePanel === item.key ? 0 : -1"
           @click="activePanel = item.key"
+          @keydown="onNavKeydown($event)"
         >
           <n-icon size="14"><component :is="item.icon" /></n-icon>
           <span>{{ item.label }}</span>
@@ -77,10 +83,11 @@
           </div>
           <div class="set-row">
             <div class="set-info">
-              <div class="set-label">{{ t('settings.useProxyForDownload') }}</div>
-              <div class="set-desc">{{ t('settings.useProxyForDownloadDesc') }}</div>
+              <div class="set-label">{{ t('settings.downloadProxyMode') }}</div>
+              <div class="set-desc">{{ t('settings.downloadProxyModeDesc') }}</div>
             </div>
-            <n-switch v-model:value="general.useProxyForDownload" @update:value="saveGeneral" />
+            <n-select v-model:value="general.useProxyForDownload" @update:value="saveGeneral"
+              :options="proxyOptions" class="set-control set-w200" />
           </div>
           <div class="set-row">
             <div class="set-info">
@@ -139,6 +146,7 @@
             :path="row.path"
             :placeholder="t('settings.runtimeUnknown')"
             :hint="row.hint"
+            :exists="pathExists['runtime:' + row.key]"
             editable
             :overridden="row.overridden"
             @edit="handleBrowseRuntime(row)"
@@ -175,19 +183,18 @@
           </span>
         </div>
         <div class="path-list">
+          <!-- 服务目录由应用自身决定（BT_SERVER_DIR 在 spawn 时注入），不提供修改入口 -->
           <PathRow
             :label="t('settings.serviceDir')"
             :path="displayPaths.server"
             placeholder=".\backend"
-            editable
-            :edit-title="t('settings.selectDir')"
-            @edit="handleBrowseDirectory('server')"
+            :exists="pathExists['server']"
           />
         </div>
       </n-card>
       </section>
 
-      <!-- Tools & dependencies: built-in tools + automation components -->
+      <!-- Tools & dependencies: built-in tools（自动化组件已迁到自动化页的运行配置） -->
       <section v-show="activePanel === 'runtime'">
       <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Wrench /></n-icon>
@@ -204,6 +211,7 @@
             label-mono
             :path="toolPaths[tool.name] || tool.defaultPath"
             :placeholder="t('settings.runtimeUnknown')"
+            :exists="pathExists['tool:' + tool.name]"
             editable
             :editing="validatingTool === tool.name"
             :overridden="!!customPathOverrides[tool.name]"
@@ -217,71 +225,6 @@
               <span class="path-badge" :class="{ 'is-missing': !tool.version }">
                 {{ tool.version || t('common.unknown') }}
               </span>
-            </template>
-            <template #actions>
-              <n-icon v-if="tool.status === 'available'" size="14" color="var(--app-green)"><CheckCircle /></n-icon>
-              <n-icon v-else size="14" color="var(--app-yellow)"><AlertCircle /></n-icon>
-            </template>
-          </PathRow>
-        </div>
-
-        <!-- Automation components: tools the automation feature reaches for
-             (mitmproxy on the PC, ADBKeyBoard on the device) -->
-        <div class="dep-sub-head app-subhead app-subhead--sm app-subhead--muted">{{ t('settings.automationComponents') }}</div>
-        <div class="card-toolbar">
-          <div class="card-toolbar-actions">
-            <n-button size="tiny" quaternary :loading="isResettingTraffic" @click="resetTrafficProxy">
-              <template #icon><n-icon size="14"><Wrench /></n-icon></template>
-              {{ t('settings.trafficReset') }}
-            </n-button>
-            <n-button size="tiny" quaternary :loading="isLoadingCapabilities" @click="refreshCapabilities">
-              <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
-              {{ t('settings.refreshStatus') }}
-            </n-button>
-          </div>
-        </div>
-
-        <div class="path-list">
-          <!-- Traffic capture (PC side: mitmproxy) — 只读路径：不提供修改入口 -->
-          <PathRow
-            :label="t('settings.trafficCaptureRow')"
-            :path="trafficStatus?.lib_path || ''"
-            :placeholder="t('settings.runtimeUnknown')"
-            :hint="trafficStatus && !trafficStatus.ready ? trafficHintText : ''"
-          >
-            <template #badge>
-              <span class="path-badge" :class="trafficReady ? 'is-ok' : 'is-missing'">{{ trafficStateText }}</span>
-            </template>
-            <template #actions>
-              <n-icon size="14" :style="{ color: trafficReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
-                <CheckCircle v-if="trafficReady" /><AlertCircle v-else />
-              </n-icon>
-            </template>
-          </PathRow>
-
-          <!-- Chinese input (device side: ADBKeyBoard) — 设备状态列表，无路径 -->
-          <PathRow
-            :label="t('settings.imeRow')"
-            :hint="imeStatuses.some(s => !s.installed) ? t('settings.imeInstallHint') : ''"
-          >
-            <template #value>
-              <div v-if="!deviceStore.sortedDevices.length" class="ime-lines">
-                <div class="ime-line">{{ t('settings.imeNoDevice') }}</div>
-              </div>
-              <div v-else class="ime-lines">
-                <div v-for="st in imeStatuses" :key="st.device_id" class="ime-line">
-                  <n-icon size="12" :style="{ color: st.installed ? 'var(--app-green)' : 'var(--app-yellow)' }">
-                    <CheckCircle v-if="st.installed" /><AlertCircle v-else />
-                  </n-icon>
-                  <span>{{ st.device_id }} · {{ st.installed ? t('settings.imeInstalled') : t('settings.imeNotInstalled') }}</span>
-                  <span v-if="st.active"> · {{ t('settings.imeActive') }}</span>
-                </div>
-              </div>
-            </template>
-            <template #actions>
-              <n-icon size="14" :style="{ color: imeAllReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
-                <CheckCircle v-if="imeAllReady" /><AlertCircle v-else />
-              </n-icon>
             </template>
           </PathRow>
         </div>
@@ -311,6 +254,7 @@
             :label="String(cfg.name ?? '')"
             :path="String(cfg.path ?? '')"
             :placeholder="t('common.unknown')"
+            :exists="pathExists['sig:' + cfg.id]"
           >
             <template #badge>
               <span class="path-badge">{{ cfg.alias }}</span>
@@ -526,9 +470,9 @@ import { Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCir
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { formatBytes } from '@utils/format'
+import { handleNavKeydown } from '@utils/navKeys'
 import { useNotification } from '@composables/useNotification'
 import { useSystemStore, useToolStore, useUpdateStore } from '@stores/index'
-import { useDeviceStore } from '@stores/deviceStore'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { storeToRefs } from 'pinia'
 import { useSignatureStore } from '@stores/signatureStore'
@@ -536,7 +480,6 @@ import SignatureEditModal from '@components/package/SignatureEditModal.vue'
 import PathRow from '@components/common/PathRow.vue'
 import IconButton from '@components/common/IconButton.vue'
 import { setMaxConcurrent } from '@services/TaskExecutionService'
-import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
 import type UpdateService from '@services/UpdateService'
 
 const { t } = useI18n()
@@ -604,8 +547,48 @@ const logLevelOptions = [
   { label: 'Warn', value: 'warn' },
   { label: 'Error', value: 'error' },
 ]
-const pathSettings = reactive({ server: '.\\backend' })
 const displayPaths = reactive({ server: '', runtimeExecutable: '' })
+
+// ---------------- 路径存在性探测（路径后的 ✓ / ！） ----------------
+// key → 是否存在；键缺失 = 未知（不渲染图标）
+const pathExists = reactive<Record<string, boolean>>({})
+
+/**
+ * 逐条探测设置页展示的路径是否存在。
+ *
+ * 只要「这个路径上有没有东西」——不判断它是不是可用的工具/运行时（那是
+ * tool.status / version 的职责），所以统一用主进程的 getFileStats，失败即为不存在。
+ */
+const probePaths = async () => {
+  const targets: Array<{ key: string; path: string }> = []
+  for (const row of runtimeRows.value) targets.push({ key: `runtime:${row.key}`, path: row.path })
+  for (const tool of toolList.value) {
+    targets.push({ key: `tool:${tool.name}`, path: toolPaths[tool.name] || tool.defaultPath })
+  }
+  if (displayPaths.server) targets.push({ key: 'server', path: displayPaths.server })
+  // Python 行展示的是「实际在用」的解释器，配置的那个（相对 runtime/ 解析）另测一份：
+  // 配置路径不存在时要提示已回退到系统 Python。
+  if (displayPaths.runtimeExecutable) {
+    targets.push({ key: 'python:configured', path: displayPaths.runtimeExecutable })
+  }
+  for (const cfg of sigConfigs.value as any[]) {
+    targets.push({ key: `sig:${cfg.id}`, path: String(cfg.path ?? '') })
+  }
+
+  let svc: any = null
+  try { svc = await serviceManager.getService('system') } catch { /* 探测失败 = 全部未知 */ }
+  if (!svc || typeof svc.getFileStats !== 'function') return
+
+  await Promise.all(targets.map(async ({ key, path }) => {
+    if (!path || !path.trim()) { delete pathExists[key]; return }
+    try {
+      const res = await svc.getFileStats(path)
+      pathExists[key] = res?.success === true
+    } catch {
+      delete pathExists[key]
+    }
+  }))
+}
 const cacheInfo = ref({
   tasks: { size: 0, files: 0 },
   output: { size: 0, files: 0 },
@@ -634,6 +617,12 @@ const navItems = computed(() => [
 const panelTitle = computed(() =>
   navItems.value.find(i => i.key === activePanel.value)?.label || ''
 )
+/** 左栏 tablist 的键盘操作（见 utils/navKeys） */
+function onNavKeydown(event: KeyboardEvent) {
+  handleNavKeydown(event, navItems.value.map(i => i.key), activePanel.value, (key) => {
+    activePanel.value = key
+  })
+}
 
 // 左栏 sticky 的吸附位必须让开页头：页头自己也是 sticky top:0 + z-index:10，
 // 左栏若也贴 top:0 会钻到页头底下被盖住（表现为「列表跟着滚、小标题消失」）。
@@ -704,31 +693,6 @@ async function checkForUpdate(): Promise<void> {
   }
 }
 
-// ---------------- automation capabilities ----------------
-const deviceStore = useDeviceStore()
-const trafficStatus = ref<TrafficStatus | null>(null)
-const imeStatuses = ref<ImeStatus[]>([])
-const isLoadingCapabilities = ref(false)
-
-const trafficReady = computed(() => trafficStatus.value?.ready === true)
-const trafficStateText = computed(() => {
-  const s = trafficStatus.value
-  if (!s) return t('settings.trafficFetchFailed')
-  if (s.ready) return t('settings.trafficReady')
-  if (s.python_mismatch) return t('settings.trafficPythonMismatch')
-  return t('settings.trafficNotInstalled')
-})
-const trafficHintText = computed(() => {
-  const s = trafficStatus.value
-  if (s?.python_mismatch) return s.python_mismatch
-  return t('settings.trafficInstallHint')
-})
-const imeAllReady = computed(() =>
-  deviceStore.sortedDevices.length > 0 &&
-  imeStatuses.value.length > 0 &&
-  imeStatuses.value.every(s => s.installed)
-)
-
 // ---------------- local runtimes (Java / Python / Node) ----------------
 // A path counts as "overridden" only when the user picked one; otherwise the
 // backend (java) / Electron (node) discovery chain decides and we just report
@@ -758,6 +722,20 @@ interface RuntimeRow {
   hint: string
 }
 
+/**
+ * Python 行展示「实际在用」的解释器（后端 build.info 回报的 sys.executable /
+ * 配置的解释器），与 Java / Node 两行一致。配置的那个路径（相对 runtime/ 解析）
+ * 不存在时给出回退说明 —— 否则界面上会是一个查无此文件的路径，让人以为坏了。
+ */
+const pythonRuntimeHint = computed(() => {
+  const configured = displayPaths.runtimeExecutable
+  if (!configured) return ''
+  if (pathExists['python:configured'] !== false) return ''
+  return runtimeOverrides.runtimeExecutable
+    ? t('settings.runtimeOverrideMissing', { path: configured })
+    : t('settings.runtimeFallback', { path: configured })
+})
+
 const runtimeRows = computed<RuntimeRow[]>(() => [
   {
     key: 'java',
@@ -770,14 +748,16 @@ const runtimeRows = computed<RuntimeRow[]>(() => [
   },
   {
     // Python: the editable key is `runtimeExecutable` — that IS the
-    // interpreter we spawn, so changing it really swaps the runtime.
+    // interpreter we spawn (relative to runtime/), so changing it really
+    // swaps the runtime. The row shows what the backend actually runs on,
+    // not the configured candidate.
     key: 'python',
     label: t('settings.runtimePython'),
     version: buildInfo.pythonVersion,
-    path: displayPaths.runtimeExecutable || buildInfo.pythonPath,
+    path: buildInfo.pythonPath || displayPaths.runtimeExecutable,
     configKey: 'runtimeExecutable',
     overridden: !!runtimeOverrides.runtimeExecutable,
-    hint: ''
+    hint: pythonRuntimeHint.value
   },
   {
     // Node is displayed honestly: the backend has no Node consumer today
@@ -829,57 +809,15 @@ async function loadServiceInfo() {
   } catch { /* best-effort: the card renders an unknown state instead */ }
 }
 
-const refreshCapabilities = async () => {
-  isLoadingCapabilities.value = true
-  try {
-    const svc = await serviceManager.getService('automation')
-    trafficStatus.value = await svc.getTrafficStatus(true)
-    const devices = deviceStore.sortedDevices
-    if (!devices.length) {
-      imeStatuses.value = []
-      return
-    }
-    const probed = await Promise.all(devices.map(d => svc.getImeStatus(d.id)))
-    imeStatuses.value = probed.filter((s): s is ImeStatus => s !== null)
-  } catch (e) { log.error('Failed to refresh automation capabilities:', e) }
-  finally { isLoadingCapabilities.value = false }
-}
-
-/**
- * Manual repair for a device left pointing at a dead capture proxy.
- *
- * The backend already self-heals at startup; this covers the case where the
- * proxy is stuck while the app keeps running (mitmdump killed externally).
- * Idempotent — `restored: []` means there was nothing stale.
- */
-const isResettingTraffic = ref(false)
-const resetTrafficProxy = async () => {
-  if (isResettingTraffic.value) return
-  isResettingTraffic.value = true
-  try {
-    const svc = await serviceManager.getService('automation')
-    const res = await svc.resetTraffic()
-    if (!res?.success) {
-      showError(res?.error || t('settings.trafficResetFailed'))
-      return
-    }
-    const restored = res.restored || []
-    if (!restored.length) {
-      showInfo(t('settings.trafficResetNothing'))
-      return
-    }
-    showSuccess(t('settings.trafficResetDone', { count: restored.length }))
-    await refreshCapabilities()
-  } catch (e: any) {
-    showError(e?.message || String(e))
-  } finally {
-    isResettingTraffic.value = false
-  }
-}
-
 const langOptions = computed(() => [
   { label: t('settings.simplifiedChinese'), value: 'zh-CN' },
   { label: t('settings.english'), value: 'en-US' },
+])
+// 「下载使用代理」下拉：跟随系统 = 先走系统/环境代理（失败回落直连），直连 = 永不使用代理。
+// 底层仍是 boolean（app-config `useProxyForDownload` → 后端 `use_proxy`），故老值语义不变。
+const proxyOptions = computed(() => [
+  { label: t('settings.proxyFollowSystem'), value: true },
+  { label: t('settings.proxyDirect'), value: false },
 ])
 const themeOptions = computed(() => [
   { label: t('settings.themeAuto'), value: 'auto' },
@@ -918,7 +856,6 @@ const loadSettings = async () => {
       for (const key of Object.keys(general)) {
         if (Object.prototype.hasOwnProperty.call(s, key)) (general as any)[key] = s[key]
       }
-      if (s.server) pathSettings.server = s.server as string
       // Runtime overrides: empty means "let the discovery chain decide".
       for (const key of Object.keys(runtimeOverrides)) {
         runtimeOverrides[key] = typeof s[key] === 'string' ? s[key] as string : ''
@@ -960,33 +897,6 @@ const saveLogLevel = async (value: string) => {
     await window.electronAPI.appConfig.set('logs.level', value)
     notifySaved()
   } catch (e) { log.error('Failed to save log level:', e) }
-}
-
-const savePaths = async () => {
-  try {
-    const svc = await serviceManager.getService('settings')
-    await svc.saveSettings({ server: pathSettings.server })
-    notifySaved()
-  } catch (e: any) { showError(t('settings.pathsFailed'), e.message) }
-}
-
-const handleBrowseDirectory = async (target: 'server') => {
-  try {
-    const svc = await serviceManager.getService('system')
-    const result = await svc.selectDirectory({ title: t('settings.selectDir') })
-    // dialog.showOpenDialog returns { canceled, filePaths }. Some builds also
-    // surface the picked folder as `directoryPath`, so accept both shapes.
-    const dir = result?.filePaths?.[0] || result?.directoryPath
-    if (!dir) return
-    pathSettings[target] = dir
-    const settingsSvc = await serviceManager.getService('settings')
-    const paths = await settingsSvc.resolveDisplayPaths(pathSettings)
-    displayPaths.server = paths.server || ''
-    await savePaths()
-    // BT_SERVER_DIR is injected when the Python backend is spawned, so a new
-    // path only takes effect after restarting the app.
-    showWarning(t('settings.pathRestartHint'))
-  } catch (e) { showError(t('settings.selectDirFailed')) }
 }
 
 const refreshCache = async () => {
@@ -1148,7 +1058,6 @@ onMounted(() => {
   log.debug('设置页面已挂载')
   loadSettings()
   refreshCache()
-  refreshCapabilities()
   void loadRunStats()
   // Runtime versions/paths and the service version are cached in the system
   // store, but a direct landing on this page can race the bootstrap — refetch.
@@ -1159,7 +1068,20 @@ onMounted(() => {
     Object.assign(customPathOverrides, toolStore.customPaths)
     Object.assign(toolPaths, toolStore.customPaths)
   })
+  void probePaths()
 })
+
+// 路径一旦变化（选择新路径 / 重置 / 构建信息异步到位）就重新探测存在性
+watch(
+  () => [
+    runtimeRows.value.map(r => r.path).join('|'),
+    toolList.value.map(t => toolPaths[t.name] || t.defaultPath).join('|'),
+    displayPaths.server,
+    displayPaths.runtimeExecutable,
+    (sigConfigs.value as any[]).map(c => `${c.id}:${c.path ?? ''}`).join('|'),
+  ].join('||'),
+  () => { void probePaths() },
+)
 </script>
 
 <style scoped>
@@ -1167,9 +1089,11 @@ onMounted(() => {
 .settings-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; z-index: 5; background: var(--app-body-bg); }
   /* top 由 script 实测页头高度后注入（见 navTop）：不能与页头抢 top:0 */
 .settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-.panel-title { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-text-primary); margin-bottom: 2px; }
-/* 区块标题行只承载标题（图标 + 文案）：按钮 / 状态 / 统计统统进卡片 */
-.panel-sec { gap: 6px; margin-bottom: 0; }
+.panel-title { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-text-primary); margin-bottom: 0; }
+/* 区块标题行只承载标题（图标 + 文案）：按钮 / 状态 / 统计统统进卡片。
+   下边距 10px 让「分区小标题」和它自己的卡片成为一组；组与组之间由 .settings-panel
+   的 14px gap 负责 —— 这样三层节奏（面板标题 / 分区标题 / 卡片）才一致。 */
+.panel-sec { gap: 6px; margin-bottom: 10px; }
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
 /* 卡片内的工具栏行：左侧统计文案，右侧操作按钮 */
 .card-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -1180,9 +1104,6 @@ onMounted(() => {
 .path-badge { font-size: var(--app-font-size-xs); font-weight: 500; color: var(--app-text-muted); white-space: nowrap; }
 .path-badge.is-ok { color: var(--app-green); }
 .path-badge.is-missing { color: var(--app-yellow); }
-/* 自动化中文输入（ADBKeyBoard）：按设备逐行列出，没有单一路径 */
-.ime-lines { display: flex; flex-direction: column; gap: 2px; }
-.ime-line { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-sm); color: var(--app-text-muted); font-family: var(--app-font-mono); }
 
 .set-rows { display: flex; flex-direction: column; margin-top: 6px; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 0; }

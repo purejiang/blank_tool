@@ -50,6 +50,13 @@ export interface AutomationUiState {
   continueOnError: boolean
   /** 目标进程消失/重启即中止（默认 true） */
   abortOnCrash: boolean
+  /** 允许运行时切换输入法以输入中文（默认 true；关闭后含非 ASCII 的输入步骤失败） */
+  enableChineseInput: boolean
+  /**
+   * 步骤之间的默认等待（ms）。**0 = 不等待**，所以它是唯一允许为 0 的数值项
+   * （sanitize 里单独处理）。单个步骤可以用自己的 `delay_ms` 覆盖它。
+   */
+  stepIntervalMs: number
 }
 
 export const AUTOMATION_UI_DEFAULTS: AutomationUiState = {
@@ -61,6 +68,8 @@ export const AUTOMATION_UI_DEFAULTS: AutomationUiState = {
   colRight: 320,
   continueOnError: false,
   abortOnCrash: true,
+  enableChineseInput: true,
+  stepIntervalMs: 300,
 }
 
 /** `bt:*` keys the v2 build wrote; adopted once, then removed. */
@@ -84,48 +93,15 @@ export function sanitizeUi(raw: any): AutomationUiState {
     const n = Number(raw[key])
     if (Number.isFinite(n) && n > 0) out[key] = Math.round(n)
   }
+  // 0 是合法值（= 不插入间隔），所以这条不能并进上面的 `n > 0` 循环；
+  // `null`/缺失都退回默认（Number(null) === 0 会把缺失当成「明确关闭」）
+  {
+    const n = Number(raw.stepIntervalMs ?? NaN)
+    if (Number.isFinite(n) && n >= 0) out.stepIntervalMs = Math.round(n)
+  }
   if (typeof raw.continueOnError === 'boolean') out.continueOnError = raw.continueOnError
   if (typeof raw.abortOnCrash === 'boolean') out.abortOnCrash = raw.abortOnCrash
-  return out
-}
-
-/**
- * Insert fixed-wait steps between recorded steps to reproduce the TRUE
- * recorded pace. Uses each step's `ts` (device-time seconds of the touch
- * END marker); a swipe's own duration is subtracted so the wait measures
- * true idle time (touch END of prev → touch START of cur).
- *
- * Gap semantics (defaults: 500 ms jitter floor, uncapped):
- *  - `thresholdMs` is a floor: gaps <= it are skipped — sub-floor pauses
- *    are hand-speed jitter, not real waits. 0 would keep every real gap.
- *  - `maxMs` is a cap: gaps above it are clamped. 0 means "no cap", so a
- *    real long pause replays at its true length instead of a fixed value.
- * Missing/non-numeric `ts` on either side skips that gap (no wait emitted).
- */
-export function withWaits(
-  steps: Step[],
-  gap: { enabled: boolean; thresholdMs: number; maxMs: number },
-): Step[] {
-  if (!gap?.enabled || steps.length < 2) return steps
-  const out: Step[] = []
-  for (let i = 0; i < steps.length; i++) {
-    const cur = steps[i]
-    if (i > 0) {
-      const prev = steps[i - 1]
-      if (typeof prev?.ts === 'number' && typeof cur?.ts === 'number') {
-        const dur = (cur as any).path?.duration_ms ?? (cur as any).duration_ms ?? 0
-        const startOfCur = cur.ts - (Number(dur) || 0) / 1000
-        const gapMs = Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
-        if (gapMs > 0 && gapMs > gap.thresholdMs) {
-          out.push({
-            id: genId(), action: 'wait', mode: 'time',
-            ms: gap.maxMs > 0 ? Math.min(gapMs, gap.maxMs) : gapMs,
-          })
-        }
-      }
-    }
-    out.push(cur)
-  }
+  if (typeof raw.enableChineseInput === 'boolean') out.enableChineseInput = raw.enableChineseInput
   return out
 }
 
@@ -566,10 +542,13 @@ export function useAutomationStore(isBusy?: () => boolean) {
    * Recorder steps arrive in the parser's flat shape
    * ({action:'tap', x, y, ts} / {action:'swipe', x1..y2, duration_ms, ts});
    * convert them into the v2 nested model here, at the boundary.
+   *
+   * `ts` (device time) is deliberately DROPPED: 录制只记录操作本身，步骤之间的
+   * 节奏由运行配置里的默认步骤间隔（ui.stepIntervalMs）+ 单步 `delay_ms` 控制，
+   * 所以脚本里不需要（也不再使用）录制时间线。
    */
   function toV2Step(raw: any): Step {
     const base: any = { id: genId(), action: raw?.action }
-    if (typeof raw?.ts === 'number') base.ts = raw.ts
     if (raw?.action === 'tap') {
       base.mode = 'coord'
       base.coord = { x: Number(raw.x) || 0, y: Number(raw.y) || 0 }
@@ -585,7 +564,6 @@ export function useAutomationStore(isBusy?: () => boolean) {
 
   function onRecorded(payload: {
     steps: any[]
-    gap: { enabled: boolean; thresholdMs: number; maxMs: number }
     insertAt: 'end' | 'start' | 'after'
   }) {
     // 无脚本选中时拒绝写入（片段仍暂存在录制面板，可先建脚本再应用）
@@ -604,8 +582,8 @@ export function useAutomationStore(isBusy?: () => boolean) {
     }
 
     const raw = Array.isArray(payload?.steps) ? payload.steps : []
-    const gap = payload?.gap || { enabled: true, thresholdMs: 500, maxMs: 0 }
-    const add = withWaits(raw.map(toV2Step), gap)
+    // 直接插入录到的操作：等待不再合成步骤（见 toV2Step 的注释）
+    const add = raw.map(toV2Step)
 
     const old = editor.value.steps
     const at = payload?.insertAt || 'end'
@@ -620,9 +598,7 @@ export function useAutomationStore(isBusy?: () => boolean) {
       editor.value.steps = [...old, ...add]
     }
     if (stepsView.value === 'json') syncJsonText()
-    message.success(
-      gap.enabled ? t('automation.autoWaitInserted') : t('automation.recordApplied'),
-    )
+    message.success(t('automation.recordApplied'))
   }
 
   return reactive({

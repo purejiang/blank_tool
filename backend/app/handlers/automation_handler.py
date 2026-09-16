@@ -28,6 +28,7 @@ from app.automation.input import adb_ime_installed
 from app.automation.input import ime_status as ime_status_impl
 from app.automation.orchestrator import run as run_orchestration
 from app.automation.traffic import status as traffic_status_impl
+from app.automation.traffic import device_capture_readiness as device_capture_readiness_impl
 from app.automation.traffic import any_capture_active
 from app.automation.traffic import ca_cert_path
 from app.automation.traffic import install_ca as install_ca_impl
@@ -60,10 +61,18 @@ def run_automation(params, stream_handler):
 def traffic_status(params, stream_handler=None):
     """Report mitmproxy availability (non-streaming, read-only).
 
-    Backs the settings page's capability card and the automation page's
-    "capture traffic" hint. Never touches the device.
+    PC-side capability by default. An optional ``device_id`` additionally
+    reports whether THAT device can be captured (reachable / rooted / CA
+    already installed) — this backs the run-settings 「检测」 button.
+
+    Never touches the device unless ``device_id`` is given, and even then only
+    with read-only probes.
     """
-    return traffic_status_impl()
+    result = traffic_status_impl()
+    device_id = str(params.get("device_id") or "").strip()
+    if device_id:
+        result = {**result, **device_capture_readiness_impl(device_id)}
+    return result
 
 
 @logs_errors("AutomationHandler")

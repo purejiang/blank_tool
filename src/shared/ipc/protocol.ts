@@ -537,9 +537,18 @@ export interface ApiMethodMap {
       continue_on_error?: boolean
       /** 目标应用进程消失/重启时中止并导出日志（默认 true）。 */
       abort_on_crash?: boolean
+      /** 允许运行时切换设备输入法以输入非 ASCII 文本（默认 true）。
+       *  关闭时含非 ASCII 的 input 步骤直接失败，不再切换输入法。 */
+      use_ime?: boolean
       capture_traffic?: boolean
       /** Comma-separated host substrings; only matching hosts are recorded. */
       traffic_host_filter?: string
+      /** 从脚本的第几步开始执行（0 基；缺省 0 = 从头跑）。前面的步骤完全不执行，
+       *  报告里步骤编号仍保留脚本里的原始位置（第 5 步还是 #5）。 */
+      start_index?: number
+      /** 步骤之间的默认等待（ms，0 = 不等待）。每个步骤可用自身的 `delay_ms`
+       *  覆盖；从某一步开始时，第一个真正执行的步骤前不插入这个等待。 */
+      step_interval_ms?: number
       task_id: string
     }
     result: void
@@ -549,8 +558,20 @@ export interface ApiMethodMap {
   // Back the settings page's "automation capabilities" card and the
   // automation page's non-blocking run hints.
   'automation.traffic_status': {
-    params: Record<string, never>
-    result: { installed: boolean; ready: boolean; lib_path: string; python_mismatch: string | null; ca_cert_exists: boolean }
+    /** 可选 device_id：带上时额外返回该设备的抓包就绪信息（只读探测）。 */
+    params: { device_id?: string }
+    result: {
+      installed: boolean
+      ready: boolean
+      lib_path: string
+      python_mismatch: string | null
+      ca_cert_exists: boolean
+      /** 以下字段仅在请求带 device_id 时出现 */
+      device_id?: string
+      device_state?: string
+      ca_on_device?: boolean | null
+      root_available?: boolean | null
+    }
   }
   'automation.ime_status': {
     params: { device_id: string }

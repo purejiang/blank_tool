@@ -34,6 +34,14 @@ export interface TrafficStatus {
     python_mismatch: string | null
     /** CA 证书是否已生成（首次抓包运行时自动生成）。 */
     ca_cert_exists: boolean
+    /** 以下字段只在按设备探测时返回（见 getTrafficStatus 的 deviceId 参数）。 */
+    device_id?: string
+    /** `adb get-state`：device / offline / unauthorized / unknown … */
+    device_state?: string
+    /** 设备系统证书区是否已有该 CA；`null` = 证书还没生成/无法判断。 */
+    ca_on_device?: boolean | null
+    /** 设备是否可用 root（安装 CA 的前提）；`null` = 无法判断。 */
+    root_available?: boolean | null
 }
 
 /**
@@ -106,16 +114,22 @@ class AutomationService {
     /**
      * mitmproxy availability. `null` means the probe itself failed — the UI
      * shows an "unknown" state instead of pretending it is missing.
+     *
+     * Pass `deviceId` to additionally probe THAT device's capture readiness
+     * (reachable / rooted / CA installed). The cache is PER device, so a
+     * PC-only probe never masks a device-scoped one.
      */
-    async getTrafficStatus(force = false): Promise<TrafficStatus | null> {
-        if (!force && this.trafficStatus) {
-            return this.trafficStatus;
+    async getTrafficStatus(force = false, deviceId = ''): Promise<TrafficStatus | null> {
+        const key = deviceId || ''
+        if (!force && this.trafficStatus.has(key)) {
+            return this.trafficStatus.get(key)!
         }
         try {
-            this.trafficStatus = await requireApiMethod('callBackendAPI')(
-                'automation.traffic_status', {}
+            const status = await requireApiMethod('callBackendAPI')(
+                'automation.traffic_status', key ? { device_id: key } : {}
             ) as TrafficStatus;
-            return this.trafficStatus;
+            this.trafficStatus.set(key, status)
+            return status;
         } catch (error) {
             log.error('获取流量抓取组件状态失败:', error);
             return null;
@@ -310,9 +324,9 @@ class AutomationService {
         return requireApiMethod('callBackendAPI')('automation.install_ca', { device_id: deviceId })
     }
 
-    /** Drop the cached traffic probe so the next getTrafficStatus() re-fetches. */
+    /** Drop the cached traffic probes (every device) so the next call re-fetches. */
     clearTrafficCache(): void {
-        this.trafficStatus = null
+        this.trafficStatus.clear()
     }
 
     // ----------------------------------------------------------------
@@ -418,7 +432,7 @@ class AutomationService {
     private handlers: Map<string, InstallSlot> = new Map();
     /** task ids of live streaming installs — the cancel button's targets. */
     private installing: Set<string> = new Set();
-    private trafficStatus: TrafficStatus | null = null;
+    private trafficStatus: Map<string, TrafficStatus> = new Map();
 }
 
 export default AutomationService;

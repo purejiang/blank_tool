@@ -1,9 +1,8 @@
 <template>
-  <n-modal
+  <AppModal
     :show="show"
     :title="t('automation.toolsInstall')"
-    preset="card"
-    style="width: 640px"
+    :width="640"
     @update:show="emit('update:show', $event)"
   >
     <div data-testid="tool-install-modal" class="tim-root">
@@ -14,7 +13,7 @@
 
       <template v-else>
         <!-- ==================== Section 1: traffic capture (PC side) ==================== -->
-        <section data-testid="traffic-section" class="tim-block">
+        <section ref="trafficSectionEl" data-testid="traffic-section" class="tim-block">
           <div class="app-subhead">{{ t('automation.tools.sectionTraffic') }}</div>
 
           <!-- status row：与设置页的状态行同一套视觉（图标 + 状态 + 说明） -->
@@ -127,7 +126,7 @@
         </section>
 
         <!-- ==================== Section 2: ADBKeyBoard (device side) ==================== -->
-        <section data-testid="ime-section" class="tim-block">
+        <section ref="imeSectionEl" data-testid="ime-section" class="tim-block">
           <div class="app-subhead">{{ t('automation.tools.sectionIme') }}</div>
 
           <div class="tim-row">
@@ -240,14 +239,15 @@
         </section>
       </template>
     </div>
-  </n-modal>
+  </AppModal>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NModal, NProgress, NSpin, NTooltip } from 'naive-ui'
+import { NButton, NIcon, NProgress, NSpin, NTooltip } from 'naive-ui'
 import { AlertCircle, CheckCircle, Copy } from 'lucide-vue-next'
+import AppModal from '@components/common/AppModal.vue'
 import IconButton from '@components/common/IconButton.vue'
 import serviceManager from '@services/ServiceManager'
 import {
@@ -261,6 +261,8 @@ import {
 const props = defineProps<{
   show: boolean
   deviceId: string
+  /** 打开时定位到哪一段（从运行配置的抓包/输入面板进入时传入） */
+  section?: '' | 'traffic' | 'ime'
 }>()
 
 const emit = defineEmits<{
@@ -356,8 +358,18 @@ watch(() => props.show, (v) => {
   caError.value = ''
   caOk.value = false
   copied.value = ''
-  void probeAll()
+  void probeAll().then(() => focusSection())
 })
+
+/** 打开时把请求的那一段滚进视野（「引导安装」入口直接落到对应工具上） */
+const trafficSectionEl = ref<HTMLElement | null>(null)
+const imeSectionEl = ref<HTMLElement | null>(null)
+async function focusSection() {
+  if (!props.section) return
+  await nextTick()
+  const el = props.section === 'ime' ? imeSectionEl.value : trafficSectionEl.value
+  try { el?.scrollIntoView({ block: 'start' }) } catch { /* jsdom / older engines */ }
+}
 
 async function probeAll() {
   probing.value = true
@@ -564,7 +576,16 @@ watch(() => imeLogs.value.length, () => { void scrollToBottom(imeLogEl) })
 </script>
 
 <style scoped>
-.tim-root { display: flex; flex-direction: column; gap: 20px; }
+/* 固定高度 + 内部滚动：探测态 → 两段工具内容 → 安装日志逐行出现，弹窗都不再长高/缩回
+   （和运行配置弹窗同一套约定：弹窗外壳尺寸稳定，内容在内部滚）。 */
+.tim-root {
+  display: flex; flex-direction: column; gap: 20px;
+  height: 480px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+.tim-root > * { flex: none; }
 .tim-block { display: flex; flex-direction: column; gap: 10px; }
 
 /* status row：与设置页状态行同一套视觉，页面局部类 */
@@ -617,5 +638,5 @@ watch(() => imeLogs.value.length, () => { void scrollToBottom(imeLogEl) })
 .tim-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
 .tim-steps li { font-size: var(--app-font-size-sm); color: var(--app-text-muted); line-height: 1.55; }
 
-.tim-probing { display: flex; justify-content: center; padding: 24px 0; }
+.tim-probing { flex: 1; display: flex; align-items: center; justify-content: center; }
 </style>

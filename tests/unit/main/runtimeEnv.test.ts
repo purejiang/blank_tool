@@ -61,9 +61,10 @@ describe('buildBackendEnv', () => {
   })
 
   it('maps runtime override keys to the app config store keys', () => {
+    // 没有 python 项：spawn 的 Python 解释器是 `runtimeExecutable`（相对 runtime/），
+    // 不是 `pythonPath` 覆盖键（那个键已删除，改它没有任何效果）。
     expect(RUNTIME_OVERRIDE_KEYS).toEqual({
       java: 'javaPath',
-      python: 'pythonPath',
       node: 'nodePath',
     })
     // Empty default = "follow the Node this app runs on"

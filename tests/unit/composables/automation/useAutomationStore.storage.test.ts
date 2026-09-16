@@ -114,6 +114,21 @@ describe('sanitizeUi', () => {
     expect(ui.colLeft).toBe(333)
     expect(ui.elementTimeoutMs).toBe(8000)
   })
+
+  /**
+   * 步骤间隔（stepIntervalMs）是唯一允许为 0 的数值项（0 = 不插入等待），
+   * 所以它不能并进上面那条 `n > 0` 的循环里 —— 0 必须原样保留，而这正是
+   * 「我在设置里关掉了间隔」最容易丢的一个值。
+   */
+  it('stepIntervalMs: 0 是合法值（不插入间隔），缺失才退回默认', () => {
+    expect(sanitizeUi({ stepIntervalMs: 0 }).stepIntervalMs).toBe(0)
+    expect(sanitizeUi({ stepIntervalMs: '150' }).stepIntervalMs).toBe(150)
+    expect(sanitizeUi({ stepIntervalMs: -1 }).stepIntervalMs).toBe(AUTOMATION_UI_DEFAULTS.stepIntervalMs)
+    expect(sanitizeUi({ stepIntervalMs: null }).stepIntervalMs).toBe(AUTOMATION_UI_DEFAULTS.stepIntervalMs)
+    expect(sanitizeUi({ stepIntervalMs: 'soon' }).stepIntervalMs).toBe(AUTOMATION_UI_DEFAULTS.stepIntervalMs)
+    expect(sanitizeUi({}).stepIntervalMs).toBe(AUTOMATION_UI_DEFAULTS.stepIntervalMs)
+    expect(AUTOMATION_UI_DEFAULTS.stepIntervalMs).toBe(300)
+  })
 })
 
 describe('loadConfig — v3 document', () => {

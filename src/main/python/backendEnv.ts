@@ -36,10 +36,16 @@ export function buildBackendEnv(
     return env
 }
 
-/** Runtime override keys read from the app config store. */
+/**
+ * Runtime override keys read from the app config store.
+ *
+ * There is deliberately NO python entry: the Python interpreter we spawn is
+ * `runtimeExecutable` (relative to `runtime/`, see `resolvePythonExecutable`),
+ * not a `pythonPath` override. A legacy `pythonPath` config key used to exist
+ * here and did nothing — it was removed so nobody edits a dead setting.
+ */
 export const RUNTIME_OVERRIDE_KEYS = {
     java: 'javaPath',
-    python: 'pythonPath',
     node: 'nodePath'
 } as const;
 

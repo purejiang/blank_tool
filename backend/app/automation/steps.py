@@ -156,7 +156,12 @@ def _input(ctx, device_id, package_name, step, dt) -> StepHandlerReturn:
         if not fr.get("success", False):
             return False, (fr.get("error") or "input field not found"), None
         time.sleep(0.3)  # let the editor settle before typing
-    r = input_text(device_id, str(step.get("text", "")))
+    # 「开启中文输入」是运行级设置：关闭时 input_text 不切换输入法，含非 ASCII
+    # 的输入直接失败（ctx 上没有该属性时按默认开启处理）。
+    r = input_text(
+        device_id, str(step.get("text", "")),
+        use_ime=bool(getattr(ctx, "use_ime", True)),
+    )
     return _ok(r), _err(r, "input failed"), None
 
 

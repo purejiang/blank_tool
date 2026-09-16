@@ -5,12 +5,6 @@
         <h1 class="app-page-title">{{ t('automation.title') }}</h1>
         <p class="app-page-sub">{{ t('automation.subtitle') }}</p>
       </div>
-      <div class="header-actions">
-        <n-button size="small" type="primary" secondary @click="toolInstallVisible = true">
-          <template #icon><n-icon><Wrench /></n-icon></template>
-          {{ t('automation.toolsInstall') }}
-        </n-button>
-      </div>
     </div>
 
     <div class="three-cols" :style="gridStyle">
@@ -54,22 +48,8 @@
                 <span class="steps-count">{{ t('automation.stepCountLabel', { n: stepCountDisplay }) }}</span>
               </div>
 
-              <!-- 「插入位」：站在列表顶部 = 新内容的落点。和行内「+」（落在该行
-                   下方）同一套心智模型——按钮在哪，新步骤/录制片段就插在哪。
-                   顶部入口一律插到开头，所以固定传 0。 -->
-              <n-dropdown
-                v-if="store.stepsView === 'ui'"
-                trigger="click"
-                placement="bottom-start"
-                :options="addOptions"
-                :disabled="runner.running"
-                @select="(key: string | number) => onAdd(String(key), 0)"
-              >
-                <button class="insert-top" type="button" :disabled="runner.running">
-                  <n-icon size="14"><Plus /></n-icon>
-                  <span>{{ t('automation.insertStart') }}</span>
-                </button>
-              </n-dropdown>
+              <!-- 添加步骤的入口在步骤列表底部（StepListEditor 里常驻），这里不再有
+                   顶部「插入到开头」幽灵行；行内「⋮」菜单可以插到任意行下方。 -->
 
               <StepListEditor
                 v-if="store.stepsView === 'ui'"
@@ -78,12 +58,14 @@
                 v-model:selected-index="store.selectedStepIndex"
                 :disabled="runner.running"
                 :default-timeout="elementTimeoutMs"
+                :default-interval="store.ui.stepIntervalMs"
                 :can-grab="!!autoDeviceId"
                 :add-options="addOptions"
                 class="steps-editor"
                 @pick="onStepPick"
                 @grab-activity="onGrabActivity"
                 @insert-below="(p: { index: number; key: string }) => onAdd(p.key, p.index + 1)"
+                @run-from="runFromStep"
               />
               <template v-else>
                 <n-input
@@ -101,12 +83,13 @@
             </div>
           </div>
 
-          <!-- 录制面板：改成弹窗。原来停靠在编辑区下方会跟步骤列表抢垂直空间，
-               而录制本身是一次性的模态活动（开始 → 看实时步骤流 → 停止 → 插入） -->
-          <n-modal
-            v-model:show="recordPanelOpen"
-            preset="card"
-            style="width: 560px"
+          <!-- 录制面板：弹窗外壳统一走 AppModal（标题左上、X 右上、功能按钮右下），
+               RecordPanel 只负责内容。原来 n-modal 的 X + 面板自绘的 X 会同时出现。 -->
+          <AppModal
+            :show="recordPanelOpen"
+            :title="t('automation.recordSegment')"
+            :width="560"
+            @update:show="onRecordModalShow"
           >
             <RecordPanel
               ref="recordPanelRef"
@@ -117,9 +100,8 @@
               @recording-start="onRecStart"
               @recorded="store.onRecorded"
               @recording-end="onRecEnd"
-              @close="recordPanelOpen = false"
             />
-          </n-modal>
+          </AppModal>
         </template>
       </section>
 
@@ -135,14 +117,26 @@
           v-model:traffic-host-filter="trafficHostFilter"
           v-model:continue-on-error="continueOnError"
           v-model:abort-on-crash="abortOnCrash"
+          v-model:enable-chinese-input="enableChineseInput"
+          :step-interval-ms="store.ui.stepIntervalMs"
+          @update:step-interval-ms="onStepIntervalChange"
           :running="runner.running"
           :can-run="canRun"
           :hints="runHints"
           :capture-unavailable="captureUnavailable"
+          :traffic-status="trafficStatus"
+          :ime-status="imeStatus"
+          :detecting="detecting"
+          :installing-ca="installingCa"
+          :resetting-traffic="resettingTraffic"
           :history-count="runs.length"
-          @run="runScript"
+          @run="() => runScript(0)"
           @stop="runner.stopRun"
           @open-history="showHistory = true"
+          @detect="detectCapabilities"
+          @open-tools="openToolInstall"
+          @install-ca="installCaCert"
+          @reset-traffic="resetTrafficProxy"
         />
         <RunPanel
           :running="runner.running"
@@ -179,34 +173,40 @@
 
     <!-- ============ Run history dialog ============ -->
     <!-- 从「功能」菜单打开；点某一条会恢复进右栏面板并自动关掉本弹窗，
-         删除某一条则保持打开（连续清理）。列表在弹窗里可以给到 60vh。 -->
-    <n-modal
-      v-model:show="showHistory"
-      preset="card"
+         删除某一条则保持打开（连续清理）。列表在弹窗里可以给到 60vh；
+         标题只由弹窗提供（RunHistory 不再自绘第二个标题），刷新在右下角。 -->
+    <AppModal
+      :show="showHistory"
       :title="t('automation.runHistory')"
-      style="width: 520px"
+      :width="560"
+      @update:show="showHistory = $event"
     >
       <div class="history-dialog">
         <RunHistory
           :runs="runs"
-          :loading="runsLoading"
           :selected-task-id="viewingReport?.task_id || ''"
-          @refresh="fetchRuns"
           @select="onSelectRunFromDialog"
           @remove="onDeleteRun"
         />
       </div>
-    </n-modal>
+      <template #footer>
+        <span class="history-count">{{ t('automation.runCountLabel', { n: runs.length }) }}</span>
+        <n-button size="small" :loading="runsLoading" @click="fetchRuns">
+          {{ t('automation.refresh') }}
+        </n-button>
+      </template>
+    </AppModal>
 
     <!-- ============ Tool install modal (traffic capture / ADBKeyBoard) ============ -->
     <ToolInstallModal
       v-model:show="toolInstallVisible"
       :device-id="autoDeviceId"
+      :section="toolInstallSection"
       @changed="onToolInstallChanged"
     />
 
     <!-- ============ Project / script meta editor modal ============ -->
-    <n-modal v-model:show="store.showMeta" :title="t('automation.editInfo')" preset="card" style="width: 440px">
+    <AppModal :show="store.showMeta" :title="t('automation.editInfo')" :width="440" @update:show="store.showMeta = $event">
       <div class="field">
         <label>{{ store.metaForm.kind === 'project' ? t('automation.projectName') : t('automation.scriptName') }}</label>
         <n-input v-model:value="store.metaForm.name" size="small" />
@@ -225,12 +225,10 @@
         />
       </div>
       <template #footer>
-        <n-space justify="end">
-          <n-button size="small" @click="store.showMeta = false">{{ t('common.cancel') }}</n-button>
-          <n-button size="small" type="primary" @click="store.saveMeta">{{ t('common.confirm') }}</n-button>
-        </n-space>
+        <n-button size="small" @click="store.showMeta = false">{{ t('common.cancel') }}</n-button>
+        <n-button size="small" type="primary" @click="store.saveMeta">{{ t('common.confirm') }}</n-button>
       </template>
-    </n-modal>
+    </AppModal>
   </div>
 </template>
 
@@ -240,10 +238,8 @@ import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NInput,
-  NModal,
   NEmpty,
   NIcon,
-  NSpace,
   NRadioButton,
   NRadioGroup,
   NDropdown,
@@ -251,13 +247,11 @@ import {
   useDialog,
 } from 'naive-ui'
 
-// 「添加步骤」的 + 号 —— 之前漏了这行 import，模板里的 <Plus /> 解析不到
-// 组件，图标槽渲染成空（按钮看起来没有图标）
-import { Plus, Wrench } from 'lucide-vue-next'
-
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
+import { notifySystem } from '@utils/systemNotify'
+import AppModal from '@components/common/AppModal.vue'
 import RecordPanel from '@components/automation/RecordPanel.vue'
 import StepListEditor from '@components/automation/StepListEditor.vue'
 import ProjectTree from '@components/automation/ProjectTree.vue'
@@ -366,19 +360,29 @@ const abortOnCrash = computed({
   get: () => store.ui.abortOnCrash,
   set: (v: boolean) => { store.ui.abortOnCrash = v; store.persistUiSoon() },
 })
+// 「开启中文输入」：关闭后运行时不切换设备输入法，含非 ASCII 的输入步骤直接失败
+// （后端 `use_ime` 参数，见 useScriptRunner.RunPayload）。
+const enableChineseInput = computed({
+  get: () => store.ui.enableChineseInput !== false,
+  set: (v: boolean) => { store.ui.enableChineseInput = v; store.persistUiSoon() },
+})
 
 // ---------------- preflight capability probes (read-only) ----------------
 // mitmproxy is PC-side (global); ADBKeyBoard is device-side (per device).
 // Both surface as non-blocking hints under the run controls — they never
-// block a run, the backend error messages carry the final word.
+// block a run, the backend error messages carry the final word. The run
+// settings dialog also renders them and offers an explicit 「检测」.
 const trafficStatus = ref<TrafficStatus | null>(null)
 const imeStatus = ref<ImeStatus | null>(null)
+/** 正在进行的「检测」（按钮 loading）：'' = 空闲 */
+const detecting = ref<'' | 'traffic' | 'ime'>('')
 
 async function refreshTrafficStatus(force = false) {
   try {
     const svc = await serviceManager.getService('automation')
-    trafficStatus.value = await svc.getTrafficStatus(force)
-  } catch { /* 探测失败 = 未知态，不给提示（设置页有完整状态展示） */ }
+    // 带上设备：返回里会多出设备侧就绪信息（连接状态 / 设备是否已装 CA）
+    trafficStatus.value = await svc.getTrafficStatus(force, autoDeviceId.value)
+  } catch { /* 探测失败 = 未知态，不给提示 */ }
 }
 
 async function refreshImeStatus(deviceId: string) {
@@ -390,8 +394,37 @@ async function refreshImeStatus(deviceId: string) {
   } catch { /* best-effort */ }
 }
 
-// ---------------- tool install entry (page header button) ----------------
+/** 「检测」：按要求强制重探，并把结论直接告知（弹窗内状态同步刷新）。 */
+async function detectCapabilities(target: 'traffic' | 'ime') {
+  if (detecting.value) return
+  detecting.value = target
+  try {
+    if (target === 'traffic') {
+      await refreshTrafficStatus(true)
+      const s = trafficStatus.value
+      const ok = s?.ready === true
+        && (!autoDeviceId.value || s?.device_state === 'device')
+      ok ? message.success(t('automation.detectOk')) : message.warning(t('automation.detectFail'))
+    } else {
+      await refreshImeStatus(autoDeviceId.value)
+      imeStatus.value?.installed === true
+        ? message.success(t('automation.detectOk'))
+        : message.warning(t('automation.detectFail'))
+    }
+  } finally {
+    detecting.value = ''
+  }
+}
+
+// ---------------- tool install / cert / proxy repair entries ----------------
+// 工具安装入口从页头挪进了「运行配置」的抓包/输入面板（页头不再有自动化工具入口）
 const toolInstallVisible = ref(false)
+const toolInstallSection = ref<'' | 'traffic' | 'ime'>('')
+
+function openToolInstall(target: 'traffic' | 'ime') {
+  toolInstallSection.value = target
+  toolInstallVisible.value = true
+}
 
 /** 工具安装弹窗报成功：清探测缓存 → force 重探两侧，runHints 与状态行即时更新。 */
 async function onToolInstallChanged() {
@@ -401,6 +434,62 @@ async function onToolInstallChanged() {
   } catch { /* best-effort */ }
   await refreshTrafficStatus(true)
   await refreshImeStatus(autoDeviceId.value)
+}
+
+const installingCa = ref(false)
+
+/** 把已生成的 CA 证书装到当前设备（非流式；失败原因由后端给出）。 */
+async function installCaCert() {
+  if (installingCa.value) return
+  if (!autoDeviceId.value) {
+    message.warning(t('automation.noDevice'))
+    return
+  }
+  installingCa.value = true
+  try {
+    const svc = await serviceManager.getService('automation')
+    const res = await svc.installCa(autoDeviceId.value)
+    if (res?.success === false) {
+      message.error(res?.error || t('automation.tools.installFailed'))
+      return
+    }
+    message.success(t('automation.tools.caInstallDone'))
+    await refreshTrafficStatus(true)
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    installingCa.value = false
+  }
+}
+
+const resettingTraffic = ref(false)
+
+/**
+ * 手动修复设备代理（原设置页入口，能力不变）：抓包被强杀后设备会卡在已失效的
+ * HTTP 代理上；后端启动时也会自愈，这里是运行中的逃生口。幂等。
+ */
+async function resetTrafficProxy() {
+  if (resettingTraffic.value) return
+  resettingTraffic.value = true
+  try {
+    const svc = await serviceManager.getService('automation')
+    const res = await svc.resetTraffic(autoDeviceId.value || undefined)
+    if (!res?.success) {
+      message.error(res?.error || t('automation.repairProxyFailed'))
+      return
+    }
+    const restored = res.restored || []
+    if (!restored.length) {
+      message.info(t('automation.repairProxyNothing'))
+      return
+    }
+    message.success(t('automation.repairProxyDone', { count: restored.length }))
+    await refreshTrafficStatus(true)
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    resettingTraffic.value = false
+  }
 }
 
 // Mirrors backend input.py: `any(ord(c) > 0x7F for c in text)` — the exact
@@ -430,17 +519,25 @@ const runHints = computed(() => {
   if (captureUnavailable.value) {
     hints.push(t('automation.captureTrafficUnavailable'))
   }
-  if (autoDeviceId.value && imeStatus.value && !imeStatus.value.installed
-      && hasNonAsciiInput(store.editor.steps)) {
+  const needsIme = hasNonAsciiInput(store.editor.steps)
+  if (needsIme && enableChineseInput.value === false) {
+    // 中文输入被显式关闭：含非 ASCII 的输入步骤会直接失败
+    hints.push(t('automation.inputDisabledHint'))
+  } else if (autoDeviceId.value && imeStatus.value && !imeStatus.value.installed && needsIme) {
     hints.push(t('automation.imeUnavailable'))
   }
   return hints
 })
 
-// Probes: traffic status once (service caches), IME per device selection.
-// Toggling capture on re-checks (cached) so a just-installed mitmproxy is seen.
+// Probes: traffic status once (service caches, keyed per device), IME per device
+// selection. Toggling capture on re-checks (cached) so a just-installed
+// mitmproxy is seen.
 watch(captureTraffic, (on) => { if (on) void refreshTrafficStatus() })
-watch(autoDeviceId, (id) => { void refreshImeStatus(id) }, { immediate: true })
+watch(autoDeviceId, (id) => {
+  void refreshImeStatus(id)
+  // 设备变了，抓包工具行上的「设备是否就绪」也要跟着刷新
+  void refreshTrafficStatus()
+}, { immediate: true })
 // Default element-poll timeout (ms): applied when a step switches to
 // element mode / picks an element; editable in the right column.
 function clampTimeout(v: number): number {
@@ -505,6 +602,13 @@ const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
 /** 录制片段的落点：由**入口**决定（顶部 = 开头；行内「+」= 该行下方），
  *  交给 RecordPanel 当默认值 */
 const recordInsertAt = ref<'start' | 'after'>('start')
+
+/** 录制弹窗关闭（X / 遮罩点击）→ 先停掉进行中的录制，再关弹窗。
+ *  原来这一步挂在 RecordPanel 自绘的 X 上；自绘头删掉后必须由页面接手。 */
+function onRecordModalShow(v: boolean) {
+  if (!v) void recordPanelRef.value?.stop()
+  recordPanelOpen.value = v
+}
 
 /** 录制片段入口：targetRow = null → 插到开头（顶部「插入位」）；
  *  传行下标 → 插在该行下方（行内「+」，靠选中行 + onRecorded 的 'after' 分支）。 */
@@ -737,7 +841,12 @@ async function downloadRunReport() {
 }
 
 // ---------------- run ----------------
-async function runScript() {
+/**
+ * 从第 startIndex（0 基）步开始跑；0 = 从头跑。
+ * 起始下标在页面这一层就夹到合法范围（行菜单构建之后步骤可能被删过），
+ * 后端也会再夹一次并打日志。
+ */
+async function runScript(startIndex = 0) {
   if (runner.running) return
   if (!autoDeviceId.value) {
     message.error(t('automation.noDeviceSelectedRun'))
@@ -755,10 +864,12 @@ async function runScript() {
     message.warning(t('automation.noSteps'))
     return
   }
+  const start = Math.max(0, Math.min(Math.floor(Number(startIndex) || 0), s.steps.length - 1))
   try {
     // 报告视图会让位给实时日志：开跑就关掉历史报告，否则看不到运行中的日志
     viewingReport.value = null
     liveTraffic.value = []
+    if (start > 0) message.info(t('automation.runFromStepHint', { n: start + 1 }))
     await runner.runScript({
       device_id: autoDeviceId.value,
       package_name: store.selectedProject?.package_name || '',
@@ -767,6 +878,10 @@ async function runScript() {
       traffic_host_filter: trafficHostFilter.value.trim(),
       continue_on_error: continueOnError.value,
       abort_on_crash: abortOnCrash.value,
+      use_ime: enableChineseInput.value,
+      // 从某一步开始（前面的步骤不执行）+ 步骤之间的默认等待
+      start_index: start,
+      step_interval_ms: store.ui.stepIntervalMs,
     })
   } catch (e: any) {
     message.error(e?.message || String(e))
@@ -775,8 +890,54 @@ async function runScript() {
     // 落在 complete 之后，所以这里必须轮询而不是只刷一次。
     // 但 IPC/流层就失败（没收到 complete、不会有落盘记录）时轮询纯属空转，
     // 还会让刷新按钮连闪 20 次 —— 只有真跑完过才对账。
-    if (runner.runResult) void reconcileFinishedRun()
+    if (runner.runResult) {
+      notifyRunFinished()
+      void reconcileFinishedRun()
+    }
   }
+}
+
+/**
+ * 行菜单「从此步开始运行」：起点之前的步骤**完全不执行**（用于调试脚本中段，
+ * 不必每次从头跑）。设备 / 脚本的校验复用 runScript。
+ */
+function runFromStep(index: number) {
+  void runScript(index)
+}
+
+/**
+ * 运行配置里的「步骤间隔」：写进页面偏好并持久化。单独一步可以用自己的
+ * `delay_ms` 覆盖它（0 = 该步不等待）。
+ */
+function onStepIntervalChange(v: number) {
+  const n = Math.max(0, Math.round(Number(v) || 0))
+  if (n === store.ui.stepIntervalMs) return
+  store.ui.stepIntervalMs = n
+  store.persistUiSoon()
+}
+
+/**
+ * 运行结束的系统通知：成功与失败都要告知（受设置里的「系统通知」开关控制，
+ * 开关判断在 notifySystem 里）。取消也算一次结束，但用「已取消」表述 ——
+ * 用户自己按的停止不该被报成失败。
+ */
+function notifyRunFinished() {
+  const res = runner.runResult
+  if (!res) return
+  const name = store.selectedScript?.name || ''
+  const title = name ? `${t('automation.title')} · ${name}` : t('automation.title')
+  const passed = Number(res.passed) || 0
+  const total = Number(res.total) || 0
+  const failed = Number(res.failed) || 0
+  if (res.cancelled) {
+    void notifySystem(title, t('automation.notifyRunCancelled'))
+    return
+  }
+  if (res.success) {
+    void notifySystem(title, `${t('automation.notifyRunDone')} ${passed}/${total}`)
+    return
+  }
+  void notifySystem(title, `${t('automation.notifyRunFailed')} ${failed}/${total}`)
 }
 
 // ---------------- element picker / screenshot picker ----------------
@@ -1013,7 +1174,10 @@ onMounted(() => {
 .json-status { font-size: var(--app-font-size-sm); margin-top: 4px; }
 .json-status.ok { color: var(--app-green); }
 .json-status.bad { color: var(--app-red); }
-.editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; scrollbar-gutter: stable; overscroll-behavior: contain; }
+/* 注意：这里**不要**加 scrollbar-gutter: stable —— 它会在右侧常驻 10px 滚动条车道，
+   把步骤工具行、「插入到开头」按钮和步骤列表整体压窄并左移（看起来就是「没居中」）。
+   真正的滚动容器是下面的步骤列表（.sl-scroll / n-scrollbar，覆盖式滚动条不占宽度）。 */
+.editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 .steps-field { flex: 1; min-height: 0; min-width: 0; }
@@ -1023,26 +1187,10 @@ onMounted(() => {
   gap: 8px; flex-wrap: wrap;
 }
 .steps-count { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
-/* 「插入位」：列表顶上的一条虚线幽灵行。它的位置就是落点，所以不放进工具行；
-   放在列表滚动区之外 —— 列表滚起来时它始终可见，插到开头永远够得着。 */
-.insert-top {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; margin-bottom: 5px; padding: 5px 8px;
-  font-family: inherit; font-size: var(--app-font-size-sm);
-  color: var(--app-text-muted); cursor: pointer;
-  background: transparent;
-  border: 1px dashed var(--app-card-border); border-radius: 8px;
-  transition: color 0.13s, border-color 0.13s, background 0.13s;
-}
-.insert-top:hover:not(:disabled) {
-  color: var(--app-blue); border-color: var(--app-blue);
-  background: var(--app-blue-bg);
-}
-.insert-top:disabled { opacity: 0.5; cursor: not-allowed; }
 .steps-editor { flex: 1; min-height: 0; min-width: 0; }
-/* 页头右侧动作区：.app-page-header 已是 flex + space-between，这里只补间距 */
-.header-actions { flex: none; display: flex; align-items: center; gap: 8px; }
 
-/* 运行记录弹窗：列表在弹窗里可以给到接近整屏（右栏常驻时只有 140px） */
+/* 运行记录弹窗：列表在弹窗里可以给到接近整屏（右栏常驻时只有 140px）；
+   计数靠左、刷新在右下（AppModal 的 footer 默认右对齐） */
 .history-dialog :deep(.rh-list) { max-height: 60vh; }
+.history-count { margin-right: auto; font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 </style>

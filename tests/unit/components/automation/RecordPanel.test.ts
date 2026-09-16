@@ -189,17 +189,46 @@ describe('RecordPanel', () => {
     expect(mockRecordingService.finish).toHaveBeenCalledWith('rec-test-id')
     expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
 
-    // 点击「插入到脚本」才把 { steps, gap, insertAt } 交给页面
+    // 点击「插入到脚本」才把 { steps, insertAt } 交给页面 —— 没有等待信息：
+    // 步骤之间的节奏由运行配置的默认步骤间隔控制，录制不再合成等待步骤。
     const applyBtn = findButton(wrapper, 'automation.applySteps')
     expect(applyBtn).toBeTruthy()
     await applyBtn.trigger('click')
     const recorded = wrapper.emitted('recorded')
     expect(recorded).toHaveLength(1)
-    expect(recorded![0][0]).toEqual({
-      steps,
-      gap: { enabled: true, thresholdMs: 500, maxMs: 0 },
-      insertAt: 'end',
-    })
+    expect(recorded![0][0]).toEqual({ steps, insertAt: 'end' })
+  })
+
+  it('录制面板不再有「自动插入等待」设置，只给一行节奏说明', async () => {
+    const { wrapper } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    // 阈值 / 上限 / 开关都没有了
+    expect(wrapper.find('.gap-settings').exists()).toBe(false)
+    expect(wrapper.find('.gap-num').exists()).toBe(false)
+    expect(wrapper.find('.n-checkbox').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('automation.autoWaitEnabled')
+    expect(wrapper.text()).not.toContain('automation.waitThreshold')
+    // 取而代之：等待由运行配置的「步骤间隔」统一控制的说明
+    expect(wrapper.get('.record-hint').text()).toBe('automation.recordIntervalHint')
+  })
+
+  it('录制列表里不再插入「+ Nms」等待行 —— 只列步骤', async () => {
+    const { wrapper } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    // 带 ts（录制时间线）的两步之间就算隔了 8 秒，也不再画等待行
+    callbacks.onStep({ action: 'tap', x: 1, y: 2, ts: 10.0 })
+    await nextTick()
+    callbacks.onStep({ action: 'tap', x: 3, y: 4, ts: 18.0 })
+    await nextTick()
+
+    expect(wrapper.findAll('.step-line')).toHaveLength(3)
+    expect(wrapper.findAll('.gap-line')).toHaveLength(0)
+    // 列表里不该再出现「+ 8000ms」这种合成等待行
+    expect(wrapper.get('.record-list').text()).not.toMatch(/\d+\s*ms/)
   })
 
   it('takes the insert position from the ENTRY POINT (defaultInsertAt), not from the selection', async () => {

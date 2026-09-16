@@ -1,5 +1,10 @@
 <template>
-  <n-modal :show="show" :title="t('automation.shotPickTitle')" preset="card" style="width: 520px" @update:show="emit('update:show', $event)">
+  <AppModal
+    :show="show"
+    :title="t('automation.shotPickTitle')"
+    :width="520"
+    @update:show="emit('update:show', $event)"
+  >
     <p class="app-muted">{{ t('automation.shotPickHint') }}</p>
 
     <!-- capturing: spinner instead of looking frozen -->
@@ -35,13 +40,14 @@
         />
       </div>
     </template>
-  </n-modal>
+  </AppModal>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NModal, NButton, NEmpty, NSpin } from 'naive-ui'
+import { NButton, NEmpty, NSpin } from 'naive-ui'
+import AppModal from '@components/common/AppModal.vue'
 import { mapClickToPanel, displayToPanel, captureMatchesRotation, isPickSafe, parseSize, clampPanel, type PickDisplay } from './shotCoords'
 
 const props = defineProps<{

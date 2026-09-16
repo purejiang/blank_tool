@@ -62,6 +62,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
 
 import OtherToolsPage from '@views/OtherToolsPage.vue'
 import ToolInstallModal from '@components/automation/ToolInstallModal.vue'
+import RunControls from '@components/automation/RunControls.vue'
 import { useDeviceStore } from '@stores/deviceStore'
 
 function mountPage(opts?: { deviceId?: string }) {
@@ -89,13 +90,15 @@ function mountPage(opts?: { deviceId?: string }) {
   return mount(OtherToolsPage, { global: { plugins: [pinia] } })
 }
 
-async function click(wrapper: any, selector: string) {
-  await wrapper.find(selector).trigger('click')
+/**
+ * 工具安装入口已从页头按钮挪进「运行配置」的抓包/输入面板：RunControls 发
+ * `openTools`，页面负责打开弹窗。这里直接驱动同一个事件（弹窗自身由
+ * RunConfigDialog 的测试覆盖）。
+ */
+async function openTools(wrapper: any, target: 'traffic' | 'ime' = 'traffic') {
+  wrapper.findComponent(RunControls).vm.$emit('openTools', target)
   await flushPromises()
 }
-
-/** The header entry button — 有可见文案，所以不带 aria-label（提示只给图标按钮）。 */
-const TOOLS_INSTALL_BTN = '.header-actions button'
 
 describe('OtherToolsPage — tool install changed → refresh glue', () => {
   beforeEach(() => {
@@ -105,14 +108,14 @@ describe('OtherToolsPage — tool install changed → refresh glue', () => {
     vi.clearAllMocks()
   })
 
-  it('header button opens the modal; changed → clearTrafficCache then forced re-probe of traffic + ime', async () => {
+  it('run-settings entry opens the modal; changed → clearTrafficCache then forced re-probe of traffic + ime', async () => {
     const wrapper = mountPage({ deviceId: 'emulator-5554' })
     await flushPromises()
 
-    // modal starts closed, header button drives v-model:show
+    // modal starts closed, the run-settings entry drives v-model:show
     const modal = wrapper.findComponent(ToolInstallModal)
     expect(modal.props('show')).toBe(false)
-    await click(wrapper, TOOLS_INSTALL_BTN)
+    await openTools(wrapper)
     expect(modal.props('show')).toBe(true)
 
     // drop the mount/open-probe noise so only the changed handler remains
@@ -126,12 +129,13 @@ describe('OtherToolsPage — tool install changed → refresh glue', () => {
     expect(automationSvc.clearTrafficCache).toHaveBeenCalledTimes(1)
 
     // Order binds: the re-probes must happen AFTER the cache clear, and with
-    // exact arguments (force=true traffic re-probe, current device id for ime).
+    // exact arguments (force=true traffic re-probe for this device, current
+    // device id for ime).
     const clearOrder = automationSvc.clearTrafficCache.mock.invocationCallOrder[0]
     const trafficIdx = automationSvc.getTrafficStatus.mock.invocationCallOrder
       .findIndex(o => o > clearOrder)
     expect(trafficIdx).toBeGreaterThan(-1)
-    expect(automationSvc.getTrafficStatus.mock.calls[trafficIdx]).toEqual([true])
+    expect(automationSvc.getTrafficStatus.mock.calls[trafficIdx]).toEqual([true, 'emulator-5554'])
     const imeIdx = automationSvc.getImeStatus.mock.invocationCallOrder
       .findIndex(o => o > clearOrder)
     expect(imeIdx).toBeGreaterThan(-1)
@@ -142,7 +146,7 @@ describe('OtherToolsPage — tool install changed → refresh glue', () => {
     const wrapper = mountPage()
     await flushPromises()
 
-    await click(wrapper, TOOLS_INSTALL_BTN)
+    await openTools(wrapper)
     expect(wrapper.findComponent(ToolInstallModal).props('show')).toBe(true)
 
     expect(automationSvc.clearTrafficCache).not.toHaveBeenCalled()
@@ -152,7 +156,7 @@ describe('OtherToolsPage — tool install changed → refresh glue', () => {
     const wrapper = mountPage({ deviceId: 'emulator-5554' })
     await flushPromises()
 
-    await click(wrapper, TOOLS_INSTALL_BTN)
+    await openTools(wrapper)
     const modal = wrapper.findComponent(ToolInstallModal)
     await flushPromises()
 
@@ -164,7 +168,7 @@ describe('OtherToolsPage — tool install changed → refresh glue', () => {
     await flushPromises()
     expect(automationSvc.clearTrafficCache).toHaveBeenCalledTimes(2)
     // the second emission forced a fresh re-probe with exact arguments
-    expect(automationSvc.getTrafficStatus.mock.lastCall).toEqual([true])
+    expect(automationSvc.getTrafficStatus.mock.lastCall).toEqual([true, 'emulator-5554'])
     expect(automationSvc.getImeStatus.mock.lastCall).toEqual(['emulator-5554'])
   })
 })

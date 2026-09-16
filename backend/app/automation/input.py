@@ -32,7 +32,7 @@ def swipe(
     return {"success": r.get("returncode", 1) == 0}
 
 
-def input_text(device_id: str, text: str) -> Dict[str, Any]:
+def input_text(device_id: str, text: str, use_ime: bool = True) -> Dict[str, Any]:
     """Type text into the currently FOCUSED editor.
 
     Two paths:
@@ -44,6 +44,10 @@ def input_text(device_id: str, text: str) -> Dict[str, Any]:
       (com.android.adbkeyboard) broadcast instead. The IME is enabled and
       switched automatically; ``restore_ime`` puts the original back.
 
+    ``use_ime=False`` (run setting「开启中文输入」关闭) refuses to touch the
+    device's IME: a non-ASCII payload then fails with a clear error instead of
+    silently switching input methods.
+
     The text lands in whatever editor has input focus — pair an `input`
     step with a preceding `tap` on the field (or set by/value so the step
     taps it first).
@@ -51,6 +55,14 @@ def input_text(device_id: str, text: str) -> Dict[str, Any]:
     if text is None or text == "":
         return {"success": False, "error": "empty text"}
     if any(ord(c) > 0x7F for c in text):
+        if not use_ime:
+            return {
+                "success": False,
+                "error": (
+                    "non-ASCII input is disabled for this run (开启中文输入 is off); "
+                    "enable it in the run settings to type CJK text"
+                ),
+            }
         ok, err = ensure_adb_ime(device_id)
         if not ok:
             return {

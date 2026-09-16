@@ -112,6 +112,8 @@ export const useSystemStore = defineStore('system', () => {
       if (backendInfo) {
         buildInfo.pythonVersion = backendInfo.python_version || ''
         buildInfo.javaVersion = backendInfo.java_version || ''
+        // 「实际在用」的解释器（后端 sys.executable / BT_PYTHON_BIN），与配置无关：
+        // Python 的覆盖键是 `runtimeExecutable`（相对 runtime/），没有 pythonPath。
         buildInfo.pythonPath = backendInfo.python_path || ''
         buildInfo.javaPath = backendInfo.java_path || ''
       }

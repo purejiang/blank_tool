@@ -25,6 +25,16 @@ Cancel / error contract (plan defects 1 & 2):
     ``context.error()``.
   * Check ``context.is_cancelled()`` at the top of every step and bail out
     with ``context.complete(cancelled=True)`` when the user hits Stop.
+
+Run span / pacing:
+  * ``start_index`` (0-based) starts the run MID-SCRIPT: the earlier steps are
+    not executed at all (they are not "skipped" steps in the report — the run
+    simply begins at the given step). Step numbers in the report keep their
+    ORIGINAL 1-based position so the run rows still match the script rows.
+  * ``step_interval_ms`` is a per-run default wait inserted BEFORE each step
+    (except the first executed one) so a script does not need hand-written
+    ``wait`` steps between every action. A step may override it with its own
+    ``delay_ms`` (0 = no wait for that step).
 """
 
 import json
@@ -75,6 +85,59 @@ def _fallback_run_dir() -> str:
     return d
 
 
+# Cancel latency inside an inter-step interval: the sleep is sliced so Stop is
+# honoured within ~50ms instead of after the whole interval (same trick as the
+# sliced fixed wait in steps.py ``_wait``).
+_INTERVAL_SLICE_S = 0.05
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    """Coerce a JSON-provided number to an int without ever raising.
+
+    ``bool`` is an ``int`` subclass, so ``True`` would silently become 1; a
+    boolean here means a malformed payload, hence the default instead.
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_non_negative_int(value: Any) -> int:
+    """Like ``_as_int`` but negative / malformed values collapse to 0."""
+    return max(0, _as_int(value, 0))
+
+
+def _interruptible_sleep(ctx, ms: int) -> None:
+    """Sleep ``ms`` in slices, returning early as soon as a cancel arrives."""
+    deadline = time.time() + ms / 1000.0
+    while time.time() < deadline:
+        if ctx.is_cancelled():
+            return
+        time.sleep(min(_INTERVAL_SLICE_S, max(0.0, deadline - time.time())))
+
+
+def _step_gap_ms(step: Dict[str, Any], run_interval_ms: int, is_first: bool) -> int:
+    """Wait BEFORE this step, in ms.
+
+    An explicit ``delay_ms`` on the step always wins (``0`` = this step needs
+    no wait). Otherwise the run-level ``step_interval_ms`` applies — except
+    before the FIRST executed step: there is no previous step to space away
+    from, which is exactly the case when a run starts midway (``start_index``)
+    or when the script's first step launches the app.
+    """
+    raw = step.get("delay_ms")
+    if not isinstance(raw, bool):
+        try:
+            if raw is not None:
+                return max(0, int(raw))
+        except (TypeError, ValueError):
+            pass
+    return 0 if is_first else run_interval_ms
+
+
 def run(
     context,
     device_id: Optional[str] = None,
@@ -85,12 +148,25 @@ def run(
     capture_traffic: bool = False,
     traffic_port: int = traffic_capture.DEFAULT_PORT,
     traffic_host_filter: str = "",
+    use_ime: bool = True,
     task_id: Optional[str] = None,
+    start_index: int = 0,
+    step_interval_ms: int = 0,
     **kwargs,
 ) -> Dict[str, Any]:
     steps = steps or []
     started_t = time.time()
     started_iso = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Run span + pacing (see module docstring). Both are coerced defensively —
+    # they arrive straight off the wire and a bad value must never make the
+    # whole run fail.
+    interval_ms = _as_non_negative_int(step_interval_ms)
+    requested_start = _as_int(start_index, 0)
+    # Clamp: a stale UI (step deleted after the menu was built) must not turn
+    # into "no step executed at all" — running the last step is the closest
+    # honest interpretation, and the clamp is logged below.
+    start_index = max(0, min(requested_start, len(steps) - 1)) if steps else 0
 
     # Per-run artifact directory — one folder per run, in the automation root
     # ({BT_AUTO_TASKS_DIR}/{task_id}/, a sibling of tasks/) with artifacts
@@ -105,14 +181,24 @@ def run(
     shots_dir = os.path.join(run_dir, "screenshots")
     # step handlers (steps.py) read this to keep their artifacts in-run-dir
     context.run_dir = run_dir
+    # 「开启中文输入」(run setting): steps.py reads it to decide whether a
+    # non-ASCII input may switch the device IME to ADBKeyboard.
+    context.use_ime = bool(use_ime)
 
     result: Dict[str, Any] = {
         "success": True,
         "task_id": str(task_id or ""),
-        "total": len(steps),
+        # `total` counts the steps this run will actually attempt — starting
+        # midway means fewer than len(steps) (passed + failed + total stay
+        # mutually consistent, which is what the history row reads).
+        "total": len(steps) - start_index,
         "passed": 0,
         "failed": 0,
         "cancelled": False,
+        # run span / pacing in force (0-based start; step indices in `steps`
+        # keep their original 1-based position)
+        "start_index": start_index,
+        "step_interval_ms": interval_ms,
         "screenshots": [],
         "shots_meta": [],
         "steps": [],
@@ -204,6 +290,13 @@ def run(
                 # read once you know whether continuing was intended.
                 "continue_on_error": bool(continue_on_error),
                 "abort_on_crash": bool(abort_on_crash),
+                # where the run started (0-based) and the pacing it used —
+                # without these, "why is passed+failed < the script length?"
+                # and "why did this run take an extra 30s?" are unanswerable.
+                "start_index": result.get("start_index", 0),
+                "step_interval_ms": result.get("step_interval_ms", 0),
+                # whether this run was allowed to switch the IME for CJK input
+                "use_ime": bool(use_ime),
                 "total": result.get("total", 0),
                 "passed": result.get("passed", 0),
                 "failed": result.get("failed", 0),
@@ -245,7 +338,7 @@ def run(
         "started_at": started_iso,
         "started_ts": started_t,
         "run_dir": run_dir,
-        "total": len(steps),
+        "total": len(steps) - start_index,
         "screenshots": [],
     }, "running")
 
@@ -269,6 +362,17 @@ def run(
         return result
 
     n = len(steps)
+    # Run span / pacing announcements — the console is the only place the user
+    # can see that a run deliberately started midway or is padded with waits.
+    if requested_start != start_index:
+        _log(
+            f"[WARN] start_index {requested_start} out of range (0..{n - 1})"
+            f" — starting at step {start_index + 1} instead"
+        )
+    if start_index:
+        _log(f"starting at step {start_index + 1}/{n} — steps 1..{start_index} are not executed")
+    if interval_ms:
+        _log(f"step interval {interval_ms}ms before each step")
     # Recorded steps store touch-panel RAW coords (getevent native
     # orientation); `input tap` needs display coords for the CURRENT
     # rotation (e.g. a landscape-locked game rotates the 900x1600 panel
@@ -319,7 +423,17 @@ def run(
             )
 
     try:
-        for i, step in enumerate(steps):
+        for i in range(start_index, n):
+            step = steps[i]
+
+            # Inter-step interval (run-level default, per-step `delay_ms`
+            # overrides). Done BEFORE the cancel check on purpose: the sleep is
+            # sliced, so a Stop pressed during it lands here within ~50ms and
+            # the check right below reports "cancelled before step N".
+            gap_ms = _step_gap_ms(step, interval_ms, i == start_index)
+            if gap_ms > 0:
+                _interruptible_sleep(context, gap_ms)
+
             # Cancel check at the top of every step.
             if context.is_cancelled():
                 _log(f"cancelled before step {i + 1}/{n}")

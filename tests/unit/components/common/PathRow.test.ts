@@ -61,4 +61,37 @@ describe('PathRow', () => {
     expect(mountRow().find('.path-row-hint').exists()).toBe(false)
     expect(mountRow({ hint: '仅记录' }).find('.path-row-hint').text()).toBe('仅记录')
   })
+
+  it('未知存在性（不传 exists）时不渲染任何状态图标', () => {
+    const w = mountRow()
+    expect(w.find('.path-row-exists').exists()).toBe(false)
+    expect(w.find('.path-row-value svg').exists()).toBe(false)
+  })
+
+  it('exists=true 在路径文本后面渲染勾图标，且不在操作区', () => {
+    const w = mountRow({ exists: true })
+    const icon = w.get('.path-row-exists')
+    expect(icon.classes()).toContain('is-ok')
+    // 图标属于 value 区（路径之后），不在右侧 actions 里
+    expect(icon.element.closest('.path-row-value')).toBeTruthy()
+    expect(icon.element.closest('.path-row-actions')).toBeNull()
+    // 文本节点排在图标之前
+    const text = w.get('.path-row-text')
+    expect(text.element.compareDocumentPosition(icon.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('exists=false 渲染感叹号图标', () => {
+    const w = mountRow({ exists: false })
+    expect(w.get('.path-row-exists').classes()).toContain('is-missing')
+  })
+
+  it('存在性图标不影响编辑/重置按钮的数量与顺序', async () => {
+    const w = mountRow({ editable: true, overridden: true, exists: true })
+    const buttons = w.findAll('button')
+    expect(buttons).toHaveLength(2)
+    await buttons[0].trigger('click')
+    expect(w.emitted('reset')).toHaveLength(1)
+    await buttons[1].trigger('click')
+    expect(w.emitted('edit')).toHaveLength(1)
+  })
 })

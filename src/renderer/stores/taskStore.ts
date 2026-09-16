@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { log } from '@utils/logger'
+import { notifySystem } from '@utils/systemNotify'
 
 export interface Task {
   id: number
@@ -157,15 +158,10 @@ async function persistLine(id: number, line: string): Promise<void> {
 
 // Fire-and-forget OS notification when a task reaches a terminal state.
 // Never throws; only console.errors on failure. Respects the
-// `enableNotifications` toggle. Uses plain strings (store stays i18n-decoupled).
+// `enableNotifications` toggle (checked inside `notifySystem`). Uses plain
+// strings (store stays i18n-decoupled).
 async function notifyTaskTerminal(task: Task): Promise<void> {
-  const notify = window.electronAPI?.showSystemNotification as
-    | ((title: string, body: string) => Promise<boolean>)
-    | undefined
-  if (!window.electronAPI?.appConfig?.get || typeof notify !== 'function') return
   try {
-    const enabled = await window.electronAPI.appConfig.get('enableNotifications')
-    if (enabled !== true) return
     const title = `${task.operationLabel || 'Task'} ${task.fileName || ''}`.trim()
     let body: string
     if (task.status === 'completed' && task.operation === 'install' && task.deviceLabel) {
@@ -177,7 +173,7 @@ async function notifyTaskTerminal(task: Task): Promise<void> {
     } else {
       body = '已取消'
     }
-    await notify(title, body)
+    await notifySystem(title, body)
   } catch (err) {
     log.error('[taskStore] notify failed', err)
   }

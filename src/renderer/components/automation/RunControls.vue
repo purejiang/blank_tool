@@ -48,85 +48,49 @@
     </div>
 
     <!-- ============ run settings dialog ============ -->
-    <!-- Everything that changes WHAT a run captures lives here. The values are
-         live-bound to the page state (read by the backend when a run starts),
-         so there is nothing to confirm — just close. -->
-    <n-modal
-      v-model:show="configOpen"
-      preset="card"
-      :title="t('automation.runConfig')"
-      style="width: 420px"
-    >
-      <div class="rcf-block">
-        <div class="rcf-head">
-          <span class="rcf-label">{{ t('automation.captureTraffic') }}</span>
-          <n-switch
-            size="small"
-            :value="captureTraffic"
-            @update:value="emit('update:captureTraffic', $event)"
-          />
-        </div>
-        <div class="rcf-hint">{{ t('automation.captureTrafficHint') }}</div>
-        <div v-if="captureTraffic && captureUnavailable" class="rcf-warn">
-          {{ t('automation.captureTrafficUnavailable') }}
-        </div>
-      </div>
-      <div class="rcf-block" :class="{ 'is-off': !captureTraffic }">
-        <span class="rcf-label">{{ t('automation.captureFilter') }}</span>
-        <n-dynamic-tags
-          class="rcf-input"
-          size="small"
-          :value="filterTags"
-          :disabled="!captureTraffic"
-          :max="20"
-          :input-props="{ placeholder: t('automation.captureFilterPlaceholder') }"
-          @update:value="onFilterTags"
-        />
-        <div class="rcf-hint">{{ t('automation.captureFilterHint') }}</div>
-      </div>
-
-      <!-- 失败策略：这两项决定脚本遇到失败时是继续还是停下。
-           默认与历史行为完全一致（首错中止 / 崩溃中止）。 -->
-      <div class="rcf-block">
-        <div class="rcf-head">
-          <span class="rcf-label">{{ t('automation.continueOnError') }}</span>
-          <n-switch
-            size="small"
-            :value="continueOnError"
-            @update:value="emit('update:continueOnError', $event)"
-          />
-        </div>
-        <div class="rcf-hint">{{ t('automation.continueOnErrorHint') }}</div>
-      </div>
-      <div class="rcf-block">
-        <div class="rcf-head">
-          <span class="rcf-label">{{ t('automation.abortOnCrash') }}</span>
-          <n-switch
-            size="small"
-            :value="abortOnCrash"
-            @update:value="emit('update:abortOnCrash', $event)"
-          />
-        </div>
-        <div class="rcf-hint">{{ t('automation.abortOnCrashHint') }}</div>
-      </div>
-      <template #footer>
-        <n-space justify="end">
-          <n-button size="small" @click="configOpen = false">{{ t('common.close') }}</n-button>
-        </n-space>
-      </template>
-    </n-modal>
+    <!-- 运行配置：两栏（抓包 / 输入 / 异常处理）。值实时绑定到页面状态
+         （后端在开跑时读取），所以弹窗里没有「确定」，关掉即可。 -->
+    <RunConfigDialog
+      :show="configOpen"
+      :device-id="autoDeviceId"
+      :capture-traffic="captureTraffic"
+      :traffic-host-filter="trafficHostFilter"
+      :continue-on-error="!!continueOnError"
+      :abort-on-crash="abortOnCrash !== false"
+      :enable-chinese-input="enableChineseInput !== false"
+      :step-interval-ms="stepIntervalMs"
+      :traffic-status="trafficStatus || null"
+      :ime-status="imeStatus || null"
+      :capture-unavailable="captureUnavailable"
+      :detecting="detecting || ''"
+      :installing-ca="installingCa"
+      :resetting-traffic="resettingTraffic"
+      @update:show="configOpen = $event"
+      @update:capture-traffic="emit('update:captureTraffic', $event)"
+      @update:traffic-host-filter="emit('update:trafficHostFilter', $event)"
+      @update:continue-on-error="emit('update:continueOnError', $event)"
+      @update:abort-on-crash="emit('update:abortOnCrash', $event)"
+      @update:enable-chinese-input="emit('update:enableChineseInput', $event)"
+      @update:step-interval-ms="emit('update:stepIntervalMs', $event)"
+      @detect="emit('detect', $event)"
+      @open-tools="emit('openTools', $event)"
+      @install-ca="emit('installCa')"
+      @reset-traffic="emit('resetTraffic')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NDropdown, NDynamicTags, NIcon, NModal, NSelect, NSpace, NSwitch, NTooltip } from 'naive-ui'
+import { NButton, NDropdown, NIcon, NSelect, NTooltip } from 'naive-ui'
 import { MoreHorizontal, Play, Square } from 'lucide-vue-next'
 import IconButton from '@components/common/IconButton.vue'
+import RunConfigDialog from './RunConfigDialog.vue'
 import { useDeviceStore } from '@stores/deviceStore'
+import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   autoDeviceId: string
   /** Run-time option: capture network traffic for this run. */
   captureTraffic: boolean
@@ -136,6 +100,10 @@ const props = defineProps<{
   continueOnError?: boolean
   /** 目标应用进程消失/重启时中止运行（默认 true）。 */
   abortOnCrash?: boolean
+  /** 允许运行时切换输入法输入中文（默认 true）。 */
+  enableChineseInput?: boolean
+  /** 步骤之间的默认等待（ms，0 = 不等待）。 */
+  stepIntervalMs?: number
   running: boolean
   canRun: boolean
   /** Non-blocking preflight warnings rendered under the controls row. */
@@ -145,7 +113,22 @@ const props = defineProps<{
   captureUnavailable?: boolean
   /** 运行记录条数：菜单项带个数字，不用打开就知道有没有历史 */
   historyCount?: number
-}>()
+  /** 运行配置弹窗里的状态展示（页面持有探测） */
+  trafficStatus?: TrafficStatus | null
+  imeStatus?: ImeStatus | null
+  detecting?: '' | 'traffic' | 'ime'
+  installingCa?: boolean
+  resettingTraffic?: boolean
+}>(), {
+  // Boolean prop 未传时 Vue 会强转成 false —— 「崩溃即中止 / 中文输入」的语义
+  // 默认是「开」，必须显式给默认值，否则未传就变成关。
+  continueOnError: false,
+  abortOnCrash: true,
+  enableChineseInput: true,
+  // 页面总会传入持久化的值；这个 0 只是组件单独挂载（测试）时的中性兜底，
+  // 真正的默认间隔在 AUTOMATION_UI_DEFAULTS 里（300ms）。
+  stepIntervalMs: 0,
+})
 
 const emit = defineEmits<{
   (e: 'update:autoDeviceId', v: string): void
@@ -153,10 +136,16 @@ const emit = defineEmits<{
   (e: 'update:trafficHostFilter', v: string): void
   (e: 'update:continueOnError', v: boolean): void
   (e: 'update:abortOnCrash', v: boolean): void
+  (e: 'update:enableChineseInput', v: boolean): void
+  (e: 'update:stepIntervalMs', v: number): void
   (e: 'run'): void
   (e: 'stop'): void
   /** 菜单里选了「运行记录」—— 列表数据在页面，这里只发请求 */
   (e: 'openHistory'): void
+  (e: 'detect', target: 'traffic' | 'ime'): void
+  (e: 'openTools', target: 'traffic' | 'ime'): void
+  (e: 'installCa'): void
+  (e: 'resetTraffic'): void
 }>()
 
 const { t } = useI18n()
@@ -169,21 +158,8 @@ const deviceOptions = computed(() =>
 )
 const hints = computed(() => props.hints ?? [])
 
-/** Run-settings dialog (traffic capture + host filter). */
+/** Run-settings dialog (traffic capture + chinese input + failure policy). */
 const configOpen = ref(false)
-/** Filter conditions as a tag list — a comma-separated string field is not
- *  obvious to fill in (and easy to get wrong). */
-const filterTags = computed(() =>
-  props.trafficHostFilter.split(',').map((s) => s.trim()).filter(Boolean),
-)
-/** tags → the comma-joined string the backend reads. `,` is the wire
- *  separator, so it can never live inside a single condition. */
-function onFilterTags(tags: string[]) {
-  emit(
-    'update:trafficHostFilter',
-    tags.map((s) => s.replace(/,/g, ' ').trim()).filter(Boolean).join(','),
-  )
-}
 /** 菜单按钮的 tooltip：**故意只留一行**。抓包会改写设备代理，这个状态不能藏，
  *  但细节（具体过滤条件）在设置弹窗里已经列全了 —— hover 时铺开一长串文字只会
  *  挡住视线，圆点 + 「抓包已开启」就够。 */
@@ -191,7 +167,7 @@ const menuTip = computed(() =>
   props.captureTraffic ? t('automation.runMenuTipOn') : t('automation.runMenuTip'),
 )
 
-/** 次级入口的弹出列表：运行配置（抓包 + 域名过滤）与运行记录（历史）。 */
+/** 次级入口的弹出列表：运行配置（抓包 / 输入 / 异常处理）与运行记录（历史）。 */
 const menuOptions = computed(() => [
   { key: 'settings', label: t('automation.runConfig') },
   {
@@ -225,17 +201,4 @@ function onMenuSelect(key: string | number) {
 }
 .run-hints { display: flex; flex-direction: column; gap: 2px; }
 .run-hint { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
-
-/* ---- run settings dialog ---- */
-/* teleported by n-modal, but the vnodes are created here, so the scoped
-   attribute still lands on them */
-.rcf-block { display: flex; flex-direction: column; gap: 6px; }
-.rcf-block + .rcf-block { margin-top: 16px; }
-.rcf-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.rcf-label { font-size: var(--app-font-size-md); color: var(--app-text-primary); }
-.rcf-hint { font-size: var(--app-font-size-sm); line-height: 1.55; color: var(--app-text-muted); }
-.rcf-warn { font-size: var(--app-font-size-sm); line-height: 1.55; color: var(--app-red); }
-.rcf-input { width: 100%; }
-.rcf-block.is-off .rcf-label,
-.rcf-block.is-off .rcf-hint { opacity: .55; }
 </style>

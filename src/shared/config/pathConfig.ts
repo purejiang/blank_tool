@@ -54,6 +54,5 @@ export type WritableAppConfigKey =
   | 'apktoolPath'
   | 'bundletoolPath'
   | 'javaPath'
-  | 'pythonPath'
   | 'nodePath'
   | 'signatureConfigs'

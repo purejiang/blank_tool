@@ -27,6 +27,20 @@
             :title="path || undefined"
           >{{ path || placeholder }}</span>
         </slot>
+        <!-- 存在性标记：紧跟在路径文本之后，**不进右侧操作区**（不跟编辑按钮混在
+             一起）。unknown（undefined / null）时不渲染，避免探测失败时误报。 -->
+        <n-tooltip v-if="typeof exists === 'boolean'" trigger="hover" placement="top">
+          <template #trigger>
+            <n-icon
+              class="path-row-exists"
+              :class="exists ? 'is-ok' : 'is-missing'"
+              size="14"
+            >
+              <Check v-if="exists" /><AlertCircle v-else />
+            </n-icon>
+          </template>
+          {{ exists ? t('settings.pathExists') : t('settings.pathMissing') }}
+        </n-tooltip>
       </div>
       <div v-if="hint" class="path-row-hint">{{ hint }}</div>
     </div>
@@ -58,11 +72,16 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { NButton } from 'naive-ui'
-import { Pencil } from 'lucide-vue-next'
+import { NButton, NIcon, NTooltip } from 'naive-ui'
+import { AlertCircle, Check, Pencil } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 
-defineProps<{
+/**
+ * 注意 `exists` 必须有显式默认值：Vue 对声明了 Boolean 的 prop 会把「未传」
+ * 强转成 `false`，那样每一行都会默认显示「路径不存在」。给 `null` 之后未传即
+ * 「未知」，才不会误报。
+ */
+const props = withDefaults(defineProps<{
   /** 行标题（左侧第一行） */
   label?: string
   /** 路径值；为空时显示 placeholder */
@@ -84,7 +103,14 @@ defineProps<{
   editTitle?: string
   /** 重置按钮文案，默认「重置」 */
   resetText?: string
-}>()
+  /**
+   * 路径是否存在（探测结果）：true → 路径后的 ✓；false → ！；
+   * undefined / null → 未知，不渲染图标。
+   */
+  exists?: boolean | null
+}>(), {
+  exists: null,
+})
 
 const emit = defineEmits<{ (e: 'edit'): void; (e: 'reset'): void }>()
 const { t } = useI18n()
@@ -111,9 +137,12 @@ const { t } = useI18n()
   white-space: nowrap;
 }
 .path-row-label.is-mono { font-family: var(--app-font-mono); }
-.path-row-value { margin-top: 3px; min-width: 0; }
+.path-row-value { margin-top: 3px; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.path-row-value > :first-child { min-width: 0; }
 .path-row-text {
   display: block;
+  flex: 1;
+  min-width: 0;
   font-family: var(--app-font-mono);
   font-size: var(--app-font-size-sm);
   color: var(--app-text-muted);
@@ -124,6 +153,10 @@ const { t } = useI18n()
   user-select: text;
 }
 .path-row-text.is-empty { color: var(--app-text-dim); font-style: italic; }
+/* 存在性标记：跟在路径后面，不参与操作区 */
+.path-row-exists { flex: none; }
+.path-row-exists.is-ok { color: var(--app-green); }
+.path-row-exists.is-missing { color: var(--app-yellow); }
 .path-row-hint {
   font-size: var(--app-font-size-sm);
   color: var(--app-text-muted);

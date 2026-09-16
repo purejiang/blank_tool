@@ -26,6 +26,26 @@ export function resolvePathFromBase(baseDir: string, targetPath: string): string
   return path.join(baseDir, cleanPath);
 }
 
+/**
+ * Absolute path of the configured Python interpreter.
+ *
+ * ``runtimeExecutable`` is RELATIVE TO ``runtime/`` (that is how the spawn path
+ * is built below): the bundled interpreter is ``runtime/python/python.exe``.
+ * Resolving it against the app base instead yields ``<app>/python/python.exe``
+ * — a path that cannot exist even in a packaged build, which is exactly the
+ * phantom path the settings page used to display.
+ *
+ * An ABSOLUTE value (the user picked a system interpreter in the file dialog)
+ * is returned untouched — ``path.join(runtimeDir, 'D:\\x\\python.exe')`` would
+ * produce ``<runtime>/D:\x\python.exe`` and silently ignore the override.
+ */
+export function resolveRuntimeExecutablePath(baseDir: string, runtimeExecutable: string): string {
+  if (!runtimeExecutable) return '';
+  if (path.isAbsolute(runtimeExecutable)) return runtimeExecutable;
+  const runtimeDir = resolvePathFromBase(baseDir, PATH_CONFIG_DEFAULTS.runtime);
+  return path.join(runtimeDir, runtimeExecutable.replace(/^\.[\\/]/, ''));
+}
+
 export async function resolveServerPath(
   appStore: AppStoreLike,
   baseDir: string
@@ -58,13 +78,13 @@ export async function resolvePythonExecutable(
   // bundled tools and always resolves from the shared default.
   let pythonExecutable = 'python';
   const absRuntimeDir = resolvePathFromBase(baseDir, PATH_CONFIG_DEFAULTS.runtime);
-  const candidate = path.join(absRuntimeDir, runtimeExecutable);
+  const candidate = resolveRuntimeExecutablePath(baseDir, runtimeExecutable);
   try {
     await fs.access(candidate);
     pythonExecutable = candidate;
     log.info(`Using Python Runtime: ${pythonExecutable}`);
   } catch {
-    const defaultCandidate = path.join(absRuntimeDir, PATH_CONFIG_DEFAULTS.runtimeExecutable);
+    const defaultCandidate = resolveRuntimeExecutablePath(baseDir, PATH_CONFIG_DEFAULTS.runtimeExecutable);
     try {
       await fs.access(defaultCandidate);
       pythonExecutable = defaultCandidate;

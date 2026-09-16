@@ -2,7 +2,7 @@ import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { appStore, getConfigValue, isWritableConfigKey, setConfigValue, resetAppConfigToDefaults } from '../stores/index';
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathConfig';
-import { getBaseDir, resolvePathFromBase } from '../python/paths';
+import { getBaseDir, resolvePathFromBase, resolveRuntimeExecutablePath } from '../python/paths';
 import { broadcastToAllWindows } from '../utils/broadcast';
 import { toNonEmptyString } from '../utils/strings';
 
@@ -37,7 +37,10 @@ function getSettingsViewModel() {
         settings,
         displayPaths: {
             server: resolvePathFromAppBase(server),
-            runtimeExecutable: resolvePathFromAppBase(runtimeExecutable)
+            // runtimeExecutable 是相对 runtime/ 的（与真正 spawn 的解释器同一套解析，
+            // 见 python/paths.resolvePythonExecutable）。以前相对 app base 解析，得到
+            // <app>\python\python.exe —— 一个永远不存在的路径，设置页因此显示假路径。
+            runtimeExecutable: resolveRuntimeExecutablePath(getBaseDir(), runtimeExecutable)
         }
     };
 }
@@ -135,7 +138,7 @@ export function setupAppConfigHandlers(): void {
         );
         return {
             server: resolvePathFromAppBase(server),
-            runtimeExecutable: resolvePathFromAppBase(runtimeExecutable)
+            runtimeExecutable: resolveRuntimeExecutablePath(getBaseDir(), runtimeExecutable)
         };
     });
 }

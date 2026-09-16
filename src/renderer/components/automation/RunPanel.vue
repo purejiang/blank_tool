@@ -17,6 +17,10 @@
         <span class="st-label">{{ statusLabel }}</span>
         <span class="st-meta" v-if="!idle">
           <span>{{ src.passed }}/{{ src.total }}</span>
+          <template v-if="src.startIndex">
+            <span class="sep">·</span>
+            <span :title="t('automation.startIndexLabel')">{{ t('automation.startIndexShort', { n: src.startIndex + 1 }) }}</span>
+          </template>
           <span class="sep">·</span>
           <span>{{ fmtDur(src.durationMs) }}</span>
           <template v-if="shotCount">
@@ -271,6 +275,7 @@ const src = computed(() => {
       deviceId: r.device_id || '',
       abortedByCrash: !!r.aborted_by_crash,
       taskId: r.task_id || '',
+      startIndex: Number(r.start_index) || 0,
     }
   }
   const res = props.runResult || {}
@@ -301,6 +306,7 @@ const src = computed(() => {
     deviceId: '',
     abortedByCrash: !!res.aborted_by_crash,
     taskId: res.task_id || '',
+    startIndex: Number(res.start_index) || 0,
   }
 })
 

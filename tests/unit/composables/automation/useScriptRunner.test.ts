@@ -133,3 +133,48 @@ describe('useScriptRunner — stop', () => {
     expect(cancelRequest).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * 运行起点（start_index）与步骤间隔（step_interval_ms）。
+ *
+ * 两者都是「运行参数」：必须原样上行，并且夹到合法值 —— 后端也会再夹一次，
+ * 但渲染层先夹就避免了「0 被当成没传」「负数变成 0 基下标以外的怪值」。
+ */
+describe('useScriptRunner — run span & step interval', () => {
+  function lastArgs() {
+    return callBackendAPI.mock.calls.at(-1)![1] as Record<string, unknown>
+  }
+
+  it('默认从头跑、不插入间隔', async () => {
+    const r = setup()
+    await r.runScript(payload())
+    expect(lastArgs().start_index).toBe(0)
+    expect(lastArgs().step_interval_ms).toBe(0)
+  })
+
+  it('原样转发起点与间隔', async () => {
+    const r = setup()
+    await r.runScript({ ...payload(), start_index: 3, step_interval_ms: 250 })
+    expect(lastArgs().start_index).toBe(3)
+    expect(lastArgs().step_interval_ms).toBe(250)
+  })
+
+  it('负值 / 非数字都收敛成 0（0 是合法值：不等待）', async () => {
+    const r = setup()
+    await r.runScript({ ...payload(), start_index: -2, step_interval_ms: -100 })
+    expect(lastArgs().start_index).toBe(0)
+    expect(lastArgs().step_interval_ms).toBe(0)
+
+    const r2 = setup()
+    await r2.runScript({ ...payload(), start_index: 'x' as any, step_interval_ms: 'y' as any })
+    expect(lastArgs().start_index).toBe(0)
+    expect(lastArgs().step_interval_ms).toBe(0)
+  })
+
+  it('小数下标向下取整、小数间隔四舍五入', async () => {
+    const r = setup()
+    await r.runScript({ ...payload(), start_index: 2.9, step_interval_ms: 249.6 })
+    expect(lastArgs().start_index).toBe(2)
+    expect(lastArgs().step_interval_ms).toBe(250)
+  })
+})

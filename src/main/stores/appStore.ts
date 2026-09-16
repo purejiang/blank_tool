@@ -16,7 +16,6 @@ const LEGACY_SETTINGS_DEFAULTS = {
     apktoolPath: '',
     bundletoolPath: '',
     javaPath: '',
-    pythonPath: '',
     nodePath: ''
 };
 
@@ -210,10 +209,6 @@ const schema = {
         type: 'string',
         default: LEGACY_SETTINGS_DEFAULTS.javaPath
     },
-    pythonPath: {
-        type: 'string',
-        default: LEGACY_SETTINGS_DEFAULTS.pythonPath
-    },
     nodePath: {
         type: 'string',
         default: LEGACY_SETTINGS_DEFAULTS.nodePath
@@ -240,7 +235,10 @@ const schema = {
                 colLeft: 240,
                 colRight: 320,
                 continueOnError: false,
-                abortOnCrash: true
+                abortOnCrash: true,
+                enableChineseInput: true,
+                // 每个步骤执行前的默认等待（ms，0 = 不等待）；单步可用 delay_ms 覆盖
+                stepIntervalMs: 300
             }
         }
     }

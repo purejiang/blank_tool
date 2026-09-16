@@ -19,6 +19,12 @@ export interface RunPayload {
   continue_on_error?: boolean
   /** 目标应用进程消失/重启时中止（默认 true）。 */
   abort_on_crash?: boolean
+  /** 允许切换设备输入法输入非 ASCII（默认 true：不传即开启）。 */
+  use_ime?: boolean
+  /** 从脚本的第几步开始执行（0 基，缺省 0 = 从头跑）。 */
+  start_index?: number
+  /** 步骤之间的默认等待（ms，0 = 不等待）。单步可用 `delay_ms` 覆盖。 */
+  step_interval_ms?: number
 }
 
 /** One console line. `ts` is epoch **seconds** (renderer clock on receipt,
@@ -134,6 +140,11 @@ export function useScriptRunner() {
         // settings dialog is what turns them off.
         continue_on_error: payload.continue_on_error === true,
         abort_on_crash: payload.abort_on_crash !== false,
+        // 不传即开启（与后端默认 true 对齐）：只有显式 false 才禁用中文输入
+        use_ime: payload.use_ime !== false,
+        // 运行起点 / 步骤间隔：夹到合法值再上行（后端也会再夹一次并打日志）
+        start_index: Math.max(0, Math.floor(Number(payload.start_index) || 0)),
+        step_interval_ms: Math.max(0, Math.round(Number(payload.step_interval_ms) || 0)),
         capture_traffic: payload.capture_traffic,
         traffic_host_filter: payload.traffic_host_filter || '',
         task_id: id,

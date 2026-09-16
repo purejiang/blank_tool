@@ -1,18 +1,7 @@
 <template>
   <div class="run-history">
-    <div class="rh-head app-subhead app-subhead--sm">
-      <span>{{ t('automation.runHistory') }}</span>
-      <span class="rh-count" v-if="runs.length">{{ runs.length }}</span>
-      <IconButton
-        :icon="RefreshCw"
-        :label="t('automation.refresh')"
-        :loading="loading"
-        size="tiny"
-        text
-        @click="emit('refresh')"
-      />
-    </div>
-
+    <!-- 标题由外层 AppModal 提供（这里再画一遍就是第二个标题）；
+         刷新按钮也移到弹窗右下角（footer），这里只留列表本体。 -->
     <div v-if="!runs.length" class="rh-empty app-empty-note">{{ t('automation.noRuns') }}</div>
 
     <n-scrollbar v-else class="rh-list">
@@ -47,12 +36,11 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { NScrollbar } from 'naive-ui'
-import { RefreshCw, Trash2 } from 'lucide-vue-next'
+import { Trash2 } from 'lucide-vue-next'
 import IconButton from '@components/common/IconButton.vue'
 
 defineProps<{
   runs: any[]
-  loading?: boolean
   /** 当前在页面里查看的那条记录（高亮） */
   selectedTaskId?: string
 }>()
@@ -60,7 +48,6 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'select', task_id: string): void
   (e: 'remove', task_id: string): void
-  (e: 'refresh'): void
 }>()
 
 const { t } = useI18n()
@@ -118,12 +105,6 @@ function fmtDur(ms: number): string {
   display: flex; flex-direction: column;
   flex: 0 1 auto; min-height: 0; overflow: hidden;
 }
-.rh-head { gap: 6px; margin-bottom: 4px; flex: none; }
-.rh-count {
-  font-size: var(--app-font-size-xs); color: var(--app-text-muted); background: var(--app-blue-bg);
-  border-radius: 8px; padding: 0 6px; line-height: 16px;
-}
-.rh-head :deep(.app-icon-btn) { margin-left: auto; }
 .rh-empty { padding: 8px 0; }
 .rh-list { flex: 1 1 auto; min-height: 0; max-height: 140px; }
 .run-row {

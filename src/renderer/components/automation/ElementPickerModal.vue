@@ -1,5 +1,10 @@
 <template>
-  <n-modal :show="show" :title="t('automation.elements')" preset="card" style="width: 520px" @update:show="emit('update:show', $event)">
+  <AppModal
+    :show="show"
+    :title="t('automation.elements')"
+    :width="520"
+    @update:show="emit('update:show', $event)"
+  >
     <p class="app-muted">{{ t('automation.pickHint') }}</p>
 
     <!-- dumping in progress: show a spinner instead of looking frozen -->
@@ -25,12 +30,13 @@
         </n-list-item>
       </n-list>
     </template>
-  </n-modal>
+  </AppModal>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { NModal, NList, NListItem, NEmpty, NSpin } from 'naive-ui'
+import { NList, NListItem, NEmpty, NSpin } from 'naive-ui'
+import AppModal from '@components/common/AppModal.vue'
 import type { UiNode } from '@components/automation/uiDump'
 
 defineProps<{

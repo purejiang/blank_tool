@@ -67,6 +67,88 @@ class TestTrafficStatus:
         assert not os.path.isdir(os.path.join(str(tmp_path), "mitmproxy", "conf"))
 
 
+class TestTrafficStatusWithDevice:
+    """Optional ``device_id`` adds the DEVICE-side half of the preflight.
+
+    Backs the run-settings 「检测」 button: mitmproxy readiness alone does not
+    tell you whether the selected device can actually be captured (reachable,
+    rooted, CA already installed).
+    """
+
+    BASE_KEYS = {
+        "installed", "ready", "lib_path", "python_mismatch", "ca_cert_exists",
+    }
+
+    def test_device_fields_are_added_only_with_a_device_id(self, api_handler, monkeypatch):
+        import app.handlers.automation_handler as mod
+
+        monkeypatch.setattr(mod, "device_capture_readiness_impl", lambda device_id: {
+            "device_id": device_id,
+            "device_state": "device",
+            "ca_on_device": True,
+            "root_available": True,
+        })
+
+        base = _call(api_handler, "automation.traffic_status", {}, 81)["result"]["payload"]
+        assert set(base.keys()) == self.BASE_KEYS
+
+        data = _call(
+            api_handler, "automation.traffic_status", {"device_id": "emulator-5554"}, 82
+        )
+        payload = data["result"]["payload"]
+        # PC-side report is preserved …
+        assert self.BASE_KEYS.issubset(set(payload.keys()))
+        # … and the device-side fields are merged in
+        assert payload["device_id"] == "emulator-5554"
+        assert payload["device_state"] == "device"
+        assert payload["ca_on_device"] is True
+        assert payload["root_available"] is True
+
+    def test_blank_device_id_keeps_the_pc_only_report(self, api_handler, monkeypatch):
+        import app.handlers.automation_handler as mod
+
+        def boom(_device_id):
+            raise AssertionError("blank device_id must not probe the device")
+
+        monkeypatch.setattr(mod, "device_capture_readiness_impl", boom)
+        data = _call(api_handler, "automation.traffic_status", {"device_id": "   "}, 83)
+        assert set(data["result"]["payload"].keys()) == self.BASE_KEYS
+
+    def test_probe_never_raises_when_adb_explodes(self, monkeypatch):
+        import app.automation.traffic as traffic
+
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("adb not found")
+
+        monkeypatch.setattr(traffic, "run_adb", boom)
+        out = traffic.device_capture_readiness("emulator-5554")
+        assert out["device_state"] == "unknown"
+        assert out["ca_on_device"] is None
+        assert out["root_available"] is None
+
+    def test_no_device_id_short_circuits(self):
+        import app.automation.traffic as traffic
+
+        out = traffic.device_capture_readiness("")
+        assert out["device_state"] == "unknown"
+        assert out["ca_on_device"] is None
+
+    def test_unreachable_device_skips_the_deeper_probes(self, monkeypatch):
+        import app.automation.traffic as traffic
+
+        monkeypatch.setattr(
+            traffic, "run_adb", lambda device_id, args: {"stdout": "offline", "returncode": 1}
+        )
+
+        def boom(*_args, **_kwargs):
+            raise AssertionError("no root/cert probe on an unreachable device")
+
+        monkeypatch.setattr(traffic, "_su", boom)
+        out = traffic.device_capture_readiness("emulator-5554")
+        assert out["device_state"] == "offline"
+        assert out["root_available"] is None
+
+
 class TestAnyCaptureActive:
     def test_reflects_active_capture_map(self, monkeypatch):
         import app.automation.traffic as traffic

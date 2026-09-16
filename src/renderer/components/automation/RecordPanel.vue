@@ -1,16 +1,6 @@
 <template>
   <div class="record-panel">
-    <div class="panel-head">
-      <span class="panel-title">{{ t('automation.recordSegment') }}</span>
-      <IconButton
-        :icon="X"
-        :label="t('common.close')"
-        size="tiny"
-        quaternary
-        class="panel-close"
-        @click="onClose"
-      />
-    </div>
+    <!-- 标题与关闭 X 由外层 AppModal 统一提供（这里再画一遍就会出现两个关闭按钮） -->
     <n-button
       size="small"
       block
@@ -34,16 +24,11 @@
     </div>
 
     <n-scrollbar v-if="liveSteps.length" class="record-list">
-      <template v-for="(step, i) in liveSteps" :key="i">
-        <div v-if="displayGapMs(i)" class="gap-line">
-          + {{ displayGapMs(i) }}ms
-        </div>
-        <div class="step-line">
-          <span class="step-idx">#{{ i + 1 }}</span>
-          <span class="step-act">{{ actLabel(step.action) }}</span>
-          <span class="step-pos">{{ posSummary(step) }}</span>
-        </div>
-      </template>
+      <div v-for="(step, i) in liveSteps" :key="i" class="step-line">
+        <span class="step-idx">#{{ i + 1 }}</span>
+        <span class="step-act">{{ actLabel(step.action) }}</span>
+        <span class="step-pos">{{ posSummary(step) }}</span>
+      </div>
     </n-scrollbar>
     <div v-else class="record-empty">{{ t('automation.recordEmpty') }}</div>
 
@@ -68,47 +53,18 @@
       </n-button>
     </div>
 
-    <div class="gap-settings">
-      <n-checkbox v-model:checked="gap.enabled" size="small">
-        <span class="gap-label">{{ t('automation.autoWaitEnabled') }}</span>
-      </n-checkbox>
-      <n-tooltip trigger="hover" placement="top">
-        <template #trigger>
-          <span class="gap-field">
-            <span class="gap-label">{{ t('automation.waitThreshold') }}</span>
-            <n-input-number
-              v-model:value="gap.thresholdMs"
-              size="tiny"
-              :min="0"
-              :step="100"
-              class="gap-num"
-            />
-          </span>
-        </template>
-        {{ t('automation.waitThresholdTip') }}
-      </n-tooltip>
-      <span class="gap-field">
-        <span class="gap-label">{{ t('automation.waitMaxCap') }}</span>
-        <n-input-number
-          v-model:value="gap.maxMs"
-          size="tiny"
-          :min="gap.thresholdMs"
-          :step="500"
-          class="gap-num"
-        />
-      </span>
-    </div>
+    <!-- 录制只记录「操作」本身：步骤之间的等待由运行配置里的默认步骤间隔统一控制，
+         不再按录制节奏合成等待步骤 —— 改一处生效，脚本也保持干净。 -->
+    <div class="record-hint">{{ t('automation.recordIntervalHint') }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
-  NButton, NCheckbox, NIcon, NInputNumber, NScrollbar, NTag, NTooltip, useMessage,
+  NButton, NScrollbar, NSelect, NTag, useMessage,
 } from 'naive-ui'
-import { X } from 'lucide-vue-next'
-import IconButton from '@components/common/IconButton.vue'
 import serviceManager from '@services/ServiceManager'
 
 // automation.record* i18n keys (zh-CN/en-US) landed in 4198cc3.
@@ -125,18 +81,12 @@ const props = defineProps<{
 
 export type InsertAt = 'end' | 'start' | 'after'
 
-export interface RecordedGap {
-  enabled: boolean
-  thresholdMs: number
-  maxMs: number
-}
-
 const emit = defineEmits<{
   (e: 'recording-start'): void
-  (e: 'recorded', payload: { steps: any[]; gap: RecordedGap; insertAt: InsertAt }): void
+  /** 录到的原始步骤（扁平形状，由 store 转成 v2）+ 落点；**没有**等待信息 ——
+   *  步骤之间的节奏由运行配置的默认步骤间隔统一控制。 */
+  (e: 'recorded', payload: { steps: any[]; insertAt: InsertAt }): void
   (e: 'recording-end'): void
-  /** 收起停靠面板（页面据此 v-show 隐藏） */
-  (e: 'close'): void
 }>()
 
 const { t } = useI18n()
@@ -149,36 +99,11 @@ const ended = ref(false)
 let svc: any = null
 
 /**
- * auto-wait synthesis settings; default floor 500 ms treats sub-floor
- * pauses as hand-speed jitter (no wait step), cap 0 = uncapped so long
- * pauses replay at their true length. Both still user-editable.
+ * 录制只暂存步骤本身（不再按录制节奏合成等待步骤）：步骤之间的等待由运行配置
+ * 里的默认步骤间隔控制，个别需要更久等待的步骤在自己的编辑表单里设「间隔」。
+ * 所以这里没有阈值/上限这类设置 —— 它们只在合成等待时才有意义。
  */
-const gap = reactive<RecordedGap>({
-  enabled: true,
-  thresholdMs: 500,
-  maxMs: 0,
-})
-
-/** gap (ms) between the end of step i-1 and the START of step i. */
-function gapMs(i: number): number {
-  if (i <= 0) return 0
-  const prev = liveSteps.value[i - 1]
-  const cur = liveSteps.value[i]
-  if (typeof prev?.ts !== 'number' || typeof cur?.ts !== 'number') return 0
-  const startOfCur = cur.ts - (Number(cur.duration_ms) || 0) / 1000
-  return Math.max(0, Math.round((startOfCur - prev.ts) * 1000))
-}
-
-/** wait value the store's withWaits would emit for step i under the
- *  current floor/cap (0 = filtered out — no gap line rendered). */
-function displayGapMs(i: number): number {
-  const g = gapMs(i)
-  if (g <= 0 || g <= gap.thresholdMs) return 0
-  return gap.maxMs > 0 ? Math.min(g, gap.maxMs) : g
-}
-
-/** 停止后暂存的录制结果；点击「插入到脚本」才交给页面按位置写入 */
-const lastRecord = ref<{ steps: any[]; gap: RecordedGap } | null>(null)
+const lastRecord = ref<{ steps: any[] } | null>(null)
 
 /** 插入位置：默认由**入口**决定（顶部「插入位」= 开头，行内「+」= 该行下方），
  *  入口每次打开面板都会改写它；用户仍可在下拉里手动改。applyRecorded 兜底
@@ -268,7 +193,6 @@ async function stop(): Promise<void> {
     // 只暂存展示，不自动写入脚本 —— 写入由「应用到脚本」按钮显式触发
     lastRecord.value = {
       steps: Array.isArray(res?.steps) ? res.steps : [],
-      gap: { enabled: gap.enabled, thresholdMs: gap.thresholdMs, maxMs: gap.maxMs },
     }
   } catch (err: any) {
     // A rejected record_stop must reset the UI, not leak an unhandled
@@ -279,18 +203,12 @@ async function stop(): Promise<void> {
   }
 }
 
-/** 收起面板；录制中先停止（v-show 不卸载组件，unmount 清理不会触发） */
-async function onClose(): Promise<void> {
-  if (recording.value) await stop()
-  emit('close')
-}
-
 function applyRecorded(): void {
   if (!lastRecord.value || recording.value) return
   // 无选中行时"选中之后"回落到追加末尾
   const at: InsertAt =
     insertAt.value === 'after' && !props.hasSelection ? 'end' : insertAt.value
-  emit('recorded', { ...lastRecord.value, insertAt: at })
+  emit('recorded', { steps: lastRecord.value.steps, insertAt: at })
 }
 
 function clearRecorded(): void {
@@ -332,19 +250,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 10px;
 }
-.panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.panel-title {
-  font-size: var(--app-font-size-sm);
-  font-weight: 600;
-  color: var(--app-text-primary);
-}
-.panel-close { flex: none; }
 .record-count-line {
   display: flex;
   justify-content: flex-end;
@@ -385,26 +291,18 @@ onBeforeUnmount(() => {
   border: 1px dashed var(--app-card-border);
   border-radius: 8px;
 }
-.gap-line {
-  font-size: var(--app-font-size-xs);
-  color: var(--app-text-muted);
-  text-align: center;
-  padding: 1px 0;
-  font-variant-numeric: tabular-nums;
-}
+/* 功能按钮统一靠右下（弹窗的底部动作区） */
 .record-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
-.insert-pos { flex: 1; min-width: 0; }
-.gap-settings {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+.insert-pos { flex: none; width: 168px; }
+/* 节奏解释：录制不再合成等待步骤，等待统一在运行配置里设 */
+.record-hint {
+  font-size: var(--app-font-size-xs);
+  line-height: 1.55;
+  color: var(--app-text-dim);
 }
-.gap-label { font-size: var(--app-font-size-xs); color: var(--app-text-muted); margin-right: 4px; }
-.gap-field { display: inline-flex; align-items: center; }
-.gap-num { width: 84px; }
 </style>

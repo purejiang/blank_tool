@@ -168,6 +168,42 @@ def status() -> Dict[str, Any]:
     }
 
 
+def device_capture_readiness(device_id: str) -> Dict[str, Any]:
+    """Device-side half of the capture preflight (read-only).
+
+    :func:`status` answers "can this PC run mitmdump"; this answers "can the
+    SELECTED DEVICE actually be captured": is it reachable, is root available
+    (needed to install the CA into the system store), and is the certificate
+    already installed there.
+
+    Never raises and never mutates: every unknown degrades to ``None`` (or
+    ``"unknown"`` for the state) so the UI shows 「未知」 instead of a false
+    negative. ``ca_on_device`` stays ``None`` until the cert exists locally —
+    there is nothing to look for before the first capture generates it.
+    """
+    out: Dict[str, Any] = {
+        "device_id": device_id,
+        "device_state": "unknown",
+        "ca_on_device": None,
+        "root_available": None,
+    }
+    if not device_id:
+        return out
+    try:
+        st = run_adb(device_id, ["get-state"])
+        out["device_state"] = (st.get("stdout") or "").strip() or "unknown"
+        if out["device_state"] != "device":
+            return out
+        root = _su(device_id, "id")
+        out["root_available"] = root.get("returncode", 1) == 0
+        cert = ca_cert_path()
+        if os.path.isfile(cert):
+            out["ca_on_device"] = _ca_installed(device_id, subject_hash_old(cert))
+    except Exception as e:  # a probe must never break the settings/run config UI
+        logger.warning(f"device capture readiness probe failed for {device_id}: {e}")
+    return out
+
+
 def ca_cert_path(*, create: bool = False) -> str:
     """Path of the mitmproxy CA cert in the runtime conf dir.
 

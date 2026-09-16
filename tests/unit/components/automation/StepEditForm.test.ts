@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { NSelect, NTooltip } from 'naive-ui'
+import { NSelect } from 'naive-ui'
 
 vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
@@ -27,57 +27,91 @@ const ELEMENT_BTN = 'automation.f.pickElement'
 function mountForm(step: Step) {
   return mount(StepEditForm, { props: { step } })
 }
-function buttonTexts(w: ReturnType<typeof mountForm>): string[] {
-  return w.findAll('button').map((b) => b.text())
+/** 拾取/抓取都是图标按钮（IconButton）：动作文案在 aria-label 与 tooltip 上，
+ *  不再占用行内宽度（这正是「按钮被挡住」的修法）。 */
+function buttonLabels(w: ReturnType<typeof mountForm>): Array<string | undefined> {
+  return w.findAll('button').map((b) => b.attributes('aria-label'))
+}
+function buttonByLabel(w: ReturnType<typeof mountForm>, label: string) {
+  return w.findAll('button').find((b) => b.attributes('aria-label') === label)
 }
 
 const coordTap = (): Step => ({ id: 't', action: 'tap', mode: 'coord', coord: { x: 1, y: 2 } })
 
 describe('StepEditForm pick buttons', () => {
-  it('renders the screenshot pick button for a coordinate tap', () => {
+  it('renders the screenshot pick icon for a coordinate tap', () => {
     const w = mountForm(coordTap())
-    expect(buttonTexts(w)).toContain(COORD_BTN)
-    expect(buttonTexts(w)).not.toContain(ELEMENT_BTN)
+    expect(buttonLabels(w)).toContain(COORD_BTN)
+    expect(buttonLabels(w)).not.toContain(ELEMENT_BTN)
   })
 
-  it('emits pick { mode: "screenshot" } from that button', async () => {
+  it('emits pick { mode: "screenshot" } from that icon', async () => {
     const w = mountForm(coordTap())
-    const btn = w.findAll('button').find((b) => b.text() === COORD_BTN)
+    const btn = buttonByLabel(w, COORD_BTN)
     expect(btn).toBeTruthy()
     await btn!.trigger('click')
     expect(w.emitted('pick')![0][0]).toEqual({ mode: 'screenshot' })
   })
 
-  it('keeps x and y as real number inputs in coordinate mode', () => {
+  it('keeps x and y as real number inputs side by side, each with its own axis prefix', () => {
     const w = mountForm(coordTap())
-    // the specialised row must still wrap the field, not replace it
-    expect(w.findAll('.n-input-number').length).toBe(2)
-    expect(w.findAll('.ctl-pick .n-input-number').length).toBe(1)
+    // 两个坐标输入都在（X / Y 仍分别必填），且同属一个两列网格
+    // （全表单的第 3 个数字输入是通用的「间隔 (ms)」行，与坐标对无关）
+    expect(w.findAll('.n-input-number').length).toBe(3)
+    expect(w.findAll('.coord-pair .n-input-number').length).toBe(2)
+    // X / Y 各自带前缀标记 —— 一眼分清哪个是哪个
+    const prefixes = w.findAll('.coord-pair .n-input__prefix').map((p) => p.text())
+    expect(prefixes).toEqual(['X', 'Y'])
   })
 
-  it('renders the UI-dump pick button for an element tap instead', () => {
+  it('action buttons live in their own column, NEVER inside the inputs', () => {
+    const w = mountForm(coordTap())
+    // 坐标行的动作列里是「选坐标」按钮
+    const coordRow = w.findAll('.form-row').find((r) => r.find('.coord-pair').exists())!
+    expect(coordRow.find('.form-actions-cell button').exists()).toBe(true)
+    // 输入框内部（前缀/后缀）不许再塞「拾取/抓取」这类动作按钮 —— 按钮与输入框不混在一起。
+    // 数字输入自带的加减步进器不算（它不是动作按钮），所以按 aria-label 判断。
+    const insideLabels = w
+      .findAll('.n-input__suffix button, .n-input__prefix button')
+      .map((b) => b.attributes('aria-label'))
+      .filter((l) => l !== undefined)
+    expect(insideLabels).toEqual([])
+    // 坐标行控制区里只有两个输入，没有按钮
+    expect(w.get('.coord-pair').find('button').exists()).toBe(false)
+  })
+
+  it('every field row reserves the action column so all inputs share a right edge', () => {
+    const w = mountForm(coordTap())
+    const rows = w.findAll('.form-row')
+    expect(rows.length).toBeGreaterThan(1)
+    for (const row of rows) {
+      expect(row.find('.form-actions-cell').exists()).toBe(true)
+    }
+  })
+
+  it('renders the UI-dump pick icon for an element tap instead', () => {
     const w = mountForm({
       id: 't2',
       action: 'tap',
       mode: 'element',
       target: { by: 'text', value: '登录', timeout_ms: 10000 },
     })
-    expect(buttonTexts(w)).toContain(ELEMENT_BTN)
-    expect(buttonTexts(w)).not.toContain(COORD_BTN)
+    expect(buttonLabels(w)).toContain(ELEMENT_BTN)
+    expect(buttonLabels(w)).not.toContain(COORD_BTN)
   })
 
-  it('offers no pick button for a fixed-duration wait', () => {
+  it('offers no pick icon for a fixed-duration wait', () => {
     const w = mountForm({ id: 'w', action: 'wait', mode: 'time', ms: 500 })
-    expect(buttonTexts(w)).not.toContain(COORD_BTN)
-    expect(buttonTexts(w)).not.toContain(ELEMENT_BTN)
+    expect(buttonLabels(w)).not.toContain(COORD_BTN)
+    expect(buttonLabels(w)).not.toContain(ELEMENT_BTN)
   })
 })
 
 /**
  * assert_element is an unconditional element target (no mode discriminator),
- * so its `target.value` row must carry the same UI-dump pick button as
+ * so its `target.value` row must carry the same UI-dump pick icon as
  * input/tap-element. assert_activity is an Activity-string assertion — it has
- * no element target and must never grow an element-pick button.
+ * no element target and must never grow an element-pick icon.
  */
 describe('StepEditForm pick buttons — assert_element', () => {
   const assertElement = (): Step => ({
@@ -86,85 +120,68 @@ describe('StepEditForm pick buttons — assert_element', () => {
     target: { by: 'text', value: '首页', timeout_ms: 10000 },
   })
 
-  it('renders the UI-dump pick button for an assert_element step', () => {
+  it('renders the UI-dump pick icon for an assert_element step', () => {
     const w = mountForm(assertElement())
-    expect(buttonTexts(w)).toContain(ELEMENT_BTN)
-    expect(buttonTexts(w)).not.toContain(COORD_BTN)
+    expect(buttonLabels(w)).toContain(ELEMENT_BTN)
+    expect(buttonLabels(w)).not.toContain(COORD_BTN)
   })
 
-  it('emits pick { mode: "element" } from the assert_element pick button', async () => {
+  it('emits pick { mode: "element" } from the assert_element pick icon', async () => {
     const w = mountForm(assertElement())
-    const btn = w.findAll('button').find((b) => b.text() === ELEMENT_BTN)
+    const btn = buttonByLabel(w, ELEMENT_BTN)
     expect(btn).toBeTruthy()
     await btn!.trigger('click')
     expect(w.emitted('pick')![0][0]).toEqual({ mode: 'element' })
   })
 
-  it('renders no element-pick button for an assert_activity step', () => {
+  it('renders no element-pick icon for an assert_activity step', () => {
     const w = mountForm({ id: 'aa', action: 'assert_activity', activity: '' })
-    expect(buttonTexts(w)).not.toContain(ELEMENT_BTN)
-    expect(buttonTexts(w)).not.toContain(COORD_BTN)
+    expect(buttonLabels(w)).not.toContain(ELEMENT_BTN)
+    expect(buttonLabels(w)).not.toContain(COORD_BTN)
   })
 })
 
 /**
  * assert_activity's Activity string can be grabbed off the device instead of
- * typed. The form owns only the button + the disabled/tooltip UX; the PAGE
- * owns the backend call (mirrors the element picker split). `canGrab` comes
- * from the page as `!!autoDeviceId`.
+ * typed. The form owns only the icon + the disabled state; the PAGE owns the
+ * backend call (mirrors the element picker split). `canGrab` comes from the
+ * page as `!!autoDeviceId` and, when false, the tooltip text itself becomes the
+ * reason ("未连接设备") — one tooltip, no extra element in the row.
  */
 const GRAB_BTN = 'automation.f.grabActivity'
 const GRAB_TOOLTIP = 'automation.f.grabActivityNoDevice'
 
-/** Flatten a vnode tree from a slot render fn down to its text. */
-function vnodeText(nodes: any): string {
-  if (nodes == null) return ''
-  if (typeof nodes === 'string') return nodes
-  if (Array.isArray(nodes)) return nodes.map(vnodeText).join('')
-  const children = nodes.children
-  if (typeof children === 'string') return children
-  if (Array.isArray(children)) return children.map(vnodeText).join('')
-  return ''
-}
-
 describe('StepEditForm — assert_activity grab button', () => {
   const assertActivity = (): Step => ({ id: 'aa', action: 'assert_activity', activity: '' })
 
-  it('renders the grab button for an assert_activity step', () => {
-    const w = mountForm(assertActivity())
-    expect(buttonTexts(w)).toContain(GRAB_BTN)
-  })
-
-  it('renders no grab button for assert_element or tap steps', () => {
-    const el = mountForm({ id: 'ae', action: 'assert_element', target: { by: 'text', value: 'x' } })
-    expect(buttonTexts(el)).not.toContain(GRAB_BTN)
-    expect(buttonTexts(mountForm(coordTap()))).not.toContain(GRAB_BTN)
-  })
-
-  it('emits grabActivity when clicked', async () => {
+  it('renders the grab icon for an assert_activity step', () => {
+    // canGrab=true（选了设备）时提示文案就是动作本身
     const w = mount(StepEditForm, { props: { step: assertActivity(), canGrab: true } })
-    const btn = w.findAll('button').find((b) => b.text() === GRAB_BTN)
+    expect(buttonLabels(w)).toContain(GRAB_BTN)
+  })
+
+  it('renders no grab icon for assert_element or tap steps', () => {
+    const el = mountForm({ id: 'ae', action: 'assert_element', target: { by: 'text', value: 'x' } })
+    expect(buttonLabels(el)).not.toContain(GRAB_BTN)
+    expect(buttonLabels(mountForm(coordTap()))).not.toContain(GRAB_BTN)
+  })
+
+  it('emits grabActivity when clicked (device selected)', async () => {
+    const w = mount(StepEditForm, { props: { step: assertActivity(), canGrab: true } })
+    const btn = buttonByLabel(w, GRAB_BTN)
     expect(btn).toBeTruthy()
+    expect(btn!.attributes('disabled')).toBeUndefined()
     await btn!.trigger('click')
     expect(w.emitted('grabActivity')).toBeTruthy()
   })
 
-  it('disables the button and shows the no-device tooltip when canGrab is false', () => {
+  it('没设备时禁用，并把提示换成「未连接设备」', () => {
     const w = mountForm(assertActivity()) // canGrab omitted → false
-    const btn = w.findAll('button').find((b) => b.text() === GRAB_BTN)!
-    expect(btn.attributes('disabled')).toBeDefined()
-    const tip = w.findComponent(NTooltip)
-    expect(tip.exists()).toBe(true)
-    // tooltip ENABLED while the button is disabled — that is the whole point
-    expect(tip.props('disabled')).toBe(false)
-    expect(vnodeText(tip.vm.$slots.default?.())).toContain(GRAB_TOOLTIP)
-  })
-
-  it('enables the button and mutes the tooltip when canGrab is true', () => {
-    const w = mount(StepEditForm, { props: { step: assertActivity(), canGrab: true } })
-    const btn = w.findAll('button').find((b) => b.text() === GRAB_BTN)!
-    expect(btn.attributes('disabled')).toBeUndefined()
-    expect(w.findComponent(NTooltip).props('disabled')).toBe(true)
+    // 提示文案本身就是原因，所以可访问名也跟着换
+    const btn = buttonByLabel(w, GRAB_TOOLTIP)
+    expect(btn).toBeTruthy()
+    expect(btn!.attributes('disabled')).toBeDefined()
+    expect(buttonByLabel(w, GRAB_BTN)).toBeUndefined()
   })
 })
 
@@ -196,14 +213,14 @@ describe('StepEditForm note', () => {
 
   it('shows the note in its own field and re-initialises when the step is replaced', async () => {
     const w = mountForm({ ...coordTap(), note: 'first' })
-    expect((w.findAll('.form-field input')[0].element as HTMLInputElement).value).toBe('first')
+    expect((w.findAll('.form-row input')[0].element as HTMLInputElement).value).toBe('first')
     await w.setProps({ step: { ...coordTap(), note: 'second' } })
-    expect((w.findAll('.form-field input')[0].element as HTMLInputElement).value).toBe('second')
+    expect((w.findAll('.form-row input')[0].element as HTMLInputElement).value).toBe('second')
   })
 
   it('lets the user type a note that then survives save', async () => {
     const w = mountForm(coordTap())
-    await w.findAll('.form-field input')[0].setValue('点了登录按钮')
+    await w.findAll('.form-row input')[0].setValue('点了登录按钮')
     await confirm(w)
     expect(w.emitted('save')![0][0]).toMatchObject({ note: '点了登录按钮' })
   })
@@ -237,7 +254,7 @@ describe('StepEditForm failure policy', () => {
       { id: 'w', action: 'wait', mode: 'time', ms: 100 } as Step,
     ]) {
       const w = mountForm(step)
-      expect(w.find('.form-field .n-select').exists()).toBe(true)
+      expect(w.find('.form-row .n-select').exists()).toBe(true)
     }
   })
 
