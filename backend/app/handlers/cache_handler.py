@@ -14,14 +14,27 @@ only touches APK/package work products, so it can never wipe a run report
 by accident; ``all`` covers everything.
 """
 
+import copy
 import os
 import shutil
+import time
 
 from app.utils.logger import Logger
 from app.utils.env import get_auto_tasks_root, get_cache_dir, get_output_dir, get_tasks_root
 from app.common.decorators import logs_errors
 
 logger = Logger.get_logger("StorageHandler")
+
+# `cache.info` walks four directory trees; the settings page calls it on every
+# mount AND after every clear. Sizes do not need to be second-fresh, so the
+# result is memoised briefly and invalidated by the clear handlers below.
+_INFO_TTL_SECONDS = 60
+_info_cache = {"at": 0.0, "payload": None}
+
+
+def _invalidate_info_cache():
+    _info_cache["at"] = 0.0
+    _info_cache["payload"] = None
 
 
 def _cache_root():
@@ -62,6 +75,17 @@ def _get_dir_size(path):
 
 @logs_errors("StorageHandler")
 def cache_info(params, stream_handler):
+    """Directory sizes for the storage card.
+
+    Cached for ``_INFO_TTL_SECONDS`` (``params.force`` bypasses it): the walk
+    is the expensive part and the settings page re-asks on every mount. The
+    clear handlers invalidate the memo so a size never survives a deletion.
+    """
+    now = time.time()
+    if (not params.get("force") and _info_cache["payload"] is not None
+            and now - _info_cache["at"] < _INFO_TTL_SECONDS):
+        return copy.deepcopy(_info_cache["payload"])
+
     cache_root = _cache_root()
     tasks_root = _tasks_root()
     auto_tasks_root = _auto_tasks_root()
@@ -74,7 +98,7 @@ def cache_info(params, stream_handler):
     output_size, output_files = _get_dir_size(output_root)
     logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
 
-    return {
+    payload = {
         # Reported for completeness but excluded from `total`: in a dev run
         # without BT_TASKS_DIR the tasks root lives inside the cache dir, so
         # adding it would double-count.
@@ -108,6 +132,9 @@ def cache_info(params, stream_handler):
             "files": tasks_files + auto_files + output_files + logs_files,
         },
     }
+    _info_cache["at"] = now
+    _info_cache["payload"] = payload
+    return copy.deepcopy(payload)
 
 
 
@@ -144,6 +171,7 @@ def cache_clear(params, stream_handler):
     """
     root = _cache_root()
     _clear_directory(root)
+    _invalidate_info_cache()
     return {"path": root, "size": 0, "files": 0}
 
 
@@ -151,6 +179,7 @@ def cache_clear(params, stream_handler):
 def output_clear(params, stream_handler):
     root = _output_root()
     _clear_directory(root)
+    _invalidate_info_cache()
     return {"path": root, "size": 0, "files": 0}
 
 
@@ -188,6 +217,7 @@ def storage_clear(params, stream_handler):
         if _clear_directory(cache_root):
             cleared_paths.append(cache_root)
 
+    _invalidate_info_cache()
     return {"success": True, "cleared_paths": cleared_paths}
 
 

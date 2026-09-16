@@ -3,14 +3,22 @@
 """
 Automation run history handlers.
 
-Every adb_auto run writes ``report.json`` into its per-run directory under
-the AUTOMATION root — ``{BT_AUTO_TASKS_DIR}/{task_id}/``, i.e.
-``auto_tasks/`` as a sibling of ``tasks/`` — with artifacts categorized into
-``screenshots/`` ``traffic/`` ``crash_logs/``. These handlers list / read /
-delete those run directories. Deletion removes the WHOLE run directory and
-is containment-checked against the automation root, and only directories
-that actually contain a ``report.json`` are eligible — APK/package task
-dirs (which live under ``tasks/``) can never be touched from here.
+Every run writes ``report.json`` into its per-run directory under the
+AUTOMATION root — ``{BT_AUTO_TASKS_DIR}/{task_id}/``, i.e. ``auto_tasks/`` as
+a sibling of ``tasks/`` — with artifacts categorized into ``screenshots/``
+``traffic/`` ``crash_logs/``. These handlers list / read / delete / prune
+those run directories. Deletion removes the WHOLE run directory and is
+containment-checked against the automation root.
+
+Alongside the full ``report.json`` the orchestrator keeps a small
+``summary.json`` index (written at run start as ``status: running`` and
+rewritten at the end as ``finished``), so listing 100 runs no longer parses
+100 full reports. It also makes interruptions visible: a directory whose
+summary still says ``running`` while nothing is executing is a run the
+backend was killed in the middle of — an ORPHAN. Orphans are listed (flagged
+``orphan: true``) and can be deleted individually or by
+``automation.prune_runs``; a run that IS executing right now can be neither
+deleted nor pruned (see ``app.automation.runstate``).
 """
 
 import base64
@@ -21,12 +29,35 @@ import shutil
 import time
 import zlib
 
+from app.automation import runstate
 from app.utils.env import get_auto_tasks_root
 from app.utils.logger import Logger
 
 logger = Logger.get_logger("AutomationRunsHandler")
 
 REPORT_NAME = "report.json"
+SUMMARY_NAME = "summary.json"
+
+# Fields the history list needs. Kept in sync with
+# ``app.automation.orchestrator._SUMMARY_KEYS``.
+SUMMARY_KEYS = (
+    "kind", "task_id", "device_id", "package_name", "started_at", "finished_at",
+    "started_ts", "finished_ts", "duration_ms", "success", "cancelled",
+    "aborted_by_crash", "total", "passed", "failed", "run_dir",
+)
+
+LIST_LIMIT = 100
+DEFAULT_TRAFFIC_LIMIT = 2000
+# Scan caps. `read_run` serves the viewer a bounded slice of the capture log;
+# a single run can otherwise hold hundreds of MB of jsonl. The HTML export
+# asks for (almost) everything, so it passes a much larger budget.
+DEFAULT_TRAFFIC_SCAN_BYTES = 8 * 1024 * 1024
+EXPORT_TRAFFIC_SCAN_BYTES = 256 * 1024 * 1024
+# `report.logs` is one entry per streamed log line: bounded by default so a
+# long run cannot blow up the IPC payload, with the tail kept (the end of a
+# run is what a report viewer looks at).
+DEFAULT_LOG_LIMIT = 5000
+_ORPHAN_SIZE_MAX_FILES = 5000
 
 
 def _run_dir_for(task_id: str) -> str:
@@ -54,57 +85,222 @@ def _read_report(run_dir: str) -> dict:
     return report if isinstance(report, dict) else {}
 
 
-def handle_list_runs(params, stream_handler):
-    """Summaries of every automation run, newest first (max 100)."""
-    root = os.path.realpath(get_auto_tasks_root())
-    runs = []
+def _read_json_dict(path: str):
+    """Load a JSON object, or ``None`` when missing / unreadable / not an object."""
     try:
-        entries = os.listdir(root)
-    except OSError as e:
-        return {"success": False, "runs": [], "error": str(e)}
-    for name in entries:
-        report_path = os.path.join(root, name, REPORT_NAME)
-        if not os.path.isfile(report_path):
-            continue  # not an automation run (or an incomplete one)
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _iso(ts) -> str:
+    try:
+        return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(float(ts)))
+    except (TypeError, ValueError):
+        return ""
+
+
+def _dir_stats(path: str):
+    """Bounded recursive size/file count (orphans have no report to read)."""
+    total_size = 0
+    total_files = 0
+    for dirpath, _dirs, filenames in os.walk(path):
+        for name in filenames:
+            try:
+                total_size += os.path.getsize(os.path.join(dirpath, name))
+            except OSError:
+                pass
+            total_files += 1
+            if total_files >= _ORPHAN_SIZE_MAX_FILES:
+                return total_size, total_files
+    return total_size, total_files
+
+
+def _project_summary(report: dict, fallback_id: str, run_dir: str) -> dict:
+    """Pick the history-list fields out of a FULL report.json (legacy runs)."""
+    entry = {k: report.get(k) for k in SUMMARY_KEYS}
+    entry["task_id"] = entry.get("task_id") or fallback_id
+    entry["run_dir"] = entry.get("run_dir") or run_dir
+    entry["screenshot_count"] = len(report.get("screenshots") or [])
+    return entry
+
+
+def _index_run_dir(run_dir: str, name: str):
+    """One history entry for ``run_dir``, or ``None`` when it is not a run.
+
+    Resolution order — ``summary.json`` first (cheap), then the full
+    ``report.json`` (legacy runs written before the index existed, and the
+    killed-in-between case where the report landed but its summary rewrite did
+    not), then "nothing indexable", which for a non-empty directory means an
+    interrupted run: an orphan the storage UI can show and delete.
+    """
+    summary = _read_json_dict(os.path.join(run_dir, SUMMARY_NAME))
+    # Any JSON object in `report.json` IS the run's report (only the
+    # orchestrator writes into this root); the index file additionally has to
+    # look like an index, otherwise it is treated as absent.
+    if summary is not None and not (
+        summary.get("kind") == "automation_run" or "status" in summary
+    ):
+        summary = None
+    report = _read_json_dict(os.path.join(run_dir, REPORT_NAME))
+    live = runstate.is_active(name) or runstate.is_active_dir(run_dir)
+
+    if summary is not None:
+        running = str(summary.get("status") or "") == "running"
+        # A `running` marker with no live run means the backend died — UNLESS
+        # the report is already on disk (killed between the two writes), in
+        # which case the report is the truth.
+        use_report = running and not live and report is not None
+        if use_report:
+            entry = _project_summary(report, name, run_dir)
+            status = "finished"
+        else:
+            entry = {k: summary.get(k) for k in SUMMARY_KEYS}
+            entry["task_id"] = entry.get("task_id") or name
+            entry["run_dir"] = entry.get("run_dir") or run_dir
+            entry.setdefault("screenshot_count", summary.get("screenshot_count") or 0)
+            if running and live:
+                status = "running"
+            elif running:
+                status = "interrupted"
+                # Interrupted runs have no report to size them from, and the
+                # storage UI wants to show what the leftover is worth.
+                entry["size"], entry["files"] = _dir_stats(run_dir)
+            else:
+                status = "finished"
+        entry.update(
+            status=status,
+            running=status == "running",
+            interrupted=status == "interrupted",
+            orphan=status == "interrupted",
+        )
+        return entry
+
+    if report is not None:
+        entry = _project_summary(report, name, run_dir)
+        entry.update(
+            status="running" if live else "finished",
+            running=live,
+            interrupted=False,
+            orphan=False,
+        )
+        return entry
+
+    size, files = _dir_stats(run_dir)
+    if files == 0:
+        return None  # empty leftover: nothing to show, nothing to delete
+    mtime = 0.0
+    try:
+        mtime = os.path.getmtime(run_dir)
+    except OSError:
+        pass
+    return {
+        "kind": "automation_run",
+        "task_id": name,
+        "device_id": "",
+        "package_name": "",
+        "started_at": "",
+        "finished_at": "",
+        "started_ts": mtime or None,
+        "finished_ts": None,
+        "duration_ms": 0,
+        "success": False,
+        "cancelled": False,
+        "aborted_by_crash": False,
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "screenshot_count": 0,
+        "run_dir": run_dir,
+        "mtime": mtime,
+        "size": size,
+        "files": files,
+        # `status` is the coarse label (running / finished / interrupted);
+        # `orphan` is the flag the UI acts on.
+        "status": "interrupted",
+        "running": False,
+        "interrupted": True,
+        "orphan": True,
+    }
+
+
+def _index_runs():
+    """Every run dir under the automation root, newest first (uncapped)."""
+    root = os.path.realpath(get_auto_tasks_root())
+    with os.scandir(root) as it:  # OSError propagates to the handler
+        entries = list(it)
+    runs = []
+    for entry in entries:
         try:
-            with open(report_path, "r", encoding="utf-8") as f:
-                report = json.load(f)
-        except (OSError, ValueError):
+            if not entry.is_dir():
+                continue
+        except OSError:
             continue
-        if not isinstance(report, dict):
+        item = _index_run_dir(entry.path, entry.name)
+        if item is None:
             continue
-        runs.append({
-            "task_id": report.get("task_id") or name,
-            "started_at": report.get("started_at", ""),
-            "finished_at": report.get("finished_at", ""),
-            "duration_ms": report.get("duration_ms", 0),
-            "success": bool(report.get("success")),
-            "cancelled": bool(report.get("cancelled")),
-            "aborted_by_crash": bool(report.get("aborted_by_crash")),
-            "total": report.get("total", 0),
-            "passed": report.get("passed", 0),
-            "failed": report.get("failed", 0),
-            "package_name": report.get("package_name", ""),
-            "run_dir": report.get("run_dir") or os.path.join(root, name),
-        })
-    runs.sort(key=lambda r: r.get("started_at") or "", reverse=True)
-    return {"success": True, "runs": runs[:100]}
+        mtime = item.get("mtime")
+        if mtime is None:
+            try:
+                mtime = os.path.getmtime(entry.path)
+            except OSError:
+                mtime = 0.0
+            item["mtime"] = mtime
+        item["_sort"] = item.get("started_at") or _iso(mtime)
+        runs.append(item)
+    runs.sort(key=lambda r: (r.get("_sort") or "", r.get("task_id") or ""), reverse=True)
+    return runs
 
 
-def _read_traffic(jsonl_path: str, limit: int) -> dict:
+def handle_list_runs(params, stream_handler):
+    """Summaries of every automation run, newest first (max 100).
+
+    ``orphans`` counts the interrupted / unindexable leftovers included in the
+    same list, so the history view can badge them and the storage settings can
+    offer a one-click cleanup.
+    """
+    try:
+        runs = _index_runs()
+    except OSError as e:
+        return {"success": False, "runs": [], "orphans": 0, "total": 0, "error": str(e)}
+    orphans = sum(1 for r in runs if r.get("orphan"))
+    for r in runs:
+        r.pop("_sort", None)
+    return {
+        "success": True,
+        "runs": runs[:LIST_LIMIT],
+        "total": len(runs),
+        "orphans": orphans,
+    }
+
+
+def _read_traffic(jsonl_path: str, limit: int, max_bytes: int = DEFAULT_TRAFFIC_SCAN_BYTES) -> dict:
     """Parse the capture jsonl into lightweight request summaries.
 
     Only the fields the report viewer needs are kept (timestamps, method,
     URL, status); bodies and headers stay in the jsonl on disk so a run
     with thousands of requests doesn't blow up the IPC payload.
+
+    ``max_bytes`` stops the scan on a huge capture: reading a 500 MB jsonl to
+    answer "show me the first 2000 requests" is pure waste. When the budget is
+    hit the result is marked ``truncated`` (``total`` becomes a lower bound),
+    which the report viewer already renders as "请求列表已截断".
     """
     entries = []
     total = 0
+    scanned = 0
+    scan_limited = False
     if not jsonl_path or not os.path.isfile(jsonl_path):
-        return {"entries": [], "total": 0, "truncated": False}
+        return {"entries": [], "total": 0, "truncated": False, "scan_limited": False}
     try:
         with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                scanned += len(line.encode("utf-8", errors="replace")) + 1
+                if scanned > max_bytes:
+                    scan_limited = True
+                    break
                 line = line.strip()
                 if not line:
                     continue
@@ -126,8 +322,14 @@ def _read_traffic(jsonl_path: str, limit: int) -> dict:
                     "error": rec.get("error"),
                 })
     except OSError as e:
-        return {"entries": entries, "total": total, "truncated": False, "error": str(e)}
-    return {"entries": entries, "total": total, "truncated": total > len(entries)}
+        return {"entries": entries, "total": total, "truncated": False,
+                "scan_limited": False, "error": str(e)}
+    return {
+        "entries": entries,
+        "total": total,
+        "truncated": scan_limited or total > len(entries),
+        "scan_limited": scan_limited,
+    }
 
 
 _DEFLATE_RAW_WBITS = -zlib.MAX_WBITS
@@ -179,7 +381,8 @@ def _rescue_compressed_body(rec: dict) -> None:
         rec[body_key] = {"text": text, "decompressed": encoding}
 
 
-def _read_traffic_full(jsonl_path: str, limit: int) -> dict:
+def _read_traffic_full(jsonl_path: str, limit: int,
+                       max_bytes: int = EXPORT_TRAFFIC_SCAN_BYTES) -> dict:
     """Parse the capture jsonl into FULL records (headers + bodies).
 
     Companion to ``_read_traffic`` — same file, same order, same limit
@@ -189,11 +392,17 @@ def _read_traffic_full(jsonl_path: str, limit: int) -> dict:
     """
     entries = []
     total = 0
+    scanned = 0
+    scan_limited = False
     if not jsonl_path or not os.path.isfile(jsonl_path):
-        return {"entries": [], "total": 0, "truncated": False}
+        return {"entries": [], "total": 0, "truncated": False, "scan_limited": False}
     try:
         with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                scanned += len(line.encode("utf-8", errors="replace")) + 1
+                if scanned > max_bytes:
+                    scan_limited = True
+                    break
                 line = line.strip()
                 if not line:
                     continue
@@ -209,8 +418,21 @@ def _read_traffic_full(jsonl_path: str, limit: int) -> dict:
                 _rescue_compressed_body(rec)
                 entries.append(rec)
     except OSError as e:
-        return {"entries": entries, "total": total, "truncated": False, "error": str(e)}
-    return {"entries": entries, "total": total, "truncated": total > len(entries)}
+        return {"entries": entries, "total": total, "truncated": False,
+                "scan_limited": False, "error": str(e)}
+    return {
+        "entries": entries,
+        "total": total,
+        "truncated": scan_limited or total > len(entries),
+        "scan_limited": scan_limited,
+    }
+
+
+def _bounded_int(value, default: int, low: int = 0, high: int = 100000) -> int:
+    try:
+        return max(low, min(int(value), high))
+    except (TypeError, ValueError):
+        return default
 
 
 def handle_read_run(params, stream_handler):
@@ -218,6 +440,10 @@ def handle_read_run(params, stream_handler):
 
     ``traffic_limit`` caps how many request summaries are returned; the
     viewer asks for a bounded slice, the HTML export embeds them all.
+    ``include_logs`` / ``log_limit`` do the same for ``report.logs`` (one
+    entry per streamed log line): the LAST ``log_limit`` lines are returned
+    — a report viewer reads the tail of a run — together with
+    ``log_total`` so the UI can say how much it is showing.
     """
     try:
         run_dir = _run_dir_for(params.get("task_id", ""))
@@ -230,17 +456,25 @@ def handle_read_run(params, stream_handler):
     except (OSError, ValueError) as e:
         return {"success": False, "report": None, "error": str(e)}
 
-    limit = params.get("traffic_limit")
-    if limit is None:
-        limit = 2000
-    try:
-        limit = max(0, min(int(limit), 20000))
-    except (TypeError, ValueError):
-        limit = 2000
+    limit = _bounded_int(params.get("traffic_limit"), DEFAULT_TRAFFIC_LIMIT, 0, 20000)
     traffic = _read_traffic(report.get("traffic_log") or "", limit)
     report["traffic"] = traffic["entries"]
     report["traffic_total"] = traffic["total"]
     report["traffic_truncated"] = traffic["truncated"]
+
+    logs = report.get("logs")
+    if not isinstance(logs, list):
+        logs = []
+    report["log_total"] = len(logs)
+    if params.get("include_logs") is False:
+        report["logs"] = []
+        report["logs_included"] = False
+    else:
+        log_limit = _bounded_int(params.get("log_limit"), DEFAULT_LOG_LIMIT, 0, 200000)
+        # 0 = unlimited (explicit opt-in); otherwise keep the tail.
+        report["logs"] = logs if not log_limit else logs[-log_limit:]
+        report["logs_included"] = True
+    report["logs_truncated"] = len(report["logs"]) < len(logs)
     return {"success": True, "report": report}
 
 
@@ -298,22 +532,142 @@ def handle_traffic_detail(params, stream_handler):
         return {"success": False, "record": None, "error": str(e)}
 
 
+def _delete_run_dir(run_dir: str) -> dict:
+    """Remove one run dir. Refuses while its run is executing in this process.
+
+    Returns ``{"ok": bool, "bytes": int, "error": str|None}``. The size is
+    measured BEFORE removal so callers can report how much space was freed.
+    """
+    if runstate.is_active_dir(run_dir):
+        return {"ok": False, "bytes": 0,
+                "error": "run is still executing in this session"}
+    size, _files = _dir_stats(run_dir)
+    try:
+        shutil.rmtree(run_dir, ignore_errors=False)
+    except Exception as e:
+        logger.warning(f"failed to delete run dir '{run_dir}': {e}")
+        return {"ok": False, "bytes": 0, "error": str(e)}
+    logger.info(f"deleted automation run dir: {run_dir}")
+    return {"ok": True, "bytes": size, "error": None}
+
+
 def handle_delete_run(params, stream_handler):
-    """Delete the WHOLE run directory (artifacts + report)."""
+    """Delete the WHOLE run directory (artifacts + report).
+
+    Orphan directories (a run the backend was killed in the middle of) are
+    deletable too — they are exactly the ones the user needs to reclaim. A run
+    that is executing right now is NOT: its script is still writing artifacts
+    into that directory.
+    """
     try:
         run_dir = _run_dir_for(params.get("task_id", ""))
     except ValueError as e:
         return {"deleted": False, "error": str(e)}
-    if not os.path.isfile(os.path.join(run_dir, REPORT_NAME)):
-        return {"deleted": False,
-                "error": "not an automation run dir (no report.json)"}
+    if not os.path.isdir(run_dir):
+        return {"deleted": False, "error": "run dir not found"}
+    out = _delete_run_dir(run_dir)
+    if not out["ok"]:
+        return {"deleted": False, "error": out["error"]}
+    return {"deleted": True, "size": out["bytes"]}
+
+
+def handle_prune_runs(params, stream_handler):
+    """Reclaim run storage by rule instead of one directory at a time.
+
+    Rules (all optional, ANDed — a run is only deleted when every enabled rule
+    agrees) :
+      * ``keep_last``        keep the N most recent runs (orphans count).
+      * ``older_than_days``  only runs older than N days (by started_at, or
+                             by mtime for orphans, which have no start time).
+      * ``orphans_only``     restrict everything to interrupted leftovers.
+      * ``dry_run``          report what WOULD be deleted, delete nothing.
+
+    With no rule enabled the call is refused outright: a stray request must
+    never be able to wipe the whole history. Runs executing right now are
+    always skipped.
+    """
+    keep_last = params.get("keep_last")
+    older_days = params.get("older_than_days")
+    orphans_only = bool(params.get("orphans_only"))
+    dry_run = bool(params.get("dry_run"))
+
+    keep = None
+    if keep_last is not None and str(keep_last).strip() != "":
+        keep = _bounded_int(keep_last, -1, 0, 100000)
+        if keep < 0:
+            return {"success": False, "error": "invalid keep_last"}
+    cutoff = None
+    if older_days is not None and str(older_days).strip() != "":
+        try:
+            days = float(older_days)
+        except (TypeError, ValueError):
+            return {"success": False, "error": "invalid older_than_days"}
+        if days < 0:
+            return {"success": False, "error": "invalid older_than_days"}
+        cutoff = time.time() - days * 86400.0
+
+    if keep is None and cutoff is None and not orphans_only:
+        return {
+            "success": False,
+            "error": "no pruning rule given (keep_last / older_than_days / orphans_only)",
+        }
+
     try:
-        shutil.rmtree(run_dir, ignore_errors=False)
-        logger.info(f"deleted automation run dir: {run_dir}")
-        return {"deleted": True}
-    except Exception as e:
-        logger.warning(f"failed to delete run dir '{run_dir}': {e}")
-        return {"deleted": False, "error": str(e)}
+        runs = _index_runs()
+    except OSError as e:
+        return {"success": False, "error": str(e)}
+
+    candidates = [r for r in runs if not r.get("running")]
+    skipped_active = len(runs) - len(candidates)
+    if orphans_only:
+        candidates = [r for r in candidates if r.get("orphan")]
+    if cutoff is not None:
+        def _ts(r):
+            ts = r.get("started_ts")
+            try:
+                return float(ts)
+            except (TypeError, ValueError):
+                return float(r.get("mtime") or 0.0)
+        candidates = [r for r in candidates if _ts(r) and _ts(r) < cutoff]
+    if keep is not None:
+        # `runs` is newest-first, so the newest `keep` entries are protected
+        # regardless of the other filters.
+        protected = {r.get("task_id") for r in runs[:keep]}
+        candidates = [r for r in candidates if r.get("task_id") not in protected]
+
+    deleted = []
+    errors = []
+    freed = 0
+    for r in candidates:
+        item = {"task_id": r.get("task_id"), "orphan": bool(r.get("orphan"))}
+        if dry_run:
+            item["size"] = r.get("size")
+            deleted.append(item)
+            continue
+        out = _delete_run_dir(r.get("run_dir") or "")
+        if out["ok"]:
+            item["size"] = out["bytes"]
+            freed += out["bytes"]
+            deleted.append(item)
+        else:
+            errors.append({"task_id": r.get("task_id"), "error": out["error"]})
+
+    logger.info(
+        f"prune_runs: {'would delete' if dry_run else 'deleted'} "
+        f"{len(deleted)} run(s), {len(errors)} error(s), freed={freed}B "
+        f"(keep_last={keep}, older_than_days={older_days}, orphans_only={orphans_only})"
+    )
+    return {
+        "success": True,
+        "dry_run": dry_run,
+        "deleted": deleted[:200],
+        "deleted_count": len(deleted),
+        "kept": len(runs) - len(deleted),
+        "skipped_active": skipped_active,
+        "freed_bytes": freed,
+        "errors": errors[:50],
+        "error_count": len(errors),
+    }
 
 
 # ---------------------------------------------------------------- export --
@@ -710,12 +1064,16 @@ def handle_export_run(params, stream_handler):
         return {"success": False, "error": "report not found"}
     try:
         report = _read_report(run_dir)
-        limit = params.get("traffic_limit")
-        try:
-            limit = max(0, min(int(limit), 100000)) if limit is not None else 100000
-        except (TypeError, ValueError):
-            limit = 100000
-        traffic = _read_traffic_full(report.get("traffic_log") or "", limit)
+        limit = _bounded_int(params.get("traffic_limit"), 100000, 0, 1000000)
+        # The export embeds every request it can, so it gets a far larger scan
+        # budget than the interactive viewer (which only needs a first slice).
+        traffic = _read_traffic_full(
+            report.get("traffic_log") or "", limit,
+            max_bytes=_bounded_int(
+                params.get("traffic_scan_bytes"), EXPORT_TRAFFIC_SCAN_BYTES,
+                0, EXPORT_TRAFFIC_SCAN_BYTES,
+            ),
+        )
         report["traffic_total"] = traffic["total"]
         report["traffic_truncated"] = traffic["truncated"]
         doc = build_report_html(report, traffic["entries"])
@@ -761,5 +1119,6 @@ API_MAP = {
     "automation.read_run": handle_read_run,
     "automation.traffic_detail": handle_traffic_detail,
     "automation.delete_run": handle_delete_run,
+    "automation.prune_runs": handle_prune_runs,
     "automation.export_run": handle_export_run,
 }
