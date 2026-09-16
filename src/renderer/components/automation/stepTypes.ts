@@ -220,7 +220,7 @@ export const STEP_FIELDS: Record<StepAction, StepFieldDef[]> = {
 /** Order of actions in the "add step" dropdown (most used first). */
 export const ADDABLE_ACTIONS: StepAction[] = [
   'tap', 'wait', 'swipe', 'input', 'keyevent', 'back', 'home',
-  'launch_app', 'screenshot', 'shell', 'clear_app_data', 'assert_activity',
+  'launch_app', 'screenshot', 'shell', 'clear_app_data', 'assert_activity', 'assert_element',
 ]
 
 /** Build a fresh v2 step of the given action from the schema defaults. */
