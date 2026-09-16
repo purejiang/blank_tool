@@ -37,7 +37,18 @@
       <div v-for="p in store.projects" :key="p.id" class="proj">
         <div class="proj-row" :class="{ active: p.id === store.selectedProjectId }">
           <div class="proj-main">
-            <div class="proj-name" @click="store.selectProject(p.id)">
+            <!-- div+click with role/tabindex: a real <button> would be invalid
+                 here (the row-actions dropdown renders a button inside). -->
+            <div
+              class="proj-name"
+              role="button"
+              tabindex="0"
+              :aria-label="t('automation.selectProject', { name: p.name })"
+              :aria-current="p.id === store.selectedProjectId ? 'true' : undefined"
+              @click="store.selectProject(p.id)"
+              @keydown.enter.prevent="store.selectProject(p.id)"
+              @keydown.space.prevent="store.selectProject(p.id)"
+            >
               <n-icon size="14"><Box /></n-icon>
               <span class="name-line" :title="p.description ? `${p.name} · ${p.description}` : p.name">{{ p.name }}</span>
             </div>
@@ -68,7 +79,13 @@
             :key="s.id"
             class="script-row"
             :class="{ active: s.id === store.selectedScriptId }"
+            role="button"
+            tabindex="0"
+            :aria-label="t('automation.selectScript', { name: s.name })"
+            :aria-current="s.id === store.selectedScriptId ? 'true' : undefined"
             @click="store.selectScript(p.id, s.id)"
+            @keydown.enter.prevent="store.selectScript(p.id, s.id)"
+            @keydown.space.prevent="store.selectScript(p.id, s.id)"
           >
             <n-icon size="14"><FileText /></n-icon>
             <div class="script-main">
@@ -119,6 +136,7 @@ import type { DropdownOption } from 'naive-ui'
 import { Download, FolderPlus, FilePlus, FileText, MoreHorizontal, Pencil, Trash2, Box, Upload } from 'lucide-vue-next'
 import type { AutomationStore } from '@composables/automation/useAutomationStore'
 import { readTextFile } from '@utils/readTextFile'
+import { genId } from '@utils/id'
 import IconButton from '@components/common/IconButton.vue'
 
 const props = defineProps<{
@@ -229,7 +247,63 @@ async function readProjectsFile(): Promise<any[] | null> {
     message.error(t('automation.importFailed', { msg: 'missing projects[]' }))
     return null
   }
-  return parsed.projects
+  const { projects, skipped } = sanitizeProjects(parsed.projects)
+  if (!projects.length) {
+    message.error(t('automation.importFailed', { msg: 'no valid project' }))
+    return null
+  }
+  // A hand-edited / half-truncated file must not silently import garbage into
+  // the persisted config, but the valid part is still worth importing.
+  if (skipped) message.warning(t('automation.importSkipped', { count: skipped }))
+  return projects
+}
+
+/**
+ * Validate + normalize an imported `projects[]`.
+ *
+ * The file is untrusted input: it may come from a colleague's build, be hand
+ * edited, or be truncated. A project without an id/name (or a script whose
+ * `steps` is not an array) used to be merged as-is, which pollutes the tree
+ * and later makes the backend reject the run. Missing ids get a fresh one, so
+ * merging by id stays meaningful.
+ */
+function sanitizeProjects(raw: any[]): { projects: any[]; skipped: number } {
+  const projects: any[] = []
+  let skipped = 0
+  const asText = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+
+  for (const imp of raw) {
+    if (!imp || typeof imp !== 'object' || Array.isArray(imp)) { skipped++; continue }
+    const name = asText(imp.name)
+    const scripts: any[] = []
+    if (Array.isArray(imp.scripts)) {
+      for (const s of imp.scripts) {
+        if (!s || typeof s !== 'object' || Array.isArray(s)) { skipped++; continue }
+        const sname = asText(s.name)
+        if (!sname) { skipped++; continue }
+        scripts.push({
+          ...s,
+          id: asText(s.id) || genId(),
+          name: sname,
+          updated_at: asText(s.updated_at) || new Date().toISOString(),
+          // The backend executes `steps` directly — a non-array (a string, a
+          // number, a truncated tail) must never reach it.
+          steps: Array.isArray(s.steps) ? s.steps : [],
+        })
+      }
+    }
+    // A project shell with no scripts is legitimate (single-script export
+    // writes one script under its project, and an empty project is valid UI
+    // state), so only the NAME is required.
+    if (!name) { skipped++; continue }
+    projects.push({
+      ...imp,
+      id: asText(imp.id) || genId(),
+      name,
+      scripts,
+    })
+  }
+  return { projects, skipped }
 }
 
 /** 收集文件里的全部脚本（项目壳或全量文件都适用） */

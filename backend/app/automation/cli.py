@@ -11,9 +11,9 @@ or with an explicit run directory / adb binary::
 
     python automation_cli.py --steps steps.json --out D:/runs --adb D:/sdk/adb.exe
 
-Same core as the automation page and the adb_auto plugin
-(``app/automation/orchestrator.run``): progress lines go to stdout, the
-run report lands in ``{--out dir}/{task_id}/report.json``.
+Same core as the automation page (``app/automation/orchestrator.run``):
+progress lines go to stdout, the run report lands in
+``{--out dir}/{task_id}/report.json``.
 
 STANDALONE DISTRIBUTION: this CLI needs nothing but a Python 3.10+
 (standard library only) plus an adb binary. To use it outside the app,
@@ -154,7 +154,7 @@ def load_steps(path: str) -> List[Dict[str, Any]]:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="automation_cli",
-        description="adb 自动化命令行入口（与应用内自动化页/adb_auto 插件共用同一核心）",
+        description="adb 自动化命令行入口（与应用内自动化页共用同一核心）",
     )
     parser.add_argument("--steps", required=True, help="步骤 JSON 文件路径（steps 数组）")
     parser.add_argument("--device", default="", help="设备序列号；省略时若只连接了一台设备则自动选择")

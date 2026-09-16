@@ -15,6 +15,7 @@ so ``manager = ToolManager.instance()`` binds to the conftest mock, and
 ``run_adb`` is patched on the handler module's own binding name.
 """
 import io
+import threading
 import time
 from unittest.mock import MagicMock
 
@@ -136,6 +137,9 @@ def _wire_fakes(monkeypatch, mock_tool_manager,
     )
     mock_tool_manager.get_tool.side_effect = None
     mock_tool_manager.get_tool.return_value = adb_mock
+    # No live process by default (a preseeded/mock session): record_stop then
+    # skips the stream-drain wait. Tests that need the wait flip this to True.
+    adb_mock.is_process_running.return_value = False
     return arh, adb_mock
 
 
@@ -293,6 +297,112 @@ class TestAutomationRecordStop:
         result = response["result"]
         assert result["type"] == "error"
         assert "no active recording" in result["payload"]["message"]
+
+    def _stop_request(self, device_id: str):
+        return {
+            "id": 26,
+            "method": "automation.record_stop",
+            "params": {"device_id": device_id},
+        }
+
+    def test_stop_waits_for_the_stream_thread_tail_step(
+            self, api_handler, mock_tool_manager, monkeypatch):
+        """The last tap of a session used to be dropped.
+
+        Killing the process leaves the read loop's tail in flight: the step is
+        inside the parser (or the append is between the copy and the pop), and
+        record_stop copied the list immediately before popping the session.
+        """
+        arh, adb_mock = _wire_fakes(monkeypatch, mock_tool_manager)
+        adb_mock.is_process_running.return_value = True
+        arh._SESSIONS.clear()
+        tail = {"action": "tap", "x": 5, "y": 6, "ts": 999.0}
+        session = {
+            "process_id": "8888",
+            "parser": None,
+            "steps": [{"action": "tap", "x": 1, "y": 2, "ts": 1.0}],
+            "screen": (1080, 600),
+            "device_path": "/dev/input/event2",
+        }
+        arh._SESSIONS["devT"] = session
+
+        def stream_tail():
+            time.sleep(0.08)
+            session["steps"].append(tail)
+            session["stream_finished"] = True
+
+        worker = threading.Thread(target=stream_tail)
+        worker.start()
+        try:
+            response = api_handler.handle_request(self._stop_request("devT"))
+        finally:
+            worker.join(timeout=1)
+
+        result = response["result"]
+        assert result["type"] == "success"
+        assert result["payload"]["steps"] == [
+            {"action": "tap", "x": 1, "y": 2, "ts": 1.0}, tail,
+        ]
+
+    def test_stop_drain_is_bounded_when_the_stream_never_signals(
+            self, api_handler, mock_tool_manager, monkeypatch):
+        """A wedged stream thread must not hang the handler forever."""
+        arh, adb_mock = _wire_fakes(monkeypatch, mock_tool_manager)
+        adb_mock.is_process_running.return_value = True
+        monkeypatch.setattr(arh, "_STREAM_DRAIN_TIMEOUT_S", 0.15)
+        arh._SESSIONS.clear()
+        arh._SESSIONS["devW"] = {
+            "process_id": "7777",
+            "parser": None,
+            "steps": [{"action": "back"}],
+            "screen": (1080, 600),
+            "device_path": "/dev/input/event2",
+        }
+
+        started = time.time()
+        response = api_handler.handle_request(self._stop_request("devW"))
+        elapsed = time.time() - started
+
+        assert response["result"]["type"] == "success"
+        assert response["result"]["payload"]["steps"] == [{"action": "back"}]
+        assert elapsed < 1.5, f"drain wait not bounded: {elapsed:.2f}s"
+
+    def test_stop_skips_the_drain_when_no_process_was_running(
+            self, api_handler, mock_tool_manager, monkeypatch):
+        """A session whose stream already died has no tail to wait for."""
+        arh, adb_mock = _wire_fakes(monkeypatch, mock_tool_manager)
+        adb_mock.is_process_running.return_value = False
+        arh._SESSIONS.clear()
+        arh._SESSIONS["devN"] = {
+            "process_id": "6666",
+            "parser": None,
+            "steps": [{"action": "home"}],
+            "screen": (1080, 600),
+            "device_path": "/dev/input/event2",
+        }
+
+        started = time.time()
+        response = api_handler.handle_request(self._stop_request("devN"))
+        elapsed = time.time() - started
+
+        assert response["result"]["payload"]["steps"] == [{"action": "home"}]
+        assert elapsed < 0.5, f"unexpected wait: {elapsed:.2f}s"
+
+    def test_natural_exit_forgets_the_process_in_the_tool_registry(
+            self, api_handler, mock_tool_manager, monkeypatch):
+        """A stream that ends on its own never goes through stop_process, so
+        the adb tool's `_running_processes` kept a dead Popen per session."""
+        arh, adb_mock = _wire_fakes(monkeypatch, mock_tool_manager)
+        arh._SESSIONS.clear()
+        response = api_handler.handle_request({
+            "id": 27,
+            "method": "automation.record_start",
+            "params": {"device_id": "devF"},
+        })
+        _join_stream(api_handler, response["result"]["stream_id"])
+
+        adb_mock.forget_process.assert_called_once_with("12345")
+        assert "devF" not in arh._SESSIONS
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,8 @@
 getevent parser — stdlib-only, pure functions, no IO.
 
 Parses raw Android ``getevent`` output into automation steps that match the
-consumer schema of the ``adb_auto`` plugin:
+recorder's step schema (consumed by ``automation.record_start`` and the
+renderer's step editor):
 
   * ``find_touchscreen``   — pick the touchscreen + axis maxima from
     ``getevent -pl`` output.

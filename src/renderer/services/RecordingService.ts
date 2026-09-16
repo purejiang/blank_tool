@@ -1,10 +1,10 @@
 /**
- * RecordingService — stream-event subscription router for adb_auto
- * recording sessions (Todo 3 of .omo/plans/adb-auto-test.md).
+ * RecordingService — stream-event subscription router for automation
+ * recording sessions (``automation.record_start`` / ``record_stop``).
  *
  * TaskStreamService silently drops unknown event types (default: break),
- * so `record_event` / `record_stopped` events from the automation plugin
- * are routed here instead, keyed by the recording task_id.
+ * so `record_event` / `record_stopped` events from the automation recording
+ * handler are routed here instead, keyed by the recording task_id.
  *
  * Envelope contract (the main process forwards `{ stream_id, data: result }`
  * where result = { type, payload, task_id }):

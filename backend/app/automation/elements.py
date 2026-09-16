@@ -50,6 +50,11 @@ def ui_dump(
     Returns ``(ok, xml_or_error)``. Dumps to a uuid-named device temp file,
     pulls to a uuid-named local file, then removes both. Retries ``retries``
     extra times on failure (plan: retry once).
+
+    ``timeout_ms`` is the whole call's budget: the retry loop stops once it is
+    spent. It used to be compared against a single attempt's cost with an
+    always-false expression (``time.time() + timeout/1000 < 0``), so retries
+    ran regardless and the parameter was effectively dead.
     """
     remote = f"/sdcard/blank_tool_ui_{uuid.uuid4().hex}.xml"
     local = os.path.join(get_output_dir(), "ui", f"ui_{uuid.uuid4().hex}.xml")
@@ -57,15 +62,21 @@ def ui_dump(
 
     last_err = "ui dump failed"
     attempts = max(1, retries + 1)
+    started = time.time()
+    budget_s = max(0.0, float(timeout_ms) / 1000.0)
     for _ in range(attempts):
         cap = run_adb(device_id, ["shell", "uiautomator", "dump",
                                   "--compressed", remote])
         if cap.get("returncode", 1) != 0:
             last_err = cap.get("stderr", "") or cap.get("stdout", "") or last_err
+            if time.time() - started >= budget_s:
+                break
             continue
         pull = run_adb(device_id, ["pull", remote, local])
         if pull.get("returncode", 1) != 0:
             last_err = pull.get("stderr", "") or last_err
+            if time.time() - started >= budget_s:
+                break
             continue
         try:
             with open(local, "r", encoding="utf-8", errors="ignore") as f:
@@ -76,13 +87,16 @@ def ui_dump(
         except OSError as e:
             last_err = str(e)
         finally:
+            # BOTH temp files are cleaned here, not only the local one: the
+            # success path RETURNS from inside the try, so a remote `rm` placed
+            # after the try/finally never ran and every successful pick left a
+            # `/sdcard/blank_tool_ui_*.xml` behind that nothing ever removed.
             try:
                 os.remove(local)
             except OSError:
                 pass
-        # best-effort device temp cleanup
-        run_adb(device_id, ["shell", "rm", "-f", remote])
-        if time.time() + timeout_ms / 1000.0 < 0:  # safety no-op
+            run_adb(device_id, ["shell", "rm", "-f", remote])
+        if time.time() - started >= budget_s:
             break
 
     try:

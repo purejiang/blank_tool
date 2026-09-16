@@ -2,8 +2,9 @@
 Contract tests for the pure getevent parser (``app.utils.getevent_parser``).
 
 The parser is stdlib-only and side-effect free: string in, data out. These
-tests pin the exact step schema consumed by ``backend/app/plugins/adb_auto.py``
-(tap: ``x``/``y``; swipe: ``x1``/``y1``/``x2``/``y2``/``duration_ms``).
+tests pin the exact step schema the recorder emits and the step editor /
+backend executor consume (tap: ``x``/``y``; swipe: ``x1``/``y1``/``x2``/
+``y2``/``duration_ms``).
 """
 import pytest
 

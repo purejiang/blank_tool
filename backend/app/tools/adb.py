@@ -155,6 +155,10 @@ class Adb(BinaryTool):
             except Exception:
                 pass
             rc = process.wait()
+            # A logcat stream that ends on its own (device unplugged, EOF)
+            # never goes through stop_process, so the registry entry must be
+            # dropped here or every session leaks a dead Popen.
+            self.forget_process(process_id)
             self._logger.info(f"adb logcat finished: {process_id}, return code: {rc}")
             stream_callback({"type": "process_finished", "payload": {"process_id": process_id, "return_code": rc}})
     

@@ -499,7 +499,7 @@ def device_screenshot(params, stream_handler):
 # ADB UI automation atomic handlers (batch 1)
 # Thin wrappers over app.automation functions, exposed as backend APIs so the
 # frontend "pick element from current screen" can call them directly, and the
-# adb_auto plugin orchestrates them.
+# automation orchestrator composes them into script steps.
 # ----------------------------------------------------------------------
 
 @logs_errors("AdbHandler")

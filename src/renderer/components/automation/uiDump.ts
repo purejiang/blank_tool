@@ -19,9 +19,40 @@ export interface UiNode {
   label: string
 }
 
+/**
+ * One cached matcher per attribute name.
+ *
+ * `attr` used to build a fresh `RegExp` on EVERY call, and `parseUiDump` calls
+ * it ~9× per node — compiling tens of thousands of regexes for a large dump
+ * (the whole reason the picker felt slow on dense screens).
+ */
+const ATTR_RES = new Map<string, RegExp>()
+
+function attrRe(name: string): RegExp {
+  let re = ATTR_RES.get(name)
+  if (!re) {
+    re = new RegExp(`${name}="([^"]*)"`)
+    ATTR_RES.set(name, re)
+  }
+  return re
+}
+
 export function attr(tag: string, name: string): string {
-  const m = tag.match(new RegExp(`${name}="([^"]*)"`))
+  const m = attrRe(name).exec(tag)
   return m ? m[1] : ''
+}
+
+/** Single-pass attribute scan of one `<node ...>` tag: `name → value`. */
+const TAG_ATTR_RE = /([\w:.-]+)="([^"]*)"/g
+
+function tagAttrs(tag: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  // The regex is SHARED and stateful (`/g`) — reset lastIndex before reuse.
+  // No awaits in this module, so no interleaving is possible.
+  TAG_ATTR_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = TAG_ATTR_RE.exec(tag)) !== null) out[m[1]] = m[2]
+  return out
 }
 
 export function shortClass(cls: string): string {
@@ -51,13 +82,16 @@ export function boundsCenter(bounds: string): { x: number; y: number } | null {
 export function parseUiDump(xml: string): UiNode[] {
   if (!xml) return []
   const openTags = xml.match(/<node[^>]*>/g) || []
+  // ONE attribute scan per tag, reused by both passes below (`attr` would
+  // re-scan the same tag for every attribute it reads).
+  const attrs = openTags.map(tagAttrs)
   // First pass: extract the identifying attrs of every node in the dump,
   // so match counts reflect the full tree (not just the kept subset).
-  const all = openTags.map((tag) => ({
-    text: attr(tag, 'text'),
-    rid: attr(tag, 'resource-id'),
-    desc: attr(tag, 'content-desc'),
-    cls: attr(tag, 'class'),
+  const all = attrs.map((a) => ({
+    text: a['text'] || '',
+    rid: a['resource-id'] || '',
+    desc: a['content-desc'] || '',
+    cls: a['class'] || '',
   }))
   // Mirrors the backend matcher: substring match on the same attribute.
   const countMatches = (by: string, value: string): number => {
@@ -71,13 +105,13 @@ export function parseUiDump(xml: string): UiNode[] {
     return n
   }
   const nodes: UiNode[] = []
-  for (const tag of openTags) {
-    const text = attr(tag, 'text')
-    const rid = attr(tag, 'resource-id')
-    const desc = attr(tag, 'content-desc')
-    const cls = attr(tag, 'class')
-    const bounds = attr(tag, 'bounds')
-    const clickable = attr(tag, 'clickable') === 'true'
+  for (const a of attrs) {
+    const text = a['text'] || ''
+    const rid = a['resource-id'] || ''
+    const desc = a['content-desc'] || ''
+    const cls = a['class'] || ''
+    const bounds = a['bounds'] || ''
+    const clickable = a['clickable'] === 'true'
     const editable = isEditableClass(cls)
     // Keep nodes identifiable by text/rid/desc, plus clickable widgets
     // (icon-only buttons etc.) which are located by class substring, plus

@@ -16,6 +16,7 @@ registered, i.e. the user did not stop it explicitly).
 """
 
 import threading
+import time
 from typing import Any, Dict
 
 from app.tools.tool_manager import ToolManager
@@ -37,6 +38,10 @@ manager = ToolManager.instance()
 # device_id -> {process_id, parser, steps, screen, device_path}
 _SESSIONS: Dict[str, Dict[str, Any]] = {}
 _LOCK = threading.Lock()
+
+# How long record_stop waits for the stream thread to flush its tail step and
+# mark the session finished (see the race note in record_stop).
+_STREAM_DRAIN_TIMEOUT_S = 2.0
 
 
 @streaming
@@ -118,7 +123,21 @@ def record_start(params, stream_handler):
                 process.stderr.close()
         except Exception:
             pass
+        # Tail flush BEFORE the drain flag: a step that completed on the last
+        # line read has not been popped yet, and record_stop is about to copy
+        # the list. Without this the final tap of a session could be dropped.
+        try:
+            for step in parser.pop_completed_steps():
+                session["steps"].append(step)
+        except Exception as e:  # pragma: no cover - parser is defensive itself
+            logger.warning(f"record tail flush failed: {e}")
+        session["stream_finished"] = True
         rc = process.wait()
+        # The getevent stream usually ends by itself (device unplugged, the
+        # remote process killed, `-tt` PTY closed). Such a stream never goes
+        # through stop_process, so without this the adb tool's process registry
+        # keeps a dead Popen per recording for the rest of the session.
+        adb_tool.forget_process(process_id)
         stream_handler({
             "type": "process_finished",
             "payload": {"process_id": process_id, "return_code": rc},
@@ -146,7 +165,20 @@ def record_stop(params, stream_handler):
     adb_tool = manager.get_tool("adb")
     if not adb_tool:
         raise ToolNotFoundError("adb")
+    # Checked BEFORE the kill: only a stream that was actually consuming lines
+    # has a tail to flush (a session whose process already died has none).
+    was_running = adb_tool.is_process_running(session["process_id"])
     adb_tool.stop_process(session["process_id"])
+
+    # Race: the stream thread owns the read loop, and killing the process
+    # leaves its already-buffered lines still to be parsed. Copying the step
+    # list right away dropped the LAST action of the session (a tap that just
+    # completed), and the session is popped below, so it was gone for good.
+    # Wait — bounded — for the thread's tail flush + `stream_finished` flag.
+    if was_running:
+        deadline = time.time() + _STREAM_DRAIN_TIMEOUT_S
+        while not session.get("stream_finished") and time.time() < deadline:
+            time.sleep(0.02)
 
     with _LOCK:
         steps = list(session["steps"])
