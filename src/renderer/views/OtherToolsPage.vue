@@ -78,9 +78,11 @@
                 v-model:selected-index="store.selectedStepIndex"
                 :disabled="runner.running"
                 :default-timeout="elementTimeoutMs"
+                :can-grab="!!autoDeviceId"
                 :add-options="addOptions"
                 class="steps-editor"
                 @pick="onStepPick"
+                @grab-activity="onGrabActivity"
                 @insert-below="(p: { index: number; key: string }) => onAdd(p.key, p.index + 1)"
               />
               <template v-else>
@@ -865,6 +867,39 @@ function applyElement(el: UiNode) {
     message.warning(t('automation.matchWarning', { n: el.matchCount }))
   } else {
     message.success(el.label)
+  }
+}
+
+/**
+ * assert_activity「抓取当前」：页面持有设备 id 与后端调用（表单只发事件），
+ * 抓住设备当前前台 Activity 后写回**正在编辑的那一步**。写回路径与
+ * applyElement 完全一致（复制步骤数组 → 替换该行 → 回写 editor.steps →
+ * JSON 视图同步），保证自动保存/运行都拿到新值。探测失败只弹错，不改字段。
+ */
+async function onGrabActivity(payload: { index: number }) {
+  const idx = payload?.index ?? store.selectedStepIndex
+  const step = store.editor.steps[idx]
+  if (!step) return
+  if (!autoDeviceId.value) {
+    message.error(t('automation.noDevice'))
+    return
+  }
+  try {
+    const api = window.electronAPI
+    const res = await api.callBackendAPI('device.current_activity', {
+      device_id: autoDeviceId.value,
+      timeout_ms: 3000,
+    })
+    if (!res || !res.success) {
+      message.error(res?.error || 'grab activity failed')
+      return
+    }
+    const steps = [...store.editor.steps]
+    steps[idx] = { ...steps[idx], activity: res.activity }
+    store.editor.steps = steps
+    if (store.stepsView === 'json') store.syncJsonText()
+  } catch (e: any) {
+    message.error(e?.message || String(e))
   }
 }
 

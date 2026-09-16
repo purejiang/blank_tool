@@ -772,6 +772,8 @@ export default {
       byCoord: '坐标', byElement: '元素', byDuration: '固定时长',
       pickElement: '获取界面元素',
       pickCoord: '选坐标',
+      grabActivity: '抓取当前',
+      grabActivityNoDevice: '未连接设备',
       note: '备注',
       notePlaceholder: '这个步骤是做什么的（可选）',
     },

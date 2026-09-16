@@ -769,6 +769,8 @@ export default {
       byCoord: 'Coordinates', byElement: 'Element', byDuration: 'Fixed time',
       pickElement: 'Pick from UI',
       pickCoord: 'Pick coords',
+      grabActivity: 'Grab current',
+      grabActivityNoDevice: 'No device connected',
       note: 'Note',
       notePlaceholder: 'What is this step for? (optional)',
     },

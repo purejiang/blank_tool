@@ -78,10 +78,12 @@
           :key="stepKey(step)"
           :step="step"
           :default-timeout="defaultTimeout"
+          :can-grab="canGrab"
           @click.stop
           @save="onSave(i, $event)"
           @cancel="closeEditor"
           @pick="onPick(i, $event)"
+          @grab-activity="emit('grabActivity', { index: i })"
         />
       </div>
     </div>
@@ -108,6 +110,8 @@ const props = defineProps<{
   selectedIndex?: number
   /** 元素目标默认超时（右栏可设），元素模式下自动填充 */
   defaultTimeout?: number
+  /** 是否可抓取设备当前 Activity（页面按选中设备传入），透传给编辑表单 */
+  canGrab?: boolean
   /** 页头「添加步骤」下拉的同一份选项（行内 + 按钮复用，避免第二份清单） */
   addOptions?: any[]
 }>()
@@ -117,6 +121,8 @@ const emit = defineEmits<{
   (e: 'update:selectedIndex', index: number): void
   /** StepEditForm 请求拾取：元素/坐标走 UI dump，screenshot 走截图取点 */
   (e: 'pick', payload: { index: number; mode: 'coord' | 'element' | 'screenshot' }): void
+  /** StepEditForm 请求抓取设备当前 Activity：页面持有设备与后端调用 */
+  (e: 'grabActivity', payload: { index: number }): void
   /** 行内「+」在该行下方插入：index = 被点击的行，key = 动作或录制占位键 */
   (e: 'insertBelow', payload: { index: number; key: string }): void
 }>()

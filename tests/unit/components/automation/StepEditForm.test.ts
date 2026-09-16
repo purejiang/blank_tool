@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { NTooltip } from 'naive-ui'
 
 vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
@@ -103,6 +104,67 @@ describe('StepEditForm pick buttons — assert_element', () => {
     const w = mountForm({ id: 'aa', action: 'assert_activity', activity: '' })
     expect(buttonTexts(w)).not.toContain(ELEMENT_BTN)
     expect(buttonTexts(w)).not.toContain(COORD_BTN)
+  })
+})
+
+/**
+ * assert_activity's Activity string can be grabbed off the device instead of
+ * typed. The form owns only the button + the disabled/tooltip UX; the PAGE
+ * owns the backend call (mirrors the element picker split). `canGrab` comes
+ * from the page as `!!autoDeviceId`.
+ */
+const GRAB_BTN = 'automation.f.grabActivity'
+const GRAB_TOOLTIP = 'automation.f.grabActivityNoDevice'
+
+/** Flatten a vnode tree from a slot render fn down to its text. */
+function vnodeText(nodes: any): string {
+  if (nodes == null) return ''
+  if (typeof nodes === 'string') return nodes
+  if (Array.isArray(nodes)) return nodes.map(vnodeText).join('')
+  const children = nodes.children
+  if (typeof children === 'string') return children
+  if (Array.isArray(children)) return children.map(vnodeText).join('')
+  return ''
+}
+
+describe('StepEditForm — assert_activity grab button', () => {
+  const assertActivity = (): Step => ({ id: 'aa', action: 'assert_activity', activity: '' })
+
+  it('renders the grab button for an assert_activity step', () => {
+    const w = mountForm(assertActivity())
+    expect(buttonTexts(w)).toContain(GRAB_BTN)
+  })
+
+  it('renders no grab button for assert_element or tap steps', () => {
+    const el = mountForm({ id: 'ae', action: 'assert_element', target: { by: 'text', value: 'x' } })
+    expect(buttonTexts(el)).not.toContain(GRAB_BTN)
+    expect(buttonTexts(mountForm(coordTap()))).not.toContain(GRAB_BTN)
+  })
+
+  it('emits grabActivity when clicked', async () => {
+    const w = mount(StepEditForm, { props: { step: assertActivity(), canGrab: true } })
+    const btn = w.findAll('button').find((b) => b.text() === GRAB_BTN)
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(w.emitted('grabActivity')).toBeTruthy()
+  })
+
+  it('disables the button and shows the no-device tooltip when canGrab is false', () => {
+    const w = mountForm(assertActivity()) // canGrab omitted → false
+    const btn = w.findAll('button').find((b) => b.text() === GRAB_BTN)!
+    expect(btn.attributes('disabled')).toBeDefined()
+    const tip = w.findComponent(NTooltip)
+    expect(tip.exists()).toBe(true)
+    // tooltip ENABLED while the button is disabled — that is the whole point
+    expect(tip.props('disabled')).toBe(false)
+    expect(vnodeText(tip.vm.$slots.default?.())).toContain(GRAB_TOOLTIP)
+  })
+
+  it('enables the button and mutes the tooltip when canGrab is true', () => {
+    const w = mount(StepEditForm, { props: { step: assertActivity(), canGrab: true } })
+    const btn = w.findAll('button').find((b) => b.text() === GRAB_BTN)!
+    expect(btn.attributes('disabled')).toBeUndefined()
+    expect(w.findComponent(NTooltip).props('disabled')).toBe(true)
   })
 })
 

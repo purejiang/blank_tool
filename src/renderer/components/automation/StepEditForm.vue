@@ -86,6 +86,36 @@
           @click="$emit('pick', { mode: pickMode })"
         >{{ t('automation.f.pickCoord') }}</n-button>
       </div>
+      <!-- Activity assertion row: instead of typing the foreground Activity by
+           hand, grab the CURRENT one off the device. The page owns that
+           backend call (the form never talks to the device) — this button only
+           requests it via `grabActivity`. `canGrab` (a device is selected)
+           drives BOTH the disabled state and the explanatory tooltip, so a
+           disabled button never looks broken. -->
+      <div v-else-if="f.key === 'activity'" class="field-ctl ctl-pick">
+        <n-input
+          :value="strVal(f.key)"
+          size="small"
+          :placeholder="f.placeholder"
+          @update:value="(v: string) => setField(f.key, v)"
+        />
+        <n-tooltip :disabled="canGrab" trigger="hover">
+          <template #trigger>
+            <span class="ctl-pick-btn">
+              <n-button
+                size="tiny"
+                type="info"
+                secondary
+                :disabled="!canGrab"
+                :title="t('automation.f.grabActivity')"
+                :aria-label="t('automation.f.grabActivity')"
+                @click="$emit('grabActivity')"
+              >{{ t('automation.f.grabActivity') }}</n-button>
+            </span>
+          </template>
+          {{ t('automation.f.grabActivityNoDevice') }}
+        </n-tooltip>
+      </div>
       <n-input
         v-else
         :value="strVal(f.key)"
@@ -108,7 +138,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NInput, NInputNumber, NSelect } from 'naive-ui'
+import { NButton, NInput, NInputNumber, NSelect, NTooltip } from 'naive-ui'
 import {
   STEP_FIELDS, getPath, setPath, type Step, type StepAction,
 } from './stepTypes'
@@ -117,12 +147,16 @@ const props = defineProps<{
   step: Step
   /** 右栏设置的元素目标默认超时（ms），元素模式下自动填充 */
   defaultTimeout?: number
+  /** 是否可抓取设备当前 Activity（页面按选中设备传入）；false 时按钮禁用+提示 */
+  canGrab?: boolean
 }>()
 const emit = defineEmits<{
   (e: 'save', step: Step): void
   (e: 'cancel'): void
   /** Request a pick: element → UI dump, screenshot → click coords off a capture. */
   (e: 'pick', payload: { mode: 'coord' | 'element' | 'screenshot' }): void
+  /** Request the page grab the device's current foreground Activity. */
+  (e: 'grabActivity'): void
 }>()
 
 const { t } = useI18n()
