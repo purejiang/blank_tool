@@ -14,12 +14,12 @@
         <n-list-item v-for="(el, i) in elements" :key="i" @click="emit('apply', el)" class="elem-item">
           <div class="elem-main">
             <div class="elem-label-row">
-              <span class="elem-label">{{ el.label }}</span>
+              <span class="elem-label" :title="el.label">{{ el.label }}</span>
               <span v-if="el.clickable" class="elem-click">{{ t('automation.clickable') }}</span>
               <span v-if="el.editable" class="elem-edit">{{ t('automation.editable') }}</span>
               <span v-if="el.matchCount > 1" class="elem-multi">{{ t('automation.multiMatch', { n: el.matchCount }) }}</span>
             </div>
-            <span class="elem-by">{{ el.by }} = {{ el.value }}</span>
+            <span class="elem-by" :title="`${el.by} = ${el.value}`">{{ el.by }} = {{ el.value }}</span>
           </div>
           <span class="elem-bounds">{{ el.bounds }}</span>
         </n-list-item>

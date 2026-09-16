@@ -228,43 +228,39 @@
                           {{ item.packageName }}
                         </span>
                         <div class="app-row-actions">
-                          <n-button
+                          <IconButton
+                            :icon="Play"
+                            :label="t('device.launchApp')"
                             size="tiny"
                             secondary
                             type="info"
-                            :title="t('device.launchApp')"
                             @click="launchApp(item.packageName)"
-                          >
-                            <template #icon><n-icon><Play /></n-icon></template>
-                          </n-button>
-                          <n-button
+                          />
+                          <IconButton
+                            :icon="Download"
+                            :label="t('appManager.export')"
+                            :loading="isExportingPkg(item.packageName)"
                             size="tiny"
                             secondary
                             type="success"
-                            :loading="isExportingPkg(item.packageName)"
-                            :title="t('appManager.export')"
                             @click="exportApp(item.packageName)"
-                          >
-                            <template #icon><n-icon><Download /></n-icon></template>
-                          </n-button>
-                          <n-button
+                          />
+                          <IconButton
+                            :icon="Eraser"
+                            :label="t('device.clearData')"
                             size="tiny"
                             secondary
                             type="warning"
-                            :title="t('device.clearData')"
                             @click="clearAppData(item.packageName)"
-                          >
-                            <template #icon><n-icon><Eraser /></n-icon></template>
-                          </n-button>
-                          <n-button
+                          />
+                          <IconButton
+                            :icon="Trash2"
+                            :label="t('device.uninstall')"
                             size="tiny"
                             secondary
                             type="error"
-                            :title="t('device.uninstall')"
                             @click="uninstallApp(item.packageName)"
-                          >
-                            <template #icon><n-icon><Trash2 /></n-icon></template>
-                          </n-button>
+                          />
                         </div>
                       </div>
                     </template>
@@ -279,7 +275,7 @@
                 <div class="logcat-toolbar">
                   <n-space align="center" :size="8">
                     <n-tag v-if="isLogcatRunning" type="success" size="tiny" :bordered="false">
-                      <template #icon><n-icon size="10"><Circle /></n-icon></template>
+                      <template #icon><n-icon size="12"><Circle /></n-icon></template>
                       {{ t('device.live') }}
                     </n-tag>
                     <n-button
@@ -353,6 +349,7 @@ import { useNotification } from '@composables/useNotification'
 import { storeToRefs } from 'pinia'
 import { log } from '@utils/logger'
 import DeviceManager from '@components/DeviceManager.vue'
+import IconButton from '@components/common/IconButton.vue'
 
 const { t } = useI18n()
 const { showSuccess, showError, showLoading, completeLoading, failLoading } = useNotification()

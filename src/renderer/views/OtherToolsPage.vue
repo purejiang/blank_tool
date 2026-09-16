@@ -6,7 +6,7 @@
         <p class="app-page-sub">{{ t('automation.subtitle') }}</p>
       </div>
       <div class="header-actions">
-        <n-button size="small" type="primary" secondary :aria-label="t('automation.toolsInstall')" @click="toolInstallVisible = true">
+        <n-button size="small" type="primary" secondary @click="toolInstallVisible = true">
           <template #icon><n-icon><Wrench /></n-icon></template>
           {{ t('automation.toolsInstall') }}
         </n-button>
@@ -24,7 +24,7 @@
         <n-empty v-if="!store.selectedProjectId || !store.selectedScriptId" :description="t('automation.noSelection')" class="col-empty" />
 
         <template v-else>
-          <div class="col-head">
+          <div class="col-head app-subhead">
             <span class="editor-title">
               <span class="editor-name">{{ store.selectedScript?.name }}</span>
               <span v-if="store.selectedScript?.description" class="editor-desc">{{ store.selectedScript.description }}</span>
@@ -935,8 +935,7 @@ onMounted(() => {
   overflow: hidden;
 }
 .col-head {
-  display: flex; justify-content: flex-start; align-items: center; gap: 10px;
-  font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary);
+  gap: 10px;
   margin-bottom: 10px;
 }
 /* NOTE: the "元素超时" (element default timeout) control used to sit on this

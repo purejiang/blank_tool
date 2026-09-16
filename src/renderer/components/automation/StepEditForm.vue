@@ -59,7 +59,6 @@
           type="info"
           secondary
           class="ctl-pick-btn"
-          :title="t('automation.f.pickElement')"
           @click="$emit('pick', { mode: pickMode })"
         >{{ t('automation.f.pickElement') }}</n-button>
       </div>
@@ -82,7 +81,6 @@
           type="info"
           secondary
           class="ctl-pick-btn"
-          :title="t('automation.f.pickCoord')"
           @click="$emit('pick', { mode: pickMode })"
         >{{ t('automation.f.pickCoord') }}</n-button>
       </div>
@@ -107,8 +105,6 @@
                 type="info"
                 secondary
                 :disabled="!canGrab"
-                :title="t('automation.f.grabActivity')"
-                :aria-label="t('automation.f.grabActivity')"
                 @click="$emit('grabActivity')"
               >{{ t('automation.f.grabActivity') }}</n-button>
             </span>

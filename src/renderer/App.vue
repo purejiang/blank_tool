@@ -13,11 +13,15 @@
                   <img src="@assets/images/logo.svg" class="brand-logo" alt="Blank Tool" />
                   <span v-if="!sidebarCollapsed" class="brand-text">{{ $t('app.title') }}</span>
                   <div class="brand-collapse">
-                    <n-button quaternary circle size="tiny" @click="sidebarCollapsed = !sidebarCollapsed">
-                      <template #icon>
-                        <n-icon size="16"><ChevronsLeft v-if="!sidebarCollapsed" /><ChevronsRight v-else /></n-icon>
-                      </template>
-                    </n-button>
+                    <IconButton
+                      :icon="sidebarCollapsed ? ChevronsRight : ChevronsLeft"
+                      :label="sidebarCollapsed ? $t('app.expandSidebar') : $t('app.collapseSidebar')"
+                      quaternary
+                      circle
+                      size="tiny"
+                      :icon-size="16"
+                      @click="sidebarCollapsed = !sidebarCollapsed"
+                    />
                   </div>
                 </div>
                 <n-menu :value="activeMenuKey" :collapsed="sidebarCollapsed" :collapsed-width="64"
@@ -46,6 +50,7 @@ import { useI18n } from 'vue-i18n'
 import { darkTheme, NIcon, zhCN, enUS, type GlobalTheme, type MenuOption } from 'naive-ui'
 import { Package, Settings, ChevronsLeft, ChevronsRight, Activity, Smartphone, Bot, Puzzle } from 'lucide-vue-next'
 import StatusBar from '@components/common/StatusBar.vue'
+import IconButton from '@components/common/IconButton.vue'
 import QuitDialog from '@components/QuitDialog.vue'
 import Notification from '@components/common/Notification.vue'
 import LoadingScreen from '@components/LoadingScreen.vue'

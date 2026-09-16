@@ -23,14 +23,15 @@
         >
           <template #suffix>
             <!-- Browse only makes sense for local targets. -->
-            <n-icon
+            <IconButton
               v-if="!isUrlLike"
+              :icon="FolderOpen"
+              :label="needsDirectory ? t('task.selectDir') : t('task.selectFile')"
+              size="tiny"
+              text
               class="task-pick-btn"
-              :title="needsDirectory ? t('task.selectDir') : t('task.selectFile')"
               @click="pickLocalFile"
-            >
-              <FolderOpen />
-            </n-icon>
+            />
           </template>
         </n-input>
 
@@ -143,45 +144,42 @@
             <n-tag v-else type="default" size="tiny" :bordered="false">
               {{ t('task.queued') }}
             </n-tag>
-            <n-button
+            <IconButton
               v-if="task.status === 'running' || task.status === 'downloading'"
+              :icon="StopCircle"
+              :label="t('task.cancel')"
               size="tiny"
               quaternary
               type="warning"
-              :title="t('task.cancel')"
               @click.stop="cancelTask(task)"
-            >
-              <template #icon><n-icon size="14"><StopCircle /></n-icon></template>
-            </n-button>
-            <n-button
+            />
+            <IconButton
               v-if="task.status === 'failed' || task.status === 'cancelled'"
+              :icon="RotateCcw"
+              :label="t('task.retryStage')"
               size="tiny"
               quaternary
               type="info"
-              :title="t('task.retryStage')"
               @click.stop="retryFailedStage(task)"
-            >
-              <template #icon><n-icon size="14"><RotateCcw /></n-icon></template>
-            </n-button>
-            <n-button
+            />
+            <IconButton
               v-if="task.status === 'failed' || task.status === 'cancelled' || task.status === 'completed'"
+              :icon="RefreshCw"
+              :label="t('task.rerunFromStart')"
               size="tiny"
               quaternary
               type="warning"
-              :title="t('task.rerunFromStart')"
               @click.stop="retryTask(task)"
-            >
-              <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
-            </n-button>
-            <n-button
+            />
+            <IconButton
               v-if="task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled'"
+              :icon="Trash2"
+              :label="t('task.delete')"
               size="tiny"
               quaternary
               type="error"
               @click.stop="confirmRemoveTask(task)"
-            >
-              <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
-            </n-button>
+            />
             <n-icon size="16" color="var(--app-text-dim)">
               <ChevronDown v-if="!task.collapsed" />
               <ChevronRight v-else />
@@ -203,17 +201,26 @@
           <div v-if="task.error" class="task-error">{{ task.error }}</div>
           <div v-if="task.filePath" class="task-output">
             <n-icon size="14" color="var(--app-text-dim)"><FolderOpen /></n-icon>
-            <span class="task-output-path">{{ t('task.source') }}: {{ task.filePath }}</span>
-            <n-button size="tiny" quaternary @click.stop="openInExplorerChecked(task.filePath, task.fileName || t('task.source'), t('task.sourceFileMissing'))">
-              <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
-            </n-button>
+            <span class="task-output-path" :title="task.filePath">{{ t('task.source') }}: {{ task.filePath }}</span>
+            <IconButton
+              :icon="ExternalLink"
+              :label="t('common.openInFolder')"
+              size="tiny"
+              quaternary
+              @click.stop="openInExplorerChecked(task.filePath, task.fileName || t('task.source'), t('task.sourceFileMissing'))"
+            />
           </div>
           <div v-if="task.outputPath" class="task-output">
             <n-icon size="14" color="var(--app-green)"><FolderOpen /></n-icon>
-            <span class="task-output-path">{{ t('task.output') }}: {{ task.outputPath }}</span>
-            <n-button size="tiny" quaternary type="info" @click.stop="openInExplorerChecked(task.outputPath, t('task.output'), t('task.outputMissing'))">
-              <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
-            </n-button>
+            <span class="task-output-path" :title="task.outputPath">{{ t('task.output') }}: {{ task.outputPath }}</span>
+            <IconButton
+              :icon="ExternalLink"
+              :label="t('common.openInFolder')"
+              size="tiny"
+              quaternary
+              type="info"
+              @click.stop="openInExplorerChecked(task.outputPath, t('task.output'), t('task.outputMissing'))"
+            />
           </div>
           <div v-if="task.operation === 'install' && task.deviceLabel" class="task-output">
             <n-icon size="14" color="var(--app-green)"><Smartphone /></n-icon>
@@ -224,7 +231,6 @@
               size="tiny"
               quaternary
               type="info"
-              :title="t('task.exportReport')"
               @click.stop="exportReport(task)"
             >
               <template #icon><n-icon size="14"><FileDown /></n-icon></template>
@@ -235,14 +241,14 @@
           <!-- Unified task log: file log (terminal) or in-memory log (running) -->
           <div v-if="displayLog(task).length > 0" class="task-logs">
             <div class="task-logs-toolbar">
-              <n-button
-                size="tiny" quaternary
+              <IconButton
+                :icon="Search"
+                :label="t('task.logSearch')"
+                size="tiny"
+                quaternary
                 :type="logSearchOpenMap.get(task.id) ? 'info' : 'default'"
-                :title="t('task.logSearch')"
                 @click.stop="toggleLogSearch(task)"
-              >
-                <template #icon><n-icon size="14"><Search /></n-icon></template>
-              </n-button>
+              />
               <n-input
                 v-if="logSearchOpenMap.get(task.id)"
                 :value="logSearchMap.get(task.id) || ''"
@@ -253,12 +259,20 @@
                 @update:value="(v: string) => logSearchMap.set(task.id, v)"
               />
               <div v-else class="task-logs-spacer" />
-              <n-button size="tiny" quaternary :title="t('task.copyLog')" @click.stop="copyLog(task)">
-                <template #icon><n-icon size="14"><Copy /></n-icon></template>
-              </n-button>
-              <n-button size="tiny" quaternary :title="t('task.exportLog')" @click.stop="exportTaskLog(task)">
-                <template #icon><n-icon size="14"><Download /></n-icon></template>
-              </n-button>
+              <IconButton
+                :icon="Copy"
+                :label="t('task.copyLog')"
+                size="tiny"
+                quaternary
+                @click.stop="copyLog(task)"
+              />
+              <IconButton
+                :icon="Download"
+                :label="t('task.exportLog')"
+                size="tiny"
+                quaternary
+                @click.stop="exportTaskLog(task)"
+              />
             </div>
             <div v-if="logTruncatedMap.get(task.id)" class="task-log-trunc-hint">
               {{ t('task.logTruncatedHint') }}
@@ -308,6 +322,7 @@ import { log as logUtil } from '@utils/logger'
 import serviceManager from '@services/ServiceManager'
 import { colorTokens, staticTokens } from '@/theme/tokens'
 import { enqueueTask } from '@services/TaskExecutionService'
+import IconButton from '@components/common/IconButton.vue'
 
 const { t, locale } = useI18n()
 const dialog = useDialog()
@@ -1577,8 +1592,10 @@ function renderApkInfo(data: any) {
 /* Bound by class, not position: inserting an element before the input used to
    silently steal this flex from it via :nth-child(2). */
 .task-source-input { flex: 1 1 240px; min-width: 0; }
-.task-pick-btn { cursor: pointer; color: var(--app-text-dim); transition: color .2s; }
-.task-pick-btn:hover { color: var(--app-green); }
+/* 这个「浏览」入口现在也是 IconButton（内部 n-button），颜色得走 Naive 的
+   CSS 变量，并用更高特异性压过它动态注入的 .n-button 规则 */
+.task-source-input :deep(.task-pick-btn) { --n-text-color: var(--app-text-dim); cursor: pointer; }
+.task-source-input :deep(.task-pick-btn:hover) { --n-text-color-hover: var(--app-green); }
 .task-start-wrap { display: inline-flex; }
 .task-bar-opts {
   display: flex;

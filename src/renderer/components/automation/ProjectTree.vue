@@ -1,19 +1,29 @@
 <template>
   <section class="col col-left">
-    <div class="col-head">
+    <div class="col-head app-subhead">
       <span>{{ t('automation.projects') }}</span>
-      <div class="head-actions">
-        <n-tooltip trigger="hover" placement="bottom">
-          <template #trigger>
-            <n-button size="tiny" tertiary :disabled="running" :title="t('automation.import')" data-testid="import-projects" @click="importConfig">
-              <template #icon><n-icon><Upload /></n-icon></template>
-            </n-button>
-          </template>
-          {{ t('automation.importMergeHint') }}
-        </n-tooltip>
-        <n-button size="tiny" tertiary type="primary" :disabled="running" data-testid="new-project" @click="store.newProject">
-          <template #icon><n-icon><FolderPlus /></n-icon></template>
-        </n-button>
+      <div class="app-subhead-actions">
+        <IconButton
+          :icon="Upload"
+          :label="t('automation.importMergeHint')"
+          :aria-label="t('automation.import')"
+          :disabled="running"
+          size="tiny"
+          tertiary
+          placement="bottom"
+          data-testid="import-projects"
+          @click="importConfig"
+        />
+        <IconButton
+          :icon="FolderPlus"
+          :label="t('automation.newProject')"
+          :disabled="running"
+          size="tiny"
+          tertiary
+          type="primary"
+          data-testid="new-project"
+          @click="store.newProject"
+        />
       </div>
     </div>
 
@@ -40,9 +50,14 @@
               :options="projectMenuOptions"
               @select="(key: string) => onProjectMenu(key, p)"
             >
-              <n-button size="tiny" text :disabled="running" :title="t('common.more')" @click.stop>
-                <template #icon><n-icon><MoreHorizontal /></n-icon></template>
-              </n-button>
+              <IconButton
+                :icon="MoreHorizontal"
+                :label="t('common.more')"
+                :disabled="running"
+                size="tiny"
+                text
+                @click.stop
+              />
             </n-dropdown>
           </div>
         </div>
@@ -55,7 +70,7 @@
             :class="{ active: s.id === store.selectedScriptId }"
             @click="store.selectScript(p.id, s.id)"
           >
-            <n-icon size="13"><FileText /></n-icon>
+            <n-icon size="14"><FileText /></n-icon>
             <div class="script-main">
               <span
                 class="name-line"
@@ -69,16 +84,15 @@
               :options="scriptMenuOptions"
               @select="(key: string) => onScriptMenu(key, p, s)"
             >
-              <n-button
+              <IconButton
+                :icon="MoreHorizontal"
+                :label="t('common.more')"
+                :disabled="running"
                 size="tiny"
                 text
                 class="script-ops"
-                :disabled="running"
-                :title="t('common.more')"
                 @click.stop
-              >
-                <template #icon><n-icon><MoreHorizontal /></n-icon></template>
-              </n-button>
+              />
             </n-dropdown>
           </div>
           <n-button
@@ -100,11 +114,12 @@
 <script setup lang="ts">
 import { h } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NDropdown, NEmpty, NIcon, NTooltip, useDialog, useMessage } from 'naive-ui'
+import { NButton, NDropdown, NEmpty, NIcon, useDialog, useMessage } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import { Download, FolderPlus, FilePlus, FileText, MoreHorizontal, Pencil, Trash2, Box, Upload } from 'lucide-vue-next'
 import type { AutomationStore } from '@composables/automation/useAutomationStore'
 import { readTextFile } from '@utils/readTextFile'
+import IconButton from '@components/common/IconButton.vue'
 
 const props = defineProps<{
   store: AutomationStore
@@ -348,11 +363,10 @@ async function importScriptsTo(p: { id: string; scripts: any[] }) {
   min-width: 0;
 }
 .col-head {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary);
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 10px;
 }
-.head-actions { display: flex; align-items: center; gap: 4px; }
 .col-empty { margin: auto; text-align: center; }
 
   .tree { overflow: auto; flex: 1; scrollbar-gutter: stable; overscroll-behavior: contain; }

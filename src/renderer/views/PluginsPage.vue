@@ -21,22 +21,21 @@
       <!-- LEFT: plugin list -->
       <aside class="pl-col pl-left">
         <!-- 重新加载是全局动作（重扫内置 + 用户目录），所以只放这里一处，
-             不在每个 item 上重复一个「刷新」——那样点哪个都刷全部，误导。 -->
-        <div class="pl-left-head">
-          <span class="pl-left-title">{{ t('plugins.listLabel') }}</span>
+             不在每个 item 上重复一个「重新加载」——那样点哪个都刷全部，误导。 -->
+        <div class="pl-left-head app-subhead app-subhead--sm">
+          <span>{{ t('plugins.listLabel') }}</span>
           <n-button
             size="tiny"
             quaternary
             :loading="reloading"
-            :title="t('plugins.reloadHint')"
             @click="onReload"
           >
             <template #icon><n-icon><RotateCcw /></n-icon></template>
-            {{ t('plugins.refresh') }}
+            {{ t('plugins.reload') }}
           </n-button>
         </div>
         <n-scrollbar class="pl-scroll">
-          <div v-if="!plugins.length && !loading" class="pl-empty">{{ t('plugins.empty') }}</div>
+          <div v-if="!plugins.length && !loading" class="pl-empty app-empty-note">{{ t('plugins.empty') }}</div>
           <div
             v-for="p in plugins"
             :key="p.name"
@@ -49,18 +48,17 @@
               <n-tag v-if="p.builtin" size="tiny" :bordered="false" class="pl-kind">{{ t('plugins.builtin') }}</n-tag>
               <n-tag size="tiny" :bordered="false" class="pl-ver">{{ p.version }}</n-tag>
               <!-- 删除是逐项动作 → 挂在每项右端（刷新/导入/导出是全局或选中态动作，留在页头） -->
-              <n-button
+              <IconButton
+                :icon="Trash2"
+                :label="t('plugins.delete')"
+                :disabled="running"
                 size="tiny"
                 quaternary
                 circle
                 type="error"
                 class="pl-del"
-                :disabled="running"
-                :title="t('plugins.delete')"
                 @click.stop="onDelete(p)"
-              >
-                <template #icon><n-icon><Trash2 /></n-icon></template>
-              </n-button>
+              />
             </div>
             <div class="pl-desc">{{ p.description }}</div>
           </div>
@@ -190,7 +188,7 @@
             </div>
           </template>
         </template>
-        <div v-else class="pl-empty pl-right-empty">{{ t('plugins.selectHint') }}</div>
+        <div v-else class="pl-empty pl-right-empty app-empty-note">{{ t('plugins.selectHint') }}</div>
       </section>
     </div>
   </div>
@@ -212,6 +210,7 @@ import pluginService, { type PluginInfo } from '@services/PluginService'
 import serviceManager from '@services/ServiceManager'
 import { useDeviceStore } from '@stores/deviceStore'
 import { genId } from '@utils/id'
+import IconButton from '@components/common/IconButton.vue'
 import { readTextFile } from '@utils/readTextFile'
 
 const { t } = useI18n()
@@ -751,15 +750,11 @@ onUnmounted(() => {
 }
 .pl-left-head {
   flex: none;
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 8px;
   padding-bottom: 8px;
   margin-bottom: 4px;
   border-bottom: 1px solid var(--app-card-border);
 }
-.pl-left-title { font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-primary); }
 .pl-scroll { flex: 1; min-height: 0; }
 
 /* left list */
@@ -786,7 +781,7 @@ onUnmounted(() => {
 .hint-icon { flex: none; margin-top: 1px; }
 
 /* right detail */
-.pl-empty { padding: 24px 8px; text-align: center; color: var(--app-text-muted); font-size: var(--app-font-size-sm); }
+.pl-empty { padding: 24px 8px; }
 .pl-right-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 .pl-detail-head { display: flex; align-items: baseline; gap: 8px; flex: none; }
 .pl-detail-name { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-text-primary); }

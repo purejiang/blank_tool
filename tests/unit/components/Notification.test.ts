@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
+// 关闭按钮的可访问名走 i18n（原来是硬编码英文）；这里用恒等 t()，断言只关心结构
+vi.mock('vue-i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-i18n')>()
+  return { ...actual, useI18n: () => ({ t: (k: string) => k }) }
+})
+
 // Use vi.hoisted so the variable is available when the hoisted vi.mock runs
 const { mockNotificationService } = vi.hoisted(() => ({
   mockNotificationService: {

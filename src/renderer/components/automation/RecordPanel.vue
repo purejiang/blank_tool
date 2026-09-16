@@ -2,15 +2,14 @@
   <div class="record-panel">
     <div class="panel-head">
       <span class="panel-title">{{ t('automation.recordSegment') }}</span>
-      <n-button
+      <IconButton
+        :icon="X"
+        :label="t('common.close')"
         size="tiny"
         quaternary
         class="panel-close"
-        :title="t('common.close')"
         @click="onClose"
-      >
-        <template #icon><n-icon><X /></n-icon></template>
-      </n-button>
+      />
     </div>
     <n-button
       size="small"
@@ -109,6 +108,7 @@ import {
   NButton, NCheckbox, NIcon, NInputNumber, NScrollbar, NTag, NTooltip, useMessage,
 } from 'naive-ui'
 import { X } from 'lucide-vue-next'
+import IconButton from '@components/common/IconButton.vue'
 import serviceManager from '@services/ServiceManager'
 
 // automation.record* i18n keys (zh-CN/en-US) landed in 4198cc3.

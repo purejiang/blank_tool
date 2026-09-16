@@ -1,14 +1,11 @@
 <template>
   <div class="app-page">
+    <!-- 页头只留标题：保存反馈走应用统一通知，不再往标题行塞状态标签 -->
     <div class="app-page-header" ref="headerRef">
       <div>
         <h1 class="app-page-title">{{ t('settings.title') }}</h1>
         <p class="app-page-sub">{{ t('settings.subtitle') }}</p>
       </div>
-      <n-tag v-if="showSaved" type="success" size="small" :bordered="false" class="saved-tag">
-        <template #icon><n-icon><CheckCircle /></n-icon></template>
-        {{ t('settings.savedIndicator') }}
-      </n-tag>
     </div>
 
     <div class="settings-body">
@@ -21,7 +18,7 @@
           :class="{ active: activePanel === item.key }"
           @click="activePanel = item.key"
         >
-          <n-icon size="15"><component :is="item.icon" /></n-icon>
+          <n-icon size="14"><component :is="item.icon" /></n-icon>
           <span>{{ item.label }}</span>
         </div>
       </aside>
@@ -30,7 +27,7 @@
       <div class="panel-title">{{ panelTitle }}</div>
       <!-- Appearance -->
       <section v-show="activePanel === 'general'">
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Monitor /></n-icon>
         <span>{{ t('settings.appearance') }}</span>
       </div>
@@ -58,7 +55,7 @@
 
       <!-- Behavior -->
       <section v-show="activePanel === 'general'">
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Settings2 /></n-icon>
         <span>{{ t('settings.behavior') }}</span>
       </div>
@@ -109,7 +106,7 @@
 
       <!-- Logging -->
       <section v-show="activePanel === 'general'">
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><FileText /></n-icon>
         <span>{{ t('settings.logging') }}</span>
       </div>
@@ -129,46 +126,37 @@
 
       <!-- Local runtimes: Java / Python / Node (version + path, path editable) -->
       <section v-show="activePanel === 'runtime'">
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Cpu /></n-icon>
         <span>{{ t('settings.localRuntimes') }}</span>
       </div>
       <n-card :bordered="false" class="settings-card">
-        <div class="runtime-list">
-          <div v-for="row in runtimeRows" :key="row.key" class="runtime-row">
-            <div class="runtime-info">
-              <div class="runtime-label">
-                {{ row.label }}
-                <span class="runtime-version" :class="{ 'is-missing': !row.version }">
-                  {{ row.version || t('settings.runtimeUnknown') }}
-                </span>
-              </div>
-              <div class="runtime-path" :title="row.path">{{ row.path || t('settings.runtimeUnknown') }}</div>
-              <!-- Node has no consumer in the backend today — say so instead of
-                   implying an override would change anything. -->
-              <div v-if="row.hint" class="runtime-hint">{{ row.hint }}</div>
-            </div>
-            <n-button size="tiny" @click="handleBrowseRuntime(row)">
-              <template #icon><n-icon><FolderOpen /></n-icon></template>
-              {{ t('settings.browse') }}
-            </n-button>
-            <n-button
-              v-if="row.overridden"
-              size="tiny"
-              quaternary
-              type="warning"
-              @click="handleResetRuntime(row)"
-            >
-              {{ t('settings.runtimeReset') }}
-            </n-button>
-          </div>
+        <div class="path-list">
+          <PathRow
+            v-for="row in runtimeRows"
+            :key="row.key"
+            :label="row.label"
+            :path="row.path"
+            :placeholder="t('settings.runtimeUnknown')"
+            :hint="row.hint"
+            editable
+            :overridden="row.overridden"
+            @edit="handleBrowseRuntime(row)"
+            @reset="handleResetRuntime(row)"
+          >
+            <template #badge>
+              <span class="path-badge" :class="row.version ? 'is-ok' : 'is-missing'">
+                {{ row.version || t('settings.runtimeUnknown') }}
+              </span>
+            </template>
+          </PathRow>
         </div>
       </n-card>
       </section>
 
       <!-- Local service (the spawned Python backend) -->
       <section v-show="activePanel === 'runtime'">
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Server /></n-icon>
         <span>{{ t('settings.localService') }}</span>
       </div>
@@ -186,169 +174,197 @@
             {{ serviceStatusText }}
           </span>
         </div>
-        <div class="svc-row">
-          <span class="svc-label">{{ t('settings.serviceDir') }}</span>
-          <div class="svc-path-wrap">
-            <n-input :value="displayPaths.server" readonly size="small" style="width: 320px" placeholder=".\backend" />
-            <n-button size="small" @click="handleBrowseDirectory('server')">
-              <template #icon><n-icon><FolderOpen /></n-icon></template>
-              {{ t('settings.browse') }}
-            </n-button>
-          </div>
+        <div class="path-list">
+          <PathRow
+            :label="t('settings.serviceDir')"
+            :path="displayPaths.server"
+            placeholder=".\backend"
+            editable
+            :edit-title="t('settings.selectDir')"
+            @edit="handleBrowseDirectory('server')"
+          />
         </div>
       </n-card>
       </section>
 
       <!-- Tools & dependencies: built-in tools + automation components -->
       <section v-show="activePanel === 'runtime'">
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Wrench /></n-icon>
         <span>{{ t('settings.dependencies') }}</span>
       </div>
       <n-card :bordered="false" class="settings-card">
 
-        <div class="dep-sub-head">{{ t('settings.builtinTools') }}</div>
-        <div class="tool-path-list">
-          <div v-for="tool in toolList" :key="tool.name" class="tool-path-row">
-            <span class="tool-path-name">
-              {{ tool.name }}
-              <!-- version comes from the tool check (tool.version); the About
-                   page used to be the only place it was shown -->
-              <span class="tool-version" :class="{ 'is-missing': !tool.version }">
+        <div class="dep-sub-head app-subhead app-subhead--sm app-subhead--muted">{{ t('settings.builtinTools') }}</div>
+        <div class="path-list">
+          <PathRow
+            v-for="tool in toolList"
+            :key="tool.name"
+            :label="tool.name"
+            label-mono
+            :path="toolPaths[tool.name] || tool.defaultPath"
+            :placeholder="t('settings.runtimeUnknown')"
+            editable
+            :editing="validatingTool === tool.name"
+            :overridden="!!customPathOverrides[tool.name]"
+            :reset-loading="resettingTool === tool.name"
+            :edit-title="t('settings.selectToolPath')"
+            @edit="handleBrowseToolPath(tool.name)"
+            @reset="handleResetToolPath(tool.name)"
+          >
+            <!-- 版本来自工具探测（tool.version）；原先只有关于页展示过 -->
+            <template #badge>
+              <span class="path-badge" :class="{ 'is-missing': !tool.version }">
                 {{ tool.version || t('common.unknown') }}
               </span>
-            </span>
-            <div class="tool-path-input-wrap">
-              <n-input
-                size="small"
-                :value="toolPaths[tool.name] || tool.defaultPath"
-                readonly
-                :placeholder="tool.defaultPath || ''"
-                style="width: 320px"
-              />
-              <n-button size="small" @click="handleBrowseToolPath(tool.name)">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
-                {{ t('settings.browse') }}
-              </n-button>
-            </div>
-            <n-button
-              v-if="customPathOverrides[tool.name]"
-              size="tiny"
-              quaternary
-              type="warning"
-              @click="handleResetToolPath(tool.name)"
-              :loading="resettingTool === tool.name"
-            >
-              {{ t('settings.reset') }}
-            </n-button>
-            <n-icon v-if="validatingTool === tool.name" size="16"><Loader2 class="spin" /></n-icon>
-            <n-icon v-else-if="tool.status === 'available'" size="16" color="var(--app-green)"><CheckCircle /></n-icon>
-            <n-icon v-else size="16" color="var(--app-yellow)"><AlertCircle /></n-icon>
-          </div>
+            </template>
+            <template #actions>
+              <n-icon v-if="tool.status === 'available'" size="14" color="var(--app-green)"><CheckCircle /></n-icon>
+              <n-icon v-else size="14" color="var(--app-yellow)"><AlertCircle /></n-icon>
+            </template>
+          </PathRow>
         </div>
 
         <!-- Automation components: tools the automation feature reaches for
              (mitmproxy on the PC, ADBKeyBoard on the device) -->
-        <div class="dep-sub-head dep-sub-head-with-action">
-          {{ t('settings.automationComponents') }}
-          <n-button size="tiny" quaternary @click="refreshCapabilities" :loading="isLoadingCapabilities">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-          </n-button>
-        </div>
-
-        <!-- Traffic capture (PC side: mitmproxy) -->
-        <div class="cap-row">
-          <div class="cap-status-icon" :style="{ color: trafficReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
-            <n-icon size="16"><CheckCircle v-if="trafficReady" /><AlertCircle v-else /></n-icon>
-          </div>
-          <div class="cap-info">
-            <div class="cap-label">{{ t('settings.trafficCaptureRow') }}</div>
-            <div class="cap-sub">{{ trafficStateText }}</div>
-            <div class="cap-sub cap-mono" v-if="trafficStatus?.lib_path">{{ trafficStatus.lib_path }}</div>
-            <div class="cap-hint" v-if="trafficStatus && !trafficStatus.ready">{{ trafficHintText }}</div>
+        <div class="dep-sub-head app-subhead app-subhead--sm app-subhead--muted">{{ t('settings.automationComponents') }}</div>
+        <div class="card-toolbar">
+          <div class="card-toolbar-actions">
+            <n-button size="tiny" quaternary :loading="isLoadingCapabilities" @click="refreshCapabilities">
+              <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
+              {{ t('settings.refreshStatus') }}
+            </n-button>
           </div>
         </div>
 
-        <!-- Chinese input (device side: ADBKeyBoard) -->
-        <div class="cap-row">
-          <div class="cap-status-icon" :style="{ color: imeAllReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
-            <n-icon size="16"><CheckCircle v-if="imeAllReady" /><AlertCircle v-else /></n-icon>
-          </div>
-          <div class="cap-info">
-            <div class="cap-label">{{ t('settings.imeRow') }}</div>
-            <template v-if="!deviceStore.sortedDevices.length">
-              <div class="cap-sub">{{ t('settings.imeNoDevice') }}</div>
+        <div class="path-list">
+          <!-- Traffic capture (PC side: mitmproxy) — 只读路径：不提供修改入口 -->
+          <PathRow
+            :label="t('settings.trafficCaptureRow')"
+            :path="trafficStatus?.lib_path || ''"
+            :placeholder="t('settings.runtimeUnknown')"
+            :hint="trafficStatus && !trafficStatus.ready ? trafficHintText : ''"
+          >
+            <template #badge>
+              <span class="path-badge" :class="trafficReady ? 'is-ok' : 'is-missing'">{{ trafficStateText }}</span>
             </template>
-            <template v-else>
-              <div v-for="st in imeStatuses" :key="st.device_id" class="cap-sub">
-                <n-icon size="12" :style="{ color: st.installed ? 'var(--app-green)' : 'var(--app-yellow)' }">
-                  <CheckCircle v-if="st.installed" /><AlertCircle v-else />
-                </n-icon>
-                {{ st.device_id }} · {{ st.installed ? t('settings.imeInstalled') : t('settings.imeNotInstalled') }}
-                <span v-if="st.active"> · {{ t('settings.imeActive') }}</span>
+            <template #actions>
+              <n-icon size="14" :style="{ color: trafficReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
+                <CheckCircle v-if="trafficReady" /><AlertCircle v-else />
+              </n-icon>
+            </template>
+          </PathRow>
+
+          <!-- Chinese input (device side: ADBKeyBoard) — 设备状态列表，无路径 -->
+          <PathRow
+            :label="t('settings.imeRow')"
+            :hint="imeStatuses.some(s => !s.installed) ? t('settings.imeInstallHint') : ''"
+          >
+            <template #value>
+              <div v-if="!deviceStore.sortedDevices.length" class="ime-lines">
+                <div class="ime-line">{{ t('settings.imeNoDevice') }}</div>
               </div>
-              <div class="cap-hint" v-if="imeStatuses.some(s => !s.installed)">{{ t('settings.imeInstallHint') }}</div>
+              <div v-else class="ime-lines">
+                <div v-for="st in imeStatuses" :key="st.device_id" class="ime-line">
+                  <n-icon size="12" :style="{ color: st.installed ? 'var(--app-green)' : 'var(--app-yellow)' }">
+                    <CheckCircle v-if="st.installed" /><AlertCircle v-else />
+                  </n-icon>
+                  <span>{{ st.device_id }} · {{ st.installed ? t('settings.imeInstalled') : t('settings.imeNotInstalled') }}</span>
+                  <span v-if="st.active"> · {{ t('settings.imeActive') }}</span>
+                </div>
+              </div>
             </template>
-          </div>
+            <template #actions>
+              <n-icon size="14" :style="{ color: imeAllReady ? 'var(--app-green)' : 'var(--app-yellow)' }">
+                <CheckCircle v-if="imeAllReady" /><AlertCircle v-else />
+              </n-icon>
+            </template>
+          </PathRow>
         </div>
       </n-card>
       </section>
 
       <!-- Signature Configs -->
-      <section v-show="activePanel === 'general'">
-      <div class="panel-sec">
+      <section v-show="activePanel === 'signing'">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Key /></n-icon>
         <span>{{ t('signature.title') }}</span>
-        <n-button size="tiny" type="primary" secondary class="panel-sec-action" @click="openAddSignature">
-          <template #icon><n-icon size="14"><Plus /></n-icon></template>
-        </n-button>
       </div>
       <n-card :bordered="false" class="settings-card">
-        <div v-if="sigConfigs.length === 0" class="info-empty">{{ t('signature.empty') }}</div>
-        <div v-else class="sig-list">
-          <div v-for="cfg in sigConfigs" :key="cfg.id" class="sig-item">
-            <div class="sig-info">
-              <span class="sig-name">{{ cfg.name }}</span>
-              <span class="sig-detail">{{ cfg.alias }}</span>
-              <span class="sig-path" :title="String(cfg.path ?? '')">{{ cfg.path }}</span>
-            </div>
-            <n-space :size="4">
-              <n-button size="tiny" quaternary @click="openEditSignature(cfg)">
-                <template #icon><n-icon size="14"><Edit /></n-icon></template>
-              </n-button>
-              <n-button size="tiny" quaternary type="error" @click="deleteSignature(cfg.id)">
-                <template #icon><n-icon size="14"><Trash2 /></n-icon></template>
-              </n-button>
-            </n-space>
+        <div class="card-toolbar">
+          <div class="card-toolbar-actions">
+            <n-button size="tiny" type="primary" secondary @click="openAddSignature">
+              <template #icon><n-icon size="14"><Plus /></n-icon></template>
+              {{ t('signature.add') }}
+            </n-button>
           </div>
+        </div>
+        <div v-if="sigConfigs.length === 0" class="app-empty-hint">{{ t('signature.empty') }}</div>
+        <div v-else class="path-list">
+          <PathRow
+            v-for="cfg in sigConfigs"
+            :key="cfg.id"
+            :label="String(cfg.name ?? '')"
+            :path="String(cfg.path ?? '')"
+            :placeholder="t('common.unknown')"
+          >
+            <template #badge>
+              <span class="path-badge">{{ cfg.alias }}</span>
+            </template>
+            <template #actions>
+              <IconButton
+                :icon="Edit"
+                :label="t('signature.editTitle')"
+                size="tiny"
+                quaternary
+                @click="openEditSignature(cfg)"
+              />
+              <IconButton
+                :icon="Trash2"
+                :label="t('signature.delete')"
+                size="tiny"
+                quaternary
+                type="error"
+                @click="deleteSignature(cfg.id)"
+              />
+            </template>
+          </PathRow>
         </div>
       </n-card>
       </section>
 
       <!-- Storage -->
-      <section v-show="activePanel === 'runtime'">
-      <div class="panel-sec">
+      <section v-show="activePanel === 'storage'">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><HardDrive /></n-icon>
         <span>{{ t('settings.storage') }}</span>
-        <span class="storage-total-text">{{ formatBytes(cacheInfo.total.size) }}</span>
-        <div class="hdr-actions">
-          <n-button
-            size="tiny"
-            quaternary
-            type="error"
-            :title="t('settings.clearAllStorage')"
-            :loading="clearingTarget === 'all'"
-            :disabled="cacheInfo.total.size === 0"
-            @click="confirmClear('all')"
-          >
-            <template #icon><n-icon><Trash2 /></n-icon></template>
-          </n-button>
-          <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-          </n-button>
-        </div>
       </div>
       <n-card :bordered="false" class="settings-card">
+
+        <!-- 合计与整体操作都收进卡片：标题行只留标题 -->
+        <div class="card-toolbar">
+          <span class="storage-total-text">{{ t('settings.total') }} · {{ formatBytes(cacheInfo.total.size) }}</span>
+          <div class="card-toolbar-actions">
+            <IconButton
+              :icon="Trash2"
+              :label="t('settings.clearAllStorage')"
+              :loading="clearingTarget === 'all'"
+              :disabled="cacheInfo.total.size === 0"
+              size="tiny"
+              quaternary
+              type="error"
+              @click="confirmClear('all')"
+            />
+            <IconButton
+              :icon="RefreshCw"
+              :label="t('settings.refresh')"
+              :loading="isLoadingCacheInfo"
+              size="tiny"
+              quaternary
+              @click="refreshCache"
+            />
+          </div>
+        </div>
 
         <!-- Proportional bar -->
         <div class="storage-bar" v-if="cacheInfo.total.size > 0">
@@ -371,16 +387,16 @@
               <div class="storage-row-label">{{ t(cat.label) }}</div>
               <div class="storage-row-sub">{{ formatBytes(getCatSize(cat.key)) }} · {{ getCatFiles(cat.key) }} {{ t('settings.filesUnit') }}</div>
             </div>
-            <n-button
+            <IconButton
+              :icon="Trash2"
+              :label="t('settings.clearCategory')"
+              :loading="clearingTarget === cat.key"
+              :disabled="getCatSize(cat.key) === 0"
               size="tiny"
               quaternary
               type="error"
-              :loading="clearingTarget === cat.key"
-              :disabled="getCatSize(cat.key) === 0"
               @click="confirmClear(cat.key)"
-            >
-              <template #icon><n-icon size="13"><Trash2 /></n-icon></template>
-            </n-button>
+            />
           </div>
         </div>
       </n-card>
@@ -388,7 +404,7 @@
 
       <!-- About（原独立关于页并入） -->
       <section v-show="activePanel === 'about'">
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Layers /></n-icon>
         <span>{{ t('settings.buildInfo') }}</span>
       </div>
@@ -414,7 +430,7 @@
         </div>
       </n-card>
 
-      <div class="panel-sec">
+      <div class="panel-sec app-subhead app-subhead--sm app-subhead--dim">
         <n-icon size="14"><Cpu /></n-icon>
         <span>{{ t('settings.systemInfo') }}</span>
       </div>
@@ -439,7 +455,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, Loader2, AlertCircle, Archive, FileText, FolderArchive, History, Server, Palette, Info } from 'lucide-vue-next'
+import { Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, Key, Plus, Edit, AlertCircle, Archive, FileText, FolderArchive, History, Server, Palette, Info } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { formatBytes } from '@utils/format'
@@ -450,12 +466,14 @@ import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { storeToRefs } from 'pinia'
 import { useSignatureStore } from '@stores/signatureStore'
 import SignatureEditModal from '@components/package/SignatureEditModal.vue'
+import PathRow from '@components/common/PathRow.vue'
+import IconButton from '@components/common/IconButton.vue'
 import { setMaxConcurrent } from '@services/TaskExecutionService'
 import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
 import type UpdateService from '@services/UpdateService'
 
 const { t } = useI18n()
-const { showSuccess, showError, showWarning } = useNotification()
+const { showSuccess, showError, showWarning, showInfo } = useNotification()
 const dialog = useDialog()
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
 const setTheme = inject<(mode: string) => Promise<void>>('setTheme', async () => {})
@@ -507,13 +525,9 @@ const deleteSignature = async (id: string) => {
   } catch (e: any) { showError(t('signature.deleteFailed'), e.message) }
 }
 
-const showSaved = ref(false)
-let savedTimer: ReturnType<typeof setTimeout> | null = null
-const triggerSaved = () => {
-  showSaved.value = true
-  if (savedTimer) clearTimeout(savedTimer)
-  savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
-}
+// 保存反馈统一走应用通知：原先在页头标题行挂一个「已保存」标签，
+// 标题行不再承载任何状态显示。
+const notifySaved = () => { showSuccess(t('settings.saved')) }
 
 const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, useProxyForDownload: false, timeout: 300, maxConcurrentTasks: 3 })
 const logLevel = ref('info')
@@ -538,13 +552,16 @@ const buildInfo = systemStore.buildInfo
 
 // ---------------- settings nav（左侧导航，组级面板切换，选择持久化） ----------------
 // 旧版存的是细粒度 key（appearance/behavior/…），不匹配新组级 key 时回退 general
-const _PANEL_KEYS = ['general', 'runtime', 'about']
+// 签名不并进「通用」：它既不是外观也不是行为，而是一类独立的凭据配置
+const _PANEL_KEYS = ['general', 'signing', 'runtime', 'storage', 'about']
 const _storedPanel = localStorage.getItem('bt:settingsPanel')
 const activePanel = ref(_storedPanel && _PANEL_KEYS.includes(_storedPanel) ? _storedPanel : 'general')
 watch(activePanel, (v) => { try { localStorage.setItem('bt:settingsPanel', v) } catch {} })
 const navItems = computed(() => [
   { key: 'general', label: t('settings.navGeneral'), icon: Palette },
+  { key: 'signing', label: t('settings.navSigning'), icon: Key },
   { key: 'runtime', label: t('settings.navRuntime'), icon: Wrench },
+  { key: 'storage', label: t('settings.navStorage'), icon: HardDrive },
   { key: 'about', label: t('about.title'), icon: Info },
 ])
 const panelTitle = computed(() =>
@@ -834,7 +851,7 @@ const saveGeneral = async () => {
     // Apply the concurrency cap immediately (frontend queue). The backend
     // pool picks it up on the next app start via the BT_MAX_WORKERS env var.
     setMaxConcurrent(general.maxConcurrentTasks)
-    triggerSaved()
+    notifySaved()
     } catch (e) { showError(t('settings.saveFailed'), (e as Error).message) }
 }
 
@@ -842,7 +859,7 @@ const saveLogLevel = async (value: string) => {
   setLogLevel(value as 'debug' | 'info' | 'warn' | 'error')
   try {
     await window.electronAPI.appConfig.set('logs.level', value)
-    triggerSaved()
+    notifySaved()
   } catch (e) { log.error('Failed to save log level:', e) }
 }
 
@@ -850,7 +867,7 @@ const savePaths = async () => {
   try {
     const svc = await serviceManager.getService('settings')
     await svc.saveSettings({ server: pathSettings.server })
-    triggerSaved()
+    notifySaved()
   } catch (e: any) { showError(t('settings.pathsFailed'), e.message) }
 }
 
@@ -971,16 +988,27 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 .settings-body { display: flex; gap: 16px; align-items: flex-start; }
 .settings-nav { width: 148px; flex: none; display: flex; flex-direction: column; gap: 2px; position: sticky; z-index: 5; background: var(--app-body-bg); }
   /* top 由 script 实测页头高度后注入（见 navTop）：不能与页头抢 top:0 */
 .settings-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .panel-title { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-text-primary); margin-bottom: 2px; }
-.panel-sec { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-dim); margin-bottom: 0; }
-.panel-sec .storage-total-text { margin-left: 0; margin-right: auto; }
-.panel-sec-action { margin-left: auto; }
+/* 区块标题行只承载标题（图标 + 文案）：按钮 / 状态 / 统计统统进卡片 */
+.panel-sec { gap: 6px; margin-bottom: 0; }
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
+/* 卡片内的工具栏行：左侧统计文案，右侧操作按钮 */
+.card-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.card-toolbar-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+
+/* ---- 统一路径行（PathRow 的容器与插槽内容配套样式） ---- */
+.path-list { display: flex; flex-direction: column; gap: 2px; }
+.path-badge { font-size: var(--app-font-size-xs); font-weight: 500; color: var(--app-text-muted); white-space: nowrap; }
+.path-badge.is-ok { color: var(--app-green); }
+.path-badge.is-missing { color: var(--app-yellow); }
+/* 自动化中文输入（ADBKeyBoard）：按设备逐行列出，没有单一路径 */
+.ime-lines { display: flex; flex-direction: column; gap: 2px; }
+.ime-line { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-sm); color: var(--app-text-muted); font-family: var(--app-font-mono); }
+
 .set-rows { display: flex; flex-direction: column; margin-top: 6px; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 0; }
 .set-row + .set-row { border-top: 1px solid var(--app-card-border); }
@@ -990,13 +1018,12 @@ onMounted(() => {
 .set-control { flex: none; }
 .set-w200 { width: 200px; }
 .set-w140 { width: 140px; }
-.hdr-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .info-grid { display: flex; flex-direction: column; gap: 6px; }
 .info-row { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; }
 .info-label { font-size: var(--app-font-size-md); color: var(--app-text-muted); min-width: 110px; }
 .info-val { font-size: var(--app-font-size-md); color: var(--app-text-secondary); font-family: var(--app-font-mono); min-width: 80px; word-break: break-all; }
 .update-status-inline { font-size: var(--app-font-size-sm); color: var(--app-green); white-space: nowrap; }
-.storage-total-text { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 12px; }
+.storage-total-text { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; }
 .storage-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }
 .storage-bar-seg { height: 100%; transition: width 0.3s ease; }
 .storage-rows { display: flex; flex-direction: column; gap: 2px; }
@@ -1004,51 +1031,13 @@ onMounted(() => {
 .storage-row:hover { background: var(--app-storage-bg); }
 .storage-row-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--app-storage-bg); flex-shrink: 0; }
 .storage-row-info { flex: 1; min-width: 0; }
-.cap-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px; border-radius: 6px; }
-.cap-row:hover { background: var(--app-storage-bg); }
-.cap-status-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--app-storage-bg); flex-shrink: 0; }
-.cap-info { flex: 1; min-width: 0; }
-.cap-label { font-size: var(--app-font-size-md); font-weight: 500; color: var(--app-text-primary); }
-.cap-sub { font-size: var(--app-font-size-sm); color: var(--app-text-muted); margin-top: 2px; }
-.cap-mono { font-family: var(--app-font-mono); font-size: var(--app-font-size-xs); word-break: break-all; }
-.cap-hint { font-size: var(--app-font-size-sm); color: var(--app-text-muted); margin-top: 4px; }
-/* local runtimes (Java / Python / Node) */
-.runtime-list { display: flex; flex-direction: column; gap: 2px; }
-.runtime-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: 6px; }
-.runtime-row:hover { background: var(--app-storage-bg); }
-.runtime-info { flex: 1; min-width: 0; }
-.runtime-label { display: flex; align-items: center; gap: 8px; font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary); }
-.runtime-version { font-size: var(--app-font-size-xs); font-weight: 500; color: var(--app-green); }
-.runtime-version.is-missing { color: var(--app-yellow); }
-.runtime-path { font-size: var(--app-font-size-xs); color: var(--app-text-muted); font-family: var(--app-font-mono); word-break: break-all; margin-top: 2px; }
-.runtime-hint { font-size: var(--app-font-size-sm); color: var(--app-text-muted); margin-top: 4px; }
-/* local service (version / status / directory) */
-.svc-row { display: flex; align-items: center; gap: 12px; padding: 6px 4px; }
+.storage-row-label { font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary); }
+.storage-row-sub { font-size: var(--app-font-size-xs); color: var(--app-text-muted); margin-top: 1px; }
+/* local service (version / status / directory) —— 路径行由 PathRow 渲染，前两行对齐同一内距 */
+.svc-row { display: flex; align-items: center; gap: 12px; padding: 9px 6px; }
 .svc-label { font-size: var(--app-font-size-md); color: var(--app-text-muted); min-width: 88px; }
 .svc-value { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-md); color: var(--app-text-secondary); }
 .svc-dot { display: flex; align-items: center; }
-.svc-path-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-/* tools & dependencies: sub-group headings */
-.dep-sub-head { display: flex; align-items: center; gap: 8px; font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-secondary); margin: 10px 0 4px; }
-.dep-sub-head-with-action { justify-content: space-between; }
-.storage-row-label { font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary); }
-.storage-row-sub { font-size: var(--app-font-size-xs); color: var(--app-text-muted); margin-top: 1px; }
-.info-empty { font-size: var(--app-font-size-md); color: var(--app-text-dim); padding: 8px 0; }
-
-.sig-list { display: flex; flex-direction: column; gap: 6px; }
-.sig-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--app-storage-bg); border-radius: 8px; gap: 8px; }
-.sig-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
-.sig-name { font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary); white-space: nowrap; }
-.sig-detail { font-size: var(--app-font-size-sm); color: var(--app-text-dim); white-space: nowrap; }
-.sig-path { font-size: var(--app-font-size-xs); color: var(--app-text-dim); font-family: var(--app-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-
-.tool-path-list { display: flex; flex-direction: column; gap: 8px; }
-.tool-path-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-.tool-path-name { display: inline-flex; align-items: baseline; gap: 6px; font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary); min-width: 110px; font-family: var(--app-font-mono); padding-left: 4px; }
-.tool-version { font-size: var(--app-font-size-xs); font-weight: 400; color: var(--app-text-muted); }
-.tool-version.is-missing { color: var(--app-yellow); }
-.tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
-.tool-path-input-wrap :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
-.spin { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* tools & dependencies: sub-group headings（只放标题，动作进卡片内容区） */
+.dep-sub-head { margin: 10px 0 4px; }
 </style>

@@ -49,13 +49,15 @@
           </div>
 
           <div class="step-ops" @click.stop>
-            <n-button
-              size="tiny" text type="error" :disabled="disabled"
-              :title="t('automation.stepDelete')"
+            <IconButton
+              :icon="Trash2"
+              :label="t('automation.stepDelete')"
+              :disabled="disabled"
+              size="tiny"
+              text
+              type="error"
               @click.stop="remove(i)"
-            >
-              <n-icon size="14"><Trash2 /></n-icon>
-            </n-button>
+            />
             <n-dropdown
               trigger="click"
               placement="bottom-end"
@@ -63,12 +65,14 @@
               :disabled="disabled"
               @select="(key: string) => emit('insertBelow', { index: i, key: String(key) })"
             >
-              <n-button
-                size="tiny" text type="primary" :disabled="disabled"
-                :title="t('automation.addStep')"
-              >
-                <n-icon size="14"><Plus /></n-icon>
-              </n-button>
+              <IconButton
+                :icon="Plus"
+                :label="t('automation.addStep')"
+                :disabled="disabled"
+                size="tiny"
+                text
+                type="primary"
+              />
             </n-dropdown>
           </div>
         </div>
@@ -100,6 +104,7 @@ import {
   GripVertical, Plus, Trash2,
 } from 'lucide-vue-next'
 import StepEditForm from './StepEditForm.vue'
+import IconButton from '@components/common/IconButton.vue'
 import { type Step } from './stepTypes'
 import { stepActionGroup, stepActionLabel, stepSummary } from './stepMeta'
 

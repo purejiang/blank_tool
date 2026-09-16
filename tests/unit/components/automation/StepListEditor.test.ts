@@ -174,10 +174,12 @@ describe('StepListEditor', () => {
 
   it('has no pencil/edit button any more — delete and insert-below remain', () => {
     const w = mountEditor([tap(1, 1)])
-    const titles = w.findAll('button').map((b) => b.attributes('title'))
-    expect(titles).not.toContain('automation.stepEdit')
-    expect(titles).toContain('automation.stepDelete')
-    expect(titles).toContain('automation.addStep')
+    // 图标按钮的可访问名/提示由 IconButton 提供（label → aria-label + tooltip），
+    // 不再是原生 title
+    const labels = w.findAll('button').map((b) => b.attributes('aria-label'))
+    expect(labels).not.toContain('automation.stepEdit')
+    expect(labels).toContain('automation.stepDelete')
+    expect(labels).toContain('automation.addStep')
   })
 
   it('renders the note as a second line only when the step carries one', () => {

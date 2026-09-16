@@ -15,9 +15,9 @@
       <template v-else>
         <!-- ==================== Section 1: traffic capture (PC side) ==================== -->
         <section data-testid="traffic-section" class="tim-block">
-          <div class="tim-sec-head">{{ t('automation.tools.sectionTraffic') }}</div>
+          <div class="app-subhead">{{ t('automation.tools.sectionTraffic') }}</div>
 
-          <!-- status row (cap-row visual, page-local classes) -->
+          <!-- status row：与设置页的状态行同一套视觉（图标 + 状态 + 说明） -->
           <div class="tim-row">
             <div class="tim-icon" :style="{ color: trafficOk ? 'var(--app-green)' : 'var(--app-yellow)' }">
               <n-icon size="16"><CheckCircle v-if="trafficOk" /><AlertCircle v-else /></n-icon>
@@ -56,19 +56,14 @@
             <div class="tim-warn">{{ t('automation.tools.degradedTitle') }}</div>
             <div data-testid="manual-command" class="tim-mono-block">{{ degraded.manual_command }}</div>
             <div class="tim-actions">
-              <n-tooltip placement="top">
-                <template #trigger>
-                  <n-button
-                    data-testid="copy-command-btn"
-                    size="tiny"
-                    quaternary
-                    :aria-label="t('automation.tools.copyCommand')"
-                    @click="copyCommand"
-                  >
-                    <template #icon><n-icon><Copy /></n-icon></template>
-                  </n-button>
-                </template>{{ t('automation.tools.copyCommand') }}
-              </n-tooltip>
+              <IconButton
+                :icon="Copy"
+                :label="t('automation.tools.copyCommand')"
+                data-testid="copy-command-btn"
+                size="tiny"
+                quaternary
+                @click="copyCommand"
+              />
               <span v-if="copied === 'command'" class="tim-copied">{{ t('automation.copied') }}</span>
               <n-button size="tiny" quaternary data-testid="open-runtime-folder-btn" @click="openRuntimeFolder">
                 {{ t('automation.tools.openFolder') }}
@@ -123,7 +118,7 @@
 
         <!-- ==================== Section 2: ADBKeyBoard (device side) ==================== -->
         <section data-testid="ime-section" class="tim-block">
-          <div class="tim-sec-head">{{ t('automation.tools.sectionIme') }}</div>
+          <div class="app-subhead">{{ t('automation.tools.sectionIme') }}</div>
 
           <div class="tim-row">
             <div class="tim-icon" :style="{ color: imeStatus?.installed ? 'var(--app-green)' : 'var(--app-yellow)' }">
@@ -193,19 +188,14 @@
           <div class="tim-row tim-repo-row">
             <span class="tim-hint">{{ t('automation.tools.imeRepo') }}:</span>
             <span class="tim-mono tim-repo">{{ IME_REPO_URL }}</span>
-            <n-tooltip placement="top">
-              <template #trigger>
-                <n-button
-                  data-testid="copy-repo-btn"
-                  size="tiny"
-                  quaternary
-                  :aria-label="t('automation.tools.copyRepoUrl')"
-                  @click="copyRepoUrl"
-                >
-                  <template #icon><n-icon><Copy /></n-icon></template>
-                </n-button>
-              </template>{{ t('automation.tools.copyRepoUrl') }}
-            </n-tooltip>
+            <IconButton
+              :icon="Copy"
+              :label="t('automation.tools.copyRepoUrl')"
+              data-testid="copy-repo-btn"
+              size="tiny"
+              quaternary
+              @click="copyRepoUrl"
+            />
             <span v-if="copied === 'repo'" class="tim-copied">{{ t('automation.copied') }}</span>
           </div>
 
@@ -227,6 +217,7 @@ import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NIcon, NModal, NProgress, NSpin, NTooltip } from 'naive-ui'
 import { AlertCircle, CheckCircle, Copy } from 'lucide-vue-next'
+import IconButton from '@components/common/IconButton.vue'
 import serviceManager from '@services/ServiceManager'
 import {
   INSTALL_IDLE_TIMEOUT,
@@ -522,9 +513,8 @@ watch(() => imeLogs.value.length, () => { void scrollToBottom(imeLogEl) })
 <style scoped>
 .tim-root { display: flex; flex-direction: column; gap: 20px; }
 .tim-block { display: flex; flex-direction: column; gap: 10px; }
-.tim-sec-head { font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary); }
 
-/* status row — cap-row visual (SettingsPage), page-local classes */
+/* status row：与设置页状态行同一套视觉，页面局部类 */
 .tim-row { display: flex; align-items: flex-start; gap: 10px; }
 .tim-icon { flex: none; display: flex; padding-top: 2px; }
 .tim-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

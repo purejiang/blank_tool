@@ -7,9 +7,16 @@
       </div>
       <div class="dm-header-right">
         <span class="dm-count"><span class="dm-count-label">{{ t('device.connectedLabel') }}</span><span class="dm-count-num">{{ devices.length }}</span></span>
-        <n-button @click="$emit('refreshDevices')" :loading="loading" quaternary circle size="tiny">
-          <template #icon><n-icon size="16"><RefreshCw /></n-icon></template>
-        </n-button>
+        <IconButton
+          :icon="RefreshCw"
+          :label="t('device.refresh')"
+          :icon-size="16"
+          :loading="loading"
+          quaternary
+          circle
+          size="tiny"
+          @click="$emit('refreshDevices')"
+        />
       </div>
     </div>
     <n-spin :show="loading">
@@ -41,35 +48,35 @@
           </div>
           <template #suffix>
             <div class="device-actions">
-              <n-button
-                quaternary circle size="tiny"
-                :title="deviceStore.isPinned(device.id) ? t('device.unpin') : t('device.pin')"
+              <IconButton
+                :icon="deviceStore.isPinned(device.id) ? PinOff : Pin"
+                :label="deviceStore.isPinned(device.id) ? t('device.unpin') : t('device.pin')"
+                :icon-color="deviceStore.isPinned(device.id) ? 'var(--app-green)' : undefined"
+                quaternary
+                circle
+                size="tiny"
                 @click.stop="handleTogglePin(device.id)"
-              >
-                <template #icon>
-                  <n-icon size="14" :color="deviceStore.isPinned(device.id) ? 'var(--app-green)' : undefined">
-                    <component :is="deviceStore.isPinned(device.id) ? PinOff : Pin" />
-                  </n-icon>
-                </template>
-              </n-button>
-              <n-button
+              />
+              <IconButton
                 v-if="isNetworkDevice(device.id)"
-                quaternary circle size="tiny"
-                :title="t('device.reconnect')"
+                :icon="RefreshCw"
+                :label="t('device.reconnect')"
                 :loading="reconnectingId === device.id"
+                quaternary
+                circle
+                size="tiny"
                 @click.stop="handleReconnectDevice(device.id)"
-              >
-                <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
-              </n-button>
-              <n-button
+              />
+              <IconButton
                 v-if="isNetworkDevice(device.id)"
-                quaternary circle size="tiny"
-                :title="t('device.disconnect')"
+                :icon="Unplug"
+                :label="t('device.disconnect')"
                 :loading="disconnectingId === device.id"
+                quaternary
+                circle
+                size="tiny"
                 @click.stop="handleDisconnectDevice(device.id)"
-              >
-                <template #icon><n-icon size="14"><Unplug /></n-icon></template>
-              </n-button>
+              />
             </div>
           </template>
         </n-list-item>
@@ -89,15 +96,14 @@
         <n-button size="tiny" type="primary" secondary @click="handleConnect" :loading="isConnecting">
           {{ t('device.connect') }}
         </n-button>
-        <n-button
+        <IconButton
+          :icon="Plus"
+          :label="t('device.saveAddress')"
+          :disabled="!remoteAddress.trim()"
           size="tiny"
           secondary
-          :title="t('device.saveAddress')"
-          :disabled="!remoteAddress.trim()"
           @click="handleSaveAddress"
-        >
-          <template #icon><n-icon size="14"><Plus /></n-icon></template>
-        </n-button>
+        />
       </div>
       <div v-if="deviceStore.savedAddresses.length" class="dm-saved">
         <span class="dm-saved-label">{{ t('device.savedAddresses') }}</span>
@@ -110,16 +116,24 @@
           >
             <button
               class="dm-chip-connect"
+              type="button"
               :title="t('device.connect')"
               @click="handleQuickConnect(addr)"
             >{{ addr }}</button>
-            <button
-              class="dm-chip-remove"
-              :title="t('device.removeAddress')"
-              @click.stop="handleRemoveSaved(addr)"
-            >
-              <n-icon size="11"><X /></n-icon>
-            </button>
+            <!-- 图标按钮：提示走 n-tooltip（与 IconButton 同一机制，不再用原生 title） -->
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <button
+                  class="dm-chip-remove"
+                  type="button"
+                  :aria-label="t('device.removeAddress')"
+                  @click.stop="handleRemoveSaved(addr)"
+                >
+                  <n-icon size="12"><X /></n-icon>
+                </button>
+              </template>
+              {{ t('device.removeAddress') }}
+            </n-tooltip>
           </div>
         </div>
       </div>
@@ -132,6 +146,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { Smartphone, RefreshCw, Plus, X, Pin, PinOff, Unplug } from 'lucide-vue-next'
+import IconButton from '@components/common/IconButton.vue'
 import { useDeviceStore } from '@stores/deviceStore'
 import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'

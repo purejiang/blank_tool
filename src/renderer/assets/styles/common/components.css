@@ -96,6 +96,56 @@
   color: var(--app-text-primary);
 }
 
+/* ---- 小节标题行（列表头 / 卡片外的分组标签） ----
+ *
+ * 分工：公共类只管「排版 + 图标与文字的横向对齐」，外边距 / 是否两端对齐这类
+ * 随上下文变的部分留在使用方自己的类里（所以使用处是 class="col-head app-subhead"）。
+ * 三级层次靠修饰符：
+ *   默认        卡片内栏目标题（md / primary）
+ *   --sm        低一级的小号标题（sm / primary）
+ *   --muted     次要色（sm / secondary）
+ *   --dim       灰标签（sm / dim，卡片外的分组标签）
+ *   --upper     全大写 + 字距（诊断页那种栏目标题）
+ * 标题若是容器的直接文本，排版会正常继承；若包了一层 span，删掉 span 自己的类即可。
+ */
+.app-subhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--app-font-size-md);
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+.app-subhead--sm { font-size: var(--app-font-size-sm); }
+.app-subhead--muted { color: var(--app-text-secondary); }
+.app-subhead--dim { color: var(--app-text-dim); }
+.app-subhead--upper { letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* 标题行右端的动作组（图标按钮） */
+.app-subhead-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- 空状态 / 行内提示 ----
+ * 只有文本的那种空态，两种层次；带插图的大空态（.empty-state）各页差异太大，
+ * 没有强行合并。
+ * 这两个类目前各只有 2 处使用，低于上面「>=3 个文件才抽」的标准——但两处声明
+ * 是逐字相同的，重复本身就是要消除的问题，所以仍然提上来。
+ */
+.app-empty-hint {
+  font-size: var(--app-font-size-md);
+  color: var(--app-text-dim);
+  padding: 8px 0;
+}
+.app-empty-note {
+  font-size: var(--app-font-size-sm);
+  color: var(--app-text-muted);
+  text-align: center;
+}
+
 /* ---- 小标签 / 等宽文本 ---- */
 
 /* 次要说明文字（原先 4 个组件各抄一份 .muted） */

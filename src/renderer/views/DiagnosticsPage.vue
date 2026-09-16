@@ -37,7 +37,7 @@
             {{ t('diagnostics.refresh') }}
           </n-button>
         </div>
-        <div v-if="tasks.length === 0" class="empty-hint">{{ t('diagnostics.noTasks') }}</div>
+        <div v-if="tasks.length === 0" class="app-empty-hint">{{ t('diagnostics.noTasks') }}</div>
         <n-data-table v-else :columns="taskColumns" :data="tasks" :bordered="false" size="small" :row-key="taskRowKey" />
       </n-card>
 
@@ -54,7 +54,7 @@
         <n-tabs type="line" v-model:value="activeLogTab" @update:value="onTabChange">
           <n-tab-pane name="backend" :tab="t('diagnostics.logTailBackend')">
             <pre ref="logViewRef" class="log-view">{{ backendLog.lines.join('\n') }}</pre>
-            <div v-if="backendLog.lines.length === 0" class="empty-hint">{{ t('diagnostics.noLogs') }}</div>
+            <div v-if="backendLog.lines.length === 0" class="app-empty-hint">{{ t('diagnostics.noLogs') }}</div>
             <div class="log-meta muted">
               {{ backendLog.lines.length }} {{ t('diagnostics.lines') }}
               <n-tag v-if="backendLog.truncated" size="tiny" :bordered="false" type="warning" class="log-meta-tag">{{ t('diagnostics.truncated') }}</n-tag>
@@ -62,7 +62,7 @@
           </n-tab-pane>
           <n-tab-pane name="main" :tab="t('diagnostics.logTailMain')">
             <pre ref="logViewRef" class="log-view">{{ mainLog.lines.join('\n') }}</pre>
-            <div v-if="mainLog.lines.length === 0" class="empty-hint">{{ t('diagnostics.noLogs') }}</div>
+            <div v-if="mainLog.lines.length === 0" class="app-empty-hint">{{ t('diagnostics.noLogs') }}</div>
             <div class="log-meta muted">
               {{ mainLog.lines.length }} {{ t('diagnostics.lines') }}
               <n-tag v-if="mainLog.truncated" size="tiny" :bordered="false" type="warning" class="log-meta-tag">{{ t('diagnostics.truncated') }}</n-tag>
@@ -70,7 +70,7 @@
           </n-tab-pane>
           <n-tab-pane name="renderer" :tab="t('diagnostics.logTailRenderer')">
             <pre ref="logViewRef" class="log-view">{{ rendererLogLines.join('\n') }}</pre>
-            <div v-if="rendererLogLines.length === 0" class="empty-hint">{{ t('diagnostics.noLogs') }}</div>
+            <div v-if="rendererLogLines.length === 0" class="app-empty-hint">{{ t('diagnostics.noLogs') }}</div>
             <div class="log-meta muted">{{ rendererLogLines.length }} {{ t('diagnostics.lines') }}</div>
           </n-tab-pane>
         </n-tabs>
@@ -87,7 +87,7 @@
           </n-button>
         </div>
 
-        <div v-if="selfChecking && selfCheckItems.length === 0" class="empty-hint">
+        <div v-if="selfChecking && selfCheckItems.length === 0" class="app-empty-hint">
           {{ t('diagnostics.selfCheckRunning') }}
         </div>
 
@@ -101,7 +101,7 @@
 
           <!-- Risk items float to the top: the whole point of a self-check -->
           <div class="sc-section">
-            <div class="sc-section-title">{{ t('diagnostics.scRisks') }}</div>
+            <div class="sc-section-title app-subhead app-subhead--sm app-subhead--dim app-subhead--upper">{{ t('diagnostics.scRisks') }}</div>
             <div v-if="riskItems.length === 0" class="sc-clean">
               <n-icon size="14" color="var(--app-green)"><CheckCircle2 /></n-icon>
               {{ t('diagnostics.scNoRisk') }}
@@ -120,7 +120,7 @@
 
           <!-- Full inventory, grouped -->
           <div v-for="group in selfCheckGroups" :key="group.key" class="sc-section">
-            <div class="sc-section-title">{{ t(group.titleKey) }}</div>
+            <div class="sc-section-title app-subhead app-subhead--sm app-subhead--dim app-subhead--upper">{{ t(group.titleKey) }}</div>
             <div class="sc-list">
               <div v-for="item in group.items" :key="item.id" class="sc-row">
                 <n-icon class="sc-icon" size="14" :color="statusColor(item.status)">
@@ -649,7 +649,6 @@ onUnmounted(() => {
 }
 
 /* Tasks / logs shared */
-.empty-hint { font-size: var(--app-font-size-md); color: var(--app-text-dim); padding: 8px 0; }
 
 /* Log viewer */
 .log-view {
@@ -683,7 +682,7 @@ onUnmounted(() => {
 .sc-dot-fail { background: var(--app-red); }
 
 .sc-section { padding-top: 12px; }
-.sc-section-title { font-size: var(--app-font-size-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--app-text-dim); margin-bottom: 4px; }
+.sc-section-title { margin-bottom: 4px; }
 .sc-clean { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-md); color: var(--app-text-dim); padding: 4px 0; }
 .sc-list { display: flex; flex-direction: column; }
 

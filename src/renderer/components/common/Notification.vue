@@ -47,15 +47,20 @@
             </div>
           </div>
 
-          <!-- 关闭按钮 -->
-          <button
-            v-if="notification.type !== 'loading'"
-            class="notification-close"
-            @click="hideNotification(notification.id)"
-            aria-label="Close notification"
-          >
-            <span class="close-icon">×</span>
-          </button>
+          <!-- 关闭按钮（图标按钮 → 必须有悬停提示，提示兼可访问名） -->
+          <n-tooltip v-if="notification.type !== 'loading'" placement="left" trigger="hover">
+            <template #trigger>
+              <button
+                class="notification-close"
+                type="button"
+                :aria-label="t('common.close')"
+                @click="hideNotification(notification.id)"
+              >
+                <span class="close-icon">×</span>
+              </button>
+            </template>
+            {{ t('common.close') }}
+          </n-tooltip>
         </div>
       </TransitionGroup>
     </div>
@@ -64,8 +69,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { NTooltip } from 'naive-ui'
 import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'
+
+const { t } = useI18n()
 
 // 响应式数据
 const notifications = ref([])

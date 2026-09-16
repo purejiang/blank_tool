@@ -71,11 +71,11 @@
         <!-- Report actions live here (status bar, right end) so the tabs row
              keeps only the log filter + the report-view close button. -->
         <n-button v-if="src.taskId && !running" size="tiny" :loading="exporting" @click="emit('open-file')">
-          <template #icon><n-icon size="13"><ExternalLink /></n-icon></template>
+          <template #icon><n-icon size="14"><ExternalLink /></n-icon></template>
           {{ t('automation.openInBrowser') }}
         </n-button>
         <n-button v-if="src.taskId && !running" size="tiny" @click="emit('download-report')">
-          <template #icon><n-icon size="13"><Download /></n-icon></template>
+          <template #icon><n-icon size="14"><Download /></n-icon></template>
           {{ t('automation.downloadReport') }}
         </n-button>
       </div>
@@ -102,9 +102,14 @@
         <span v-if="tab === 'logs' && logs.length" class="only-err">
           <n-checkbox v-model:checked="onlyErrors" size="small">{{ t('automation.onlyErrors') }}</n-checkbox>
         </span>
-        <n-button v-if="isReport" size="tiny" text :title="t('common.close')" @click="emit('close-report')">
-          <template #icon><n-icon size="13"><X /></n-icon></template>
-        </n-button>
+        <IconButton
+          v-if="isReport"
+          :icon="X"
+          :label="t('common.close')"
+          size="tiny"
+          text
+          @click="emit('close-report')"
+        />
       </div>
     </div>
 
@@ -117,7 +122,10 @@
             <span class="s-rel">{{ relText(st) }}</span>
             <span class="s-idx">#{{ st.index }}</span>
             <span class="s-act">{{ actLabel(st.action) }}</span>
-            <span class="s-msg">{{ st.pending ? t('automation.stepPending') : (st.message || (st.ok ? 'ok' : 'fail')) }}</span>
+            <span
+              class="s-msg"
+              :title="st.pending ? t('automation.stepPending') : (st.message || (st.ok ? 'ok' : 'fail'))"
+            >{{ st.pending ? t('automation.stepPending') : (st.message || (st.ok ? 'ok' : 'fail')) }}</span>
             <span v-if="st.shots.length" class="s-shots" :title="t('automation.shotCountLabel', { n: st.shots.length })">
               <n-icon size="12"><ImageIcon /></n-icon>{{ st.shots.length }}
             </span>
@@ -197,6 +205,7 @@ import { useI18n } from 'vue-i18n'
 import { NButton, NCheckbox, NIcon, NImage, NPopover } from 'naive-ui'
 import { Download, ExternalLink, Image as ImageIcon, ImageOff, X } from 'lucide-vue-next'
 import { stepActionLabel } from '@components/automation/stepMeta'
+import IconButton from '@components/common/IconButton.vue'
 
 const props = defineProps<{
   running: boolean

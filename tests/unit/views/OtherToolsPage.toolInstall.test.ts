@@ -94,8 +94,8 @@ async function click(wrapper: any, selector: string) {
   await flushPromises()
 }
 
-/** The header entry button — no data-testid, bound to automation.toolsInstall. */
-const TOOLS_INSTALL_BTN = 'button[aria-label="automation.toolsInstall"]'
+/** The header entry button — 有可见文案，所以不带 aria-label（提示只给图标按钮）。 */
+const TOOLS_INSTALL_BTN = '.header-actions button'
 
 describe('OtherToolsPage — tool install changed → refresh glue', () => {
   beforeEach(() => {

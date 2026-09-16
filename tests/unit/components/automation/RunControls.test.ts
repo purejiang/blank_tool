@@ -68,7 +68,8 @@ describe('RunControls — row layout', () => {
     expect(kids.length).toBe(3)
     expect(kids[1].textContent?.trim()).toBe('automation.run')
     // the menu button is the LAST element → to the right of Run
-    expect(kids[2].classList.contains('run-menu-btn')).toBe(true)
+    // （IconButton 的根是一层包裹 span，按钮本身在它里面）
+    expect(kids[2].querySelector('.run-menu-btn')).toBeTruthy()
   })
 
   it('menu button is icon-only (no label text)', () => {
@@ -98,7 +99,7 @@ describe('RunControls — row layout', () => {
 
     expect(kids.length).toBe(3)
     expect(kids[1].textContent?.trim()).toBe('automation.stop')
-    expect(kids[2].classList.contains('run-menu-btn')).toBe(true)
+    expect(kids[2].querySelector('.run-menu-btn')).toBeTruthy()
   })
 })
 

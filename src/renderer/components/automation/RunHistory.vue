@@ -1,14 +1,19 @@
 <template>
   <div class="run-history">
-    <div class="rh-head">
-      <span class="rh-title">{{ t('automation.runHistory') }}</span>
+    <div class="rh-head app-subhead app-subhead--sm">
+      <span>{{ t('automation.runHistory') }}</span>
       <span class="rh-count" v-if="runs.length">{{ runs.length }}</span>
-      <n-button size="tiny" text :title="t('automation.refresh')" :loading="loading" @click="emit('refresh')">
-        <template #icon><n-icon><RefreshCw /></n-icon></template>
-      </n-button>
+      <IconButton
+        :icon="RefreshCw"
+        :label="t('automation.refresh')"
+        :loading="loading"
+        size="tiny"
+        text
+        @click="emit('refresh')"
+      />
     </div>
 
-    <div v-if="!runs.length" class="rh-empty">{{ t('automation.noRuns') }}</div>
+    <div v-if="!runs.length" class="rh-empty app-empty-note">{{ t('automation.noRuns') }}</div>
 
     <n-scrollbar v-else class="rh-list">
       <div
@@ -23,14 +28,15 @@
         <span class="run-time">{{ shortTime(r.started_at) }}</span>
         <span class="run-counts">{{ r.passed ?? 0 }}/{{ r.total ?? 0 }}</span>
         <span class="run-dur">{{ fmtDur(r.duration_ms) }}</span>
-        <n-button
-          size="tiny" text type="error"
+        <IconButton
+          :icon="Trash2"
+          :label="t('automation.deleteRun')"
+          size="tiny"
+          text
+          type="error"
           class="run-del"
-          :title="t('automation.deleteRun')"
           @click.stop="emit('remove', r.task_id)"
-        >
-          <template #icon><n-icon size="13"><Trash2 /></n-icon></template>
-        </n-button>
+        />
       </div>
     </n-scrollbar>
   </div>
@@ -38,8 +44,9 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NScrollbar } from 'naive-ui'
+import { NScrollbar } from 'naive-ui'
 import { RefreshCw, Trash2 } from 'lucide-vue-next'
+import IconButton from '@components/common/IconButton.vue'
 
 defineProps<{
   runs: any[]
@@ -84,14 +91,13 @@ function fmtDur(ms: number): string {
   display: flex; flex-direction: column;
   flex: 0 1 auto; min-height: 0; overflow: hidden;
 }
-.rh-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex: none; }
-.rh-title { font-size: var(--app-font-size-sm); font-weight: 600; color: var(--app-text-primary); }
+.rh-head { gap: 6px; margin-bottom: 4px; flex: none; }
 .rh-count {
   font-size: var(--app-font-size-xs); color: var(--app-text-muted); background: var(--app-blue-bg);
   border-radius: 8px; padding: 0 6px; line-height: 16px;
 }
-.rh-head :deep(.n-button) { margin-left: auto; }
-.rh-empty { padding: 8px 0; font-size: var(--app-font-size-sm); color: var(--app-text-muted); text-align: center; }
+.rh-head :deep(.app-icon-btn) { margin-left: auto; }
+.rh-empty { padding: 8px 0; }
 .rh-list { flex: 1 1 auto; min-height: 0; max-height: 140px; }
 .run-row {
   display: flex; align-items: center; gap: 8px;

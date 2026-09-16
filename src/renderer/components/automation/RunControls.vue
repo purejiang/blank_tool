@@ -24,27 +24,23 @@
       <!-- 次级入口收进一个菜单：运行配置 / 运行记录（各自开弹窗）。行里只多一个
            按钮，但抓包状态必须仍然一眼可见 —— captureTraffic 打开时按钮右上角
            带一个圆点（tooltip 依旧说明它会改写设备代理）。 -->
-      <n-tooltip placement="top">
-        <template #trigger>
-          <n-dropdown
-            trigger="click"
-            placement="bottom-end"
-            :options="menuOptions"
-            @select="onMenuSelect"
-          >
-            <n-button
-              size="small"
-              quaternary
-              class="run-menu-btn"
-              :aria-label="t('automation.runMenu')"
-            >
-              <template #icon><n-icon><MoreHorizontal /></n-icon></template>
-              <span v-if="captureTraffic" class="run-dot" />
-            </n-button>
-          </n-dropdown>
-        </template>
-        {{ menuTip }}
-      </n-tooltip>
+      <n-dropdown
+        trigger="click"
+        placement="bottom-end"
+        :options="menuOptions"
+        @select="onMenuSelect"
+      >
+        <IconButton
+          :icon="MoreHorizontal"
+          :label="menuTip"
+          :aria-label="t('automation.runMenu')"
+          size="small"
+          quaternary
+          class="run-menu-btn"
+        >
+          <span v-if="captureTraffic" class="run-dot" />
+        </IconButton>
+      </n-dropdown>
     </div>
     <!-- non-blocking preflight hints (missing mitmproxy / ADBKeyBoard) -->
     <div v-if="hints.length" class="run-hints">
@@ -102,6 +98,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NDropdown, NDynamicTags, NIcon, NModal, NSelect, NSpace, NSwitch, NTooltip } from 'naive-ui'
 import { MoreHorizontal, Play, Square } from 'lucide-vue-next'
+import IconButton from '@components/common/IconButton.vue'
 import { useDeviceStore } from '@stores/deviceStore'
 
 const props = defineProps<{
