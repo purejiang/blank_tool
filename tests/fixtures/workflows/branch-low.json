@@ -1,0 +1,33 @@
+{
+  "name": "branch-low",
+  "version": "1.0",
+  "description": "Sub-workflow of branch-demo: taken when the match count is at or below the threshold (builtin-only)",
+  "inputs": [
+    {"name": "target", "type": {"base": "text"}, "required": true, "description": "Scanned file or directory (echoed)"},
+    {"name": "pattern", "type": {"base": "text"}, "required": true, "description": "Scanned pattern (echoed)"},
+    {"name": "count", "type": {"base": "number"}, "required": true, "description": "Match count from the parent workflow"}
+  ],
+  "outputs": [
+    {"name": "passed", "type": {"base": "boolean"}, "required": true, "description": "Always true when reached"}
+  ],
+  "nodes": [
+    {
+      "id": "log",
+      "tool": "flow.log",
+      "params": {
+        "message": "LOW branch: ${inputs.count} match(es) of ${inputs.pattern} in ${inputs.target} (at or below threshold)",
+        "level": "info"
+      },
+      "next": "confirm"
+    },
+    {
+      "id": "confirm",
+      "tool": "flow.assert",
+      "params": {
+        "condition": true,
+        "message": "low branch done"
+      },
+      "next": null
+    }
+  ]
+}

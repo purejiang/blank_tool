@@ -1,0 +1,35 @@
+{
+  "name": "release-report-bad",
+  "version": "1.0",
+  "description": "Sub-workflow of release-check: write the FAIL report (taken when at least one file failed the hard gate) — builtin-only",
+  "inputs": [
+    {"name": "report_path", "type": {"base": "text"}, "required": true, "description": "Where to write the report"},
+    {"name": "results_file", "type": {"base": "text"}, "required": true, "description": "Per-file results file produced by the loop"},
+    {"name": "count", "type": {"base": "number"}, "required": true, "description": "Number of audited files"},
+    {"name": "passed", "type": {"base": "number"}, "required": true, "description": "Number of files that passed"},
+    {"name": "failed", "type": {"base": "number"}, "required": true, "description": "Number of files that failed"}
+  ],
+  "outputs": [
+    {"name": "passed", "type": {"base": "boolean"}, "required": true, "description": "True once the report is written"}
+  ],
+  "nodes": [
+    {
+      "id": "write",
+      "tool": "file.write",
+      "params": {
+        "path": "$inputs.report_path",
+        "content": "RELEASE CHECK: FAIL\n---\nfiles checked: ${inputs.count}\npassed: ${inputs.passed}\nfailed: ${inputs.failed}\nper-file results: ${inputs.results_file}\n"
+      },
+      "next": "confirm"
+    },
+    {
+      "id": "confirm",
+      "tool": "flow.assert",
+      "params": {
+        "condition": true,
+        "message": "fail report written to ${inputs.report_path}"
+      },
+      "next": null
+    }
+  ]
+}

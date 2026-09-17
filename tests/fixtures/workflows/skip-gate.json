@@ -1,0 +1,52 @@
+{
+  "name": "skip-gate",
+  "version": "1.0",
+  "description": "Read a file and keep going when an expected marker is missing: the gate node uses on_failure=skip, so the run still succeeds and the node is reported as skipped (builtin-only, zero external dependencies)",
+  "inputs": [
+    {"name": "target", "type": {"base": "text"}, "required": true, "description": "File to read"},
+    {"name": "marker", "type": {"base": "text"}, "required": true, "description": "Substring that should appear in the file"}
+  ],
+  "outputs": [
+    {"name": "logged", "type": {"base": "boolean"}, "required": true, "description": "True when the final log node ran"}
+  ],
+  "nodes": [
+    {
+      "id": "read",
+      "tool": "file.read",
+      "params": {
+        "path": "$inputs.target",
+        "max_bytes": 262144
+      },
+      "next": "contains"
+    },
+    {
+      "id": "contains",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.read.outputs.content",
+        "b": "$inputs.marker",
+        "op": "contains"
+      },
+      "next": "gate"
+    },
+    {
+      "id": "gate",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.contains.outputs.result",
+        "message": "marker '${inputs.marker}' not found in ${inputs.target}"
+      },
+      "next": "after",
+      "on_failure": "skip"
+    },
+    {
+      "id": "after",
+      "tool": "flow.log",
+      "params": {
+        "message": "continued past the marker gate (${nodes.read.outputs.size} bytes read from ${inputs.target})",
+        "level": "warning"
+      },
+      "next": null
+    }
+  ]
+}

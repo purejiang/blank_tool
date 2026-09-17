@@ -1,0 +1,90 @@
+{
+  "name": "release-check",
+  "version": "1.0",
+  "description": "Release gate over a file list: audit every target, write per-file evidence, then branch to a pass/fail report. Composes flow.foreach + flow.compare + flow.branch + workflow.run across three template layers, with a hard gate (zero failures) and a soft gate (tolerated failures) — builtin-only, no external dependency",
+  "inputs": [
+    {"name": "targets", "type": {"base": "json"}, "required": true, "description": "List of {path, ...} entries to audit, one per file"},
+    {"name": "max_failures", "type": {"base": "number"}, "required": true, "description": "Failures tolerated by the SOFT gate; the hard gate still requires zero"},
+    {"name": "report_path", "type": {"base": "text"}, "required": true, "description": "Where the final PASS/FAIL report is written"}
+  ],
+  "outputs": [
+    {"name": "passed", "type": {"base": "boolean"}, "required": true, "description": "True when the hard gate (zero failures) is satisfied"}
+  ],
+  "nodes": [
+    {
+      "id": "scan_all",
+      "tool": "flow.foreach",
+      "params": {
+        "items": "$inputs.targets",
+        "template": "release-check-item"
+      },
+      "next": "summary"
+    },
+    {
+      "id": "summary",
+      "tool": "flow.log",
+      "params": {
+        "message": "release-check: ${nodes.scan_all.outputs.count} file(s) audited — ${nodes.scan_all.outputs.passed_count} passed, ${nodes.scan_all.outputs.failed_count} failed (details: ${nodes.scan_all.outputs.results_file})",
+        "level": "info"
+      },
+      "next": "soft_decide"
+    },
+    {
+      "id": "soft_decide",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.scan_all.outputs.failed_count",
+        "b": "$inputs.max_failures",
+        "op": "le"
+      },
+      "next": "soft_gate"
+    },
+    {
+      "id": "soft_gate",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.soft_decide.outputs.result",
+        "message": "soft check: ${nodes.scan_all.outputs.failed_count} file(s) failed, more than the ${inputs.max_failures} tolerated (continuing)"
+      },
+      "next": "hard_decide",
+      "on_failure": "skip"
+    },
+    {
+      "id": "hard_decide",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.scan_all.outputs.failed_count",
+        "b": 0,
+        "op": "eq"
+      },
+      "next": "route"
+    },
+    {
+      "id": "route",
+      "tool": "flow.branch",
+      "params": {
+        "condition": "$nodes.hard_decide.outputs.result",
+        "true_template": "release-report-ok",
+        "false_template": "release-report-bad",
+        "inputs": {
+          "report_path": "$inputs.report_path",
+          "results_file": "$nodes.scan_all.outputs.results_file",
+          "count": "$nodes.scan_all.outputs.count",
+          "passed": "$nodes.scan_all.outputs.passed_count",
+          "failed": "$nodes.scan_all.outputs.failed_count"
+        }
+      },
+      "next": "confirm"
+    },
+    {
+      "id": "confirm",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.hard_decide.outputs.result",
+        "message": "release gate failed: ${nodes.scan_all.outputs.failed_count} file(s) did not pass; per-file details in ${nodes.scan_all.outputs.results_file}"
+      },
+      "next": null,
+      "on_failure": "fail"
+    }
+  ]
+}

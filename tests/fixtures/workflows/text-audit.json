@@ -1,0 +1,62 @@
+{
+  "name": "text-audit",
+  "version": "1.0",
+  "description": "Audit a text file or directory: count the lines matching a regex and fail unless at least min_matches matched (builtin-only, zero external dependencies)",
+  "inputs": [
+    {"name": "target", "type": {"base": "text"}, "required": true, "description": "File or directory to scan"},
+    {"name": "pattern", "type": {"base": "text"}, "required": true, "description": "Regular expression whose matching lines are counted"},
+    {"name": "min_matches", "type": {"base": "number"}, "required": true, "description": "Minimum number of matching lines required to pass"}
+  ],
+  "outputs": [
+    {"name": "passed", "type": {"base": "boolean"}, "required": true, "description": "True when at least min_matches lines matched"}
+  ],
+  "nodes": [
+    {
+      "id": "announce",
+      "tool": "flow.log",
+      "params": {
+        "message": "counting ${inputs.pattern} matches in ${inputs.target} (need >= ${inputs.min_matches})",
+        "level": "info"
+      },
+      "next": "scan"
+    },
+    {
+      "id": "scan",
+      "tool": "text.grep",
+      "params": {
+        "path": "$inputs.target",
+        "pattern": "$inputs.pattern"
+      },
+      "next": "counted"
+    },
+    {
+      "id": "counted",
+      "tool": "flow.log",
+      "params": {
+        "message": "$nodes.scan.outputs.count",
+        "level": "info"
+      },
+      "next": "enough"
+    },
+    {
+      "id": "enough",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.scan.outputs.count",
+        "b": "$inputs.min_matches",
+        "op": "ge"
+      },
+      "next": "gate"
+    },
+    {
+      "id": "gate",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.enough.outputs.result",
+        "message": "expected at least ${inputs.min_matches} matching line(s) of ${inputs.pattern}, found ${nodes.scan.outputs.count}"
+      },
+      "next": null,
+      "on_failure": "fail"
+    }
+  ]
+}

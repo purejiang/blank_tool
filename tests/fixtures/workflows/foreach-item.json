@@ -1,0 +1,44 @@
+{
+  "name": "foreach-item",
+  "version": "1.0",
+  "description": "Sub-workflow of foreach-audit: audit a single target and fail when it has fewer than min_matches matches (builtin-only)",
+  "inputs": [
+    {"name": "target", "type": {"base": "text"}, "required": true, "description": "File or directory to scan"},
+    {"name": "pattern", "type": {"base": "text"}, "required": true, "description": "Regular expression whose matching lines are counted"},
+    {"name": "min_matches", "type": {"base": "number"}, "required": true, "description": "Minimum number of matching lines required for this target"}
+  ],
+  "outputs": [
+    {"name": "passed", "type": {"base": "boolean"}, "required": true, "description": "True when the target met its minimum"}
+  ],
+  "nodes": [
+    {
+      "id": "scan",
+      "tool": "text.grep",
+      "params": {
+        "path": "$inputs.target",
+        "pattern": "$inputs.pattern"
+      },
+      "next": "enough"
+    },
+    {
+      "id": "enough",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.scan.outputs.count",
+        "b": "$inputs.min_matches",
+        "op": "ge"
+      },
+      "next": "gate"
+    },
+    {
+      "id": "gate",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.enough.outputs.result",
+        "message": "${inputs.target} matched ${nodes.scan.outputs.count} line(s), needs >= ${inputs.min_matches}"
+      },
+      "next": null,
+      "on_failure": "fail"
+    }
+  ]
+}

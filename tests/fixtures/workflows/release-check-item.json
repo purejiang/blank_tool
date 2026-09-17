@@ -1,0 +1,104 @@
+{
+  "name": "release-check-item",
+  "version": "1.0",
+  "description": "Sub-workflow of release-check: audit ONE file (TODO/FIXME markers and leftover debug statements), delegate the evidence file to a third template, and fail when either check fails — builtin-only",
+  "inputs": [
+    {"name": "path", "type": {"base": "text"}, "required": true, "description": "File to audit (flattened from the foreach item)"},
+    {"name": "item", "type": {"base": "json"}, "required": false, "description": "The whole foreach item, injected for logging"}
+  ],
+  "outputs": [
+    {"name": "logged", "type": {"base": "boolean"}, "required": true, "description": "True when the item was audited end to end"}
+  ],
+  "nodes": [
+    {
+      "id": "read",
+      "tool": "file.read",
+      "params": {
+        "path": "$inputs.path",
+        "max_bytes": 200000
+      },
+      "next": "todos"
+    },
+    {
+      "id": "todos",
+      "tool": "text.grep",
+      "params": {
+        "path": "$inputs.path",
+        "pattern": "TODO|FIXME"
+      },
+      "next": "no_todos"
+    },
+    {
+      "id": "no_todos",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.todos.outputs.count",
+        "b": 0,
+        "op": "eq"
+      },
+      "next": "todos_gate"
+    },
+    {
+      "id": "todos_gate",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.no_todos.outputs.result",
+        "message": "${inputs.path} still carries ${nodes.todos.outputs.count} TODO/FIXME marker(s)"
+      },
+      "next": "debug",
+      "on_failure": "fail"
+    },
+    {
+      "id": "debug",
+      "tool": "text.grep",
+      "params": {
+        "path": "$inputs.path",
+        "pattern": "console\\.log|print\\("
+      },
+      "next": "no_debug"
+    },
+    {
+      "id": "no_debug",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.debug.outputs.count",
+        "b": 0,
+        "op": "eq"
+      },
+      "next": "debug_gate"
+    },
+    {
+      "id": "debug_gate",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.no_debug.outputs.result",
+        "message": "${inputs.path} still has ${nodes.debug.outputs.count} leftover debug statement(s)"
+      },
+      "next": "evidence",
+      "on_failure": "fail"
+    },
+    {
+      "id": "evidence",
+      "tool": "workflow.run",
+      "params": {
+        "template": "release-evidence",
+        "inputs": {
+          "path": "$inputs.path",
+          "size": "$nodes.read.outputs.size",
+          "todos": "$nodes.todos.outputs.count",
+          "debug": "$nodes.debug.outputs.count"
+        }
+      },
+      "next": "log_done"
+    },
+    {
+      "id": "log_done",
+      "tool": "flow.log",
+      "params": {
+        "message": "audited ${inputs.item}",
+        "level": "info"
+      },
+      "next": null
+    }
+  ]
+}
