@@ -2,9 +2,9 @@
 
 Covers 2/3-node linear workflows driving real builtin tools (file.write,
 file.read, flow.assert, flow.log), expression resolution in node params
-($inputs.* and $nodes.<id>.outputs.*), on_failure semantics (fail / skip /
-retry:N), and the condition-field guard.  A stub registry is injected so no
-real ToolManager discovery (or bundled binaries) is needed.
+($inputs.* and $nodes.<id>.outputs.*), on_failure semantics (fail / skip),
+the node.retry budget, and the schema guards.  A stub registry is injected so
+no real ToolManager discovery (or bundled binaries) is needed.
 """
 
 import logging
@@ -271,18 +271,19 @@ def test_on_failure_skip_continues_past_failure(tmp_path):
 
 def test_retry_reexecutes_failing_node(tmp_path):
     flaky = _FlakyTool(failures=1)
-    nodes = [_node("flaky", "flaky.tool", on_failure="retry:1")]
+    nodes = [_node("flaky", "flaky.tool", retry=1)]
     result = _engine(registry=_StubRegistry({"flaky.tool": flaky})).execute(
         _definition(nodes), {}, _context(tmp_path)
     )
     assert result.success is True
     assert flaky.attempts == 2  # first attempt fails, retry succeeds
     assert result.outputs == {"ok": True, "attempts": 2}
+    assert result.node_results["flaky"]["attempts"] == 2
 
 
 def test_retry_exhausted_fails_workflow(tmp_path):
     flaky = _FlakyTool(failures=3)
-    nodes = [_node("flaky", "flaky.tool", on_failure="retry:1")]
+    nodes = [_node("flaky", "flaky.tool", retry=1)]
     result = _engine(registry=_StubRegistry({"flaky.tool": flaky})).execute(
         _definition(nodes), {}, _context(tmp_path)
     )
@@ -292,8 +293,8 @@ def test_retry_exhausted_fails_workflow(tmp_path):
 
 
 def test_retry_int_applies_regardless_of_on_failure(tmp_path):
-    # node.retry drives retries even when on_failure is "fail" (docstring
-    # previously claimed retry was only used with on_failure="retry:N").
+    # node.retry drives retries; on_failure only decides what happens after
+    # the budget is exhausted.
     flaky = _FlakyTool(failures=3)
     nodes = [_node("flaky", "flaky.tool", on_failure="fail", retry=5)]
     result = _engine(registry=_StubRegistry({"flaky.tool": flaky})).execute(
@@ -303,31 +304,27 @@ def test_retry_int_applies_regardless_of_on_failure(tmp_path):
     assert flaky.attempts == 4  # 3 failures absorbed by retry budget, 4th wins
 
 
-def test_retry_n_string_backward_compat(tmp_path, caplog):
-    # on_failure="retry:3" still works (3 retries) and logs a deprecation.
-    flaky = _FlakyTool(failures=3)
-    nodes = [_node("flaky", "flaky.tool", on_failure="retry:3", retry=0)]
-    with caplog.at_level(logging.WARNING, logger="app.workflow.engine"):
-        result = _engine(registry=_StubRegistry({"flaky.tool": flaky})).execute(
-            _definition(nodes), {}, _context(tmp_path)
-        )
-    assert result.success is True
-    assert flaky.attempts == 4  # 3 failures + 1 success
-    assert any("deprecated" in rec.message for rec in caplog.records)
-
-
-def test_retry_n_string_takes_precedence_over_int(tmp_path, caplog):
-    # N in "retry:N" wins over node.retry; 4 failures exceed budget of 3.
+def test_retry_budget_bounds_attempts(tmp_path):
+    # 4 failures against a budget of 3 extra attempts ⇒ 4 tries, then give up.
     flaky = _FlakyTool(failures=4)
-    nodes = [_node("flaky", "flaky.tool", on_failure="retry:3", retry=5)]
-    with caplog.at_level(logging.WARNING, logger="app.workflow.engine"):
-        result = _engine(registry=_StubRegistry({"flaky.tool": flaky})).execute(
-            _definition(nodes), {}, _context(tmp_path)
-        )
+    nodes = [_node("flaky", "flaky.tool", retry=3)]
+    result = _engine(registry=_StubRegistry({"flaky.tool": flaky})).execute(
+        _definition(nodes), {}, _context(tmp_path)
+    )
     assert result.success is False
-    assert flaky.attempts == 4  # initial + 3 retries, then give up (not 6)
+    assert flaky.attempts == 4
     assert "flaky boom" in result.error
-    assert any("deprecated" in rec.message for rec in caplog.records)
+
+
+def test_failed_attempt_outputs_are_not_reported(tmp_path):
+    """A retry must not leak the failed attempt's partial outputs."""
+    flaky = _FlakyTool(failures=1)
+    nodes = [_node("flaky", "flaky.tool", retry=1)]
+    result = _engine(registry=_StubRegistry({"flaky.tool": flaky})).execute(
+        _definition(nodes), {}, _context(tmp_path)
+    )
+    assert result.node_results["flaky"]["status"] == "ok"
+    assert result.node_results["flaky"]["outputs"]["attempts"] == 2
 
 
 def test_error_in_middle_with_fail_stops_downstream(tmp_path):
@@ -360,10 +357,19 @@ def test_expression_resolution_failure_routes_through_on_failure(tmp_path):
 # Guards
 # ---------------------------------------------------------------------------
 
-def test_condition_field_raises_not_implemented(tmp_path):
-    nodes = [_node("a", "flow.log", condition="inputs.x > 0", params={"message": "hi"})]
-    with pytest.raises(NotImplementedError, match="conditional branches"):
-        _engine().execute(_definition(nodes), {}, _context(tmp_path))
+def test_removed_condition_field_is_ignored_on_load(tmp_path):
+    """`condition` was removed from the schema; a stale key must be ignored,
+    and must certainly not abort a run halfway through."""
+    data = {
+        "id": "a",
+        "tool": "flow.log",
+        "params": {"message": "hi"},
+        "condition": "inputs.x > 0",
+    }
+    node = WorkflowNode.from_dict(data)
+    assert not hasattr(node, "condition")
+    result = _engine().execute(_definition([node]), {}, _context(tmp_path))
+    assert result.success is True
 
 
 def test_unknown_tool_fails_workflow(tmp_path):

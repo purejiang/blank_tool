@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Workflow streaming events and between-node cancellation.
+Workflow streaming events and cancellation.
 
 This module defines the event schema a workflow engine emits while executing
 nodes, plus :class:`WorkflowStreamHandler` — a thin wrapper around the
@@ -9,29 +9,39 @@ existing ``stream_handler`` callback (the IPC callback that forwards events
 to the renderer).  It deliberately adds NO new IPC channel: events are
 delivered over the existing ``stream-event`` channel.  The main process
 routes on ``result.type`` (see ``src/main/ipc/commandHandlers.ts``); workflow
-event types (``node_started``, ``node_completed``, ...) are NOT in the logcat
-``channelMap``, so they fall through to the generic ``streamEvent`` branch at
-line 109.  On the wire the *routing* key is ``stream_id`` (the request id set
-by ``ApiHandler.stream_handler``); ``workflow_id`` in each payload is
-metadata the renderer uses to correlate events back to a workflow
-(``TaskStreamService`` subscribes via ``onStreamEvent`` and matches on
-``stream_id``).
+event types are NOT in the logcat ``channelMap``, so they fall through to the
+generic ``streamEvent`` branch.  On the wire the *routing* key is
+``stream_id`` (the request id set by ``ApiHandler.stream_handler``).
 
 Event schema (dicts passed to the stream callback)::
 
-    node_started        {type, workflow_id, node_id, tool}
-    node_output         {type, workflow_id, node_id, data}
-    node_completed      {type, workflow_id, node_id, duration_ms}
-    node_failed         {type, workflow_id, node_id, error}
-    workflow_completed  {type, workflow_id, success}
-    workflow_failed     {type, workflow_id, error}
-    workflow_cancelled  {type, workflow_id}
+    node_started        {type, run_id, workflow_id, node_id, tool}
+    node_completed      {type, run_id, workflow_id, node_id, status,
+                         duration_ms, attempts, error?}
+    workflow_completed  {type, run_id, workflow_id, success}
+    workflow_failed     {type, run_id, workflow_id, error}
+    workflow_cancelled  {type, run_id, workflow_id}
 
-Cancellation is BETWEEN nodes only (MVP): before starting each node the
-engine calls :func:`is_cancelled`, which delegates to ``TaskManager`` (the
-same registry the streaming/blocking handlers register with).  A cancelled
-workflow stops before the next node rather than interrupting a node
-mid-execution.
+Field semantics:
+    ``run_id``
+        Identifier of the TOP-LEVEL run.  Never rewritten by nesting, so a
+        consumer can group every event of one run.
+    ``workflow_id``
+        Name of the workflow definition that emitted the event — the child
+        template's name inside a nested execution.
+    ``node_id``
+        Path of the node from the run root (``"convert"`` at the top level,
+        ``"loop/0/step"`` inside a ``flow.foreach`` body).  Path segments are
+        added by the nesting primitives, never by the event layer, so a
+        consumer can split on ``/`` and get the real nesting chain.
+    ``status``
+        One of ``ok`` / ``failed`` / ``skipped`` / ``cancelled``.  Exactly one
+        ``node_completed`` is emitted per node, including skipped ones —
+        consumers never have to infer a terminal state.
+
+Cancellation is cooperative: the engine calls :func:`is_cancelled` at its
+checkpoints (before each node, before each retry, during retry backoff), and
+long-running tools poll it through ``ToolContext.cancel_check``.
 """
 
 import json
@@ -46,23 +56,18 @@ from app.utils.task_log_writer import append_task_log
 NODE_STARTED = "node_started"
 """A node is about to execute.  Payload: ``{node_id, tool}``."""
 
-NODE_OUTPUT = "node_output"
-"""A node produced intermediate output.  Payload: ``{node_id, data}``."""
-
 NODE_COMPLETED = "node_completed"
-"""A node finished successfully.  Payload: ``{node_id, duration_ms}``."""
-
-NODE_FAILED = "node_failed"
-"""A node failed.  Payload: ``{node_id, error}``."""
+"""A node reached a terminal state.  Payload: ``{node_id, status,
+duration_ms, attempts, error?}``."""
 
 WORKFLOW_COMPLETED = "workflow_completed"
 """The whole workflow finished.  Payload: ``{success}``."""
 
 WORKFLOW_FAILED = "workflow_failed"
-"""The workflow aborted on an error.  Payload: ``{error}``."""
+"""The workflow aborted on a node error.  Payload: ``{error}``."""
 
 WORKFLOW_CANCELLED = "workflow_cancelled"
-"""The workflow was cancelled between nodes.  No extra payload."""
+"""The workflow was cancelled.  No extra payload."""
 
 # ---------------------------------------------------------------------------
 # TaskManager bridge (guarded so the module imports even without it)
@@ -74,40 +79,30 @@ except ImportError:  # TaskManager unavailable — is_cancelled() reports False
     TaskManager = None  # type: ignore[assignment]
 
 
-#: Node-level lifecycle event types (used by the tee namespacing rule).
-_NODE_LIFECYCLE_TYPES = frozenset({NODE_STARTED, NODE_COMPLETED, NODE_FAILED})
-
-
 def render_event_line(event: Dict[str, Any]) -> str:
     """Render a workflow event dict as a plain-text log line.
 
-    Produces EXACTLY these formats (mirroring the CLI console format):
+    Produces EXACTLY these formats:
 
     * ``[node_started] <node_id> (<tool>)``
-    * ``[node_completed] <node_id> (<duration_ms> ms)``
-    * ``[node_failed] <node_id>: <error>``
-    * ``[node_output] <node_id>: <json data>``
+    * ``[node_completed] <node_id> status=<status> (<duration_ms> ms)``
+      plus `` error: <error>`` for a failed/skipped node
     * ``[workflow_completed] success=<bool>``
     * ``[workflow_failed] <error>``
     * ``[workflow_cancelled]`` (bare tag when message is empty)
     * Unknown types fall back to ``[<type>] <json dumps of event>``.
-
-    The ``if message else`` bare-tag rule from cli.py:501 is preserved.
     """
     event_type = event.get("type") or "event"
     if event_type == NODE_STARTED:
         message = f"{event.get('node_id', '?')} ({event.get('tool', '')})"
     elif event_type == NODE_COMPLETED:
         message = (
-            f"{event.get('node_id', '?')} ({event.get('duration_ms', '?')} ms)"
+            f"{event.get('node_id', '?')} "
+            f"status={event.get('status', '?')} "
+            f"({event.get('duration_ms', '?')} ms)"
         )
-    elif event_type == NODE_FAILED:
-        message = f"{event.get('node_id', '?')}: {event.get('error', '')}"
-    elif event_type == NODE_OUTPUT:
-        message = (
-            f"{event.get('node_id', '?')}: "
-            f"{json.dumps(event.get('data', {}), default=str, ensure_ascii=False)}"
-        )
+        if event.get("error"):
+            message += f" error: {event['error']}"
     elif event_type == WORKFLOW_COMPLETED:
         message = f"success={event.get('success', '?')}"
     elif event_type == WORKFLOW_FAILED:
@@ -131,13 +126,13 @@ class WorkflowStreamHandler:
     reuse this handler unchanged.
 
     Args:
-        workflow_id: identifier of the workflow these events belong to
-            (also the ``task_id`` the engine registers with TaskManager).
+        workflow_id: name of the workflow definition emitting the events.
         callback: downstream callable receiving each event dict; typically
             the IPC ``stream_handler``.  ``None`` disables emission.
-        task_log_id: when set, the handler tees lifecycle event lines into
-            the per-task log via :func:`append_task_log`.  ``node_output``
-            is NEVER written to the task log.  Defaults to ``None``.
+        run_id: identifier of the top-level run carrying these events;
+            defaults to ``workflow_id`` for a top-level run.
+        task_log_id: when set, the handler tees event lines into the per-task
+            log via :func:`append_task_log`.  Defaults to ``None``.
     """
 
     def __init__(
@@ -145,9 +140,11 @@ class WorkflowStreamHandler:
         workflow_id: str,
         callback: Optional[Callable[[dict], None]] = None,
         *,
+        run_id: Optional[str] = None,
         task_log_id: Optional[str] = None,
     ) -> None:
         self.workflow_id = workflow_id
+        self.run_id = run_id or workflow_id
         self._callback = callback
         self.task_log_id = task_log_id
 
@@ -160,23 +157,13 @@ class WorkflowStreamHandler:
         """
         event: Dict[str, Any] = {
             "type": event_type,
+            "run_id": self.run_id,
             "workflow_id": self.workflow_id,
         }
         event.update(fields)
 
-        # -- task-log tee (before callback-None guard) -----------------
-        if self.task_log_id is not None and event_type != NODE_OUTPUT:
-            render_copy = dict(event)  # shallow copy for rendering
-            # Namespacing rule: prefix node_id with workflow_id for child
-            # handlers whose workflow_id differs from task_log_id.
-            if (
-                event_type in _NODE_LIFECYCLE_TYPES
-                and self.workflow_id != self.task_log_id
-            ):
-                render_copy["node_id"] = (
-                    f"{self.workflow_id}/{event.get('node_id', '?')}"
-                )
-            append_task_log(self.task_log_id, render_event_line(render_copy))
+        if self.task_log_id is not None:
+            append_task_log(self.task_log_id, render_event_line(event))
 
         if self._callback is None:
             return
@@ -186,40 +173,50 @@ class WorkflowStreamHandler:
         """Emit ``node_started``: the engine is about to run ``tool``."""
         self._wire(NODE_STARTED, node_id=node_id, tool=tool)
 
-    def emit_node_completed(self, node_id: str, duration_ms: int) -> None:
-        """Emit ``node_completed`` after a node finishes successfully."""
-        self._wire(NODE_COMPLETED, node_id=node_id, duration_ms=duration_ms)
-
-    def emit_node_failed(self, node_id: str, error: str) -> None:
-        """Emit ``node_failed`` after a node raises or returns an error."""
-        self._wire(NODE_FAILED, node_id=node_id, error=error)
+    def emit_node_completed(
+        self,
+        node_id: str,
+        status: str,
+        duration_ms: int,
+        *,
+        error: Optional[str] = None,
+        attempts: int = 1,
+    ) -> None:
+        """Emit ``node_completed``: the node's single terminal event."""
+        fields: Dict[str, Any] = {
+            "node_id": node_id,
+            "status": status,
+            "duration_ms": duration_ms,
+            "attempts": attempts,
+        }
+        if error:
+            fields["error"] = error
+        self._wire(NODE_COMPLETED, **fields)
 
     def emit_workflow_completed(self, success: bool) -> None:
         """Emit ``workflow_completed``: the whole workflow finished."""
         self._wire(WORKFLOW_COMPLETED, success=success)
 
     def emit_workflow_failed(self, error: str) -> None:
-        """Emit ``workflow_failed``: the workflow aborted on an error."""
+        """Emit ``workflow_failed``: the workflow aborted on a node error."""
         self._wire(WORKFLOW_FAILED, error=error)
 
     def emit_workflow_cancelled(self) -> None:
-        """Emit ``workflow_cancelled`` after a between-node cancel."""
+        """Emit ``workflow_cancelled`` after a cancellation."""
         self._wire(WORKFLOW_CANCELLED)
 
 
-def is_cancelled(workflow_id: str) -> bool:
-    """Return True if the workflow has been cancelled.
+def is_cancelled(target: str) -> bool:
+    """Return True if *target* (a run id or task id) has been cancelled.
 
-    Between-node cancellation check for the workflow engine: delegates to
-    :meth:`TaskManager.is_cancelled` — the same registry the streaming /
-    blocking handlers register with.  Returns ``False`` when the workflow
-    was never registered (``TaskManager`` returns False for unknown tasks)
-    or when ``TaskManager`` is unavailable, so a missing registry never
-    raises from a hot polling path.
+    Delegates to :meth:`TaskManager.is_cancelled` — the same registry the
+    streaming handlers register with.  Returns ``False`` when the run was
+    never registered or when ``TaskManager`` is unavailable, so a missing
+    registry never raises from a hot polling path.
     """
     if TaskManager is None:
         return False
     try:
-        return TaskManager().is_cancelled(workflow_id)
+        return TaskManager().is_cancelled(target)
     except Exception:
         return False

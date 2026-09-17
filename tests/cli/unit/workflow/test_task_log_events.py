@@ -1,13 +1,11 @@
 """T1 tests: shared event renderer + task-log tee in WorkflowStreamHandler.
 
 Covers:
-  - render_event_line() exact output for all 7 event types + unknown fallback
-  - Tee writes 6 lifecycle types into _per_task_buffers[task_log_id]
+  - render_event_line() exact output for every event type + unknown fallback
+  - Tee writes each lifecycle type into _per_task_buffers[task_log_id]
   - Tee silent when task_log_id=None
   - Tee STILL writes when callback=None but task_log_id set
-  - Child-namespacing rule: handlers with workflow_id != task_log_id prefix
-    node_id with workflow_id in the log line, leaving callback unchanged
-  - Root handlers (workflow_id == task_log_id) render un-prefixed
+  - The tee never rewrites ids: the log line and the callback event agree
 """
 
 import json
@@ -21,8 +19,6 @@ from app.utils.task_log_writer import (
 )
 from app.workflow.streaming import (
     NODE_COMPLETED,
-    NODE_FAILED,
-    NODE_OUTPUT,
     NODE_STARTED,
     WORKFLOW_CANCELLED,
     WORKFLOW_COMPLETED,
@@ -33,7 +29,7 @@ from app.workflow.streaming import (
 
 
 # ---------------------------------------------------------------------------
-# render_event_line — all 7 known event types
+# render_event_line — every known event type
 # ---------------------------------------------------------------------------
 
 
@@ -49,40 +45,37 @@ def test_render_node_started_missing_tool():
     assert line == "[node_started] n1 ()"
 
 
-def test_render_node_completed():
+def test_render_node_completed_with_status():
     line = render_event_line(
-        {"type": NODE_COMPLETED, "node_id": "n1", "duration_ms": 42}
+        {"type": NODE_COMPLETED, "node_id": "n1", "status": "ok", "duration_ms": 42}
     )
-    assert line == "[node_completed] n1 (42 ms)"
+    assert line == "[node_completed] n1 status=ok (42 ms)"
 
 
 def test_render_node_completed_missing_duration():
-    line = render_event_line({"type": NODE_COMPLETED, "node_id": "n1"})
-    assert line == "[node_completed] n1 (? ms)"
+    line = render_event_line({"type": NODE_COMPLETED, "node_id": "n1", "status": "ok"})
+    assert line == "[node_completed] n1 status=ok (? ms)"
 
 
-def test_render_node_failed():
+def test_render_node_completed_failed_includes_error():
     line = render_event_line(
-        {"type": NODE_FAILED, "node_id": "n1", "error": "boom"}
+        {
+            "type": NODE_COMPLETED,
+            "node_id": "sub/r",
+            "status": "failed",
+            "duration_ms": 10,
+            "error": "boom",
+        }
     )
-    assert line == "[node_failed] n1: boom"
+    assert line == "[node_completed] sub/r status=failed (10 ms) error: boom"
 
 
-def test_render_node_failed_missing_error():
-    line = render_event_line({"type": NODE_FAILED, "node_id": "n1"})
-    assert line == "[node_failed] n1: "
-
-
-def test_render_node_output():
+def test_render_node_completed_skipped_without_error_suffix():
     line = render_event_line(
-        {"type": NODE_OUTPUT, "node_id": "n1", "data": {"path": "/tmp/a"}}
+        {"type": NODE_COMPLETED, "node_id": "n1", "status": "skipped", "duration_ms": 1}
     )
-    assert line == '[node_output] n1: {"path": "/tmp/a"}'
-
-
-def test_render_node_output_empty_data():
-    line = render_event_line({"type": NODE_OUTPUT, "node_id": "n1"})
-    assert line == "[node_output] n1: {}"
+    assert "error:" not in line
+    assert "status=skipped" in line
 
 
 def test_render_workflow_completed():
@@ -118,27 +111,20 @@ def test_render_missing_type_defaults_to_event():
 
 TASK_ID = "tee-test-1"
 
-#: The 6 lifecycle types that the tee must capture.
+#: The lifecycle emits the tee must capture.
 _LIFECYCLE_EMIT_ARGS = [
     ("emit_node_started", ("n1", "file.read")),
-    ("emit_node_completed", ("n1", 42)),
-    ("emit_node_failed", ("n1", "boom")),
+    ("emit_node_completed", ("n1", "ok", 42)),
     ("emit_workflow_completed", (True,)),
     ("emit_workflow_failed", ("kapow",)),
     ("emit_workflow_cancelled", ()),
 ]
 
 
-def _cleanup_tee_test():
-    """Remove buffer for TASK_ID so tests don't leak across runs."""
-    cleanup_task_log(TASK_ID)
-
-
 @pytest.fixture(autouse=True)
 def _clean_buffers():
     """Teardown: clean _per_task_buffers after every test."""
     yield
-    # Clean any known task_ids that might have leaked
     for key in list(_per_task_buffers.keys()):
         cleanup_task_log(key)
 
@@ -158,13 +144,9 @@ class TestTeeWritesLifecycleTypes:
         getattr(handler, method_name)(*args)
         lines = _buffer_lines()
         assert len(lines) >= 1, f"{method_name} did not write to buffer"
-        # The last line should contain the event type tag
-        event_type_tag = method_name.replace("emit_", "").replace("_", "")
-        # map emit_workflow_completed → workflowcompleted, etc.
-        # Actually, just check the buffer captured something
-        assert any(
-            "[" in line for line in lines
-        ), f"buffer should contain rendered line for {method_name}"
+        assert any("[" in line for line in lines), (
+            f"buffer should contain a rendered line for {method_name}"
+        )
 
 
 class TestTeeSilentWhenTaskLogIdNone:
@@ -176,7 +158,7 @@ class TestTeeSilentWhenTaskLogIdNone:
         )
         before = len(_buffer_lines())
         handler.emit_node_started("n1", "file.read")
-        handler.emit_node_completed("n1", 42)
+        handler.emit_node_completed("n1", "ok", 42)
         handler.emit_workflow_completed(True)
         assert len(_buffer_lines()) == before
 
@@ -184,8 +166,7 @@ class TestTeeSilentWhenTaskLogIdNone:
 class TestTeeWithCallbackNone:
     """Tee STILL writes when callback is None but task_log_id is set.
 
-    This is the Metis fold (c): the tee must run BEFORE the callback-None
-    early return.
+    The tee must run BEFORE the callback-None early return.
     """
 
     def test_tee_writes_with_callback_none(self):
@@ -203,61 +184,35 @@ class TestTeeWithCallbackNone:
         ), f"buffer missing node_started for n1: {after}"
 
 
-class TestChildNamespacingRule:
-    """Child handlers (workflow_id != task_log_id) prefix node_id in log.
+class TestTeeAndCallbackAgree:
+    """The tee renders exactly what the callback receives.
 
-    The callback receives the ORIGINAL node_id unchanged.
+    Node ids are already run-root-relative paths (``<parent node>/<child
+    node>``), so the handler must NOT rewrite them for the log — a hidden
+    prefix was what produced doubled ids before.
     """
 
-    def test_child_prefixes_node_id_in_log(self):
-        """workflow_id="sub1/sub", task_log_id="sub1", node_id="w"
-        → log line has node_id "sub1/sub/w", callback has "w"."""
-        events = []
-        handler = WorkflowStreamHandler(
-            workflow_id="sub1/sub",
-            callback=events.append,
-            task_log_id="sub1",
-        )
-        handler.emit_node_started("w", "flow.log")
-        handler.emit_node_completed("w", 10)
-        handler.emit_node_failed("w", "err")
-
-        lines = _buffer_lines("sub1")
-        assert len(lines) == 3, f"expected 3 lines, got {len(lines)}: {lines}"
-
-        # Log lines have namespaced node_id
-        assert "[node_started] sub1/sub/w (flow.log)" in lines
-        assert "[node_completed] sub1/sub/w (10 ms)" in lines
-        assert "[node_failed] sub1/sub/w: err" in lines
-
-        # Callback received UNCHANGED node_id
-        assert len(events) == 3
-        assert all(e["node_id"] == "w" for e in events if "node_id" in e)
-
-    def test_root_handler_renders_unprefixed(self):
-        """workflow_id == task_log_id → no prefix on node_id."""
+    def test_log_line_matches_callback_event(self):
         events = []
         handler = WorkflowStreamHandler(
             workflow_id="sub1",
             callback=events.append,
             task_log_id="sub1",
         )
-        handler.emit_node_started("w", "flow.log")
-        handler.emit_node_completed("w", 5)
+        handler.emit_node_started("sub/w", "flow.log")
+        handler.emit_node_completed("sub/w", "ok", 10)
 
         lines = _buffer_lines("sub1")
-        assert "[node_started] w (flow.log)" in lines
-        assert "[node_completed] w (5 ms)" in lines
+        assert lines == [
+            "[node_started] sub/w (flow.log)",
+            "[node_completed] sub/w status=ok (10 ms)",
+        ]
+        assert [e["node_id"] for e in events] == ["sub/w", "sub/w"]
 
-        # Callback unchanged
-        assert events[0]["node_id"] == "w"
-
-    def test_child_workflow_events_not_prefixed(self):
-        """Workflow-level events (completed/failed/cancelled) have no
-        node_id to prefix; they should render normally."""
+    def test_workflow_level_events_render_normally(self):
         events = []
         handler = WorkflowStreamHandler(
-            workflow_id="sub1/sub",
+            workflow_id="sub1",
             callback=events.append,
             task_log_id="sub1",
         )
@@ -269,8 +224,6 @@ class TestChildNamespacingRule:
         assert "[workflow_completed] success=True" in lines
         assert "[workflow_failed] sub-boom" in lines
         assert "[workflow_cancelled]" in lines
-
-        # Callback still received events
         assert len(events) == 3
 
 
@@ -280,7 +233,7 @@ class TestCallbackEventDictUnchanged:
     def test_callback_event_not_mutated(self):
         events = []
         handler = WorkflowStreamHandler(
-            workflow_id="sub1/sub",
+            workflow_id="sub1",
             callback=events.append,
             task_log_id="sub1",
         )
@@ -294,27 +247,32 @@ class TestCallbackEventDictUnchanged:
         handler = WorkflowStreamHandler(
             workflow_id="wf",
             callback=events.append,
+            run_id="run-9",
             task_log_id="wf",
         )
         handler.emit_node_started("n1", "file.read")
-        handler.emit_node_completed("n1", 100)
+        handler.emit_node_completed("n1", "ok", 100)
 
         assert events[0] == {
             "type": NODE_STARTED,
+            "run_id": "run-9",
             "workflow_id": "wf",
             "node_id": "n1",
             "tool": "file.read",
         }
         assert events[1] == {
             "type": NODE_COMPLETED,
+            "run_id": "run-9",
             "workflow_id": "wf",
             "node_id": "n1",
+            "status": "ok",
             "duration_ms": 100,
+            "attempts": 1,
         }
 
 
 # ---------------------------------------------------------------------------
-# Exact content assertions for all 6 lifecycle types (not just tag presence)
+# Exact content assertions for the lifecycle types
 # ---------------------------------------------------------------------------
 
 
@@ -330,16 +288,16 @@ def test_exact_node_completed_line_in_buffer():
     handler = WorkflowStreamHandler(
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
-    handler.emit_node_completed("read", 123)
-    assert "[node_completed] read (123 ms)" in _buffer_lines()
+    handler.emit_node_completed("read", "ok", 123)
+    assert "[node_completed] read status=ok (123 ms)" in _buffer_lines()
 
 
 def test_exact_node_failed_line_in_buffer():
     handler = WorkflowStreamHandler(
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
-    handler.emit_node_failed("read", "ZOG")
-    assert "[node_failed] read: ZOG" in _buffer_lines()
+    handler.emit_node_completed("read", "failed", 5, error="ZOG")
+    assert "[node_completed] read status=failed (5 ms) error: ZOG" in _buffer_lines()
 
 
 def test_exact_workflow_completed_line_in_buffer():

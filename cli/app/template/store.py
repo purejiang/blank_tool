@@ -30,6 +30,7 @@ JSON file layout (one file per template, ``<name>.json``)::
 import json
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,6 +40,37 @@ from app.utils.env import get_env, get_output_dir
 from app.workflow.definition import WorkflowDefinition
 
 logger = logging.getLogger(__name__)
+
+#: Windows raises PermissionError when the replace target is momentarily open
+#: for reading (a concurrent ``load``), so the replace is retried a few times.
+_REPLACE_ATTEMPTS = 3
+_REPLACE_RETRY_DELAY_SECONDS = 0.05
+
+
+def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
+    """Write *data* as UTF-8 JSON to *path* via a temp file + ``os.replace``.
+
+    A reader either sees the previous complete file or the new one — never a
+    truncated prefix.  Without this, a ``template.save`` racing a running
+    workflow's ``template.load`` makes a node fail with "invalid JSON".
+    """
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    last_error: Optional[BaseException] = None
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(tmp_path, path)
+            return
+        except OSError as exc:  # destination briefly locked (Windows)
+            last_error = exc
+            time.sleep(_REPLACE_RETRY_DELAY_SECONDS * (attempt + 1))
+    try:
+        os.remove(tmp_path)
+    except OSError:
+        pass
+    raise last_error  # type: ignore[misc]
 
 
 @dataclass
@@ -206,9 +238,7 @@ class FileTemplateStore(TemplateStore):
             "description": metadata.get("description", ""),
             "tags": list(metadata.get("tags", [])),
         }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+        _atomic_write_json(path, data)
 
     def load(self, name: str) -> WorkflowDefinition:
         """Load the workflow definition stored under *name*.

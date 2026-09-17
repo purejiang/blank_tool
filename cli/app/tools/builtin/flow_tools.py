@@ -8,9 +8,9 @@ contract and a stdlib-only ``execute`` implementation:
 
 - ``flow.assert`` is the validation gate: workflows assert intermediate state
   (e.g. "file exists after download") before proceeding.  A falsy ``condition``
-  raises :class:`ToolException` so the workflow engine's failure handler can
-  decide what to do (fail/skip/retry).  The exception is deliberately *not*
-  caught here — the engine owns failure routing.
+  raises :class:`NonRetryableToolError` so the workflow engine's failure
+  handler can decide what to do (fail/skip) without burning retries — an
+  assertion over unchanged data can never start passing.
 - ``flow.log`` writes a message through the standard :mod:`logging` framework
   (child loggers inherit the handlers configured by the ``main.py`` bootstrap)
   and, when a task context is present, also appends a line to the per-task log.
@@ -19,25 +19,31 @@ contract and a stdlib-only ``execute`` implementation:
   ``true_template``, a falsy one runs ``false_template`` (optional; absent
   means no-op).  Branching is realized through sub-workflow composition (the
   shared :func:`app.tools.builtin.workflow_tools._run_child_template`
-  helper), NOT by consuming the workflow schema's reserved ``condition``
-  field — that field stays parked for a future DAG mode.
+  helper).
 - ``flow.compare`` produces the booleans branches consume: ``{a, b, op}`` →
   ``{"result": bool}`` (numbers compare numerically, everything else as
   strings).
+
+Cancellation: the loop and branch primitives check cancellation between
+children and re-raise it as :class:`WorkflowCancelled`, so a cancelled run
+stops immediately instead of being reported as "N failed items" or as a
+branch failure.
 """
 
 import json
 import logging
 import os
+import re
 
-from app.common.exceptions import ToolException
+from app.common.exceptions import (
+    NonRetryableToolError,
+    ToolException,
+    WorkflowCancelled,
+)
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.template.store import TemplateNotFoundError
-from app.tools.builtin.workflow_tools import (
-    MAX_NESTING_DEPTH,
-    _run_child_template,
-)
+from app.tools.builtin.workflow_tools import _run_child_template
 from app.utils.task_log_writer import append_task_log
 
 logger = logging.getLogger(__name__)
@@ -53,19 +59,28 @@ _VALID_LEVELS = frozenset({"debug", "info", "warning", "error", "critical"})
 #: Default message used when a flow.assert failure carries no explicit one.
 _DEFAULT_ASSERT_MESSAGE = "Assertion failed"
 
+#: Characters kept when turning a run id into a file-name fragment.
+_UNSAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _safe_slug(value: str) -> str:
+    """Return *value* reduced to characters that are safe in a file name."""
+    slug = _UNSAFE_SLUG_RE.sub("_", str(value or ""))
+    return slug.strip("_") or "run"
+
 
 class FlowAssert(BuiltinTool):
     """Assert a condition is truthy; raise on failure.
 
     Acts as a validation gate between workflow steps.  When ``condition`` is
     falsy (``False``, ``None``, ``0``, ``""``, ``[]``, ...) a
-    :class:`ToolException` is raised with the ``message`` so the workflow
-    engine's ``on_failure`` handler can route the failure.  On success the
-    tool returns ``{"passed": True}``.
+    :class:`NonRetryableToolError` is raised with the ``message`` so the
+    workflow engine's ``on_failure`` handler can route the failure.  On
+    success the tool returns ``{"passed": True}``.
     """
 
     name = "flow.assert"
-    description = "Assert a condition is truthy; raises ToolException when falsy."
+    description = "Assert a condition is truthy; raises when falsy."
 
     ports = PortSet(
         inputs=[
@@ -81,7 +96,7 @@ class FlowAssert(BuiltinTool):
         condition = inputs.get("condition")
         if not condition:
             message = inputs.get("message") or _DEFAULT_ASSERT_MESSAGE
-            raise ToolException(message)
+            raise NonRetryableToolError(message)
         return {"passed": True}
 
 
@@ -127,7 +142,7 @@ class FlowForeach(BuiltinTool):
     item the ``template`` is executed inline through the same engine, mirroring
     ``workflow.run`` (shared ``TemplateStore``, ``ExecutionContext`` inheritance,
     ``MAX_NESTING_DEPTH``/``in_progress_templates`` recursion guards, and
-    per-iteration namespaced stream events).
+    per-iteration node paths ``<this node>/<index>/<child node>``).
 
     Child input construction:
         * ``inputs`` (dict) is merged as the base for every child run.
@@ -140,6 +155,9 @@ class FlowForeach(BuiltinTool):
     a successful child's outputs contain a falsy ``passed`` key.  A successful
     child WITHOUT a ``passed`` key counts as passed.  ``all_passed`` is
     ``failed_count == 0`` and feeds ``flow.assert`` for whole-run gating.
+
+    Cancellation stops the loop immediately (``WorkflowCancelled``) instead of
+    being recorded as one failed item per remaining entry.
     """
 
     name = "flow.foreach"
@@ -247,29 +265,14 @@ class FlowForeach(BuiltinTool):
         if not isinstance(extra, dict):
             raise ToolException("foreach 'inputs' must be a dict")
 
-        # ── recursion guards (mirror workflow.run) ────────────────────
-        if template_name in context.in_progress_templates:
-            raise ToolException(
-                f"recursion detected: template {template_name!r} is "
-                f"already executing (cycle in workflow composition)"
-            )
-        if context.nesting_depth >= MAX_NESTING_DEPTH:
-            raise ToolException(
-                f"maximum nesting depth ({MAX_NESTING_DEPTH}) exceeded — "
-                f"sub-workflow chain is too deep"
-            )
-
+        # ── resolve the template ONCE, before any item runs ───────────
+        # An unknown template must fail fast instead of once per item; the
+        # cycle/depth guards stay in _run_child_template (per child).
         template_store = context.template_store
         if template_store is None:
             raise ToolException(
                 "template_store not available in execution context — "
                 "cannot resolve sub-workflow template"
-            )
-        engine = context.engine
-        if engine is None:
-            raise ToolException(
-                "engine not available in execution context — "
-                "cannot execute sub-workflow inline"
             )
 
         try:
@@ -279,33 +282,40 @@ class FlowForeach(BuiltinTool):
                 f"template not found: {template_name!r}"
             ) from None
 
-        parent_wf_id = context.parent_workflow_id or "root"
-        current_node_id = context.current_node_id or "unknown"
+        node_path = context.current_node_path or "unknown"
 
         results = []
         passed_count = 0
         failed_count = 0
 
         for index, item in enumerate(items):
+            # Cancellation must stop the loop, not be recorded as one more
+            # failed item per remaining entry.
+            if context.cancelled():
+                raise WorkflowCancelled()
+
             child_inputs = dict(extra)
             if isinstance(item, dict):
                 child_inputs.update(item)
             child_inputs[item_key] = item
-
-            namespace_prefix = f"{parent_wf_id}/{current_node_id}/{index}"
 
             try:
                 child_result = _run_child_template(
                     template_name,
                     child_inputs,
                     context,
-                    namespace_prefix,
+                    f"{node_path}/{index}",
                     child_definition=child_definition,
                 )
+            except WorkflowCancelled:
+                raise
             except Exception as exc:
                 results.append({"item": item, "outputs": {}, "error": str(exc)})
                 failed_count += 1
                 continue
+
+            if child_result.cancelled:
+                raise WorkflowCancelled()
 
             child_outputs = (
                 child_result.outputs
@@ -334,13 +344,17 @@ class FlowForeach(BuiltinTool):
         # ── Materialize results to a JSON file for subprocess consumers ─
         # Structured ``results`` cannot cross the subprocess boundary via
         # ``args_map`` (values are ``str()``-ified, not JSON-serialized), so
-        # the loop also writes them to a JSON file and exposes its path.
+        # the loop also writes them to a JSON file and exposes its path.  The
+        # name carries the run id and the node path so concurrent runs (or two
+        # same-named nodes in different workflows) cannot overwrite each other.
         results_file = ""
         try:
             work_dir = context.work_dir or "."
             os.makedirs(work_dir, exist_ok=True)
+            run_slug = _safe_slug(context.run_id or context.task_id or "run")
+            node_slug = _safe_slug(node_path)
             results_file = os.path.join(
-                work_dir, f"foreach_{current_node_id}.json"
+                work_dir, f"foreach_{run_slug}_{node_slug}.json"
             )
             with open(results_file, "w", encoding="utf-8") as f:
                 json.dump(
@@ -377,13 +391,12 @@ class FlowBranch(BuiltinTool):
     (``executed=False``) — which doubles as a "conditional skip".  The chosen
     template is executed inline through the shared
     :func:`~app.tools.builtin.workflow_tools._run_child_template` helper, so
-    recursion guards (cycle + ``MAX_NESTING_DEPTH``) and namespaced nested
-    events behave exactly like ``workflow.run`` / ``flow.foreach``.
+    recursion guards (cycle + ``MAX_NESTING_DEPTH``) and nested event paths
+    behave exactly like ``workflow.run`` / ``flow.foreach``.
 
-    Branching is composition, not engine surgery: the workflow schema's
-    reserved ``condition`` field stays untouched (it is parked for a future
-    DAG mode), and the linear chain keeps a single ``next`` pointer — this
-    node simply delegates to one of two sub-workflows at runtime.
+    Branching is composition, not engine surgery: the linear chain keeps a
+    single ``next`` pointer — this node delegates to one of two sub-workflows
+    at runtime.
 
     ``condition`` uses Python truthiness (same convention as
     ``flow.assert``); pair it with ``flow.compare`` or a boolean tool output
@@ -455,14 +468,14 @@ class FlowBranch(BuiltinTool):
         if not chosen:
             return {"executed": False, "template": "", "outputs": {}}
 
-        parent_wf_id = context.parent_workflow_id or "root"
-        current_node_id = context.current_node_id or "unknown"
-        namespace_prefix = f"{parent_wf_id}/{current_node_id}"
+        node_path_prefix = context.current_node_path or "unknown"
 
         child_result = _run_child_template(
-            chosen, inputs.get("inputs") or {}, context, namespace_prefix
+            chosen, inputs.get("inputs") or {}, context, node_path_prefix
         )
 
+        if child_result.cancelled:
+            raise WorkflowCancelled()
         if not child_result.success:
             raise ToolException(
                 f"branch template {chosen!r} failed: "

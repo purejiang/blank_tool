@@ -8,17 +8,15 @@ describes which tools run, in what order, with what parameters.  It is
 decoupled from execution (the engine, a later module) so workflows can be
 saved, loaded, and validated as plain JSON.
 
-Linear mode rule:
-    ``node.next`` is the SOLE source of truth for control flow.  ``edges``
-    is reserved for a future DAG mode and MUST be an empty list here; a
-    non-empty ``edges`` list (or one combined with ``next`` pointers) raises
-    :class:`ValueError`.
+Control flow:
+    ``node.next`` is the SOLE source of truth.  Branching is expressed with
+    the ``flow.branch`` / ``flow.compare`` tools (composition), not with a
+    node-level ``condition`` field — so the schema carries no dead fields that
+    would fail halfway through a run.
 
-DAG-ready schema:
-    ``condition``, ``on_success`` and ``type`` are STORED but NOT evaluated
-    by the linear executor (reserved for future branching).  The ``condition``
-    field is deliberately NOT rejected — forward compatibility means a
-    workflow written for a future DAG mode still loads and validates today.
+Failure handling:
+    ``on_failure`` is ``"fail"`` (stop the workflow) or ``"skip"`` (continue
+    past the node); ``retry`` is the number of extra attempts.
 """
 
 import json
@@ -29,8 +27,7 @@ from typing import Any, Dict, List, Optional
 from app.protocol import Port
 
 # Valid failure-handling modes for a node.  "fail" stops the workflow;
-# "skip" continues past the failed node; "retry:N" retries the node up to
-# N times before giving up.
+# "skip" continues past the failed node.
 _VALID_FAILURE_MODES = frozenset({"fail", "skip"})
 
 
@@ -40,21 +37,14 @@ class WorkflowNode:
 
     Attributes:
         id: unique node identifier (referenced by other nodes' ``next``).
-        type: node type, reserved for future DAG mode ("step", "branch",
-            ...).  Currently only "step" is meaningful.
+        type: node type ("step"); informational, kept for editors.
         tool: name of the tool to invoke, e.g. "bundletool" or "file.read".
         params: parameters passed to the tool when the node executes.
         next: id of the next node in the linear chain; None means this is
             the last node.
-        on_success: reserved for future DAG mode (which node to run on
-            success).  Stored but unused by the linear executor.
-        on_failure: failure handling: "fail" (default, stops the workflow),
-            "skip" (continue with the next node), or "retry:N".
-        condition: stored but NOT evaluated in linear mode; reserved for
-            future branching.
-        retry: number of retries on failure (0 = no retry), applied
-            regardless of ``on_failure`` value; ignored when ``on_failure``
-            is "retry:N" (the N from the string takes precedence).
+        on_failure: failure handling: "fail" (default, stops the workflow)
+            or "skip" (continue with the next node).
+        retry: number of EXTRA attempts on failure (0 = no retry).
     """
 
     id: str
@@ -62,9 +52,7 @@ class WorkflowNode:
     tool: str = ""
     params: Dict[str, Any] = field(default_factory=dict)
     next: Optional[str] = None
-    on_success: Optional[str] = None
     on_failure: str = "fail"
-    condition: Optional[str] = None
     retry: int = 0
 
     def __post_init__(self) -> None:
@@ -73,12 +61,10 @@ class WorkflowNode:
             raise ValueError("node id must be a non-empty string")
         if not isinstance(self.tool, str) or not self.tool:
             raise ValueError(f"node {self.id!r}: tool must be a non-empty string")
-        if self.on_failure not in _VALID_FAILURE_MODES and not (
-            self.on_failure.startswith("retry:")
-        ):
+        if self.on_failure not in _VALID_FAILURE_MODES:
             raise ValueError(
                 f"node {self.id!r}: invalid on_failure {self.on_failure!r}: "
-                f"must be 'fail', 'skip', or 'retry:N'"
+                f"must be 'fail' or 'skip'"
             )
 
     def to_dict(self) -> dict:
@@ -89,9 +75,7 @@ class WorkflowNode:
             "tool": self.tool,
             "params": dict(self.params),
             "next": self.next,
-            "on_success": self.on_success,
             "on_failure": self.on_failure,
-            "condition": self.condition,
             "retry": self.retry,
         }
 
@@ -104,9 +88,7 @@ class WorkflowNode:
             tool=data.get("tool", ""),
             params=dict(data.get("params", {})),
             next=data.get("next"),
-            on_success=data.get("on_success"),
             on_failure=data.get("on_failure", "fail"),
-            condition=data.get("condition"),
             retry=int(data.get("retry", 0)),
         )
 
@@ -122,8 +104,6 @@ class WorkflowDefinition:
         inputs: workflow-level input ports (values the caller must provide).
         outputs: workflow-level output ports (values the workflow produces).
         nodes: the steps of the workflow, linked by their ``next`` pointers.
-        edges: RESERVED for future DAG mode; MUST be an empty list in linear
-            mode.  A non-empty list raises :class:`ValueError`.
     """
 
     name: str
@@ -132,27 +112,20 @@ class WorkflowDefinition:
     inputs: List[Port] = field(default_factory=list)
     outputs: List[Port] = field(default_factory=list)
     nodes: List[WorkflowNode] = field(default_factory=list)
-    edges: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Validate the definition after construction.
 
-        Validation rules (linear mode):
-          1. edges must be an empty list (reserved for future DAG mode).
-          2. node ids must be unique.
-          3. every ``node.next`` must reference an existing node id.
-          4. the linear chain must have exactly one entry node (a node with
-             no incoming ``next`` reference from another node).
-          5. following ``next`` pointers from the entry must not revisit a
+        Validation rules:
+          1. node ids must be unique.
+          2. every ``node.next`` must reference an existing node id.
+          3. the chain must have exactly one entry node (a node with no
+             incoming ``next`` reference from another node).
+          4. following ``next`` pointers from the entry must not revisit a
              node (no cycles).
         """
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("workflow name must be a non-empty string")
-
-        if not isinstance(self.edges, list):
-            raise ValueError("edges must be a list (empty in linear mode)")
-        if self.edges:
-            raise ValueError("edges must be empty in linear mode")
 
         node_ids: Dict[str, WorkflowNode] = {}
         for node in self.nodes:
@@ -208,12 +181,15 @@ class WorkflowDefinition:
             "inputs": [port.to_dict() for port in self.inputs],
             "outputs": [port.to_dict() for port in self.outputs],
             "nodes": [node.to_dict() for node in self.nodes],
-            "edges": [dict(edge) for edge in self.edges],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "WorkflowDefinition":
         """Reconstruct a WorkflowDefinition from a dict produced by :meth:`to_dict`.
+
+        Unknown keys (including fields from older schema revisions such as
+        ``edges`` / ``condition``) are ignored, so stale editor output still
+        loads.
 
         Args:
             data: dict with (at least) a "name" key.  Missing or invalid
@@ -224,8 +200,7 @@ class WorkflowDefinition:
             A validated :class:`WorkflowDefinition`.
 
         Raises:
-            ValueError: if a required field is missing, or validation fails
-                (including non-empty ``edges``).
+            ValueError: if a required field is missing, or validation fails.
         """
         if not isinstance(data, dict):
             raise ValueError(
@@ -244,11 +219,10 @@ class WorkflowDefinition:
                 nodes=[
                     WorkflowNode.from_dict(node) for node in data.get("nodes", [])
                 ],
-                edges=[dict(edge) for edge in data.get("edges", [])],
             )
         except (TypeError, ValueError) as exc:
             # __post_init__ already raised a descriptive ValueError; pass it
-            # through.  TypeErrors (e.g. a non-list edges) get wrapped.
+            # through.  TypeErrors (e.g. a non-list nodes) get wrapped.
             if isinstance(exc, ValueError):
                 raise
             raise ValueError(f"invalid workflow field: {exc}") from exc

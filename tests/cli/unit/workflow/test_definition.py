@@ -1,9 +1,10 @@
 """Wave 3 tests: WorkflowNode / WorkflowDefinition model.
 
 Covers the schema validation rules (unique ids, `next` references, single
-entry node, cycle detection, empty-edges linear-mode contract), to_dict /
-from_dict and JSON-file roundtrips, plus the forward-compatible storage of
-`condition` / `on_success` / `retry` fields.
+entry node, cycle detection), to_dict / from_dict and JSON-file roundtrips,
+the `on_failure` / `retry` failure-handling fields, and the tolerant
+`from_dict` that drops unknown keys left over from older schema revisions
+(`condition` / `on_success` / `edges`).
 """
 
 import json
@@ -79,12 +80,6 @@ def test_cycle_detection_raises_value_error():
         _definition(nodes)
 
 
-def test_non_empty_edges_raises():
-    nodes = [_node("a")]
-    with pytest.raises(ValueError, match="edges must be empty in linear mode"):
-        _definition(nodes, edges=[{"from": "a", "to": "b"}])
-
-
 def test_empty_node_id_raises():
     with pytest.raises(ValueError, match="non-empty string"):
         _node("")
@@ -102,27 +97,59 @@ def test_empty_workflow_is_valid():
 
 
 # ---------------------------------------------------------------------------
-# Forward-compatible storage (DAG-ready fields)
+# Failure handling (on_failure / retry)
 # ---------------------------------------------------------------------------
 
-def test_condition_field_stored_without_error():
-    node = _node("a", condition="inputs.x > 0")
-    wf = _definition([node])
-    assert wf.nodes[0].condition == "inputs.x > 0"
-    assert wf.to_dict()["nodes"][0]["condition"] == "inputs.x > 0"
+def test_legacy_retry_on_failure_string_raises():
+    # The "retry:N" string form was removed: retries are expressed solely by
+    # the integer `retry` field.
+    with pytest.raises(ValueError, match="invalid on_failure 'retry:3'"):
+        _node("a", on_failure="retry:3")
 
 
 def test_on_failure_and_retry_fields_roundtrip():
-    node = _node("a", on_failure="retry:3", retry=2)
+    node = _node("a", on_failure="skip", retry=2)
     restored = WorkflowNode.from_dict(node.to_dict())
-    assert restored.on_failure == "retry:3"
+    assert restored.on_failure == "skip"
     assert restored.retry == 2
 
 
-def test_on_success_field_stored_without_error():
-    node = _node("a", on_success="b")
-    restored = WorkflowNode.from_dict(node.to_dict())
-    assert restored.on_success == "b"
+def test_retry_roundtrips_as_int():
+    wf = _definition([_node("a", retry=3)])
+    restored = WorkflowDefinition.from_dict(wf.to_dict())
+    assert restored.nodes[0].retry == 3
+    assert isinstance(restored.nodes[0].retry, int)
+    assert wf.to_dict()["nodes"][0]["retry"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Unknown keys are ignored on load (stale editor output)
+# ---------------------------------------------------------------------------
+
+def test_node_from_dict_ignores_removed_keys():
+    node = WorkflowNode.from_dict(
+        {
+            "id": "a",
+            "tool": "file.read",
+            "condition": "inputs.x > 0",
+            "on_success": "b",
+        }
+    )
+    assert node.id == "a"
+    assert node.tool == "file.read"
+    assert not hasattr(node, "condition")
+    assert not hasattr(node, "on_success")
+    assert "condition" not in node.to_dict()
+    assert "on_success" not in node.to_dict()
+
+
+def test_definition_from_dict_ignores_edges_key():
+    data = _definition([_node("a")]).to_dict()
+    data["edges"] = [{"from": "a", "to": "b"}]
+    restored = WorkflowDefinition.from_dict(data)
+    assert [node.id for node in restored.nodes] == ["a"]
+    assert not hasattr(restored, "edges")
+    assert "edges" not in restored.to_dict()
 
 
 # ---------------------------------------------------------------------------

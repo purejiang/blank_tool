@@ -63,8 +63,9 @@ def _resolve_path(raw_path: str, work_dir: str) -> str:
 class FileRead(BuiltinTool):
     """Read a text file and return its content and byte size.
 
-    Returns an ``{"error": ...}`` dict (not an exception) when the file is
-    missing or unreadable so the workflow engine can route failure handling.
+    The read is capped: past ``max_bytes`` (default 1 MiB) the tool returns an
+    error instead of pulling an arbitrarily large file into the node outputs,
+    the run history and the streamed result.
     """
 
     name = "file.read"
@@ -74,6 +75,12 @@ class FileRead(BuiltinTool):
         inputs=[
             Port("path", _FILE, required=True, description="Path of the file to read."),
             Port("encoding", _TEXT, required=False, description="Text encoding (default utf-8)."),
+            Port(
+                "max_bytes",
+                _NUMBER,
+                required=False,
+                description="Maximum file size to read in bytes (default 1048576).",
+            ),
         ],
         outputs=[
             Port("content", _TEXT, required=True, description="File contents as text."),
@@ -81,16 +88,30 @@ class FileRead(BuiltinTool):
         ],
     )
 
+    #: Default read cap (bytes).
+    DEFAULT_MAX_BYTES = 1024 * 1024
+
     def execute(self, inputs: dict, context: ToolContext) -> dict:
         path = inputs["path"]
         encoding = inputs.get("encoding", "utf-8")
+        max_bytes = inputs.get("max_bytes")
+        if not isinstance(max_bytes, (int, float)) or max_bytes <= 0:
+            max_bytes = self.DEFAULT_MAX_BYTES
         try:
             resolved = _resolve_path(path, context.work_dir)
             if not os.path.isfile(resolved):
                 return {"error": f"file not found: {path}"}
+            size = os.path.getsize(resolved)
+            if size > max_bytes:
+                return {
+                    "error": (
+                        f"file too large to read: {path} is {size} bytes "
+                        f"(limit {int(max_bytes)}); pass a larger max_bytes"
+                    )
+                }
             with open(resolved, "r", encoding=encoding) as fh:
                 content = fh.read()
-            return {"content": content, "size": os.path.getsize(resolved)}
+            return {"content": content, "size": size}
         except PathOutsideWorkDir as exc:
             return {"error": str(exc)}
         except (OSError, ValueError) as exc:

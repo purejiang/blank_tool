@@ -64,8 +64,8 @@
 
 | 服务 | 实现 | 职责 | 插件可否触及 |
 |---|---|---|---|
-| engine | `WorkflowEngine`（`cli/app/workflow/engine.py`） | 线性工作流执行：`node.next` 驱动节点、ports 校验、`on_failure`（fail / skip / retry:N）、节点级流式事件 | 否。引擎经 `ToolManager.instance()`（`engine.py:161`）读共享注册表，插件只能向注册表**新增**工具，不能替换引擎 |
-| task | `TaskManager`（`cli/app/common/task_manager.py:22`） | 任务取消注册表：进程级线程安全单例，跟踪 `process_holder` 与 `stop_event` | 否。内核持有，插件不可见、不可替换 |
+| engine | `WorkflowEngine`（`cli/app/workflow/engine.py`） | 线性工作流执行：`node.next` 驱动节点、ports 校验、`on_failure`（fail / skip）+ `retry`、取消检查点、节点级流式事件 | 否。引擎经 `ToolManager.instance()` 读共享注册表，插件只能向注册表**新增**工具，不能替换引擎 |
+| task | `TaskManager`（`cli/app/common/task_manager.py`） | 运行取消注册表：进程级线程安全单例，按 `run_id` 跟踪 `stop_event` / `process_holder`，`cancel()` 会 terminate 正在跑的子进程 | 否。内核持有，插件不可见、不可替换 |
 | exec | `BaseCommandExecutor` / `CommandExecutor`（`cli/app/common/base_executor.py`） | 子进程生命周期（spawn / 超时 / 取消，经 `ProcessExecutor` 委托）与敏感参数日志脱敏（`_SENSITIVE_PATTERNS`，`base_executor.py:132`） | 否。描述符工具的执行**委托**给它（`descriptor_tool.py:14`），但 executor 本身不可替换、不可被插件绕开 |
 | env | `EnvironmentRegistry`（`cli/app/env/registry.py:120`；进程单例 `get_env_registry` `:369`） | 把环境描述符解析为具体运行时路径（env 覆盖 → runtime/ → 系统环境变量 → PATH 四层优先级），结果缓存至 `refresh` | 只读。`PluginContext.env` 暴露同一个单例（`context.py:49`），插件只能查询解析结果，不能替换解析逻辑 |
 | config | `app.utils.env`（`cli/app/utils/env.py`） | `.env` 加载（`load_dotenv` `:51`）、`server.config.json` 加载（`load_server_config` `:86`）、`get_env` 与目录/二进制路径兜底（`get_output_dir` `:131` 起） | 否。后端配置的唯一入口 |

@@ -155,7 +155,6 @@ def test_orphan_node_not_reachable_from_entry_flagged():
         inputs=[],
         outputs=[],
         nodes=nodes,
-        edges=[],
     )
     errors = validate_workflow(
         definition,
@@ -183,7 +182,6 @@ def test_no_entry_node_flagged():
         inputs=[],
         outputs=[],
         nodes=nodes,
-        edges=[],
     )
     errors = validate_workflow(
         definition,

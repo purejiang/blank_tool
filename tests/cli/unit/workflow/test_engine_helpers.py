@@ -111,12 +111,38 @@ def _op(name, args_map):
     return SimpleNamespace(name=name, inputs=[], outputs=[], args_map=args_map)
 
 
+class _TupleEngine(WorkflowEngine):
+    """Adapter for the ``(outputs, error)`` pins in this file.
+
+    ``_execute_tool`` now returns a ``_NodeRun`` (which also carries
+    ``attempts`` / ``retryable`` / ``cancelled``); unwrapping it keeps the
+    exact message/shape pins below byte-identical.  The real return type is
+    pinned separately by ``test_execute_tool_returns_node_run``.
+    """
+
+    def _execute_tool(self, tool, params, context):
+        outcome = super()._execute_tool(tool, params, context)
+        return outcome.outputs, outcome.error
+
+
 def _engine():
-    return WorkflowEngine(registry=_StubRegistry())
+    return _TupleEngine(registry=_StubRegistry())
 
 
 def _context():
     return ExecutionContext(work_dir="C:/work")
+
+
+def test_execute_tool_returns_node_run():
+    """The engine's real contract: ``_execute_tool`` returns a ``_NodeRun``."""
+    outcome = WorkflowEngine(registry=_StubRegistry())._execute_tool(
+        _StubCommandTool(), {"args": ["echo"]}, _context()
+    )
+    assert outcome.outputs["success"] is True
+    assert outcome.error is None
+    assert outcome.attempts == 1
+    assert outcome.retryable is True
+    assert outcome.cancelled is False
 
 
 def _op_tool(op, execute_fn, name="echo_tool"):

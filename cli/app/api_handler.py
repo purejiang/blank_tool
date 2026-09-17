@@ -84,9 +84,11 @@ class ApiHandler:
                 is_streaming = getattr(handler, 'is_streaming', False)
 
                 if is_streaming:
-                    raw_result = self.stream_handler(handler, req_id)(params)
-                    # Streaming init — return a raw dict (not a full response envelope)
-                    return {"id": req_id, "result": raw_result, "finished": False}
+                    # The streaming wrapper writes the init frame itself and
+                    # returns None: the init frame must be on the wire before
+                    # the worker thread can emit anything.
+                    self.stream_handler(handler, req_id)(params)
+                    return None
                 else:
                     raw_result = handler(params, None)
                     return self._success_response(req_id, raw_result)
@@ -137,10 +139,22 @@ class ApiHandler:
     def stream_handler(
         self, handler: Callable, request_id: Any
     ):
-        """Wrap a streaming handler to run in a background thread.
+        """Wrap a streaming handler so it runs in a background thread.
 
-        Streaming events are sent via ``self.send_response`` and the
-        final message signals ``finished: True``.
+        Ordering contract: the init frame (``{stream_id, finished: False}``)
+        is written by this wrapper *before* the worker thread starts, so no
+        event frame can ever overtake it — a client that resolves the invoke
+        on its first frame always gets the init frame.
+
+        The worker's return value is sent as the terminal frame's ``payload``,
+        so a caller receives the run result (outputs / node_results / error)
+        rather than a bare ``null``.
+
+        The run is registered with :class:`TaskManager` (keyed by the JSON-RPC
+        request id, with the task id as an alias) *before* the worker starts,
+        so a cancel that is dispatched concurrently with the execute request
+        still lands on a registered run.  ``params["_run_id"]`` carries that
+        identity into the handler.
         """
         def wrapper(params: dict):
             stream_id = f"{handler.__name__}-{str(uuid.uuid4())}"
@@ -150,16 +164,22 @@ class ApiHandler:
                 params.get("keystore", {}).get("task_id") or
                 ""
             )
+            run_id = str(request_id) if request_id is not None else ""
+            cancel_key = run_id or task_id
             stop_event = threading.Event()
 
-            # Register with TaskManager so cancel can signal this stream
             task_manager = TaskManager()
-            if task_id:
-                task_manager.register_stream(str(task_id), stop_event)
+            if cancel_key:
+                task_manager.register(cancel_key, task_id, stop_event)
+
+            # The handler cannot see the JSON-RPC id; hand it the run identity
+            # so the engine can query cancellation with the same key.
+            params = dict(params or {})
+            params["_run_id"] = cancel_key
 
             def stream_callback(data: dict):
                 if task_id and isinstance(data, dict):
-                    data["task_id"] = str(task_id)
+                    data["task_id"] = task_id
                 response = {
                     "id": request_id,
                     "result": data,
@@ -172,34 +192,50 @@ class ApiHandler:
                 stop_event: threading.Event,
                 stream_callback: Callable[[dict], None],
                 params_dict: dict,
-                stream_id: str,
             ):
+                result: Any = None
                 try:
                     if stop_event.is_set():
                         return
-                    handler(params_dict, stream_callback)
+                    result = handler(params_dict, stream_callback)
                 except Exception as e:
                     self.logger.error(f"Error in stream thread: {e}")
                     stream_callback({
                         "type": "error",
                         "payload": {"message": str(e)},
                     })
+                    # Keep the terminal frame's shape stable for consumers.
+                    result = {
+                        "success": False,
+                        "status": "failed",
+                        "cancelled": False,
+                        "outputs": {},
+                        "node_results": {},
+                        "error": str(e),
+                    }
                 finally:
-                    if task_id:
-                        task_manager.unregister(str(task_id))
+                    if cancel_key:
+                        task_manager.unregister(cancel_key)
                     self.send_response({
                         "id": request_id,
                         "stream_id": stream_id,
-                        "result": BackendSuccessPayload(payload=None).to_dict(),
+                        "result": BackendSuccessPayload(payload=result).to_dict(),
                         "finished": True,
                     })
 
+            # Init frame first — see the ordering contract above.
+            self.send_response({
+                "id": request_id,
+                "result": {"stream_id": stream_id},
+                "finished": False,
+            })
+
             thread = threading.Thread(
                 target=stream_worker,
-                args=(stop_event, stream_callback, params, stream_id),
+                args=(stop_event, stream_callback, params),
+                daemon=True,
+                name=f"stream-{handler.__name__}",
             )
             thread.start()
-
-            return {"stream_id": stream_id}
 
         return wrapper

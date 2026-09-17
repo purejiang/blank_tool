@@ -1,7 +1,8 @@
 """T4 tests: sub-workflow task log propagation via workflow.run.
 
-When context.task_id is set, child node lifecycle events are teed into
-the per-task log buffer with namespaced node_ids (T1 namespacing rule).
+When context.task_id is set, child node lifecycle events are teed into the
+per-task log buffer with run-root-relative node paths
+(``<parent node>/<child node>``).
 """
 
 import os
@@ -99,22 +100,21 @@ def test_subworkflow_child_events_namespaced_in_buffer(tasks_tmp, tmp_path):
     buffer = _per_task_buffers.get("sub1", [])
     buffer_text = "\n".join(buffer)
 
-    # ── child event: namespaced node_id ─────────────────────────────
-    # workflow_id="sub1/run_child" != task_log_id="sub1" →
-    # T1 rule renders node_id as "sub1/run_child/log1"
-    assert "sub1/run_child/log1" in buffer_text, (
-        f"expected namespaced child node_id 'sub1/run_child/log1' "
+    # ── child event: run-root-relative node path ────────────────────
+    # The child nodes are reported under the parent node's path:
+    # "run_child" → "run_child/log1".
+    assert "run_child/log1" in buffer_text, (
+        f"expected child node path 'run_child/log1' "
         f"in buffer, got:\n{buffer_text}"
     )
-    assert "[node_started] sub1/run_child/log1 (flow.log)" in buffer_text
-    assert "[node_completed] sub1/run_child/log1" in buffer_text
+    assert "[node_started] run_child/log1 (flow.log)" in buffer_text
+    assert "[node_completed] run_child/log1 status=ok" in buffer_text
 
-    # ── parent event: un-prefixed ───────────────────────────────────
-    # workflow_id="sub1" == task_log_id="sub1" → no prefixing
+    # ── parent event: its own bare id ───────────────────────────────
     assert "[node_started] run_child (workflow.run)" in buffer_text
-    assert "[node_completed] run_child" in buffer_text
+    assert "[node_completed] run_child status=ok" in buffer_text
 
-    # ── workflow-level events (not in NODE_LIFECYCLE_TYPES, no prefix)
+    # ── workflow-level events
     assert "[workflow_completed] success=True" in buffer_text
 
     cleanup_task_log("sub1")
@@ -163,12 +163,13 @@ def test_missing_child_template_logs_failure_in_buffer(tasks_tmp, tmp_path):
     buffer = _per_task_buffers.get("sub1b", [])
     buffer_text = "\n".join(buffer)
 
-    # ── node_failed (in NODE_LIFECYCLE_TYPES, workflow_id == task_log_id → un-prefixed)
-    assert "[node_failed] run_child: template not found: 'missing-tpl'" in buffer_text, (
-        f"expected node_failed in buffer, got:\n{buffer_text}"
-    )
+    # ── the failing node's single terminal event
+    assert (
+        "[node_completed] run_child status=failed" in buffer_text
+        and "template not found: 'missing-tpl'" in buffer_text
+    ), f"expected a failed node_completed in buffer, got:\n{buffer_text}"
 
-    # ── workflow_failed (NOT in NODE_LIFECYCLE_TYPES, no prefixing)
+    # ── workflow_failed
     assert "[workflow_failed]" in buffer_text, (
         f"expected workflow_failed in buffer, got:\n{buffer_text}"
     )

@@ -132,6 +132,74 @@ def test_exists_false_before_save_true_after(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Atomic writes (tmp file + os.replace)
+# ---------------------------------------------------------------------------
+
+def test_save_leaves_no_tmp_sibling_behind(tmp_path):
+    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store.save("alpha", _definition("alpha"), _metadata())
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["alpha.json"]
+
+    # Overwriting goes through the same tmp + replace path.
+    store.save("alpha", _definition("alpha", message="v2"), _metadata())
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["alpha.json"]
+    assert not (tmp_path / "alpha.json.tmp").exists()
+
+
+def test_saved_file_is_complete_and_readable_immediately(tmp_path):
+    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store.save("alpha", _definition("alpha"), _metadata("desc", ["t1"]))
+
+    # No flush/sleep/retry needed: the tmp file was atomically replaced.
+    on_disk = (tmp_path / "alpha.json").read_text(encoding="utf-8")
+    assert on_disk.endswith("\n")
+    raw = json.loads(on_disk)
+    assert raw["definition"]["name"] == "alpha"
+    assert raw["description"] == "desc"
+    assert store.load("alpha").name == "alpha"
+
+
+def test_atomic_write_retries_a_transient_permission_error(tmp_path, monkeypatch):
+    from app.template import store as store_module
+
+    real_replace = store_module.os.replace
+    calls = []
+
+    def flaky_replace(src, dst):
+        calls.append((src, dst))
+        if len(calls) <= 2:
+            raise PermissionError(13, "destination briefly locked")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(store_module.os, "replace", flaky_replace)
+
+    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store.save("alpha", _definition("alpha"), _metadata())
+
+    assert len(calls) == 3, "the replace must be retried"
+    assert store.load("alpha").name == "alpha"
+    assert not (tmp_path / "alpha.json.tmp").exists()
+
+
+def test_atomic_write_cleans_up_tmp_when_replace_keeps_failing(tmp_path, monkeypatch):
+    from app.template import store as store_module
+
+    def always_locked(src, dst):
+        raise PermissionError(13, "destination locked")
+
+    monkeypatch.setattr(store_module.os, "replace", always_locked)
+
+    store = FileTemplateStore(templates_dir=str(tmp_path))
+    with pytest.raises(PermissionError):
+        store.save("alpha", _definition("alpha"), _metadata())
+
+    # Neither a half-written target nor a leftover tmp file is left behind.
+    assert not (tmp_path / "alpha.json").exists()
+    assert not (tmp_path / "alpha.json.tmp").exists()
+    assert store.exists("alpha") is False
+
+
+# ---------------------------------------------------------------------------
 # _path_for safety matrix
 # ---------------------------------------------------------------------------
 

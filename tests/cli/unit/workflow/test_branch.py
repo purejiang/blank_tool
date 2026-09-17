@@ -35,16 +35,20 @@ class _MissingStore:
 class _StubEngine:
     """Captures (definition name, inputs) and returns a canned result."""
 
-    def __init__(self, success=True, outputs=None, error=None):
+    def __init__(self, success=True, outputs=None, error=None, cancelled=False):
         self.success = success
         self.outputs = outputs if outputs is not None else {"ok": True}
         self.error = error
+        self.cancelled = cancelled
         self.seen = []
 
     def execute(self, definition, inputs, context):
         self.seen.append((definition.name, dict(inputs)))
         return SimpleNamespace(
-            success=self.success, outputs=self.outputs, error=self.error
+            success=self.success,
+            outputs=self.outputs,
+            error=self.error,
+            cancelled=self.cancelled,
         )
 
 

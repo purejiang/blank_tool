@@ -37,6 +37,5 @@
       "next": null,
       "on_failure": "fail"
     }
-  ],
-  "edges": []
+  ]
 }

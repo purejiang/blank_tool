@@ -142,17 +142,42 @@ def _install_signal_handlers(logger: Logger):
 
 
 def _drain_pending(logger: Logger, timeout: float = 10.0):
-    """Wait for in-flight requests to complete before exiting."""
+    """Wait for in-flight requests AND workflow runs before exiting.
+
+    Streaming handlers run on their own threads and unregister from
+    :class:`TaskManager` only when they finish, so the request counter alone
+    would report "nothing pending" while a 10-minute decompile is still
+    running.
+    """
+    from app.common.task_manager import TaskManager
+
     deadline = time.time() + timeout
     while time.time() < deadline:
         with _pending_lock:
-            if _pending_requests <= 0:
-                return
+            pending = _pending_requests
+        if pending <= 0 and not TaskManager().list_tasks():
+            return
         time.sleep(0.1)
     logger.warning(
         f"Graceful shutdown timed out after {timeout}s "
         f"({_pending_requests} request(s) still pending)"
     )
+
+
+def _cancel_all_runs(logger: Logger) -> None:
+    """Broadcast cancellation to every in-flight run before draining."""
+    from app.common.task_manager import TaskManager
+
+    manager = TaskManager()
+    runs = manager.list_tasks()
+    if not runs:
+        return
+    logger.info(f"Cancelling {len(runs)} in-flight run(s) before shutdown")
+    for run in runs:
+        try:
+            manager.cancel(run["run_id"])
+        except Exception as exc:
+            logger.warning(f"Failed to cancel run {run.get('run_id')}: {exc}")
 
 
 # ------------------------------------------------------------------
@@ -277,6 +302,7 @@ def main():
 
     # --- Graceful shutdown path ---
     logger.info("Shutting down...")
+    _cancel_all_runs(logger)
     _drain_pending(logger, timeout=10.0)
     executor.shutdown(wait=False)
     logger.info("Backend stopped.")

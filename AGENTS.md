@@ -79,7 +79,7 @@ Python Backend (cli/main.py)
 
 - **Renderer → Main**：渲染层调 `window.electronAPI.*`，经 `contextBridge` 路由到 `src/main/ipc/` 下的 handler。
 - **Main → Python**：`commandHandlers.ts` 通过 stdin 写 JSON-RPC 请求，按 `request.id` 在 `requestCallbacks` Map 里匹配响应。**默认超时是 300000ms（5 分钟），不是 30 秒**——长任务（反编译、签名）依赖这个。
-- **流式响应**：被 `@streaming`（`cli/app/common/decorators.py`）装饰的 handler 在独立线程运行，多次回包 `finished: false`，主进程通过命名 IPC 通道（如 `stream-event`）转发给渲染层（logcat、下载进度等）。注意：`@streaming` 本身仅是一个标记装饰器，真正的多线程逻辑在 `api_handler.py:139-205`（`stream_handler` 用 `threading.Thread` 启动）。
+- **流式响应**：被 `@streaming`（`cli/app/common/decorators.py`）装饰的 handler 在独立线程运行，多次回包 `finished: false`，主进程通过命名 IPC 通道（如 `stream-event`）转发给渲染层（logcat、下载进度等）。注意：`@streaming` 本身仅是一个标记装饰器，真正的多线程逻辑在 `api_handler.py` 的 `stream_handler`（daemon `threading.Thread`）。该 wrapper 会**先同步写 init 帧再启动 worker**（避免事件帧抢在 init 帧之前被 main 当成 invoke 结果），并在**返回的终帧**里带上 handler 的返回值作为 `payload`。
 
 ### 后端自动发现
 
@@ -95,7 +95,7 @@ Python Backend (cli/main.py)
 
 **代价**：
 - **验证**：手工实现字段校验（如 `PortSet.validate_inputs` 是手工 presence-only 检查），没有 pydantic 的类型推导与错误聚合
-- **并发**：`@streaming` 仅是一个标记装饰器，真正的线程逻辑在 `api_handler.py:139-205`（`stream_handler`），用 `threading.Thread` 而非 asyncio——没有结构化并发、没有任务取消的协程级传播
+- **并发**：`@streaming` 仅是一个标记装饰器，真正的线程逻辑在 `api_handler.py` 的 `stream_handler`，用 `threading.Thread`（daemon）而非 asyncio——没有结构化并发；取消靠 `TaskManager` 的协作式检查点 + 子进程 terminate，不是协程级传播
 - **序列化**：手工实现 `to_dict`/`from_dict`，没有 pydantic 的自动序列化/反序列化，字段增删需双改，容易遗漏
 - **无 HTTP 客户端**：若未来需要网络通信（如远程工具注册表、更新检查），需手写 urllib 或 socket，没有 httpx/requests 的便利性
 
@@ -104,7 +104,7 @@ Python Backend (cli/main.py)
 | 位置 | 摩擦 | 影响 |
 |---|---|---|
 | `PortSet.validate_inputs` | 手工 presence-only 校验 | 错误信息粗糙，定位慢 |
-| `api_handler.py:stream_handler` | `threading.Thread` 无超时/取消传播 | 长任务只能等自然结束或进程级 kill |
+| 节点级超时 | 子进程超时固定 10 分钟，不可按节点配置 | 卡死的节点只能靠用户取消（cancel 会 terminate 子进程） |
 | 模型类 `to_dict`/`from_dict` | 手写序列化，字段增删需双改 | 容易遗漏，类型漂移不报错 |
 
 ### 渲染层服务层

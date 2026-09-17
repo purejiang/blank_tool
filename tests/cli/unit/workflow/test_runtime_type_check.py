@@ -90,7 +90,6 @@ class TestCheckRuntimeTypes:
             ]
         )
         warnings = _engine()._check_runtime_types(
-            tool,
             {
                 "file": "a.txt",
                 "directory": "out/",
@@ -99,6 +98,7 @@ class TestCheckRuntimeTypes:
                 "flag": True,
                 "data": {"a": 1},
             },
+            tool,
         )
         assert warnings == []
 
@@ -115,33 +115,84 @@ class TestCheckRuntimeTypes:
         assert _engine()._check_runtime_types({}, tool) == []
 
 
-# ── _execute_tool integration ────────────────────────────────────────────
-class TestExecuteToolWiring:
-    def test_number_mismatch_logs_warning(self, caplog):
-        """"hello" on a NUMBER port → logger.warning with the mismatch."""
-        tool = _typed_tool([_port("count", BaseType.NUMBER)])
-        with caplog.at_level(logging.WARNING, logger="app.workflow.engine"):
-            outputs, error = _engine()._execute_tool(
-                tool, {"count": "hello"}, _context()
-            )
-        assert error is None
-        assert outputs == {"ok": True}
-        messages = [r.message for r in caplog.records]
-        assert any("runtime type mismatch" in m for m in messages)
-        assert any("expected number" in m for m in messages)
+# ── _run_node integration ────────────────────────────────────────────────
+class _RecordingRegistry:
+    """Registry returning one specific tool instance."""
 
-    def test_text_mismatch_logs_warning(self, caplog):
-        """123 on a TEXT port → logger.warning with the mismatch."""
+    def __init__(self, tool):
+        self._tool = tool
+
+    def get_tool(self, name):
+        return self._tool
+
+
+def _run(engine, tool, node_id="typed", **params):
+    """Run one node against *tool* (the engine resolves it from the registry)."""
+    from app.workflow.definition import WorkflowNode
+
+    engine = WorkflowEngine(registry=_RecordingRegistry(tool))
+    node = WorkflowNode(id=node_id, tool=tool.name)
+    return engine._run_node(node, params, _context())
+
+
+class TestRunNodeWiring:
+    """The runtime type check is wired into the node attempt, not the tool call.
+
+    It runs once per node (before the retry loop) and logs at DEBUG: a type
+    mismatch is advisory and must never block execution or spam WARNINGs on
+    every retry.
+    """
+
+    def test_number_mismatch_logs_once(self, caplog):
+        """"hello" on a NUMBER port → one debug record naming the mismatch."""
+        tool = _typed_tool([_port("count", BaseType.NUMBER)])
+        with caplog.at_level(logging.DEBUG, logger="app.workflow.engine"):
+            outcome = _run(_engine(), tool, count="hello")
+        assert outcome.error is None
+        assert outcome.outputs == {"ok": True}
+        messages = [r.getMessage() for r in caplog.records]
+        mismatches = [m for m in messages if "runtime type mismatch" in m]
+        assert len(mismatches) == 1
+        assert "expected number" in mismatches[0]
+
+    def test_text_mismatch_logs_debug_not_warning(self, caplog):
+        """123 on a TEXT port must not produce a WARNING record."""
         tool = _typed_tool([_port("name", BaseType.TEXT)])
-        with caplog.at_level(logging.WARNING, logger="app.workflow.engine"):
-            outputs, error = _engine()._execute_tool(
-                tool, {"name": 123}, _context()
-            )
-        assert error is None
-        assert outputs == {"ok": True}
-        messages = [r.message for r in caplog.records]
-        assert any("runtime type mismatch" in m for m in messages)
-        assert any("expected text" in m for m in messages)
+        with caplog.at_level(logging.DEBUG, logger="app.workflow.engine"):
+            outcome = _run(_engine(), tool, name=123)
+        assert outcome.error is None
+        assert not [
+            r for r in caplog.records
+            if r.levelno >= logging.WARNING and "runtime type mismatch" in r.getMessage()
+        ]
+
+    def test_mismatch_is_checked_once_per_node_not_per_attempt(self, caplog):
+        """A failing node with retries must not repeat the type warning."""
+        tool = _typed_tool([_port("count", BaseType.NUMBER)])
+        tool.fail_times = 2
+
+        def _execute(inputs, context):
+            tool.executed = True
+            if getattr(tool, "attempts_left", 0) > 0:
+                tool.attempts_left -= 1
+                raise RuntimeError("flaky")
+            return {"ok": True}
+
+        tool.attempts_left = 2
+        tool.execute = _execute
+        from app.workflow.definition import WorkflowNode
+
+        node = WorkflowNode(id="flaky", tool=tool.name, retry=3)
+        engine = WorkflowEngine(registry=_RecordingRegistry(tool))
+        with caplog.at_level(logging.DEBUG, logger="app.workflow.engine"):
+            outcome = engine._run_node(node, {"count": "hello"}, _context())
+        assert outcome.error is None
+        assert outcome.attempts == 3
+        mismatches = [
+            r.getMessage() for r in caplog.records
+            if "runtime type mismatch" in r.getMessage()
+        ]
+        assert len(mismatches) == 1, mismatches
 
     def test_valid_types_log_nothing(self, caplog):
         """Correct types → no runtime-type warnings logged."""
@@ -152,32 +203,29 @@ class TestExecuteToolWiring:
                 _port("flag", BaseType.BOOLEAN),
             ]
         )
-        with caplog.at_level(logging.WARNING, logger="app.workflow.engine"):
-            outputs, error = _engine()._execute_tool(
-                tool, {"text": "hi", "number": 1, "flag": True}, _context()
-            )
-        assert error is None
-        assert outputs == {"ok": True}
+        with caplog.at_level(logging.DEBUG, logger="app.workflow.engine"):
+            outcome = _run(_engine(), tool, text="hi", number=1, flag=True)
+        assert outcome.error is None
+        assert outcome.outputs == {"ok": True}
         assert not any(
-            "runtime type mismatch" in r.message for r in caplog.records
+            "runtime type mismatch" in r.getMessage() for r in caplog.records
         )
 
     def test_execution_continues_on_mismatch(self):
         """A type mismatch must NOT block the tool from running."""
         tool = _typed_tool([_port("count", BaseType.NUMBER)])
-        engine = _engine()
-        outputs, error = engine._execute_tool(tool, {"count": "hello"}, _context())
+        outcome = _run(_engine(), tool, count="hello")
         assert tool.executed is True
-        assert error is None
-        assert outputs == {"ok": True}
+        assert outcome.error is None
+        assert outcome.outputs == {"ok": True}
 
     def test_tool_without_ports_skips_check(self, caplog):
         """Tools exposing no ``ports`` skip the check entirely (code stubs)."""
         tool = _StubTypedTool("bare_tool", None)
-        with caplog.at_level(logging.WARNING, logger="app.workflow.engine"):
-            outputs, error = _engine()._execute_tool(tool, {"anything": 1}, _context())
-        assert error is None
-        assert outputs == {"ok": True}
+        with caplog.at_level(logging.DEBUG, logger="app.workflow.engine"):
+            outcome = _run(_engine(), tool, anything=1)
+        assert outcome.error is None
+        assert outcome.outputs == {"ok": True}
         assert not any(
-            "runtime type mismatch" in r.message for r in caplog.records
+            "runtime type mismatch" in r.getMessage() for r in caplog.records
         )

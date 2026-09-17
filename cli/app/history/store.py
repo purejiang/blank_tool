@@ -14,17 +14,23 @@ Storage: ``<output_dir>/history/<run_id>.json`` (``run_id`` is a uuid4 hex).
 Retention and the on/off switch live in ``server.config.json`` under a
 ``history`` section::
 
-    {"history": {"enabled": true, "max_runs": 200}}
+    {"history": {"enabled": true, "max_runs": 200, "max_bytes": 209715200}}
 
-Both keys are optional (defaults: enabled, 200 runs).  ``max_runs: 0``
+All keys are optional (defaults: enabled, 200 runs, 200 MB).  ``max_runs: 0``
 prunes every write immediately (history effectively off but still writing).
 Writes are atomic (``*.tmp`` + ``os.replace``).
+
+Retention is bounded by BOTH the run count and the total on-disk size: one run
+whose node outputs are large must not be able to push the directory into the
+gigabytes.  Listing sorts by mtime first and only parses the requested window,
+so a big history directory never blocks the backend's request loop.
 """
 
 import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -43,6 +49,12 @@ logger = logging.getLogger(__name__)
 _RUN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 _DEFAULT_MAX_RUNS = 200
+
+#: Total size cap for the history directory (bytes).
+_DEFAULT_MAX_BYTES = 200 * 1024 * 1024
+
+#: Age past which an abandoned ``*.json.tmp`` is deleted (seconds).
+_TMP_MAX_AGE_SECONDS = 300
 
 #: Keys projected into ``list_runs`` summaries.
 _SUMMARY_KEYS = (
@@ -93,6 +105,13 @@ def _max_runs() -> int:
         return _DEFAULT_MAX_RUNS
 
 
+def _max_bytes() -> int:
+    try:
+        return max(0, int(_config().get("max_bytes", _DEFAULT_MAX_BYTES)))
+    except (TypeError, ValueError):
+        return _DEFAULT_MAX_BYTES
+
+
 def _path_for(run_id: str) -> str:
     """Return the file path for *run_id*; reject anything but uuid4 hex."""
     if not isinstance(run_id, str) or not _RUN_ID_RE.fullmatch(run_id):
@@ -137,24 +156,76 @@ def record_run(record: Dict[str, Any]) -> Optional[str]:
 
 
 def _prune(history_dir: str) -> None:
-    """Delete oldest ``*.json`` files beyond the retention cap (by mtime)."""
+    """Enforce the retention caps: oldest ``*.json`` by (mtime, name).
+
+    A file is deleted when it is beyond the run-count cap OR when the totals
+    still exceed the byte cap.  Sorting ties are broken by file name so the
+    outcome is deterministic, and the sweep always frees the oldest records
+    first — never the one just written.
+    """
+    _sweep_orphan_tmp(history_dir)
+
     max_runs = _max_runs()
+    max_bytes = _max_bytes()
     try:
-        files = [f for f in os.listdir(history_dir) if f.endswith(".json")]
+        names = [f for f in os.listdir(history_dir) if f.endswith(".json")]
     except OSError:
         return
-    if len(files) <= max_runs:
-        return
-    files.sort(key=lambda f: os.path.getmtime(os.path.join(history_dir, f)))
-    for stale in files[: len(files) - max_runs]:
+
+    entries = []
+    for fname in names:
+        path = os.path.join(history_dir, fname)
         try:
-            os.remove(os.path.join(history_dir, stale))
+            entries.append((os.path.getmtime(path), fname, os.path.getsize(path)))
         except OSError:
-            logger.warning("history: failed to prune %s", stale)
+            continue
+    if not entries:
+        return
+    entries.sort(key=lambda entry: (entry[0], entry[1]))
+
+    by_count = max(0, len(entries) - max_runs)
+    doomed = entries[:by_count]
+    remaining = entries[by_count:]
+    total = sum(entry[2] for entry in remaining)
+    while remaining and total > max_bytes:
+        oldest = remaining.pop(0)
+        doomed.append(oldest)
+        total -= oldest[2]
+
+    for _mtime, fname, _size in doomed:
+        try:
+            os.remove(os.path.join(history_dir, fname))
+        except OSError:
+            logger.warning("history: failed to prune %s", fname)
+
+
+def _sweep_orphan_tmp(history_dir: str) -> None:
+    """Delete ``*.json.tmp`` files left behind by an interrupted write.
+
+    Nothing else collects them (they are not ``*.json``), so without this
+    sweep a crash mid-dump would leak disk space forever.
+    """
+    cutoff = time.time() - _TMP_MAX_AGE_SECONDS
+    try:
+        names = os.listdir(history_dir)
+    except OSError:
+        return
+    for fname in names:
+        if not fname.endswith(".json.tmp"):
+            continue
+        path = os.path.join(history_dir, fname)
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            continue
 
 
 def list_runs(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     """Return newest-first run summaries (corrupt files skipped).
+
+    Ordering is decided from ``os.stat`` alone; only the requested window is
+    parsed, so listing stays cheap however large the history directory grows.
 
     Args:
         limit: maximum number of summaries; ``0`` means no limit.
@@ -163,23 +234,30 @@ def list_runs(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     history_dir = _history_dir()
     if not os.path.isdir(history_dir):
         return []
-    files = [f for f in os.listdir(history_dir) if f.endswith(".json")]
-    files.sort(
-        key=lambda f: os.path.getmtime(os.path.join(history_dir, f)),
-        reverse=True,
-    )
+    try:
+        names = [f for f in os.listdir(history_dir) if f.endswith(".json")]
+    except OSError:
+        return []
+
+    entries = []
+    for fname in names:
+        try:
+            mtime = os.path.getmtime(os.path.join(history_dir, fname))
+        except OSError:
+            continue
+        entries.append((mtime, fname))
+    entries.sort(key=lambda entry: (-entry[0], entry[1]))
+
+    window = entries[max(0, offset):]
+    if limit and limit > 0:
+        window = window[:limit]
 
     summaries = []
-    for fname in files:
+    for _mtime, fname in window:
         record = _read(os.path.join(history_dir, fname))
         if record is None:
             continue
         summaries.append({key: record.get(key) for key in _SUMMARY_KEYS})
-
-    if offset:
-        summaries = summaries[max(0, offset):]
-    if limit and limit > 0:
-        summaries = summaries[:limit]
     return summaries
 
 
@@ -194,24 +272,34 @@ def get_run(run_id: str) -> Optional[Dict[str, Any]]:
 def delete_run(run_id: str) -> bool:
     """Delete the record for *run_id*; returns True when a file was removed."""
     path = _path_for(run_id)
-    if not os.path.isfile(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
         return False
-    os.remove(path)
+    except OSError:
+        logger.warning("history: failed to delete %s", run_id)
+        return False
     return True
 
 
 def clear_runs() -> int:
-    """Delete every history file; returns the number removed."""
+    """Delete every history file (including orphans); returns the count removed."""
     history_dir = _history_dir()
     if not os.path.isdir(history_dir):
         return 0
     removed = 0
-    for fname in os.listdir(history_dir):
-        if not fname.endswith(".json"):
+    try:
+        names = os.listdir(history_dir)
+    except OSError:
+        return 0
+    for fname in names:
+        if not (fname.endswith(".json") or fname.endswith(".json.tmp")):
             continue
         try:
             os.remove(os.path.join(history_dir, fname))
             removed += 1
+        except FileNotFoundError:
+            continue
         except OSError:
             logger.warning("history: failed to remove %s", fname)
     return removed

@@ -24,10 +24,11 @@ Blank Tool 是本地工作流编排桌面应用（Electron + Vue3 + Python 三�
 
 ### 已具备
 
-- **工作流引擎**：`cli/app/workflow/`，线性执行（`node.next` 驱动），内置 23 个原子工具 + 描述符工具，支持 `on_failure`（fail / skip / retry:N）与节点级流式事件。
+- **工作流引擎**：`cli/app/workflow/`，线性执行（`node.next` 驱动），内置 23 个原子工具 + 描述符工具，支持 `on_failure`（fail / skip）+ `retry`、可中断正在跑的子进程的取消、节点级流式事件。
+- **运行历史**：每次顶层运行落盘到 `<output_dir>/history/`（条数 + 总字节双上限；`history.list/get/delete/clear`）。
 - **模板 CRUD + 执行**：`template.save / load / list / delete / execute`，落盘到 `<output_dir>/templates`（可被 `BT_TEMPLATES_DIR` 覆盖）。
 - **工具/环境描述符发现**：工具描述符不再内置，`cli/registry/tools/` 已清空（仅 README）；Android 描述符（12 个）已迁至 `examples/tools/android/`，经工具管理导入后进入可写注册表（T15/T21）；`cli/registry/environments/*.json`（java / python / node 3 个环境，保持内置）自动加载。
-- **统一工具「操作」模型（T3-T5）**：描述符增加 `operations[]`，每个操作带类型化 inputs/outputs + args 映射；引擎按 operation 校验输入、拼命令、返回类型化输出（`engine.py` 的 `_execute_operation_tool`）；APK 链路工具（apktool / adb / bundletool）已迁移为范例。
+- **统一工具「操作」模型（T3-T5）**：描述符增加 `operations[]`，每个操作带类型化 inputs/outputs + args 映射；引擎按 operation 校验输入、拼命令、返回类型化输出（`engine.py` 的 `_execute_tool`）；APK 链路工具（apktool / adb / bundletool）已迁移为范例。
 - **单选/多选入参（T2）**：`Port` 已支持 `options`（单选下拉）与 `multi`（多选）字段，贯穿 schema、序列化与校验。
 - **脚本作为工具（T17）**：脚本可经 `*_script` 类型封装为"可导入的依赖环境的工具/节点"（如 `examples/tools/android/apk-audit.json`）；CLI 新增 `tool <name>` 子命令（T18）。
 - **遗留模块退役（T22/T23）**：Android 专属页面（PackagePage / DevicePage / APK 工具）与其服务/store/组件、签名配置区，以及对应后端 handler（apk./aab./device./install./download 等）与契约测试均已删除。

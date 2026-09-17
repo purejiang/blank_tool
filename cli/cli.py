@@ -507,11 +507,18 @@ _EVENT_COLORS = {
     "node_started": "\033[36m",  # cyan
     "node_completed": "\033[32m",  # green
     "workflow_completed": "\033[32m",  # green
-    "node_failed": "\033[31m",  # red
     "workflow_failed": "\033[31m",  # red
     "workflow_cancelled": "\033[33m",  # yellow
 }
 _RESET = "\033[0m"
+
+#: node_completed carries the terminal status; a failed/cancelled node is not
+#: a green line.
+_STATUS_COLORS = {
+    "failed": "\033[31m",  # red
+    "cancelled": "\033[33m",  # yellow
+    "skipped": "\033[33m",  # yellow
+}
 
 
 def _coerce_input_value(value: str) -> Any:
@@ -548,7 +555,8 @@ def _make_console_stream_handler(use_color: bool, stream):
 
     The returned callable receives event dicts (``{"type": ..., ...}``) and
     prints one human-readable line per event, e.g. ``[node_completed] convert
-    (123 ms)``.  When *use_color* is True the event tag is ANSI-colored.
+    status=ok (123 ms)``.  When *use_color* is True the event tag is
+    ANSI-colored (failed/skipped/cancelled nodes are not green).
     *stream* is the output target: stdout normally, stderr for ``--json`` so
     stdout stays a pure JSON document.
     """
@@ -558,8 +566,14 @@ def _make_console_stream_handler(use_color: bool, stream):
 
         event_type = event.get("type") or "event"
         line = render_event_line(event)
-        if use_color and event_type in _EVENT_COLORS:
-            line = f"{_EVENT_COLORS[event_type]}{line}{_RESET}"
+        color = None
+        if use_color:
+            if event_type == "node_completed":
+                color = _STATUS_COLORS.get(event.get("status"))
+            if color is None:
+                color = _EVENT_COLORS.get(event_type)
+        if color:
+            line = f"{color}{line}{_RESET}"
         return line
 
     def _handle_event(event: Dict[str, Any]) -> None:
@@ -623,14 +637,18 @@ def cmd_run(
     use_color = (not json_output) and sys.stdout.isatty()
     stream = sys.stderr if json_output else sys.stdout
     raw_stream_handler = _make_console_stream_handler(use_color, stream)
+    run_id = task_id or "cli"
     workflow_stream = WorkflowStreamHandler(
-        workflow_id=task_id or "cli", callback=raw_stream_handler,
+        workflow_id=definition.name,
+        callback=raw_stream_handler,
+        run_id=run_id,
         task_log_id=task_id,
     )
 
     context = ExecutionContext(
         work_dir=os.getcwd(),
         task_id=task_id,
+        run_id=run_id,
         stream_handler=raw_stream_handler,
         workflow_stream=workflow_stream,
     )
@@ -658,6 +676,8 @@ def cmd_run(
                 json.dumps(
                     {
                         "success": result.success,
+                        "status": result.status,
+                        "cancelled": result.cancelled,
                         "outputs": result.outputs,
                         "node_results": result.node_results,
                         "error": result.error,
@@ -668,7 +688,7 @@ def cmd_run(
                 )
             )
         else:
-            print(f"success: {result.success}")
+            print(f"status: {result.status}")
             if result.outputs:
                 print(
                     "outputs: "
@@ -677,7 +697,8 @@ def cmd_run(
             if result.error:
                 print(f"error: {result.error}")
 
-        return 0 if result.success else 1
+        # A cancelled run is neither success (0) nor a plain failure (1).
+        return 0 if result.success else (2 if result.cancelled else 1)
     finally:
         if task_id:
             cleanup_task_log(task_id)

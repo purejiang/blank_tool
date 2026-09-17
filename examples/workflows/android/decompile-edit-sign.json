@@ -90,9 +90,7 @@
         "force": true
       },
       "next": "edit",
-      "on_success": null,
       "on_failure": "fail",
-      "condition": null,
       "retry": 0
     },
     {
@@ -105,9 +103,7 @@
         "replacement": "$inputs.edit_replacement"
       },
       "next": "rebuild",
-      "on_success": null,
       "on_failure": "fail",
-      "condition": null,
       "retry": 0
     },
     {
@@ -121,9 +117,7 @@
         "use_aapt1": true
       },
       "next": "align",
-      "on_success": null,
       "on_failure": "fail",
-      "condition": null,
       "retry": 0
     },
     {
@@ -137,9 +131,7 @@
         "force": true
       },
       "next": "sign",
-      "on_success": null,
       "on_failure": "fail",
-      "condition": null,
       "retry": 0
     },
     {
@@ -154,11 +146,8 @@
         "ks_pass": "$inputs.ks_pass"
       },
       "next": null,
-      "on_success": null,
       "on_failure": "fail",
-      "condition": null,
       "retry": 0
     }
-  ],
-  "edges": []
+  ]
 }

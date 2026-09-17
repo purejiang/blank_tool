@@ -205,13 +205,18 @@ def test_execute_runs_saved_template_and_streams_completion(tmp_path):
     )
 
     assert result["success"] is True
+    assert result["status"] == "succeeded"
+    assert result["cancelled"] is False
     assert result["error"] is None
     assert result["outputs"]["content"] == "exec-hello"
     assert set(result["node_results"]) == {"write", "read"}
     assert (tmp_path / "out.txt").read_text(encoding="utf-8") == "exec-hello"
+    # run_id is the run identity (the task id here); workflow_id is the
+    # definition name.
     assert any(
         event["type"] == "workflow_completed"
-        and event["workflow_id"] == "tpl-contract-1"
+        and event["run_id"] == "tpl-contract-1"
+        and event["workflow_id"] == "alpha"
         and event["success"] is True
         for event in events
     )

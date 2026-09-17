@@ -55,7 +55,8 @@ def test_foreach_flattens_dict_items_and_counts_pass_rule(tmp_path):
     """Dict items flatten into child inputs; child `passed` output drives counts."""
     engine = _StubEngine(
         lambda inputs: SimpleNamespace(
-            success=True, outputs={"passed": inputs.get("ok", True)}, error=None
+            success=True, outputs={"passed": inputs.get("ok", True)}, error=None,
+            cancelled=False
         )
     )
     result = FlowForeach().execute(
@@ -79,7 +80,7 @@ def test_foreach_flattens_dict_items_and_counts_pass_rule(tmp_path):
 def test_foreach_child_execution_failure_counts_failed(tmp_path):
     engine = _StubEngine(
         lambda inputs: SimpleNamespace(
-            success=False, outputs={}, error="boom"
+            success=False, outputs={}, error="boom", cancelled=False
         )
     )
     result = FlowForeach().execute(
@@ -94,7 +95,9 @@ def test_foreach_child_execution_failure_counts_failed(tmp_path):
 
 def test_foreach_empty_items_all_pass(tmp_path):
     engine = _StubEngine(
-        lambda inputs: SimpleNamespace(success=True, outputs={}, error=None)
+        lambda inputs: SimpleNamespace(
+            success=True, outputs={}, error=None, cancelled=False
+        )
     )
     result = FlowForeach().execute(
         {"items": [], "template": "child"},
@@ -109,7 +112,9 @@ def test_foreach_empty_items_all_pass(tmp_path):
 
 def test_foreach_normalizes_entries_wrapper_and_single_object(tmp_path):
     engine = _StubEngine(
-        lambda inputs: SimpleNamespace(success=True, outputs={}, error=None)
+        lambda inputs: SimpleNamespace(
+            success=True, outputs={}, error=None, cancelled=False
+        )
     )
     tool = FlowForeach()
     ctx = _foreach_ctx(tmp_path, engine, _StubStore())
@@ -126,7 +131,9 @@ def test_foreach_normalizes_entries_wrapper_and_single_object(tmp_path):
 
 def test_foreach_extra_inputs_merge_and_item_wins(tmp_path):
     engine = _StubEngine(
-        lambda inputs: SimpleNamespace(success=True, outputs={}, error=None)
+        lambda inputs: SimpleNamespace(
+            success=True, outputs={}, error=None, cancelled=False
+        )
     )
     result = FlowForeach().execute(
         {
@@ -144,7 +151,8 @@ def test_foreach_extra_inputs_merge_and_item_wins(tmp_path):
 def test_foreach_writes_results_file(tmp_path):
     engine = _StubEngine(
         lambda inputs: SimpleNamespace(
-            success=True, outputs={"passed": True, "name": inputs.get("name")}, error=None
+            success=True, outputs={"passed": True, "name": inputs.get("name")}, error=None,
+            cancelled=False
         )
     )
     result = FlowForeach().execute(
@@ -162,7 +170,9 @@ def test_foreach_writes_results_file(tmp_path):
 def test_foreach_accepts_json_string_items(tmp_path):
     """A JSON-encoded list/dict string is parsed instead of raising."""
     engine = _StubEngine(
-        lambda inputs: SimpleNamespace(success=True, outputs={}, error=None)
+        lambda inputs: SimpleNamespace(
+            success=True, outputs={}, error=None, cancelled=False
+        )
     )
     tool = FlowForeach()
     ctx = _foreach_ctx(tmp_path, engine, _StubStore())
@@ -180,7 +190,9 @@ def test_foreach_accepts_json_string_items(tmp_path):
 
 def test_foreach_non_list_json_string_still_raises(tmp_path):
     engine = _StubEngine(
-        lambda inputs: SimpleNamespace(success=True, outputs={}, error=None)
+        lambda inputs: SimpleNamespace(
+            success=True, outputs={}, error=None, cancelled=False
+        )
     )
     ctx = _foreach_ctx(tmp_path, engine, _StubStore())
     with pytest.raises(ToolException, match="must be a list"):

@@ -53,10 +53,14 @@ def handle_execute(params, stream_handler):
     ``stream_handler`` is forwarded to the renderer over ``stream-event``.
     Execution boilerplate (stream handler, context, engine) lives in
     :func:`app.workflow.runner.run_workflow`.
+
+    ``params["_run_id"]`` is injected by :class:`ApiHandler` and identifies
+    the run for cancellation and event correlation.
     """
     definition = _load_definition(params)
     task_id = params.get("task_id")
-    return run_workflow(definition, params, stream_handler, task_id)
+    run_id = params.get("_run_id") or task_id
+    return run_workflow(definition, params, stream_handler, task_id, run_id)
 
 
 def handle_validate(params, stream_handler):

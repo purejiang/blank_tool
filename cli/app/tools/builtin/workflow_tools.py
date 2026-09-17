@@ -24,15 +24,16 @@ Recursion guard (CRITICAL):
     Both guards travel through ``ExecutionContext`` → ``ToolContext``, not
     module-level globals, so concurrent workflows are isolated.
 
-Namespaced nested events:
-    Child node events carry a ``workflow_id`` and ``node_id`` prefixed
-    ``<parent_workflow_id>/<current_node_id>`` so the top-level UI can
-    ignore them and only display the parent workflow's nodes.  The prefixing
-    is done by wrapping the stream callback; if no stream callback is
-    available, child events are silently dropped.
+Nested events:
+    A child execution inherits the parent's ``run_id`` and emits its own
+    ``workflow_id`` (the child template's name) and its nodes under the
+    parent node's path (``<parent_node_path>/<child_node_id>``), so the top
+    level can attribute every event without parsing prefixes out of
+    ``workflow_id``.  With no stream callback available, child events are
+    silently dropped.
 """
 
-from app.common.exceptions import ToolException
+from app.common.exceptions import ToolException, WorkflowCancelled
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.template.store import TemplateNotFoundError, TemplateStore
@@ -46,41 +47,11 @@ _JSON = TypeAnnotation(BaseType.JSON)
 MAX_NESTING_DEPTH = 10
 
 
-def _make_namespaced_stream_handler(parent_callback, namespace_prefix):
-    """Wrap a stream callback so nested event IDs are prefixed.
-
-    When *parent_callback* is ``None``, returns ``None`` (child events are
-    silently dropped).  Otherwise returns a wrapper that intercepts every
-    event dict, copying it and prefixing ``workflow_id`` and ``node_id``
-    with ``namespace_prefix`` before forwarding to the parent callback.
-
-    Example::
-        parent wf_id="task-1", node_id="sub_1"
-        → namespace_prefix = "task-1/sub_1"
-        → child wf_id="child" becomes "task-1/sub_1/child"
-        → child node_id="w" becomes "task-1/sub_1/w"
-    """
-    if parent_callback is None:
-        return None
-
-    def wrapper(event):
-        prefixed = dict(event)
-        if "workflow_id" in prefixed:
-            prefixed["workflow_id"] = (
-                f"{namespace_prefix}/{prefixed['workflow_id']}"
-            )
-        if "node_id" in prefixed:
-            prefixed["node_id"] = f"{namespace_prefix}/{prefixed['node_id']}"
-        parent_callback(prefixed)
-
-    return wrapper
-
-
 def _run_child_template(
     template_name,
     child_inputs,
     context,
-    namespace_prefix,
+    node_path_prefix,
     child_definition=None,
 ):
     """Shared child-workflow execution for workflow.run / flow.foreach / flow.branch.
@@ -89,14 +60,16 @@ def _run_child_template(
     depth via ``MAX_NESTING_DEPTH``), resolves the template store and engine
     from *context*, loads the definition (unless *child_definition* is
     supplied — ``flow.foreach`` pre-loads once so an unknown template fails
-    fast before its loop), builds the namespaced child stream and the child
+    fast before its loop), builds the child stream and the child
     :class:`ExecutionContext`, and runs the child through the same engine.
 
     Args:
         template_name: template name (used for guards, loading and events).
         child_inputs: input dict passed to the child as ``$inputs.*``.
         context: the current :class:`ToolContext`.
-        namespace_prefix: event id prefix (``<parent_wf_id>/<node_id>[/i]``).
+        node_path_prefix: path under which the child's nodes are reported
+            (``<parent_node_path>`` for ``workflow.run``/``flow.branch``,
+            ``<parent_node_path>/<index>`` per ``flow.foreach`` item).
         child_definition: optional pre-loaded definition; when given, the
             template store lookup is skipped.
 
@@ -146,14 +119,12 @@ def _run_child_template(
                 f"template not found: {template_name!r}"
             ) from None
 
-    # ── build the namespaced stream for nested events ────────────────
-    namespaced_callback = _make_namespaced_stream_handler(
-        context.stream_handler, namespace_prefix
-    )
+    # ── build the child stream (node ids are already absolute paths) ──
     child_stream = (
         WorkflowStreamHandler(
-            workflow_id=namespace_prefix,
-            callback=namespaced_callback,
+            workflow_id=getattr(child_definition, "name", template_name),
+            callback=context.stream_handler,
+            run_id=context.run_id,
             task_log_id=context.task_id,
         )
         if context.stream_handler is not None or context.task_id
@@ -166,6 +137,7 @@ def _run_child_template(
     child_context = ExecutionContext(
         work_dir=context.work_dir,
         task_id=context.task_id,
+        run_id=context.run_id,
         env=dict(context.env),
         stream_handler=context.stream_handler,
         workflow_stream=child_stream,
@@ -175,6 +147,7 @@ def _run_child_template(
         in_progress_templates=(
             context.in_progress_templates | frozenset([template_name])
         ),
+        node_path_prefix=node_path_prefix or "",
     )
 
     # ── execute the child inline ─────────────────────────────────────
@@ -191,9 +164,11 @@ class WorkflowRun(BuiltinTool):
     and returns ``{"outputs": child_result.outputs}``.
 
     On success the node's ``outputs`` key holds a dict of the child
-    workflow's declared outputs.  On failure (load error, recursion, depth
-    overflow, or child workflow error) a ``ToolException`` is raised with
-    a message that the engine reports as a node failure.
+    workflow's declared outputs.  A cancelled child raises
+    :class:`~app.common.exceptions.WorkflowCancelled` so the cancellation
+    reaches the top level instead of being reported as a node failure; any
+    other failure (load error, recursion, depth overflow, child workflow
+    error) raises a ``ToolException``.
     """
 
     name = "workflow.run"
@@ -242,20 +217,21 @@ class WorkflowRun(BuiltinTool):
             ``{"outputs": <child_workflow_outputs>}`` on success.
 
         Raises:
+            WorkflowCancelled: when the child run was cancelled.
             ToolException: on any guard violation, template not found, or
                 child workflow failure.
         """
         template_name: str = inputs["template"]
         child_workflow_inputs: dict = inputs.get("inputs") or {}
 
-        parent_wf_id = context.parent_workflow_id or "root"
-        current_node_id = context.current_node_id or "unknown"
-        namespace_prefix = f"{parent_wf_id}/{current_node_id}"
+        node_path_prefix = context.current_node_path or "unknown"
 
         child_result = _run_child_template(
-            template_name, child_workflow_inputs, context, namespace_prefix
+            template_name, child_workflow_inputs, context, node_path_prefix
         )
 
+        if child_result.cancelled:
+            raise WorkflowCancelled()
         if not child_result.success:
             raise ToolException(
                 f"child workflow {template_name!r} failed: "

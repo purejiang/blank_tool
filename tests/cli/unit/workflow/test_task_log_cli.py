@@ -172,7 +172,7 @@ def test_cmd_run_failure_flushes_log_via_finally(tasks_tmp, tmp_path):
     log_content = _read_log_file(tasks_tmp, "cli1b")
     assert log_content, "task_exec.log should exist even on failure"
     assert "[node_started] assert_node (flow.assert)" in log_content
-    assert "[node_failed] assert_node" in log_content
+    assert "[node_completed] assert_node status=failed" in log_content
     assert "[workflow_failed]" in log_content
 
 

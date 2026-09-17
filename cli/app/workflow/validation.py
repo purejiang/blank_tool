@@ -18,10 +18,7 @@ a :class:`WorkflowDefinition` plus the tool registry:
    the reference is dangling, otherwise skipped, never guessed);
 4. the linear chain has no orphan nodes (every node reachable from the entry);
 5. an entry node exists (defensive — ``WorkflowDefinition.__post_init__``
-   already enforces exactly one entry);
-6. reserved DAG-mode fields: ``condition`` is an error (the linear executor
-   raises NotImplementedError on it at runtime) and ``on_success`` is a
-   warning (stored but silently ignored).
+   already enforces exactly one entry).
 
 Findings are returned as :class:`ValidationError` objects; an empty list
 means the workflow is valid.  Warnings are informational — a workflow with
@@ -109,36 +106,9 @@ def validate_workflow(
                 )
             )
 
-    # Reserved DAG-mode fields.  ``condition`` and ``on_success`` are stored
-    # for forward compatibility but the linear executor does not honor them:
-    # ``condition`` raises NotImplementedError mid-run (engine.py), so it is
-    # rejected here at validation time; ``on_success`` is silently ignored by
-    # the engine, so it is surfaced as a warning only.
-    for node in definition.nodes:
-        if node.condition is not None:
-            errors.append(
-                ValidationError(
-                    node_id=node.id,
-                    field="structure",
-                    message=(
-                        "condition is reserved for future DAG mode and not "
-                        "supported in linear mode; remove the field or set to null"
-                    ),
-                    severity="error",
-                )
-            )
-        if node.on_success is not None:
-            errors.append(
-                ValidationError(
-                    node_id=node.id,
-                    field="structure",
-                    message=(
-                        "on_success is reserved for future DAG mode and "
-                        "silently ignored in linear mode"
-                    ),
-                    severity="warning",
-                )
-            )
+    # Reserved DAG-mode fields (``condition`` / ``on_success``) were removed
+    # from the schema: branching is composition (``flow.branch``), so an
+    # unknown node key is simply ignored on load.
 
     # Check 2 — required input presence.  validate_inputs is presence-only,
     # so an expression-valued param still satisfies its required port; only

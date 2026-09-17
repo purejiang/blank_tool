@@ -8,7 +8,7 @@ import re
 import subprocess
 import traceback
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Union, Optional
+from typing import Dict, Any, List, Union, Optional, Callable
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
 from app.common.executor import ProcessExecutor
@@ -32,6 +32,8 @@ class CommandExecutionContext:
         log_output: Whether to log output
         task_id: Task identifier for per-task log writing
         process_holder: Dict for external process cancellation
+        cancel_check: Zero-argument callable polled while the command runs;
+            True means "cancel" and the subprocess is killed.
     """
 
     def __init__(self,
@@ -46,7 +48,8 @@ class CommandExecutionContext:
                  stream: bool = False,
                  log_output: bool = True,
                  task_id: Optional[str] = None,
-                 process_holder: Dict[str, Any] = None):
+                 process_holder: Dict[str, Any] = None,
+                 cancel_check: Optional[Callable[[], bool]] = None):
         self.cwd = cwd
         self.timeout = timeout
         self.encoding = encoding
@@ -59,6 +62,7 @@ class CommandExecutionContext:
         self.log_output = log_output
         self.task_id = task_id
         self.process_holder = process_holder
+        self.cancel_check = cancel_check
 
 
 def _write_task_log(task_id: str, cmd_str: str, returncode: int,
@@ -165,7 +169,9 @@ class CommandExecutor(BaseCommandExecutor):
             f"[CONTEXT] cwd={context.cwd} shell={context.shell} stream={context.stream}"
         )
 
-        # Streaming mode: return a live Popen object for line-by-line reading
+        # Streaming mode: return a live Popen object for line-by-line reading.
+        # The caller owns the read loop; cancellation reaches the process
+        # through ``context.process_holder`` (TaskManager terminates it).
         if context.stream:
             proc = subprocess.Popen(
                 command,
@@ -184,7 +190,11 @@ class CommandExecutor(BaseCommandExecutor):
 
         # Non-streaming mode: delegate to ProcessExecutor
         try:
-            executor = ProcessExecutor(timeout=context.timeout, process_holder=context.process_holder)
+            executor = ProcessExecutor(
+                timeout=context.timeout,
+                process_holder=context.process_holder,
+                cancel_check=context.cancel_check,
+            )
             returncode, stdout, stderr = executor.run(
                 cmd=command,
                 cwd=context.cwd,

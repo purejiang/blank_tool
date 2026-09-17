@@ -25,21 +25,22 @@ class RecordingHandler:
 
     def __init__(self):
         self.events: list = []
+        self.workflow_id = "test"
 
     def emit_node_started(self, node_id: str, tool: str) -> None:
         self.events.append({"type": "node_started", "node_id": node_id, "tool": tool})
 
-    def emit_node_output(self, node_id, data):
-        self.events.append({"type": "node_output", "node_id": node_id, "data": data})
-
-    def emit_node_completed(self, node_id: str, duration_ms: int) -> None:
+    def emit_node_completed(
+        self, node_id: str, status: str, duration_ms: int, **kwargs
+    ) -> None:
         self.events.append(
-            {"type": "node_completed", "node_id": node_id, "duration_ms": duration_ms}
-        )
-
-    def emit_node_failed(self, node_id: str, error: str) -> None:
-        self.events.append(
-            {"type": "node_failed", "node_id": node_id, "error": error}
+            {
+                "type": "node_completed",
+                "node_id": node_id,
+                "status": status,
+                "duration_ms": duration_ms,
+                "error": kwargs.get("error"),
+            }
         )
 
     def emit_workflow_completed(self, success: bool) -> None:
@@ -225,12 +226,15 @@ def test_depth_limit_exceeded_returns_clear_error(tmp_path):
     )
 
 
-# ── (d) namespaced events: child events carry <parent>/<node> prefix ──────
+# ── (d) nested event identity: node_id is a path, run_id is stable ────────
 
-def test_nested_events_are_namespaced(tmp_path):
-    """Given a parent with a workflow.run node to a child, When executed with
-    a RecordingHandler as stream callback, Then child events carry a
-    workflow_id or node_id prefixed like '<parent_wf_id>/<node>'."""
+def test_nested_events_carry_a_single_node_path_prefix(tmp_path):
+    """Child node events must be attributed by path, not by rewriting ids.
+
+    ``node_id`` becomes ``<parent node>/<child node>`` (exactly one level),
+    ``workflow_id`` names the emitting workflow (the child template), and
+    ``run_id`` is the top-level run — never prefixed.
+    """
     store = FileTemplateStore(templates_dir=str(tmp_path))
     child_def = _make_child_definition("ns-child")
     _save_template(store, "ns-child", child_def)
@@ -245,42 +249,44 @@ def test_nested_events_are_namespaced(tmp_path):
 
     recorder = RecordingHandler()
 
-    # Build a shared callback that appends to the recorder — both the
-    # parent's WorkflowStreamHandler AND context.stream_handler must use
-    # it so that child events (routed through stream_handler by the
-    # builtin's namespaced wrapper) land in the same recorder.
+    # Parent node events are emitted by the WorkflowStreamHandler; child
+    # events go through context.stream_handler (the child stream wraps the
+    # same callback), so both land in the recorder.
     shared_callback = lambda event: recorder.events.append(dict(event))
 
     stream = WorkflowStreamHandler(
-        workflow_id="parent-wf",
+        workflow_id="ns-parent",
         callback=shared_callback,
+        run_id="RUN-1",
     )
 
-    ctx = _context(tmp_path, template_store=store, workflow_stream=stream,
-                   stream_handler=shared_callback)
+    ctx = _context(tmp_path, run_id="RUN-1", template_store=store,
+                   workflow_stream=stream, stream_handler=shared_callback)
     result = _engine().execute(parent_def, {}, ctx)
 
     assert result.success is True, f"parent failed: {result.error}"
 
-    # Find events whose workflow_id or node_id contains the namespace
-    # prefix "parent-wf/sub".
     child_events = [
         e for e in recorder.events
-        if isinstance(e.get("workflow_id"), str)
-        and "parent-wf/sub" in str(e.get("workflow_id", ""))
+        if e.get("workflow_id") == "ns-child"
     ]
-    assert len(child_events) > 0, (
-        f"expected child events with 'parent-wf/sub' prefix in workflow_id, "
+    assert child_events, (
+        f"expected child events naming workflow_id='ns-child', "
         f"got events: {json.dumps(recorder.events, indent=2)}"
     )
 
-    # Core assertion: no child event leaks the bare child workflow_id.  All
-    # events belong to either "parent-wf" or start with "parent-wf/sub/".
-    for e in recorder.events:
-        wf_id = e.get("workflow_id", "")
-        assert wf_id in ("parent-wf",) or wf_id.startswith("parent-wf/"), (
-            f"unexpected workflow_id {wf_id!r} in event {e}"
-        )
+    # Exactly one level of prefixing, and the path is parent-node/child-node.
+    child_node_ids = sorted(
+        e["node_id"] for e in child_events if e["type"] == "node_started"
+    )
+    assert child_node_ids == ["sub/r", "sub/w"], child_node_ids
+
+    # run_id identifies the top-level run everywhere.
+    assert all(e.get("run_id") == "RUN-1" for e in recorder.events)
+
+    # Parent events keep their own workflow_id and bare node ids.
+    parent_events = [e for e in recorder.events if e.get("workflow_id") == "ns-parent"]
+    assert all(e.get("node_id") in (None, "sub") for e in parent_events)
 
 
 # ── (e) unknown template name → clean error string ────────────────────────
