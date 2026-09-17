@@ -7,21 +7,21 @@ Loads native Python plugins from a manifest (a list of dicts, one per
 plugin) and hands each a :class:`~app.plugins.context.PluginContext` (or any
 caller-supplied context object) via its ``apply`` entry point. Stdlib-only.
 
+The manifest contents (which plugins to load, including the shipped-native
+builtins and the opt-in extensions, plus user plugin sources) live in
+:mod:`app.plugins.manifest`. This module focuses on the mechanics of
+importing and ``apply``-ing entries and tearing them down.
+
 Manifest entries
 ----------------
 Each entry is a dict:
 
 * ``module`` (str, REQUIRED): dotted module name to import — a shipped
-  ``app.plugins.builtin.*`` package or a third-party ``my_plugin``.
+  ``app.plugins.builtin.*`` package or a third-party desktop client.
 * ``path`` (str, optional): parent directory prepended to ``sys.path``
   before the import, so ``module`` is importable from there.
 * ``config`` (any, optional): passed through to ``apply(ctx, config)``.
 * ``kind`` (str, REQUIRED): ``"shipped-native"`` or ``"native"``.
-
-Manifest sources: the shipped-native builtin plugins (ALWAYS loaded first, via
-:data:`SHIPPED_MANIFEST`), followed by user plugins (first present wins, else
-none) from the ``plugins`` section of ``server.config.json``, then
-``<output_dir>/plugins.json``.
 
 Lifecycle
 ---------
@@ -37,53 +37,32 @@ import added (before/after diff around the import).
 
 import importlib
 import inspect
-import json
 import logging
-import os
 import sys
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
-from app.utils.env import (
-    ENV_BT_SERVER_CONFIG,
-    ROOT,
-    get_env,
-    get_output_dir,
-    resolve_path,
+from app.plugins.manifest import (
+    EXTENDED_MANIFEST,
+    SHIPPED_MANIFEST,
+    _ALLOWED_KINDS,
+    default_manifest,
+    shipped_manifest_with_extensions,
 )
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_KINDS = ("shipped-native", "native")
-
-#: The CORE shipped-native builtin plugins, ALWAYS loaded at startup (before
-#: any user ``native`` plugins from config).  The minimal universal base: the
-#: four atomic tools (``file.read``/``file.write``, ``text.grep``,
-#: ``shell.exec``) plus the four orchestration primitives
-#: (``flow.assert``/``flow.log``/``flow.foreach``, ``workflow.run``).  Direct
-#: import only — no directory scanning.
-SHIPPED_MANIFEST = [
-    {"module": "app.plugins.builtin.file", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.text", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.exec", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.flow", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.workflow", "kind": "shipped-native"},
-]
-
-#: The EXTENDED shipped-native builtin plugins — NOT loaded by default.  These
-#: are the remaining atomic tools (``file.copy/move/delete/hash``, ``dir.*``,
-#: ``archive.*``, ``text.replace``, ``net.*``, ``code.exec``), opt-in via
-#: ``server.config.json`` → ``tools.atomic_extensions`` (a list of module
-#: short names, or ``"*"`` for all).  They stay native ``BuiltinTool``
-#: instances (no subprocess, streaming/path guards intact) — distinct from
-#: external descriptor tools.
-EXTENDED_MANIFEST = [
-    {"module": "app.plugins.builtin.file_ext", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.dir", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.archive", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.text_ext", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.net", "kind": "shipped-native"},
-    {"module": "app.plugins.builtin.exec_ext", "kind": "shipped-native"},
+# Re-exported for backward compatibility with callers that import these names
+# from ``app.plugins.loader`` (e.g. ``loader.SHIPPED_MANIFEST``).
+__all__ = [
+    "LoadedPlugin",
+    "PluginLoader",
+    "SHIPPED_MANIFEST",
+    "EXTENDED_MANIFEST",
+    "shipped_manifest_with_extensions",
+    "load_plugins",
+    "unmount_all",
+    "loaded",
 ]
 
 
@@ -108,130 +87,7 @@ class LoadedPlugin:
     added_module_keys: List[str] = field(default_factory=list)
 
 
-def _read_server_plugins() -> Optional[list]:
-    """Return the ``plugins`` list from ``server.config.json``, or None.
-
-    ``None`` means "no plugins section present" (file absent, malformed, or
-    no ``plugins`` key) — the caller then falls back to the next source.
-    """
-    source_path = get_env(
-        ENV_BT_SERVER_CONFIG, os.path.join(ROOT, "server.config.json")
-    )
-    resolved = resolve_path(source_path)
-    if not resolved or not os.path.exists(resolved):
-        return None
-    try:
-        with open(resolved, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception:
-        return None
-    if not isinstance(raw, dict):
-        return None
-    plugins = raw.get("plugins")
-    return plugins if isinstance(plugins, list) else None
-
-
-def _read_output_plugins() -> Optional[list]:
-    """Return the list from ``<output_dir>/plugins.json``, or None if absent."""
-    path = os.path.join(get_output_dir(), "plugins.json")
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception:
-        return None
-    return raw if isinstance(raw, list) else None
-
-
-def _read_server_atomic_extensions() -> list:
-    """Return the enabled extension module names from ``server.config.json``.
-
-    Reads ``tools.atomic_extensions`` — a list of extension module SHORT names
-    (``file_ext``, ``dir``, ``archive``, ``text_ext``, ``net``, ``exec_ext``)
-    or the string ``"*"`` meaning "all extensions".  An absent key, a missing/
-    malformed config file, or a non-list value all resolve to ``[]`` (no
-    extensions loaded — the lean core default).
-    """
-    source_path = get_env(
-        ENV_BT_SERVER_CONFIG, os.path.join(ROOT, "server.config.json")
-    )
-    resolved = resolve_path(source_path)
-    if not resolved or not os.path.exists(resolved):
-        return []
-    try:
-        with open(resolved, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception:
-        return []
-    if not isinstance(raw, dict):
-        return []
-    tools = raw.get("tools")
-    if not isinstance(tools, dict):
-        return []
-    extensions = tools.get("atomic_extensions")
-    if isinstance(extensions, str):
-        return ["*"] if extensions.strip() == "*" else (
-            [extensions.strip()] if extensions.strip() else []
-        )
-    if isinstance(extensions, list):
-        return [str(item).strip() for item in extensions if isinstance(item, str) and str(item).strip()]
-    return []
-
-
-def _selected_extended_manifest() -> list:
-    """Return the ``EXTENDED_MANIFEST`` entries selected by config.
-
-    ``"*"`` selects every extension module; otherwise each selected SHORT name
-    is matched against the final module component of an ``EXTENDED_MANIFEST``
-    entry (so ``file_ext`` → ``app.plugins.builtin.file_ext``).  Unknown names
-    are ignored.  Returns ``[]`` when nothing is selected (lean core).
-    """
-    selected = _read_server_atomic_extensions()
-    if not selected:
-        return []
-    by_short = {
-        entry["module"].rsplit(".", 1)[-1]: entry for entry in EXTENDED_MANIFEST
-    }
-    result = []
-    for short in selected:
-        if short == "*":
-            return list(EXTENDED_MANIFEST)
-        entry = by_short.get(short)
-        if entry is not None:
-            result.append(entry)
-    return result
-
-
-def shipped_manifest_with_extensions() -> list:
-    """Return the shipped-native manifest: core always, plus selected extensions.
-
-    Used by :meth:`app.tools.tool_manager.ToolManager._load_shipped_plugins`
-    so headless CLI + tests (which construct ``ToolManager`` without
-    ``cli/main.py`` bootstrap) load the same core + extension set the backend
-    would.
-    """
-    return SHIPPED_MANIFEST + _selected_extended_manifest()
-
-
-def _default_manifest() -> list:
-    """Resolve the implicit manifest: shipped-native first, then user plugins.
-
-    The shipped-native builtin plugins (:data:`SHIPPED_MANIFEST` plus any
-    enabled :data:`EXTENDED_MANIFEST` entries) always load first, in addition
-    to any user ``native`` plugins from config sources (``server.config.json``
-    ``plugins`` then ``<output_dir>/plugins.json``, first present wins — an
-    absent/empty user source contributes nothing).
-    """
-    user_plugins = _read_server_plugins()
-    if user_plugins is None:
-        user_plugins = _read_output_plugins()
-    if user_plugins is None:
-        user_plugins = []
-    return shipped_manifest_with_extensions() + user_plugins
-
-
-def _invoke_apply(apply, ctx, config) -> Any:
+def _invoke_apply(apply, ctx,  config) -> Any:
     """Call ``apply`` adapting to whether it declares a ``config`` parameter.
 
     Trusts ``inspect.signature`` when it yields a definitive answer; falls
@@ -306,7 +162,7 @@ class PluginLoader:
 
     def _resolve_manifest(self, manifest: Optional[list]) -> list:
         if manifest is None:
-            return _default_manifest()
+            return default_manifest()
         if not isinstance(manifest, list):
             logger.warning("plugin manifest is not a list; treating as empty")
             return []

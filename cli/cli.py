@@ -44,6 +44,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 # Shared bootstrap (dotenv + server config + logging); import it from main
 # rather than duplicating it here.
 from main import bootstrap
+from app.tools.result_normalizer import normalize_result
 
 
 # ------------------------------------------------------------------
@@ -79,7 +80,7 @@ def cmd_list_tools() -> int:
     rows: List[List[str]] = []
     tm = ToolManager.instance()
     for name, tool in tm.get_all_tools().items():
-        if tm._registry.get_kind(name) == "shipped-native":
+        if tm.get_kind(name) == "shipped-native":
             rows.append([name, "builtin", "yes", ""])
         else:
             tool_type = getattr(tool, "type", None) or type(tool).__name__
@@ -313,15 +314,8 @@ def cmd_tool(
                 )
                 return 1
 
-            success = result.get("success", True)
-            returncode = result.get("returncode", 0)
-            if success is False or returncode != 0:
-                detail = (
-                    result.get("stderr") or result.get("stdout") or ""
-                ).strip()
-                message = f"tool {name!r} failed (exit {returncode})"
-                if detail:
-                    message += f": {detail}"
+            ok, message = normalize_result(result, name)
+            if not ok:
                 print(f"error: {message}", file=sys.stderr)
                 return 1
         else:
@@ -390,7 +384,7 @@ def cmd_import_pack(path: str) -> int:
     """
     from app.tools.tool_manager import ToolManager
 
-    registry = ToolManager.instance()._registry
+    registry = ToolManager.instance().get_registry()
     report = registry.import_descriptor_dir(path)
 
     if "error" in report:
@@ -635,7 +629,7 @@ def cmd_run(
     Returns 0 on success, 1 on failure, 2 when the run was cancelled.
     """
     from app.workflow.engine import ExecutionContext, WorkflowEngine
-    from app.workflow.runner import _record_history
+    from app.workflow.runner import record_history
     from app.workflow.streaming import WorkflowStreamHandler
     from app.utils.task_log_writer import cleanup_task_log
 
@@ -678,7 +672,7 @@ def cmd_run(
             return 1
 
         # CLI runs are top-level runs too — record them (best-effort).
-        _record_history(
+        record_history(
             definition, {"path": target}, task_id, inputs, result,
             started_at, start,
         )

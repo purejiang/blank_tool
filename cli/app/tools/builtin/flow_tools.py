@@ -18,8 +18,7 @@ contract and a stdlib-only ``execute`` implementation:
 - ``flow.branch`` is the if/else primitive: a truthy ``condition`` runs
   ``true_template``, a falsy one runs ``false_template`` (optional; absent
   means no-op).  Branching is realized through sub-workflow composition (the
-  shared :func:`app.tools.builtin.workflow_tools._run_child_template`
-  helper).
+  shared :func:`app.tools.builtin.workflow_tools.run_child_template` helper).
 - ``flow.compare`` produces the booleans branches consume: ``{a, b, op}`` →
   ``{"result": bool}`` (numbers compare numerically, everything else as
   strings).
@@ -42,7 +41,7 @@ from app.common.exceptions import (
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.template.store import TemplateNotFoundError
-from app.tools.builtin.workflow_tools import _run_child_template
+from app.tools.builtin.workflow_tools import run_child_template
 from app.utils.task_log_writer import append_task_log
 from app.workflow.rundir import safe_slug
 
@@ -261,7 +260,7 @@ class FlowForeach(BuiltinTool):
 
         # ── resolve the template ONCE, before any item runs ───────────
         # An unknown template must fail fast instead of once per item; the
-        # cycle/depth guards stay in _run_child_template (per child).
+        # cycle/depth guards stay in run_child_template (per child).
         template_store = context.template_store
         if template_store is None:
             raise ToolException(
@@ -294,7 +293,7 @@ class FlowForeach(BuiltinTool):
             child_inputs[item_key] = item
 
             try:
-                child_result = _run_child_template(
+                child_result = run_child_template(
                     template_name,
                     child_inputs,
                     context,
@@ -386,7 +385,7 @@ class FlowBranch(BuiltinTool):
     ``false_template`` when given, otherwise the node is a successful no-op
     (``executed=False``) — which doubles as a "conditional skip".  The chosen
     template is executed inline through the shared
-    :func:`~app.tools.builtin.workflow_tools._run_child_template` helper, so
+    :func:`~app.tools.builtin.workflow_tools.run_child_template` helper, so
     recursion guards (cycle + ``MAX_NESTING_DEPTH``) and nested event paths
     behave exactly like ``workflow.run`` / ``flow.foreach``.
 
@@ -466,7 +465,7 @@ class FlowBranch(BuiltinTool):
 
         node_path_prefix = context.current_node_path or "unknown"
 
-        child_result = _run_child_template(
+        child_result = run_child_template(
             chosen, inputs.get("inputs") or {}, context, node_path_prefix
         )
 

@@ -231,3 +231,17 @@ export interface ApiMethodMap {
   'plugin.delete': { params: { module: string }; result: { plugins: PluginEntry[] } }
   'plugin.reload': { params: Record<string, never>; result: { ok: boolean } }
 }
+
+/**
+ * Extract a task id from a backend request params object.
+ *
+ * Mirrors the extraction order used by the Python backend
+ * (`cli/app/api_handler.py`) so the two sides stay in sync: a top-level
+ * `task_id`, then `options.task_id`, then `keystore.task_id`.
+ */
+export function extractTaskId(params: unknown): string {
+  const p = (params || {}) as Record<string, unknown>;
+  const options = (p.options || {}) as Record<string, unknown>;
+  const keystore = (p.keystore || {}) as Record<string, unknown>;
+  return String(p.task_id || options.task_id || keystore.task_id || '');
+}

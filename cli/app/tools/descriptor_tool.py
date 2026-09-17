@@ -28,7 +28,8 @@ from app.common.exceptions import ToolException
 from app.env.registry import EnvironmentRegistry
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import ToolContext
-from app.utils.env import get_java_bin, get_node_bin, get_python_bin, get_runtime_dir
+from app.utils.paths import get_runtime_dir
+from app.env import get_java_bin, get_node_bin, get_python_bin
 from app.utils.logger import Logger
 
 # platform.system() -> key in a per-platform tool path dict.
@@ -701,7 +702,7 @@ class DescriptorTool:
         """Return the interpreter binary for a script-type tool.
 
         Prefers the env_dep resolved through the registry, falling back to
-        the legacy ``app.utils.env`` helper (which delegates to the registry).
+        the legacy ``app.env`` helper (which delegates to the registry).
         """
         if dep_name:
             resolved = self._env_resolutions.get(dep_name)

@@ -45,6 +45,7 @@ from app.common.exceptions import (
 )
 from app.protocol import BaseType
 from app.tools.builtin.base import BuiltinTool, ToolContext
+from app.tools.result_normalizer import normalize_result
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.expression import ExpressionEngine, ExpressionError, WorkflowContext
@@ -703,16 +704,9 @@ class WorkflowEngine:
 
         # Descriptor/code tool result shape: {success, returncode, ...}
         if "success" in result and "returncode" in result:
-            success = result.get("success", True)
-            returncode = result.get("returncode", 0)
-            if success is False or returncode != 0:
-                detail = (
-                    result.get("stderr") or result.get("stdout") or ""
-                ).strip()
-                tool_name = getattr(tool, "name", type(tool).__name__)
-                message = f"tool {tool_name!r} failed (exit {returncode})"
-                if detail:
-                    message += f": {detail}"
+            tool_name = getattr(tool, "name", type(tool).__name__)
+            ok, message = normalize_result(result, tool_name)
+            if not ok:
                 return _NodeRun(outputs=result, error=message)
             return _NodeRun(outputs=result)
 

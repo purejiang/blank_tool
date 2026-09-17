@@ -2,8 +2,10 @@ import { ipcMain, WebContents, IpcMainInvokeEvent } from 'electron';
 import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
+import { extractTaskId } from '../../shared/ipc/protocol';
 import type { BackendApiRequest, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
 import { MAIN_BRIDGE_ERROR_CODES } from '../../shared/errors';
+import { isProcessWritable } from '../python/processWritable';
 
 interface CallbackInfo {
     resolve: (value: unknown) => void;
@@ -19,15 +21,6 @@ function isBackendResponse(message: unknown): message is BackendResponse {
     return typeof (message as BackendResponse)?.id !== 'undefined';
 }
 
-// Mirrors cli/app/api_handler.py stream_handler task_id extraction order
-// (params.task_id → params.options.task_id → params.keystore.task_id).
-function extractTaskId(params: unknown): string {
-    const p = (params || {}) as Record<string, unknown>;
-    const options = (p.options || {}) as Record<string, unknown>;
-    const keystore = (p.keystore || {}) as Record<string, unknown>;
-    return String(p.task_id || options.task_id || keystore.task_id || '');
-}
-
 export const createErrorResponse = (message: string, code: number = MAIN_BRIDGE_ERROR_CODES.INTERNAL_ERROR) => ({
     type: 'error' as const,
     payload: { code, message }
@@ -40,22 +33,6 @@ export function setupCommandHandlers(
 ): void {
     const requestCallbacks = new Map<string, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
-
-    // Local copy of the process-writability check (duplicated in service.ts as
-    // isProcessWritable): keeping it inline avoids importing service.ts here,
-    // which would drag electron-store into this module and break the vitest
-    // unit tests that import commandHandlers under a minimal electron mock.
-    const isBackendWritable = (pythonProcess: ChildProcessWithoutNullStreams | null): boolean => {
-        return Boolean(
-            pythonProcess &&
-            !pythonProcess.killed &&
-            pythonProcess.exitCode === null &&
-            pythonProcess.stdin &&
-            !pythonProcess.stdin.destroyed &&
-            !pythonProcess.stdin.writableEnded &&
-            pythonProcess.stdin.writable
-        );
-    };
 
     const clearTimer = (callbackInfo: CallbackInfo) => {
         if (callbackInfo.timer) {
@@ -176,13 +153,13 @@ export function setupCommandHandlers(
     const getWritableProcess = async (): Promise<ChildProcessWithoutNullStreams | null> => {
         const current = getPythonProcess();
         bindProcess(current);
-        if (isBackendWritable(current)) {
+        if (isProcessWritable(current)) {
             return current;
         }
         if (ensurePythonProcess) {
             const ensured = await ensurePythonProcess();
             bindProcess(ensured);
-            if (isBackendWritable(ensured)) {
+            if (isProcessWritable(ensured)) {
                 return ensured;
             }
         }

@@ -22,7 +22,7 @@ where relative input paths resolve.
 import os
 import re
 
-from app.utils.env import get_output_dir
+from app.env import get_output_dir
 
 #: Characters kept when turning a run id into a directory name.
 _UNSAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9_-]+")

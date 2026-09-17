@@ -6,7 +6,7 @@ System info, build info, and app info handlers.
 
 from app.common.decorators import logs_errors
 from app.utils.logger import Logger
-from app.utils.env import ENV_APP_VERSION
+from app.env import ENV_APP_VERSION
 
 logger = Logger.get_logger("AppHandler")
 
@@ -76,7 +76,7 @@ def system_info(params, stream_handler):
 def build_info(params, stream_handler):
     import sys
     import subprocess
-    from app.utils.env import get_python_bin, get_java_bin
+    from app.env import get_python_bin, get_java_bin
 
     python_bin = get_python_bin()
     python_version = "Unknown"
@@ -119,7 +119,7 @@ def build_info(params, stream_handler):
 
 @logs_errors("AppHandler")
 def app_info(params, stream_handler):
-    from app.utils.env import get_env
+    from app.env import get_env
     version = get_env(ENV_APP_VERSION, "")
     return {"version": version}
 

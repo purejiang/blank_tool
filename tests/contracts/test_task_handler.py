@@ -16,7 +16,7 @@ import tempfile
 import pytest
 
 from app.handlers.task_handler import handle_delete_output, handle_read_log, handle_append_log, handle_delete_task_dir
-from app.utils.env import get_output_dir
+from app.env import get_output_dir
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ def test_empty_path_skipped(output_dir):
 
 
 def test_read_log_returns_content():
-    from app.utils.env import get_task_dir
+    from app.env import get_task_dir
     task_dir = get_task_dir("ct_read_test")
     logs_dir = os.path.join(task_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
@@ -118,7 +118,7 @@ def test_read_log_missing_task_returns_empty():
 
 
 def test_read_log_truncates_large_file():
-    from app.utils.env import get_task_dir
+    from app.env import get_task_dir
     task_dir = get_task_dir("ct_trunc_test")
     logs_dir = os.path.join(task_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
@@ -138,7 +138,7 @@ def test_read_log_truncates_large_file():
 
 
 def test_read_log_returns_log_path():
-    from app.utils.env import get_task_dir
+    from app.env import get_task_dir
 
     task_dir = get_task_dir("ct_logpath_test")
     logs_dir = os.path.join(task_dir, "logs")
@@ -167,7 +167,7 @@ def test_read_log_returns_log_path():
 
 
 def test_delete_task_dir_removes_tree():
-    from app.utils.env import get_task_dir
+    from app.env import get_task_dir
     task_dir = get_task_dir("ct_delete_test")
     # Create a file inside the task dir.
     with open(os.path.join(task_dir, "dummy.txt"), "w", encoding="utf-8") as f:
@@ -240,7 +240,7 @@ def test_delete_task_dir_rejects_path_outside_tasks_root(monkeypatch):
 
 def test_append_log_writes_to_file():
     """Calling handle_append_log buffers the line; flushing creates the file."""
-    from app.utils.env import get_task_dir
+    from app.env import get_task_dir
     from app.utils.task_log_writer import flush_task_log
     task_dir = get_task_dir("ct_append_test")
     logs_dir = os.path.join(task_dir, "logs")

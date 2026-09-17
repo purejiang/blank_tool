@@ -87,7 +87,7 @@ export const TOOL_DRAG_MIME = 'application/vnd.blanktool.workflow-tool'
 
 /**
  * Map a dotted tool name to its display category.
- * "file.read" → file, "net.download" → net, "shell.exec"/"code.exec" → exec,
+ * "file.read" → file, "net.download" → net, "exec.shell"/"exec.code" → exec,
  * "flow.assert" → flow, anything else (descriptor tools, ...) → tool.
  */
 const CATEGORY_BY_PREFIX: Record<string, ToolCategory> = {
@@ -96,8 +96,6 @@ const CATEGORY_BY_PREFIX: Record<string, ToolCategory> = {
   text: 'file',
   archive: 'file',
   net: 'net',
-  shell: 'exec',
-  code: 'exec',
   exec: 'exec',
   flow: 'flow',
 }

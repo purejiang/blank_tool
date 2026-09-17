@@ -15,7 +15,7 @@ import os
 import sys
 import threading
 
-from app.utils.env import get_task_subdir
+from app.env import get_task_subdir
 
 #: Upper bound before truncation kicks in (bytes).
 _SIZE_CAP = 50 * 1024 * 1024

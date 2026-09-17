@@ -8,7 +8,7 @@ A plugin-lifetime object (distinct from the per-execution
 services a plugin may touch:
 
 * ``tools``  — the unified tool registry (the process-wide
-  ``ToolManager.instance()._registry`` singleton, NOT a fresh
+  ``ToolManager.instance().get_registry()`` singleton, NOT a fresh
   :class:`ToolRegistry` — the workflow engine reads the same registry, so a
   fresh instance would be a "ghost registry" the engine never sees).
 * ``env``    — the process-wide environment registry
@@ -29,7 +29,7 @@ class PluginContext:
 
     Attributes:
         tools: The shared :class:`ToolRegistry` (bound to the singleton
-            ``ToolManager.instance()._registry``).
+            ``ToolManager.instance().get_registry()``).
         env: The process-wide :class:`EnvironmentRegistry`.
     """
 
@@ -37,7 +37,7 @@ class PluginContext:
         # CRITICAL: bind the shared singleton, never a fresh ToolRegistry().
         # The engine constructs at engine.py:161 via ToolManager.instance(),
         # so plugins MUST write into this same registry to be seen by it.
-        self.tools = ToolManager.instance()._registry
+        self.tools = ToolManager.instance().get_registry()
         self.env = get_env_registry()
 
     def register_tool(self, tool: Any, kind: str = "native") -> Any:

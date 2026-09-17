@@ -47,7 +47,7 @@ _JSON = TypeAnnotation(BaseType.JSON)
 MAX_NESTING_DEPTH = 10
 
 
-def _run_child_template(
+def run_child_template(
     template_name,
     child_inputs,
     context,
@@ -228,7 +228,7 @@ class WorkflowRun(BuiltinTool):
 
         node_path_prefix = context.current_node_path or "unknown"
 
-        child_result = _run_child_template(
+        child_result = run_child_template(
             template_name, child_workflow_inputs, context, node_path_prefix
         )
 

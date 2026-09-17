@@ -115,7 +115,7 @@ Python Backend (cli/main.py)
 ### 配置与路径
 
 - **应用配置**：主进程用 `electron-store`（`src/main/stores/appStore.ts`），带 JSON schema 校验和版本化迁移。渲染层通过 `window.electronAPI.appConfig.get/set/getAll` 访问。
-- **后端配置**：`cli/.env`（实际只有 `APP_VERSION`、`PROJECT_NAME`）+ `cli/server.config.json`（从 `server.config.example.json` 拷贝），由 `app/utils/env.py` 加载。关键 env：`BT_RUNTIME_DIR`、`BT_CACHE_DIR`、`BT_OUTPUT_DIR`、`BT_JAVA_BIN`、`BT_LOG_LEVEL`。**`server.config.json` 里的路径是相对于 `cli/` 目录的**（如 `../cache`）。
+- **后端配置**：`cli/.env`（实际只有 `APP_VERSION`、`PROJECT_NAME`）+ `cli/server.config.json`（从 `server.config.example.json` 拷贝），由 `app/env/__init__.py`（`app.env` 包）加载；纯路径助手（`resolve_path` / `get_runtime_dir` / `ROOT`）在 `app/utils/paths.py`。关键 env：`BT_RUNTIME_DIR`、`BT_CACHE_DIR`、`BT_OUTPUT_DIR`、`BT_JAVA_BIN`、`BT_LOG_LEVEL`。**`server.config.json` 里的路径是相对于 `cli/` 目录的**（如 `../cache`）。
 - **共享路径配置**：`src/shared/config/pathConfig.ts` 定义 `PATH_CONFIG_DEFAULTS`、`APP_CONFIG_KEYS`，主进程和渲染层都用它。
 - **共享 IPC 通道名**：`src/shared/ipc/channels.ts` 集中定义所有 IPC 通道字符串。**改通道名必须同步 `tests/shared-contracts.test.mjs`**，否则契约测试会挂。
 
@@ -132,7 +132,7 @@ Python Backend (cli/main.py)
 
 ### 安全边界（Security boundary / trust model）
 
-`src/preload/index.ts` 经 contextBridge 暴露 `callBackendAPI(method, params)`，**无方法白名单**：渲染层可请求任意后端 method，主进程原样转发。任何渲染层侧失守（npm 供应链投毒、XSS）都等于任意后端命令执行；且 `cli/app/tools/builtin/exec_tools.py` 内置 `shell.exec`（:85）与 `code.exec`（:206），可直接执行任意 shell / Python，即 RCE。**这是有意的取舍**：本应用是自用桌面工具，用户信任自己的机器，行为等效于本地终端；但**不可分发给不信任的用户**。若未来要分发，硬化路径：contextBridge 加方法白名单、渲染层启用 sandbox、后端加参数校验层。
+`src/preload/index.ts` 经 contextBridge 暴露 `callBackendAPI(method, params)`，**无方法白名单**：渲染层可请求任意后端 method，主进程原样转发。任何渲染层侧失守（npm 供应链投毒、XSS）都等于任意后端命令执行；且 `cli/app/tools/builtin/exec_tools.py` 内置 `exec.shell`（:85）与 `exec.code`（:206），可直接执行任意 shell / Python，即 RCE。**这是有意的取舍**：本应用是自用桌面工具，用户信任自己的机器，行为等效于本地终端；但**不可分发给不信任的用户**。若未来要分发，硬化路径：contextBridge 加方法白名单、渲染层启用 sandbox、后端加参数校验层。
 
 
 ## 发版流程

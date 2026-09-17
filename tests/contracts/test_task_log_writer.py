@@ -60,7 +60,7 @@ class TestAppendCreatesFile:
 
     def test_append_creates_file(self, task_id):
         from app.utils.task_log_writer import append_task_log, flush_task_log
-        from app.utils.env import get_task_subdir
+        from app.env import get_task_subdir
 
         log_path = os.path.join(get_task_subdir(task_id, "logs"), "task_exec.log")
 
@@ -86,7 +86,7 @@ class TestAppendConcurrentSafe:
 
     def test_append_concurrent_safe(self, task_id):
         from app.utils.task_log_writer import append_task_log, flush_task_log
-        from app.utils.env import get_task_subdir
+        from app.env import get_task_subdir
 
         log_path = os.path.join(get_task_subdir(task_id, "logs"), "task_exec.log")
         if os.path.exists(log_path):
@@ -136,7 +136,7 @@ class TestAppendTruncatesOver50mb:
 
     def test_append_truncates_over_50mb(self, task_id):
         from app.utils.task_log_writer import append_task_log, flush_task_log
-        from app.utils.env import get_task_subdir
+        from app.env import get_task_subdir
 
         log_path = os.path.join(get_task_subdir(task_id, "logs"), "task_exec.log")
         if os.path.exists(log_path):

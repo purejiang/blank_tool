@@ -9,7 +9,7 @@ environment is (as data), :class:`EnvironmentRegistry` decides *where* it
 actually lives on this machine.
 
 Resolution follows the exact priority used by the legacy hardcoded
-``app.utils.env`` helpers (behaviour parity):
+``app.env`` helpers (behaviour parity):
 
 1. ``env_var_override`` from the descriptor (e.g. ``BT_JAVA_BIN``), when the
    variable is set and the path exists;
@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from app.env.descriptor import EnvironmentDescriptor
+from app.utils.paths import resolve_path, get_runtime_dir
 
 logger = logging.getLogger(__name__)
 
@@ -78,40 +79,6 @@ class ResolvedEnvironment:
     is_valid: bool
 
 
-def _resolve_path(path_str: str) -> str:
-    """Resolve *path_str* to an absolute path (relative paths anchor to cli/).
-
-    Intentionally duplicated as :func:`app.utils.env.resolve_path`: that
-    module imports this one at the top, so this module cannot import back
-    (that would be a cycle).  Keep the two in sync.
-    """
-    if not path_str:
-        return ""
-    if os.path.isabs(path_str):
-        return os.path.normpath(path_str)
-    return os.path.normpath(os.path.join(str(_CLI_ROOT), path_str))
-
-
-def _runtime_dir() -> str:
-    """
-    Return the runtime base directory, mirroring ``app.utils.env.get_runtime_dir``.
-
-    Priority: ``BT_RUNTIME_DIR`` env var (resolved against cli/), then
-    ``cli/runtime``, then the project-root ``runtime/``. Implemented
-    locally to avoid an import cycle with ``app.utils.env``.
-    """
-    override = os.environ.get("BT_RUNTIME_DIR")
-    if override:
-        return _resolve_path(override)
-    local = _CLI_ROOT / "runtime"
-    if local.is_dir():
-        return str(local)
-    up = _CLI_ROOT.parent / "runtime"
-    if up.is_dir():
-        return str(up)
-    return ""
-
-
 class EnvironmentRegistry:
     """
     Loads environment descriptors and resolves them to concrete paths.
@@ -128,7 +95,7 @@ class EnvironmentRegistry:
             overlay_dir: root of the writable registry overlay directory.
                 When omitted, resolves to ``<output_dir>/registry`` at
                 :meth:`discover` time (lazy, to avoid import-time cycle
-                with ``app.utils.env``).
+                with ``app.env``).
         """
         self._descriptors: Dict[str, EnvironmentDescriptor] = {}
         self._cache: Dict[str, ResolvedEnvironment] = {}
@@ -168,7 +135,7 @@ class EnvironmentRegistry:
         else:
             # Best-effort default: use get_output_dir()/registry/environments
             try:
-                from app.utils.env import get_output_dir  # lazy import
+                from app.env import get_output_dir  # lazy import
                 overlay_env_dir = Path(get_output_dir()) / "registry" / "environments"
             except Exception:
                 overlay_env_dir = None
@@ -256,7 +223,7 @@ class EnvironmentRegistry:
         if self._overlay_dir:
             return Path(self._overlay_dir) / "environments"
         try:
-            from app.utils.env import get_output_dir  # lazy import
+            from app.env import get_output_dir  # lazy import
             return Path(get_output_dir()) / "registry" / "environments"
         except Exception:
             return None
@@ -353,7 +320,7 @@ class EnvironmentRegistry:
 # All consumers share ONE EnvironmentRegistry so descriptor CRUD from any
 # handler is visible everywhere. Initialized WITH the writable overlay
 # (``<output_dir>/registry``) — a safe superset: callers that only read
-# (tool_manager, app.utils.env) are unaffected and simply gain a writable
+# (tool_manager, app.env) are unaffected and simply gain a writable
 # overlay.
 # ------------------------------------------------------------------
 
@@ -368,7 +335,7 @@ def get_env_registry() -> "EnvironmentRegistry":
     if _default_registry is None:
         with _default_registry_lock:
             if _default_registry is None:
-                from app.utils.env import get_output_dir  # lazy import
+                from app.env import get_output_dir  # lazy import
 
                 registry = EnvironmentRegistry(
                     overlay_dir=os.path.join(get_output_dir(), "registry")
@@ -390,13 +357,13 @@ def _find_binary(descriptor: EnvironmentDescriptor) -> Tuple[str, str]:
     if descriptor.env_var_override:
         raw = os.environ.get(descriptor.env_var_override)
         if raw:
-            override = _resolve_path(raw)
+            override = resolve_path(raw)
             if os.path.isfile(override):
                 return override, os.path.dirname(override)
 
     # Level 2: bundled runtimes under the runtime directory.
     if descriptor.search_paths:
-        runtime_dir = _runtime_dir()
+        runtime_dir = get_runtime_dir()
         if runtime_dir:
             for search_path in descriptor.search_paths:
                 root = os.path.join(runtime_dir, search_path)

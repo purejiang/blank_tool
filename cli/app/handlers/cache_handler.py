@@ -13,7 +13,7 @@ import os
 import shutil
 
 from app.utils.logger import Logger
-from app.utils.env import get_output_dir, get_tasks_root
+from app.env import get_output_dir, get_tasks_root
 from app.common.exceptions import ToolException
 from app.common.decorators import logs_errors
 

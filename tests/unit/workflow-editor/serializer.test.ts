@@ -168,7 +168,7 @@ describe('deserializeWorkflow', () => {
 
   it('preserves non-default advanced node fields for roundtrip fidelity', () => {
     const nodes = [
-      makeNode('a', 'shell.exec', {
+      makeNode('a', 'exec.shell', {
         on_failure: 'skip',
         retry: 2,
         condition: 'inputs.skip != true',

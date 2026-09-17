@@ -116,7 +116,7 @@ def test_fixture_uses_only_builtin_tools(name):
     for node in _load(name).nodes:
         tool = registry.get_tool(node.tool)
         assert tool is not None, f"{name}: unknown tool {node.tool!r}"
-        assert registry._registry.get_kind(node.tool) == "shipped-native", (
+        assert registry.get_kind(node.tool) == "shipped-native", (
             f"{name}: {node.tool!r} is not a shipped builtin"
         )
 

@@ -11,14 +11,14 @@ import tempfile
 
 import pytest
 
-from app.utils.env import get_task_dir, get_task_subdir, get_tasks_root
+from app.env import get_task_dir, get_task_subdir, get_tasks_root
 
 
 @pytest.fixture
 def temp_cache(monkeypatch):
     """Redirect ``get_cache_dir()`` to a temp directory; clean up after."""
     tmp = tempfile.mkdtemp(prefix="ct_task_paths_")
-    monkeypatch.setattr("app.utils.env.get_cache_dir", lambda: tmp)
+    monkeypatch.setattr("app.env.get_cache_dir", lambda: tmp)
     yield tmp
     shutil.rmtree(tmp, ignore_errors=True)
 

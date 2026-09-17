@@ -11,7 +11,7 @@ from app.common.decorators import logs_errors
 from app.common.exceptions import ToolException
 from app.plugins import loader
 from app.plugins.context import PluginContext
-from app.utils.env import get_output_dir
+from app.env import get_output_dir
 from app.utils.logger import Logger
 
 logger = Logger.get_logger("PluginHandler")

@@ -8,7 +8,7 @@ resolving any actual path. Path resolution is the registry's job
 (``app.env.registry.EnvironmentRegistry``).
 
 This module replaces the hardcoded ``get_java_bin()`` / ``get_python_bin()`` /
-``get_node_bin()`` functions in ``app.utils.env`` by encoding the same
+``get_node_bin()`` functions in ``app.env`` by encoding the same
 resolution parameters (search paths, version commands, env var overrides) as
 data.
 """

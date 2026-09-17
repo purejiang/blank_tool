@@ -559,17 +559,17 @@ def test_net_request_connection_refused_returns_error(tmp_path, refused_url):
 
 
 # ---------------------------------------------------------------------------
-# shell.exec
+# exec.shell
 # ---------------------------------------------------------------------------
 
-def test_shell_exec_echo_returns_stdout(tmp_path):
+def test_exec_shell_echo_returns_stdout(tmp_path):
     result = ShellExec().execute({"command": "echo hello from shell"}, _ctx(tmp_path))
     assert result["success"] is True
     assert result["returncode"] == 0
     assert "hello from shell" in result["stdout"]
 
 
-def test_shell_exec_nonzero_exit_returns_actual_returncode(tmp_path):
+def test_exec_shell_nonzero_exit_returns_actual_returncode(tmp_path):
     result = ShellExec().execute(
         {"command": _python_cmd("import sys; sys.exit(3)")}, _ctx(tmp_path)
     )
@@ -577,7 +577,7 @@ def test_shell_exec_nonzero_exit_returns_actual_returncode(tmp_path):
     assert result["returncode"] == 3
 
 
-def test_shell_exec_timeout_returns_error_shape(tmp_path):
+def test_exec_shell_timeout_returns_error_shape(tmp_path):
     # sleep(2) with timeout=1: the process cannot finish within the timeout,
     # so the timeout path is deterministic (1s < 2s), and the post-kill pipe
     # drain (which on Windows waits for the child to exit) stays short.
@@ -591,10 +591,10 @@ def test_shell_exec_timeout_returns_error_shape(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# code.exec
+# exec.code
 # ---------------------------------------------------------------------------
 
-def test_code_exec_multiplies_inputs(tmp_path):
+def test_exec_code_multiplies_inputs(tmp_path):
     result = CodeExec().execute(
         {"code": 'result = inputs["x"] * 2', "inputs": {"x": 21}}, _ctx(tmp_path)
     )
@@ -602,13 +602,13 @@ def test_code_exec_multiplies_inputs(tmp_path):
     assert result["result"] == 42
 
 
-def test_code_exec_syntax_error_returns_failure_with_traceback(tmp_path):
+def test_exec_code_syntax_error_returns_failure_with_traceback(tmp_path):
     result = CodeExec().execute({"code": "def broken(:"}, _ctx(tmp_path))
     assert result["success"] is False
     assert "SyntaxError" in result["stderr"]
 
 
-def test_code_exec_unsupported_language_raises(tmp_path):
+def test_exec_code_unsupported_language_raises(tmp_path):
     with pytest.raises(NotImplementedError, match="python"):
         CodeExec().execute(
             {"code": "x = 1", "language": "javascript"}, _ctx(tmp_path)
