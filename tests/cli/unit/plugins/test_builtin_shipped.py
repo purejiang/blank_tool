@@ -17,6 +17,26 @@ from app.plugins.loader import (
     load_plugins,
     shipped_manifest_with_extensions,
 )
+from app.tools.tool_manager import ToolRegistry
+
+
+class _IsolatedContext:
+    """A plugin context bound to a FRESH registry.
+
+    The real :class:`PluginContext` deliberately binds the process-wide
+    ``ToolManager`` registry, so registering the opt-in EXTENDED manifest
+    through it would leak those tools into every later test in the same
+    process (the contract test asserting "the shipped-native surface is
+    exactly the 10 core primitives" then fails).  These registration tests
+    only care about the manifest → registry mapping, so they use their own
+    registry.
+    """
+
+    def __init__(self) -> None:
+        self.tools = ToolRegistry()
+
+    def register_tool(self, tool, kind: str = "native"):
+        return self.tools.register_plugin_tool(tool.name, tool, kind)
 
 #: The 10 CORE primitive names, grouped by module.
 CORE_NAMES = [
@@ -70,7 +90,7 @@ def test_extended_manifest_is_6_modules():
 
 
 def test_all_10_core_registered_as_shipped_native():
-    ctx = PluginContext()
+    ctx = _IsolatedContext()
     load_plugins(ctx, manifest=SHIPPED_MANIFEST)
     for name in CORE_NAMES:
         assert name in ctx.tools.list_all(), f"{name!r} missing from list_all()"
@@ -80,7 +100,7 @@ def test_all_10_core_registered_as_shipped_native():
 
 
 def test_all_13_extended_registered_as_shipped_native():
-    ctx = PluginContext()
+    ctx = _IsolatedContext()
     load_plugins(ctx, manifest=EXTENDED_MANIFEST)
     for name in EXTENDED_NAMES:
         assert name in ctx.tools.list_all(), f"{name!r} missing from list_all()"
@@ -91,7 +111,7 @@ def test_all_13_extended_registered_as_shipped_native():
 
 def test_reload_is_idempotent():
     """Re-running apply on resident shipped-native tools must not raise."""
-    ctx = PluginContext()
+    ctx = _IsolatedContext()
     load_plugins(ctx, manifest=SHIPPED_MANIFEST)
     # Second load re-runs every apply() against the already-resident
     # shipped-native tools; _register must skip them (reviewer rule R2).
