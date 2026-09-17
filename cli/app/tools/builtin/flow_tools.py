@@ -33,7 +33,6 @@ branch failure.
 import json
 import logging
 import os
-import re
 
 from app.common.exceptions import (
     NonRetryableToolError,
@@ -45,6 +44,7 @@ from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.template.store import TemplateNotFoundError
 from app.tools.builtin.workflow_tools import _run_child_template
 from app.utils.task_log_writer import append_task_log
+from app.workflow.rundir import safe_slug
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +58,6 @@ _VALID_LEVELS = frozenset({"debug", "info", "warning", "error", "critical"})
 
 #: Default message used when a flow.assert failure carries no explicit one.
 _DEFAULT_ASSERT_MESSAGE = "Assertion failed"
-
-#: Characters kept when turning a run id into a file-name fragment.
-_UNSAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9_-]+")
-
-
-def _safe_slug(value: str) -> str:
-    """Return *value* reduced to characters that are safe in a file name."""
-    slug = _UNSAFE_SLUG_RE.sub("_", str(value or ""))
-    return slug.strip("_") or "run"
 
 
 class FlowAssert(BuiltinTool):
@@ -158,6 +149,9 @@ class FlowForeach(BuiltinTool):
 
     Cancellation stops the loop immediately (``WorkflowCancelled``) instead of
     being recorded as one failed item per remaining entry.
+
+    The per-item ``results_file`` is written into the run's artifact directory
+    (``$rundir``), never into the workflow's own directory.
     """
 
     name = "flow.foreach"
@@ -214,7 +208,7 @@ class FlowForeach(BuiltinTool):
                 "results_file",
                 _TEXT,
                 required=False,
-                description="Path to a JSON file the loop wrote (results + summary), for subprocess consumers that cannot receive structured data via args_map.",
+                description="Path to a JSON file the loop wrote (results + summary) in the run's artifact directory ($rundir), for subprocess consumers that cannot receive structured data via args_map.",
             ),
         ],
     )
@@ -345,16 +339,18 @@ class FlowForeach(BuiltinTool):
         # Structured ``results`` cannot cross the subprocess boundary via
         # ``args_map`` (values are ``str()``-ified, not JSON-serialized), so
         # the loop also writes them to a JSON file and exposes its path.  The
+        # file goes into the RUN's artifact directory (never the workflow's own
+        # directory, which may be a source tree or the template store), and its
         # name carries the run id and the node path so concurrent runs (or two
         # same-named nodes in different workflows) cannot overwrite each other.
         results_file = ""
         try:
-            work_dir = context.work_dir or "."
-            os.makedirs(work_dir, exist_ok=True)
-            run_slug = _safe_slug(context.run_id or context.task_id or "run")
-            node_slug = _safe_slug(node_path)
+            target_dir = context.run_dir or context.work_dir or "."
+            os.makedirs(target_dir, exist_ok=True)
+            run_slug = safe_slug(context.run_id or context.task_id or "run")
+            node_slug = safe_slug(node_path)
             results_file = os.path.join(
-                work_dir, f"foreach_{run_slug}_{node_slug}.json"
+                target_dir, f"foreach_{run_slug}_{node_slug}.json"
             )
             with open(results_file, "w", encoding="utf-8") as f:
                 json.dump(

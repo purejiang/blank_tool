@@ -124,11 +124,16 @@ class ExecutionContext:
             node paths are prefixed with it (empty for a top-level run).
         current_node_path: run-root-relative path of the node being executed;
             set by the engine loop before each node runs.
+        run_dir: per-run artifact directory (``<output_dir>/runs/<run_id>``),
+            created once at the top of ``execute()`` and inherited unchanged by
+            nested executions.  Exposed to params as ``$rundir``; engines never
+            write run artifacts into ``work_dir``.
     """
 
     work_dir: str
     task_id: Optional[str] = None
     run_id: Optional[str] = None
+    run_dir: Optional[str] = None
     env: Dict[str, str] = field(default_factory=dict)
     stream_handler: Optional[Callable[[dict], None]] = None
     workflow_stream: Optional[WorkflowStreamHandler] = None
@@ -240,12 +245,15 @@ class WorkflowEngine:
             context.template_store = self._make_template_store()
         if context.engine is None:
             context.engine = self
+        if context.run_dir is None:
+            context.run_dir = self._prepare_run_dir(context)
 
         workflow_context = WorkflowContext(
             inputs=dict(inputs),
             nodes={},
             env=dict(context.env),
             workdir=context.work_dir,
+            rundir=context.run_dir or "",
         )
         node_results: Dict[str, Dict[str, Any]] = {}
         node_by_id: Dict[str, WorkflowNode] = {
@@ -383,6 +391,24 @@ class WorkflowEngine:
                 exc,
             )
             return None
+
+    @staticmethod
+    def _prepare_run_dir(context: ExecutionContext) -> str:
+        """Create (once per run) the artifact directory for this run.
+
+        Returns ``""`` when the directory cannot be prepared — an unwritable
+        output dir must not fail the run; ``$rundir`` then resolves to an empty
+        string and tools fall back to their own behaviour.
+        """
+        try:
+            from app.workflow.rundir import run_dir_for
+
+            return run_dir_for(context.cancel_key() or "adhoc")
+        except Exception as exc:
+            logger.warning(
+                "run artifact dir unavailable (%s); $rundir is empty", exc
+            )
+            return ""
 
     def _cancel_result(
         self,
@@ -639,6 +665,7 @@ class WorkflowEngine:
             work_dir=context.work_dir,
             task_id=context.task_id,
             run_id=context.run_id,
+            run_dir=context.run_dir or "",
             env=dict(context.env),
             stream_handler=_instrument_stream_handler(
                 context.stream_handler,

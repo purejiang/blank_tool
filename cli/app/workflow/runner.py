@@ -32,7 +32,9 @@ from app.workflow.streaming import WorkflowStreamHandler
 logger = logging.getLogger(__name__)
 
 
-def run_workflow(definition, params, stream_handler, task_id, run_id=None):
+def run_workflow(
+    definition, params, stream_handler, task_id, run_id=None, source_dir=None
+):
     """Run a workflow definition, returning the standard result dict.
 
     Params:
@@ -43,6 +45,11 @@ def run_workflow(definition, params, stream_handler, task_id, run_id=None):
         run_id: optional run identifier (the IPC request id) — the
             cancellation key and the ``run_id`` on streamed events.  Falls
             back to ``task_id`` when absent.
+        source_dir: directory the definition came from (the workflow file's
+            folder, or the template store's folder).  Used as the run's
+            working directory when the caller did not pass ``work_dir``, so
+            relative paths and produced artifacts stay next to the workflow
+            instead of landing in the process CWD.
 
     Returns:
         ``{"success", "status", "cancelled", "outputs", "node_results",
@@ -69,7 +76,9 @@ def run_workflow(definition, params, stream_handler, task_id, run_id=None):
         )
 
     context = ExecutionContext(
-        work_dir=params.get("work_dir", "."),
+        # An explicit work_dir always wins; otherwise the workflow's own
+        # directory is used so artifacts never land in the process CWD.
+        work_dir=params.get("work_dir") or source_dir or ".",
         task_id=task_id,
         run_id=identity,
         stream_handler=stream_handler,

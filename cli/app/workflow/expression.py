@@ -1,29 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Workflow expression engine (MVP).
+Workflow expression engine.
 
-Resolves ``$``-prefixed dot-notation references inside workflow templates
-(e.g. ``$inputs.aab_path``, ``$nodes.convert.outputs.apks_path``) to concrete
-values drawn from a :class:`WorkflowContext`, optionally piped through a
-small fixed set of built-in transforms (``basename``, ``dirname``,
-``default:<value>``).
+Resolves ``$``-prefixed references inside workflow params.  Two forms exist:
 
-MVP scope (Metis #6):
-    Dot-notation substitution only.  No conditionals, no loops, no arithmetic,
-    no external template libraries, no evaluated Python expressions.
+Whole-value expression
+    A string that starts with ``$`` and is ONE expression, e.g.
+    ``"$inputs.aab_path"`` or ``"$nodes.convert.outputs.apks_path |
+    basename"``.  The resolved value keeps its own type (a number stays a
+    number, a dict stays a dict), which is what binding a value to a typed
+    port needs.  ``$$`` at the start escapes to a literal ``$``.
+
+Interpolation
+    Any string containing ``${...}`` substitutes each occurrence, e.g.
+    ``"found ${nodes.scan.outputs.count} matches in ${inputs.target}"``.
+    A string that is exactly one ``${...}`` (nothing around it) keeps the
+    expression's own type, so ``"${inputs.count}"`` behaves like
+    ``"$inputs.count"``.  Inside surrounding text the value is rendered as
+    text: strings as-is, ``true``/``false`` for booleans, an empty string for
+    ``null``, and compact JSON for objects/arrays.  Write ``$${`` for a
+    literal ``${`` (needed for shell snippets such as ``${HOME}``).
+
+    Every expression — whole-value or interpolated — supports the same
+    dot-notation paths and pipes (``basename``, ``dirname``,
+    ``default:<value>``) and the same security rules; see below.
 
 Security model (Oracle review #8):
     The engine NEVER uses ``getattr``, ``eval`` or ``exec``.  All user-
     controlled traversal is dict access (``mapping[key]``) starting from a
-    FIXED dispatch table that maps the four context roots (``inputs``,
-    ``nodes``, ``env``, ``workdir``) to their resolver functions — an unknown
-    root is an error, never an attribute probe.  Every path component matching
-    ``^_`` (dunder / private names) is rejected with :class:`ExpressionError`.
-    Pipe transforms likewise dispatch through a FIXED table; an unknown pipe
-    name raises :class:`ExpressionError` rather than dispatching dynamically.
+    FIXED dispatch table that maps the five context roots (``inputs``,
+    ``nodes``, ``env``, ``workdir``, ``rundir``) to their resolver functions —
+    an unknown root is an error, never an attribute probe.  Every path
+    component matching ``^_`` (dunder / private names) is rejected with
+    :class:`ExpressionError`.  Pipe transforms likewise dispatch through a
+    FIXED table; an unknown pipe name raises :class:`ExpressionError` rather
+    than dispatching dynamically.
 """
 
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -34,6 +49,23 @@ _DUNDER_RE = re.compile(r"^_")
 
 # Fixed set of node result sections reachable through ``$nodes.<id>.<section>``.
 _NODE_SECTIONS = frozenset({"outputs", "params"})
+
+#: Interpolation markers.
+_INTERP_OPEN = "${"
+_ESCAPED_INTERP_OPEN = "$${"
+
+
+def _to_text(value: Any) -> str:
+    """Render a resolved value as text for string interpolation."""
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return json.dumps(value, ensure_ascii=False, default=str)
 
 
 class ExpressionError(Exception):
@@ -56,13 +88,17 @@ class WorkflowContext:
             holds values produced by the node; ``params`` holds the resolved
             parameters the node was executed with.
         env: environment variables, keyed by name.
-        workdir: working directory for the workflow run.
+        workdir: working directory for the workflow run — where relative input
+            paths resolve.
+        rundir: per-run artifact directory (``<output_dir>/runs/<run_id>``),
+            the place to write outputs; empty when it could not be prepared.
     """
 
     inputs: Dict[str, Any] = field(default_factory=dict)
     nodes: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     env: Dict[str, str] = field(default_factory=dict)
     workdir: str = ""
+    rundir: str = ""
 
 
 class ExpressionEngine:
@@ -78,7 +114,7 @@ class ExpressionEngine:
     def __init__(self) -> None:
         """Build the fixed dispatch tables.
 
-        ``_roots`` maps the four allowed context roots to their resolver
+        ``_roots`` maps the five allowed context roots to their resolver
         methods; ``_pipes`` maps the three built-in transforms to their
         implementations.  Both are plain dicts of bound methods — there is
         no dynamic lookup, so any name outside these tables fails loudly
@@ -89,6 +125,7 @@ class ExpressionEngine:
             "nodes": self._resolve_nodes,
             "env": self._resolve_env,
             "workdir": self._resolve_workdir,
+            "rundir": self._resolve_rundir,
         }
         self._pipes: Dict[str, Any] = {
             "basename": self._pipe_basename,
@@ -100,13 +137,15 @@ class ExpressionEngine:
         """Resolve a single template to a concrete value.
 
         Args:
-            template: the value to resolve.  Non-strings and strings not
-                starting with ``$`` pass through unchanged; strings starting
-                with ``$`` are treated as expressions.
+            template: the value to resolve.  Non-strings and strings without
+                any ``$`` pass through unchanged; a string containing ``${``
+                is interpolated; a string starting with ``$`` is treated as
+                one whole-value expression (``$$`` escapes a leading ``$``).
             context: the values available for resolution.
 
         Returns:
-            The resolved value.
+            The resolved value (typed for a whole-value expression, text for
+            an interpolated string).
 
         Raises:
             ExpressionError: on dunder access, unknown pipe, unresolvable
@@ -114,17 +153,86 @@ class ExpressionEngine:
         """
         if not isinstance(template, str):
             return template
+        if _INTERP_OPEN in template:
+            return self._interpolate(template, context)
         if template.startswith("$$"):
             return template[1:]  # Escape: strip one $, return rest as literal
         if not template.startswith("$"):
             return template
 
-        expression = template[1:]
+        try:
+            return self._resolve_expression(template[1:], context)
+        except ExpressionError as exc:
+            if " " in template:
+                raise ExpressionError(
+                    f"{exc} (a value starting with '$' must be one whole "
+                    f"expression; to embed a value in a longer text use "
+                    f"'${{...}}')"
+                ) from None
+            raise
+
+    def _resolve_expression(self, expression: str, context: WorkflowContext) -> Any:
+        """Resolve one dot-notation expression, applying any ``| pipe`` tail."""
         segments = expression.split(" | ")
         value = self._resolve_path(segments[0], context)
         for pipe in segments[1:]:
             value = self._apply_pipe(pipe, value)
         return value
+
+    def _interpolate(self, template: str, context: WorkflowContext) -> Any:
+        """Substitute every ``${...}`` in *template*.
+
+        A template that is exactly one interpolation (nothing before or after
+        it) returns the expression's own typed value; otherwise the values are
+        rendered as text.  ``$${`` yields a literal ``${``.
+        """
+        if template.startswith(_INTERP_OPEN) and template.endswith("}"):
+            closing = template.find("}", len(_INTERP_OPEN))
+            if closing == len(template) - 1:
+                return self._resolve_interpolation(
+                    template[len(_INTERP_OPEN):closing], template, context
+                )
+
+        pieces: List[str] = []
+        index = 0
+        length = len(template)
+        while index < length:
+            if template.startswith(_ESCAPED_INTERP_OPEN, index):
+                pieces.append(_INTERP_OPEN)
+                index += len(_ESCAPED_INTERP_OPEN)
+            elif template.startswith(_INTERP_OPEN, index):
+                closing = template.find("}", index + len(_INTERP_OPEN))
+                if closing == -1:
+                    raise ExpressionError(
+                        f"malformed interpolation: unterminated '${{' in "
+                        f"{template!r}"
+                    )
+                value = self._resolve_interpolation(
+                    template[index + len(_INTERP_OPEN):closing], template, context
+                )
+                pieces.append(_to_text(value))
+                index = closing + 1
+            else:
+                pieces.append(template[index])
+                index += 1
+        return "".join(pieces)
+
+    def _resolve_interpolation(
+        self, body: str, template: str, context: WorkflowContext
+    ) -> Any:
+        """Resolve the body of one ``${...}`` occurrence."""
+        body = body.strip()
+        if not body:
+            raise ExpressionError(
+                f"malformed interpolation: empty expression in {template!r}"
+            )
+        try:
+            return self._resolve_expression(body, context)
+        except ExpressionError as exc:
+            raise ExpressionError(
+                f"{exc} (in interpolation '${{{body}}}' of {template!r}; "
+                f"write '$${{' for a literal '${{')"
+            ) from None
 
     def resolve_params(
         self, params: Dict[str, Any], context: WorkflowContext
@@ -265,6 +373,17 @@ class ExpressionEngine:
                 f"($workdir takes no further keys)"
             )
         return context.workdir
+
+    def _resolve_rundir(
+        self, rest: List[str], context: WorkflowContext, path: str
+    ) -> Any:
+        """Resolve ``$rundir`` — the per-run artifact directory."""
+        if rest:
+            raise ExpressionError(
+                f"malformed expression: {path} "
+                f"($rundir takes no further keys)"
+            )
+        return context.rundir
 
     def _apply_pipe(self, pipe: str, value: Any) -> Any:
         """Apply one pipe transform via the fixed pipe table."""

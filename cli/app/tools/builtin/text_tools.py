@@ -5,6 +5,10 @@ Builtin text tools (``text.*`` prefix): regex search and replacement on files.
 
 Both tools are stdlib-only ``BuiltinTool`` subclasses that declare a
 typed port contract (``ports``) and implement :meth:`execute`.
+
+Path handling matches the ``file.*`` tools: an absolute path is used as-is, a
+relative path is resolved against ``ToolContext.work_dir`` (the workflow's own
+directory) and rejected when ``..`` would escape it.
 """
 
 import os
@@ -13,6 +17,7 @@ from pathlib import PurePath
 
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
+from app.tools.builtin.file_tools import PathOutsideWorkDir, _resolve_path
 
 
 def _error(message: str) -> dict:
@@ -43,9 +48,12 @@ class TextGrep(BuiltinTool):
     )
 
     def execute(self, inputs: dict, context: ToolContext) -> dict:
-        path = inputs["path"]
+        try:
+            path = _resolve_path(inputs["path"], context.work_dir)
+        except PathOutsideWorkDir as exc:
+            return _error(str(exc))
         if not (os.path.isfile(path) or os.path.isdir(path)):
-            return _error(f"path does not exist: {path}")
+            return _error(f"path does not exist: {inputs['path']}")
         try:
             regex = re.compile(inputs["pattern"])
         except re.error as exc:

@@ -31,6 +31,10 @@ class ToolContext:
         run_id: Identifier of the enclosing workflow run — the key the
             :class:`~app.common.task_manager.TaskManager` registers and the
             key :meth:`cancelled` queries.  ``None`` outside a workflow run.
+        run_dir: Per-run artifact directory (``<output_dir>/runs/<run_id>``);
+            tools that persist engine-level files write here, never into
+            ``work_dir`` (which may be a source tree or the template store).
+            Empty string when it could not be prepared.
         env: Environment variables for the tool execution.
         stream_handler: Optional callback receiving ``{"type": ..., ...}``
             dicts for streaming output (e.g. logcat lines, progress).
@@ -56,6 +60,7 @@ class ToolContext:
     work_dir: str
     task_id: Optional[str] = None
     run_id: Optional[str] = None
+    run_dir: str = ""
     env: Dict[str, str] = field(default_factory=dict)
     stream_handler: Optional[Callable[[dict], None]] = None
     template_store: Optional[Any] = None

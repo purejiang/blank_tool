@@ -2,9 +2,9 @@
 
 Covers dot-notation resolution against all four context roots (inputs,
 nodes, env, workdir), the three built-in pipes (basename / dirname /
-default:<value>), passthrough of non-expression values, recursive
-resolve_params, and the security/error surface (dunder rejection, unknown
-pipes, unresolvable references).
+default:<value>), ``${...}`` interpolation, passthrough of non-expression
+values, recursive resolve_params, and the security/error surface (dunder
+rejection, unknown pipes, unresolvable references).
 """
 
 import pytest
@@ -34,6 +34,7 @@ def _context(**overrides) -> WorkflowContext:
         },
         "env": {"NAME": "world"},
         "workdir": "/tmp",
+        "rundir": "/tmp/runs/run-1",
     }
     data.update(overrides)
     return WorkflowContext(**data)
@@ -61,6 +62,22 @@ def test_resolve_env():
 
 def test_resolve_workdir():
     assert _engine().resolve("$workdir", _context()) == "/tmp"
+
+
+def test_resolve_rundir():
+    assert _engine().resolve("$rundir", _context()) == "/tmp/runs/run-1"
+
+
+def test_interpolate_rundir():
+    assert (
+        _engine().resolve("${rundir}/out.txt", _context())
+        == "/tmp/runs/run-1/out.txt"
+    )
+
+
+def test_rundir_rejects_further_keys():
+    with pytest.raises(ExpressionError, match="takes no further keys"):
+        _engine().resolve("$rundir.sub", _context())
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +155,91 @@ def test_resolve_params_recursively_resolves_nesting():
     }
     # input dict is not mutated
     assert params["a"] == "$inputs.x"
+
+
+# ---------------------------------------------------------------------------
+# Interpolation: ${...} inside a longer string
+# ---------------------------------------------------------------------------
+
+def test_interpolation_embeds_values_in_text():
+    assert (
+        _engine().resolve("found ${inputs.n} for ${inputs.x}", _context())
+        == "found 42 for hello"
+    )
+
+
+def test_interpolation_of_node_output_with_pipe():
+    assert (
+        _engine().resolve("file=${nodes.write.outputs.path | basename}", _context())
+        == "file=out.txt"
+    )
+
+
+def test_lone_interpolation_keeps_the_expression_type():
+    """`${...}` alone behaves exactly like the whole-value form."""
+    assert _engine().resolve("${inputs.n}", _context()) == 42
+    assert _engine().resolve("${inputs.flag}", _context()) is True
+    assert _engine().resolve("${inputs.items}", _context()) == ["a", "b"]
+
+
+def test_interpolation_renders_booleans_and_none_as_text():
+    assert _engine().resolve("flag=${inputs.flag}", _context()) == "flag=true"
+    assert _engine().resolve("none=[${inputs.none}]", _context()) == "none=[]"
+
+
+def test_interpolation_renders_containers_as_compact_json():
+    assert (
+        _engine().resolve("items=${inputs.items}", _context()) == 'items=["a", "b"]'
+    )
+
+
+def test_interpolation_leaves_bare_dollar_variables_alone():
+    """`$PATH`-style text is untouched; only `${...}` is an expression."""
+    assert (
+        _engine().resolve("echo $HOME and ${inputs.x}", _context())
+        == "echo $HOME and hello"
+    )
+
+
+def test_escaped_interpolation_emits_a_literal():
+    assert _engine().resolve("$${inputs.x}", _context()) == "${inputs.x}"
+    assert (
+        _engine().resolve("run $${HOME}/bin with ${inputs.x}", _context())
+        == "run ${HOME}/bin with hello"
+    )
+
+
+def test_interpolation_multiple_escapes_and_values():
+    assert (
+        _engine().resolve("${inputs.x}${inputs.n}$${raw}", _context())
+        == "hello42${raw}"
+    )
+
+
+def test_interpolation_rejects_dunder_access():
+    with pytest.raises(ExpressionError, match="dunder access rejected"):
+        _engine().resolve("x=${inputs.__class__}", _context())
+
+
+def test_interpolation_unknown_root_names_the_hint():
+    with pytest.raises(ExpressionError, match=r"write '\$\$\{' for a literal"):
+        _engine().resolve("x=${foo.bar}", _context())
+
+
+def test_unterminated_interpolation_raises():
+    with pytest.raises(ExpressionError, match="unterminated"):
+        _engine().resolve("x=${inputs.x", _context())
+
+
+def test_empty_interpolation_raises():
+    with pytest.raises(ExpressionError, match="empty expression"):
+        _engine().resolve("x=${}", _context())
+
+
+def test_whole_value_with_trailing_text_suggests_interpolation():
+    """A `$...` value with extra literal text is an error that says how to fix it."""
+    with pytest.raises(ExpressionError, match=r"use '\$\{\.\.\.\}'"):
+        _engine().resolve("$inputs.x done", _context())
 
 
 # ---------------------------------------------------------------------------

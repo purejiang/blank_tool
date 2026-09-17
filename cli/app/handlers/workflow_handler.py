@@ -21,6 +21,8 @@ need no registration code elsewhere:
   :class:`EnvironmentRegistry`.
 """
 
+import os
+
 from app.common.decorators import streaming
 from app.common.exceptions import ToolException
 from app.env.registry import get_env_registry
@@ -31,16 +33,24 @@ from app.workflow.runner import run_workflow
 from app.workflow.validation import validate_workflow
 
 
-def _load_definition(params: dict) -> WorkflowDefinition:
+def _load_definition(params: dict):
     """Load the workflow definition from params.
 
     ``path`` (a workflow JSON file on disk) takes precedence over an inline
     ``definition`` dict.  Raises :class:`ToolException` when neither is given.
+
+    Returns:
+        ``(definition, source_dir)`` — ``source_dir`` is the folder the file
+        was loaded from (``None`` for an inline definition), used as the run's
+        default working directory.
     """
-    if params.get("path"):
-        return WorkflowDefinition.from_json_file(params["path"])
+    path = params.get("path")
+    if path:
+        return WorkflowDefinition.from_json_file(path), os.path.dirname(
+            os.path.abspath(path)
+        )
     if params.get("definition"):
-        return WorkflowDefinition.from_dict(params["definition"])
+        return WorkflowDefinition.from_dict(params["definition"]), None
     raise ToolException("missing definition or path")
 
 
@@ -55,12 +65,16 @@ def handle_execute(params, stream_handler):
     :func:`app.workflow.runner.run_workflow`.
 
     ``params["_run_id"]`` is injected by :class:`ApiHandler` and identifies
-    the run for cancellation and event correlation.
+    the run for cancellation and event correlation.  When ``params`` carries
+    no ``work_dir``, the workflow file's own folder becomes the run's working
+    directory.
     """
-    definition = _load_definition(params)
+    definition, source_dir = _load_definition(params)
     task_id = params.get("task_id")
     run_id = params.get("_run_id") or task_id
-    return run_workflow(definition, params, stream_handler, task_id, run_id)
+    return run_workflow(
+        definition, params, stream_handler, task_id, run_id, source_dir=source_dir
+    )
 
 
 def handle_validate(params, stream_handler):

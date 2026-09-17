@@ -582,30 +582,36 @@ def _make_console_stream_handler(use_color: bool, stream):
     return _handle_event
 
 
-def _resolve_definition(target: str) -> Optional["WorkflowDefinition"]:
-    """Load the workflow definition for *target*.
+def _resolve_definition(target: str):
+    """Load the workflow definition for *target* and resolve its own directory.
 
     A ``.json`` suffix or an existing file path loads via
     :meth:`WorkflowDefinition.from_json_file`; anything else is treated as a
-    template name resolved through :class:`FileTemplateStore`.  Returns the
-    definition, or None after printing an error to stderr.
+    template name resolved through :class:`FileTemplateStore`.
+
+    Returns:
+        ``(definition, work_dir)`` where *work_dir* is the workflow's own
+        directory — the file's folder, or the template store's folder — or
+        ``(None, None)`` after printing an error to stderr.
     """
     if target.endswith(".json") or os.path.isfile(target):
         try:
             from app.workflow.definition import WorkflowDefinition
 
-            return WorkflowDefinition.from_json_file(target)
+            definition = WorkflowDefinition.from_json_file(target)
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
-            return None
+            return None, None
+        return definition, os.path.dirname(os.path.abspath(target))
 
     try:
         from app.template.store import FileTemplateStore, TemplateNotFoundError
 
-        return FileTemplateStore().load(target)
+        store = FileTemplateStore()
+        return store.load(target), store.templates_dir
     except (TemplateNotFoundError, ValueError) as exc:
         print(f"error: template {target!r}: {exc}", file=sys.stderr)
-        return None
+        return None, None
 
 
 def cmd_run(
@@ -620,14 +626,20 @@ def cmd_run(
     Resolves *target*, parses and coerces ``--input key=value`` pairs,
     executes the workflow through :class:`WorkflowEngine`, streams node
     events to the console, and prints the final result as JSON (``--json``)
-    or a human-readable summary.  Returns 0 on success, 1 on failure.
+    or a human-readable summary.
+
+    The run's working directory is the workflow's OWN directory (the file's
+    folder, or the template store's folder), so relative paths and produced
+    artifacts stay next to the workflow instead of landing in the process CWD.
+
+    Returns 0 on success, 1 on failure, 2 when the run was cancelled.
     """
     from app.workflow.engine import ExecutionContext, WorkflowEngine
     from app.workflow.runner import _record_history
     from app.workflow.streaming import WorkflowStreamHandler
     from app.utils.task_log_writer import cleanup_task_log
 
-    definition = _resolve_definition(target)
+    definition, work_dir = _resolve_definition(target)
     if definition is None:
         return 1
 
@@ -646,7 +658,7 @@ def cmd_run(
     )
 
     context = ExecutionContext(
-        work_dir=os.getcwd(),
+        work_dir=work_dir or os.getcwd(),
         task_id=task_id,
         run_id=run_id,
         stream_handler=raw_stream_handler,

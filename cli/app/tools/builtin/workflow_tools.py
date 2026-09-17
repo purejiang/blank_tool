@@ -138,6 +138,8 @@ def _run_child_template(
         work_dir=context.work_dir,
         task_id=context.task_id,
         run_id=context.run_id,
+        # Every nesting level shares the top-level run's artifact directory.
+        run_dir=context.run_dir,
         env=dict(context.env),
         stream_handler=context.stream_handler,
         workflow_stream=child_stream,

@@ -230,16 +230,28 @@ def handle_execute(params, stream_handler):
         inputs: workflow-level input values (``$inputs.<key>``).
         task_id: optional task identifier, forwarded to tools and used as the
             workflow_id on streamed events.
-        work_dir: optional working directory (defaults to ".").
+        work_dir: optional working directory (defaults to the template store's
+            own folder, so artifacts stay with the templates instead of in the
+            process CWD).
 
     Returns:
         Same shape as ``workflow.execute``:
-        ``{"success", "outputs", "node_results", "error"}``.
+        ``{"success", "status", "cancelled", "outputs", "node_results",
+        "error"}``.
     """
     name = params.get("name")
     task_id = params.get("task_id")
-    definition = _get_store().load(name)
-    return run_workflow(definition, params, stream_handler, task_id)
+    run_id = params.get("_run_id") or task_id
+    store = _get_store()
+    definition = store.load(name)
+    return run_workflow(
+        definition,
+        params,
+        stream_handler,
+        task_id,
+        run_id,
+        source_dir=getattr(store, "templates_dir", None),
+    )
 
 
 API_MAP = {
