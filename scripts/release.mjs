@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync } from
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
+import { compareVersions } from './lib/version.mjs';
 
 // ============================================================
 // Constants
@@ -400,6 +401,28 @@ function computeVersion({ bump, customVersion }) {
 
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   const oldVersion = pkg.version;
+  const prevTag = getPrevTag();
+
+  // 双源一致性告警：bump 的基数是 **package.json 的当前值**，不是上一个 tag。
+  // 手工把 version 提前提到目标版本（如 2.5.0）之后，不带参数跑默认 patch 会
+  // 算出 2.5.1 —— 号段跳号、changelog 从更早的 tag 起算，且与「发布时双源一致」
+  // 的规范相悖。这里只告警（手工预提版本是合法的动作），真正的护栏是下面的
+  // 「必须比上一个 tag 新」硬校验。
+  if (prevTag && compareVersions(oldVersion, prevTag) === -1) {
+    console.warn(
+      `  ⚠ package.json version (${oldVersion}) is OLDER than the last tag (${prevTag}).\n` +
+      '    ── v2.3.x 的事故就是这样来的：tag 与 package.json 脱节后，产物名/latest.yml/\n' +
+      '       应用内版本号都会停留在旧版本，用户端自更新会静默失效。\n' +
+      `    ── 若本次就是想发布 ${oldVersion}，请显式指定：npm run release -- --version=${oldVersion}`,
+    );
+  } else if (prevTag && compareVersions(oldVersion, prevTag) === 1) {
+    console.warn(
+      `  ⚠ package.json version (${oldVersion}) is AHEAD of the last tag (${prevTag}) — ` +
+      'version 被手工提前改过。\n' +
+      `    ── 默认 patch 会从 ${oldVersion} 递增，得到 ${bumpVersion(oldVersion, bump)}（跳号）。\n` +
+      `    ── 若本次发布就是 ${oldVersion}，请显式指定：npm run release -- --version=${oldVersion}`,
+    );
+  }
 
   const newVersion = customVersion || bumpVersion(oldVersion, bump);
 
@@ -408,6 +431,23 @@ function computeVersion({ bump, customVersion }) {
     throw new ReleaseError('compute_version', `Invalid version format: ${newVersion}`, {
       hint: '版本号必须是 x.y.z 格式',
     });
+  }
+
+  // 硬校验：新版本号必须**高于**上一个 tag。
+  // electron-updater 拿「应用内自报版本」与 feed 里 latest.yml 的 version 比较，
+  // 一旦发布出去的版本号不大于上一版，所有用户都会被判定为「已是最新」而再也
+  // 收不到更新（v2.3.0 / v2.3.1 就是这么发出去的：package.json 还停在 2.2.0）。
+  if (prevTag) {
+    const cmp = compareVersions(newVersion, prevTag);
+    if (cmp === 0 || cmp === -1) {
+      throw new ReleaseError('compute_version',
+        `New version ${newVersion} is not newer than the last tag ${prevTag}`, {
+        hint: '上一个 tag 之后的版本号必须更大。检查 package.json 的 version 是否被手工改过，' +
+          '或用 --version= 指定一个更大的版本号',
+        recoverable: true,
+        nextAction: `npm run release -- --version=<version greater than ${prevTag.replace(/^v/, '')}>`,
+      });
+    }
   }
 
   // Tag conflict detection
@@ -428,9 +468,10 @@ function computeVersion({ bump, customVersion }) {
     // git tag -l failure is unexpected but not a version conflict
   }
 
-  const notes = generateNotes();
+  const notes = generateNotes(prevTag);
 
   console.log(`[phase 2] Version: ${oldVersion} → ${newVersion}`);
+  if (prevTag) console.log(`[phase 2] Previous tag: ${prevTag}`);
   console.log('[phase 2] Release notes generated.\n');
 
   return { oldVersion, newVersion, notes };
@@ -439,9 +480,9 @@ function computeVersion({ bump, customVersion }) {
 /**
  * Generate release notes from commit log since the previous tag.
  * Categorizes by conventional commit prefix.
+ * @param {string} prevTag - e.g. "v2.3.1"; '' = first release
  */
-function generateNotes() {
-  const prevTag = getPrevTag();
+function generateNotes(prevTag) {
   let commits;
 
   if (prevTag) {
@@ -697,6 +738,31 @@ function build(newVersion) {
     console.warn('  ⚠ Could not parse path field from latest.yml (non-fatal)');
   }
 
+  // Verify latest.yml version field matches the release version.
+  //
+  // 产物名、latest.yml 的 version、以及应用内自报的版本号**三者都取自
+  // package.json.version**。所以只要 package.json 没被 bump（或 bump 后又被改回去），
+  // 发出去的安装包会自报旧版本，而 latest.yml 也是旧版本 —— electron-updater
+  // 判定「已是最新」，所有用户静默收不到更新。v2.3.0 / v2.3.1 就是这样发出去的
+  // （package.json 停在 2.2.0）。只比对 path 是看不见这种事故的：exe 名和
+  // latest.yml 两边都叫 2.2.0，照样一致。
+  const versionInYml = ymlContent.match(/^\s*version:\s*(.+)$/m);
+  if (versionInYml) {
+    const ymlVersion = versionInYml[1].trim().replace(/^["']|["']$/g, '');
+    if (ymlVersion !== newVersion) {
+      throw new ReleaseError('build',
+        `latest.yml version "${ymlVersion}" does not match release v${newVersion}`, {
+        hint: `产物版本号来自 package.json.version —— 它必须等于本次发布版本 ${newVersion}。` +
+          '检查 package.json 是否已 bump（脚本的 bump 阶段会做），或是否被手工改过',
+        recoverable: true,
+        nextAction: `确认 package.json version 为 ${newVersion} 后重新运行 npm run release`,
+      });
+    }
+    console.log(`  ✓ latest.yml version matches: ${ymlVersion}`);
+  } else {
+    console.warn('  ⚠ Could not parse version field from latest.yml (non-fatal)');
+  }
+
   // Clean old build artifacts in build/ directory
   const files = readdirSync(buildDir);
   let cleaned = 0;
@@ -814,17 +880,14 @@ async function createRelease(newVersion, notes) {
   // Upload exe with retry
   await uploadWithRetry(tag, exePath);
 
-  // Upload blockmap + latest.yml
+  // Upload blockmap + latest.yml —— 各自重试（与 exe 同样的 3 次 / 间隔 5 秒）。
+  // 早期版本把这两个文件合并成一次 `gh release upload` 上传且不重试，与文档里
+  // 「上传自动重试 3 次」的描述不符：网络抖动时会直接失败在这里。
   const supportingFiles = [blockmapPath, ymlPath].filter((p) => existsSync(p));
+  for (const file of supportingFiles) {
+    await uploadWithRetry(tag, file);
+  }
   if (supportingFiles.length > 0) {
-    const filesArg = supportingFiles.map((f) => `"${f}"`).join(' ');
-    run(`gh release upload ${tag} ${filesArg}`, 'upload', {
-      timeout: TIMEOUTS.upload,
-      inherit: true,
-      hint: '检查网络连接；可安全重跑',
-      recoverable: true,
-      nextAction: '检查网络后重新运行 npm run release',
-    });
     console.log(`  ✓ Uploaded ${supportingFiles.length} supporting file(s)`);
   }
 

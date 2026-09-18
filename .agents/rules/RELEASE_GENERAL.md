@@ -2,7 +2,7 @@
 
 适用于任何使用 git + GitHub Releases 的技术栈项目，可拷贝到你的仓库直接复用。
 
-分支策略见 [通用分支策略](./BRANCHING.md)，本文只讲发版本身的规范。构建与质量检查命令因技术栈而异，用占位符标注。
+分支策略见 [通用分支策略](./BRANCHING.md)，本文只讲发版本身的规范。构建与质量检查命令因技术栈而异：本仓库已就地填入实际命令（带「本项目」标注），拷到别的项目时替换这几处即可。
 
 ---
 
@@ -14,7 +14,7 @@
 
 版本号有两个载体——git tag 与项目元数据文件（如 package.json）。推荐做法：发版流程先更新元数据文件的版本号并提交，再打 tag，使两个来源在发布时保持一致。
 
-<!-- 若项目选择单一来源，需显式说明构建脚本如何读取。 -->
+> **本项目（Blank Tool）**：双源 = git tag 与 `package.json.version`，由 `npm run release` 统一维护，并在构建阶段校验产物名与 `latest.yml` 的 `version`。手工提前改过 `version` 时必须用 `--version=` 指定同一版本号 —— 理由与已发生的事故见 [发布指南](./RELEASE_GUIDE.md#1-用法速查)。
 
 ### 打 Tag
 
@@ -29,7 +29,8 @@
 - 合并 dev 到 main 后，构建或打 tag 之前必须通过全量质量检查（静态分析、类型检查、完整测试套件）
 
 ```bash
-<!-- 填入你的质量检查命令，例如 lint + typecheck + test -->
+npm run check   # 本项目：lint（vue-tsc --noEmit）+ typecheck + vitest（单测 + 集成测试）
+npm run test    # 仅测试；后端 handler 契约测试另跑 pytest tests/contracts/
 ```
 
 - 若项目有一键发布脚本，质量门禁应内置于脚本自动执行，失败即阻断发布
@@ -39,14 +40,16 @@
 ## 3. 构建
 
 ```bash
-<!-- 填入你的构建命令 -->
+npm run build:win     # 本项目一键发布只构建 Windows；mac/linux 见 RELEASE_GUIDE.md §2
 ```
 
 ### 产物清单
 
 | 文件 | 用途 | 是否上传 |
 |------|------|----------|
-| `<!-- 构建产物 -->` | `<!-- 描述 -->` | ✅ / ❌ |
+| `Blank-Tool-Setup-X.Y.Z.exe` | NSIS 安装包（X.Y.Z 取自 package.json.version） | ✅ |
+| `Blank-Tool-Setup-X.Y.Z.exe.blockmap` | 增量更新块映射 | ✅ |
+| `latest.yml` | 自动更新清单（其 `version` 必须等于 tag 去掉 `v`） | ✅ |
 
 只上传对外发布的资产；内部构建产物（debug 符号、覆盖率报告、中间文件）不应出现在 Release 页面。
 
@@ -65,17 +68,17 @@ gh release create vX.Y.Z <产物文件...> \
 
 ### Release Notes 规范
 
-- 统一语言（中文或英文，不混用）
+- 统一语言（中文或英文，不混用）—— **本项目例外**：提交信息中英混用是常态，自动生成的 notes 也允许混用（见 [发布指南](./RELEASE_GUIDE.md#3-失败恢复地图)）
 - emoji 分类：✨ New、🐛 Fixes、🔧 Changes、📝 Others
 - 每条一行以 `-` 开头
 - 提及相关 issue 号
-- 如有自动化，notes 可由 conventional commits 前缀自动生成，但仍建议发布前人工审阅
+- 如有自动化，notes 可由 conventional commits 前缀自动生成（本项目识别 `feat` / `fix` / `refactor`，其余归入 Others），但仍建议发布前人工审阅
 
 ---
 
 ## 5. 旧版本清理
 
-GitHub Release 存储总上限 **2GB**，旧版本大体积资产会占满配额。
+GitHub 对**单个** Release 资产文件有 2 GiB 上限；旧版本的大体积资产还会持续占用仓库体积、克隆时间与下载流量，所以仍需定期清理。
 
 ### 正确做法：只删资产，保留 Release 页面
 
@@ -119,9 +122,12 @@ git checkout dev
 
 - [ ] `git checkout dev && git push origin dev` -- dev 已推送远程
 - [ ] `git checkout main && git merge dev` -- main 与 dev 已同步
-- [ ] 全量质量检查通过（`<!-- 填入质量检查命令 -->`）
+- [ ] `git push origin main` -- main 已推送远程（手动路径最容易漏这一步）
+- [ ] 全量质量检查通过（`npm run check`）
 - [ ] `git tag -a vX.Y.Z -m "..."` -- tag 打在 main 且为 annotated
-- [ ] 构建成功（`<!-- 填入构建命令 -->`）
+- [ ] `git push origin vX.Y.Z` -- tag 已单独推送
+- [ ] 构建成功（`npm run build:win`）
+- [ ] 版本号三处一致：tag / package.json.version / 产物名与 latest.yml 的 `version`
 - [ ] `gh release create` -- Release 资产齐全
 - [ ] 旧版本资产已清理（`gh release delete-asset`）
 - [ ] `git checkout dev` -- 已切回开发分支

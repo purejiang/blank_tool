@@ -99,7 +99,7 @@ Python Backend (backend/main.py)
 ## 其他约定
 
 - 仓库根有 `dev-app-update.yml`，是 `electron-updater` 在开发模式下的测试配置，**不要提交生产凭证**。
-- `.github/` 目录目前为空（没有 CI workflow），所有检查靠本地 `npm run check`。
+- 没有 CI workflow（`.github/` 目录不存在），所有检查靠本地 `npm run check`。
 - 国际化在 `src/renderer/i18n/`（zh-CN、en-US），UI 文案改动需同步两个语言文件。
 - 样式：单一 token 命名空间 `--app-*`。颜色（浅/深两套）在 `src/renderer/assets/styles/themes.css`，非颜色 token（间距/圆角/字体/阴影/页宽/控制台色）在 `variables.css`，跨页复用的通用类在 `common/components.css`（一律 `app-` 前缀，避免全局规则静默命中组件同名类），全局重置在 `main.css`，第三方覆盖在 `naive-overrides.css`；加载顺序见 `main.ts`。主题切换靠 `data-theme`（浅色/深色/自动）**不是** `prefers-color-scheme`。组件里禁止写死色值和字体栈：颜色只有 `--app-font` / `--app-font-mono` 两个字体栈，新增色相必须 light / dark 两边都加。
 - 提交信息、文档、注释混用中英文是本仓库的常态，无需统一。
