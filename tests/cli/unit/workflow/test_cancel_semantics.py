@@ -383,3 +383,143 @@ def test_flow_assert_raises_non_retryable():
 
     with pytest.raises(NonRetryableToolError):
         FlowAssert().execute({"condition": False}, ToolContext(work_dir="."))
+
+
+# ---------------------------------------------------------------------------
+# 5. out-of-band termination is still a cancellation
+# ---------------------------------------------------------------------------
+
+class _ExitingStubPopen:
+    """A child that is terminated out of band *while* communicate() waits.
+
+    This is what TaskManager.cancel does through ``holder['kill']``: the
+    process dies, so ``communicate()`` returns its output normally instead of
+    raising TimeoutExpired — the cancel source must be re-checked after the
+    wait, otherwise the node would look like an ordinary failure and burn a
+    retry.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.args = args[0] if args else []
+        self.pid = 4242
+        self.returncode = None
+        self.terminated = False
+        self._exited = threading.Event()
+
+    def communicate(self, timeout=None):
+        self._exited.wait(0.1)
+        if self.returncode is None:
+            self.returncode = -9
+        return "out", "err"
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+        self.returncode = -15
+        self._exited.set()
+
+    def kill(self):
+        self.terminated = True
+        self.returncode = -9
+        self._exited.set()
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+
+def test_out_of_band_kill_during_communicate_marks_the_run_cancelled():
+    holder: dict = {}
+    flag = {"cancelled": False}
+    cancel_check = lambda: flag["cancelled"]
+
+    def _cancel():
+        flag["cancelled"] = True
+        holder["kill"]()  # exactly what TaskManager._terminate invokes
+
+    with patch("app.common.executor.subprocess.Popen", _ExitingStubPopen):
+        executor = ProcessExecutor(
+            timeout=30, process_holder=holder, cancel_check=cancel_check
+        )
+        threading.Timer(0.05, _cancel).start()
+        returncode, _stdout, _stderr = executor.run(["stub"])
+
+    assert executor.cancelled is True, "an out-of-band kill must not look like a plain failure"
+    assert returncode != 0
+    assert holder["process"].terminated
+
+
+def test_cancel_before_spawn_marks_the_run_cancelled():
+    holder = {"_cancel_pending": True}
+    with patch("app.common.executor.subprocess.Popen", _ExitingStubPopen):
+        executor = ProcessExecutor(timeout=30, process_holder=holder)
+        returncode, _stdout, _stderr = executor.run(["stub"])
+
+    assert executor.cancelled is True
+    assert returncode != 0
+
+
+# ---------------------------------------------------------------------------
+# 6. stop events as an external cancellation source (opt-in)
+# ---------------------------------------------------------------------------
+
+def test_honor_stop_event_treats_a_set_event_as_cancelled():
+    manager = TaskManager()
+    event = threading.Event()
+    manager.register("run-se", "task-se", event, honor_stop_event=True)
+
+    assert manager.is_cancelled("run-se") is False
+    event.set()
+
+    assert manager.is_cancelled("run-se") is True
+    # The task-id alias and the listing must agree with the run id.
+    assert manager.is_cancelled("task-se") is True
+    entry = [t for t in manager.list_tasks() if t["run_id"] == "run-se"].pop()
+    assert entry["cancelled"] is True
+
+
+def test_stop_event_is_ignored_without_the_opt_in():
+    """The JSON-RPC layer passes a stop event but keeps flag-only semantics."""
+    manager = TaskManager()
+    event = threading.Event()
+    manager.register("run-noopt", "", event)
+
+    event.set()
+
+    assert manager.is_cancelled("run-noopt") is False
+    entry = [t for t in manager.list_tasks() if t["run_id"] == "run-noopt"].pop()
+    assert entry["cancelled"] is False
+
+
+# ---------------------------------------------------------------------------
+# 7. task-log buffers survive a sibling run under the same task id
+# ---------------------------------------------------------------------------
+
+def test_unregister_keeps_a_task_log_buffer_shared_with_another_run(
+    tmp_path, monkeypatch
+):
+    from app.utils import task_log_writer as writer
+
+    monkeypatch.setenv("BT_TASKS_DIR", str(tmp_path / "tasks"))
+    writer.cleanup_task_log("shared-task")
+
+    manager = TaskManager()
+    manager.register("run-sib-a", "shared-task")
+    manager.register("run-sib-b", "shared-task")
+    writer.append_task_log("shared-task", "line from a")
+
+    manager.unregister("run-sib-a")
+
+    # The sibling is still running under the same task id: its lines must be
+    # flushed to disk but the buffer entry must NOT be dropped.
+    log_path = tmp_path / "tasks" / "shared-task" / "logs" / "task_exec.log"
+    assert log_path.is_file()
+    assert "line from a" in log_path.read_text(encoding="utf-8")
+    assert "shared-task" in writer._per_task_buffers
+
+    writer.append_task_log("shared-task", "line from b")
+    manager.unregister("run-sib-b")
+
+    assert "shared-task" not in writer._per_task_buffers
+    assert "line from b" in log_path.read_text(encoding="utf-8")

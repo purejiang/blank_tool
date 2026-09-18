@@ -160,11 +160,11 @@ def test_command_executor_threads_process_holder_through_to_subprocess():
     """The holder wiring TaskManager cancellation relies on lives at the
     CommandExecutor/ProcessExecutor layer.
 
-    DescriptorTool's unified contract routes through
-    ``DescriptorTool._to_command_context``, which builds a fresh
-    ``process_holder`` per call — the external-holder injection the old
-    signature allowed is gone, so the cancellation-relevant threading is
-    asserted directly at the executor level here.
+    ``DescriptorTool._to_command_context`` forwards the workflow context's
+    ``process_holder`` and ``cancel_check`` when it has them (see
+    ``test_to_command_context_forwards_holder_and_cancel_check``), so the
+    engine's per-node holder reaches the subprocess; the executor-level
+    threading is asserted directly here.
     """
     from app.common.base_executor import CommandExecutor
 
@@ -176,6 +176,45 @@ def test_command_executor_threads_process_holder_through_to_subprocess():
         "process_holder must reach the subprocess so TaskManager can cancel"
     )
     assert hasattr(holder["process"], "pid")
+
+
+def test_to_command_context_forwards_holder_and_cancel_check():
+    """The workflow context's holder/cancel_check reach the command context.
+
+    Without this the descriptor's ``ProcessExecutor`` would take the
+    uncancellable ``communicate(timeout=600)`` path (the apktool bug).
+    """
+    from types import SimpleNamespace
+
+    from app.tools.descriptor_tool import DescriptorTool
+
+    holder: dict = {}
+
+    def cancel_check():
+        return True
+
+    context = ToolContext(
+        work_dir="/wd", task_id="t1", env={},
+        process_holder=holder, cancel_check=cancel_check,
+    )
+
+    cmd_context = DescriptorTool._to_command_context(context)
+
+    assert cmd_context.process_holder is holder
+    assert cmd_context.cancel_check is cancel_check
+
+
+def test_to_command_context_tolerates_a_context_without_holder():
+    """Duck-typed contexts (no holder/cancel_check attributes) still work."""
+    from types import SimpleNamespace
+
+    from app.tools.descriptor_tool import DescriptorTool
+
+    context = SimpleNamespace(work_dir="/wd", task_id="t1", env={})
+    cmd_context = DescriptorTool._to_command_context(context)
+
+    assert cmd_context.process_holder is None
+    assert cmd_context.cancel_check is None
 
 
 def test_java_jar_build_command_uses_interpreter_prefix():

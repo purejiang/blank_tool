@@ -23,6 +23,14 @@ Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接�
 
 无头 CLI 入口 `cli/cli.py`（9 子命令：run/list-tools/list-envs/validate/tool/list-templates/import-pack/import-templates/history）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
 
+`run`/`tool` 会把自己注册到 `TaskManager`（`honor_stop_event=True`），因此引擎的取消检查点与子进程 holder 在 CLI 下是**活的**：
+
+- `run --timeout SECONDS`：整轮 wall-clock 预算，到期取消并返回 `124`（`0`/省略=不限）。
+- `run|tool --run-id <32-hex>`：run 身份，决定 `$rundir`（`<output>/runs/<id>`）与 history 记录 id；默认随机 `uuid4().hex`（并发 CLI run 不再共用 `runs/cli`）。非 32 位小写 hex 会被拒绝（退出码 1）。
+- `run` 退出码：`0` 成功 / `1` 失败 / `2` 取消（注意 argparse 用法错误也是 2）/ `124` 超时 / `130` 连按两次 Ctrl+C 强退。
+- Ctrl+C（SIGINT）：第一次只调用 per-run `Event.set()`（信号处理器**不取锁**），run 以 `cancelled` 结束；第二次 `os._exit(130)`（可能丢失内存中的 task log 缓冲）。Windows 上 SIGTERM 不可捕获。
+- 每个终态（成功/失败/取消/超时/内部异常）都会写一条 history；`--json` 在同样所有路径下都输出 JSON 文档（含 `run_id` / `timeout` / `cancelled`）。
+
 ## 测试有五套，分别由不同运行器驱动（最容易踩坑）
 
 | 命令 | 运行器 | 范围 | 配置 |
@@ -81,6 +89,21 @@ Python Backend (cli/main.py)
 - **Main → Python**：`commandHandlers.ts` 通过 stdin 写 JSON-RPC 请求，按 `request.id` 在 `requestCallbacks` Map 里匹配响应。**默认超时是 300000ms（5 分钟），不是 30 秒**——长任务（反编译、签名）依赖这个。
 - **流式响应**：被 `@streaming`（`cli/app/common/decorators.py`）装饰的 handler 在独立线程运行，多次回包 `finished: false`，主进程通过命名 IPC 通道（如 `stream-event`）转发给渲染层（logcat、下载进度等）。注意：`@streaming` 本身仅是一个标记装饰器，真正的多线程逻辑在 `api_handler.py` 的 `stream_handler`（daemon `threading.Thread`）。该 wrapper 会**先同步写 init 帧再启动 worker**（避免事件帧抢在 init 帧之前被 main 当成 invoke 结果），并在**返回的终帧**里带上 handler 的返回值作为 `payload`。
 
+### 网络工具与代理（net.*）
+
+`net.download` / `net.request`（`cli/app/tools/builtin/net_tools.py`）只用 stdlib `urllib`，`build_opener` 保留默认 `ProxyHandler`，因此**默认沿用环境变量 + 系统代理**：`http_proxy` / `https_proxy` / `no_proxy`；Windows 上无环境变量时再读 IE/WinINET 注册表（需 `ProxyEnable=1`）。开着代理时**会报错、不会无限挂起**：
+
+| 代理状态 | 行为 |
+|---|---|
+| 代理拒绝连接 | 立即 `{"error": "network error: [WinError 10061] ..."}` |
+| 代理黑洞 / 丢包 | 等 socket 超时（`timeout`，默认 30s）后 `{"error": "network error: timed out"}` |
+| 代理要认证（407）/ 上游 502 | `net.request` 当**正常结果**返回（`status_code=407/502`）——需 `fail_on_http_error: true` 或 `flow.compare` 才会失败；`net.download` 直接报错 |
+| 代理做 TLS MITM | `{"error": "network error: CERTIFICATE_VERIFY_FAILED"}`（不支持自定义 CA） |
+
+显式控制：两个工具都有 `proxy` 输入——空/缺省 = 沿用上述行为；`direct` / `none` = 强制直连（localhost 场景）；其他值 = 显式代理 URL（会**替换**默认 handler，该节点的 `no_proxy` 失效，非法值返回 `{"error": "invalid proxy: ..."}`）。另有 `max_bytes`（`net.request`，默认 10 MiB，按**累计字节**判定）、`max_seconds`（整轮预算）、每 64 KiB 的取消轮询；`net.download` 写 `.part` 再 `os.replace`，失败/取消/长度不符都不留半成品。
+
+⚠️ 测试注意：`tests/cli/unit/tools/test_builtin_tools.py` 的 net 用例一律显式传 `proxy="direct"`——否则带系统代理的机器会把 127.0.0.1 的请求也送进代理。
+
 ### 后端自动发现
 
 - **Handlers**：`cli/app/handlers/` 下任何导出 `API_MAP` 字典的 `.py` 都会被 `ApiHandler` 自动注册。键是方法名（如 `"adb.devices"`），值是 handler 函数。新增 handler 不需要改注册表。
@@ -95,7 +118,7 @@ Python Backend (cli/main.py)
 
 **代价**：
 - **验证**：手工实现字段校验（如 `PortSet.validate_inputs` 是手工 presence-only 检查），没有 pydantic 的类型推导与错误聚合
-- **并发**：`@streaming` 仅是一个标记装饰器，真正的线程逻辑在 `api_handler.py` 的 `stream_handler`，用 `threading.Thread`（daemon）而非 asyncio——没有结构化并发；取消靠 `TaskManager` 的协作式检查点 + 子进程 terminate，不是协程级传播
+- **并发**：`@streaming` 仅是一个标记装饰器，真正的线程逻辑在 `api_handler.py` 的 `stream_handler`，用 `threading.Thread`（daemon）而非 asyncio——没有结构化并发；取消靠 `TaskManager` 的协作式检查点 + 子进程进程组/`taskkill /T` 终止，不是协程级传播。`TaskManager.register(..., honor_stop_event=True)` 时「已 set 的 stop_event」也算取消（CLI 的 SIGINT/`--timeout` 走这条路，避免在信号处理器里取锁）；普通调用方（`api_handler`）不传该标志，语义不变
 - **序列化**：手工实现 `to_dict`/`from_dict`，没有 pydantic 的自动序列化/反序列化，字段增删需双改，容易遗漏
 - **无 HTTP 客户端**：若未来需要网络通信（如远程工具注册表、更新检查），需手写 urllib 或 socket，没有 httpx/requests 的便利性
 
@@ -104,7 +127,7 @@ Python Backend (cli/main.py)
 | 位置 | 摩擦 | 影响 |
 |---|---|---|
 | `PortSet.validate_inputs` | 手工 presence-only 校验 | 错误信息粗糙，定位慢 |
-| 节点级超时 | 子进程超时固定 10 分钟，不可按节点配置 | 卡死的节点只能靠用户取消（cancel 会 terminate 子进程） |
+| 节点级超时 | 引擎没有节点级 timeout；CLI 有整轮 `run --timeout`，单节点只能靠各工具的 `timeout` 输入 | 加节点字段需要 schema + 渲染层序列化配合（见 `engine.py` 关于高级字段过不了画布的注释）；卡死的节点现在能靠取消真正终止（进程组 / `taskkill /T`） |
 | 模型类 `to_dict`/`from_dict` | 手写序列化，字段增删需双改 | 容易遗漏，类型漂移不报错 |
 
 ### 渲染层服务层
@@ -132,7 +155,7 @@ Python Backend (cli/main.py)
 
 ### 安全边界（Security boundary / trust model）
 
-`src/preload/index.ts` 经 contextBridge 暴露 `callBackendAPI(method, params)`，**无方法白名单**：渲染层可请求任意后端 method，主进程原样转发。任何渲染层侧失守（npm 供应链投毒、XSS）都等于任意后端命令执行；且 `cli/app/tools/builtin/exec_tools.py` 内置 `exec.shell`（:85）与 `exec.code`（:206），可直接执行任意 shell / Python，即 RCE。**这是有意的取舍**：本应用是自用桌面工具，用户信任自己的机器，行为等效于本地终端；但**不可分发给不信任的用户**。若未来要分发，硬化路径：contextBridge 加方法白名单、渲染层启用 sandbox、后端加参数校验层。
+`src/preload/index.ts` 经 contextBridge 暴露 `callBackendAPI(method, params)`，**无方法白名单**：渲染层可请求任意后端 method，主进程原样转发。任何渲染层侧失守（npm 供应链投毒、XSS）都等于任意后端命令执行；且 `cli/app/tools/builtin/exec_tools.py` 内置 `exec.shell`（:105）与 `exec.code`（:239），可直接执行任意 shell / Python，即 RCE。**这是有意的取舍**：本应用是自用桌面工具，用户信任自己的机器，行为等效于本地终端；但**不可分发给不信任的用户**。若未来要分发，硬化路径：contextBridge 加方法白名单、渲染层启用 sandbox、后端加参数校验层。
 
 
 ## 发版流程

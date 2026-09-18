@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Union, Optional, Callable
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
 from app.common.executor import ProcessExecutor
-from app.common.exceptions import TimeoutException
+from app.common.exceptions import TimeoutException, WorkflowCancelled
 
 
 class CommandExecutionContext:
@@ -63,6 +63,21 @@ class CommandExecutionContext:
         self.task_id = task_id
         self.process_holder = process_holder
         self.cancel_check = cancel_check
+
+
+def _cancel_requested(context) -> bool:
+    """True when *context*'s cancellation callback has fired.
+
+    Tolerates a context without the attribute (duck-typed callers) and a
+    callback that raises: both mean "not cancelled".
+    """
+    check = getattr(context, "cancel_check", None)
+    if check is None:
+        return False
+    try:
+        return bool(check())
+    except Exception:
+        return False
 
 
 def _write_task_log(task_id: str, cmd_str: str, returncode: int,
@@ -205,6 +220,13 @@ class CommandExecutor(BaseCommandExecutor):
                 errors=context.errors,
             )
 
+            # A cancelled command is control flow, not a failed command: the
+            # engine turns WorkflowCancelled into a cancelled node (and never
+            # spends a retry on it).  The re-check covers a kill that arrived
+            # out of band while the process was already exiting.
+            if executor.cancelled or _cancel_requested(context):
+                raise WorkflowCancelled()
+
             success = returncode == 0
 
             if not success:
@@ -231,6 +253,9 @@ class CommandExecutor(BaseCommandExecutor):
                 "command": cmd_str,
             }
 
+        except WorkflowCancelled:
+            # Cancellation is not a command error — log nothing, pass it on.
+            raise
         except TimeoutException:
             error_msg = f"Command timed out ({context.timeout}s): {self._redact_sensitive_args(cmd_str)}"
             self._log_error(f"[COMMAND] {error_msg}")

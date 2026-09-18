@@ -16,6 +16,19 @@ coercion), executes the workflow through the engine while streaming node
 events to the console, and prints the final result as JSON (``--json``) or
 a human-readable summary.
 
+Cancellation and interruption:
+    Every ``run``/``tool`` invocation registers itself with
+    :class:`~app.common.task_manager.TaskManager`, so the engine's
+    cancellation checkpoints and the subprocess holder are live.  Ctrl+C
+    (SIGINT) requests cancellation through a per-run ``threading.Event`` —
+    the signal handler takes no locks, writes nothing but one line to stderr,
+    and the run finishes as ``cancelled``.  A second Ctrl+C forces exit.
+    ``--timeout SECONDS`` requests the same cancellation on a timer.
+
+Exit codes (``run``): 0 success, 1 failure, 2 cancelled (note: argparse uses
+2 for a usage error too), 124 timed out, 130 forced exit on a second
+interrupt.
+
 Usage (from the ``cli/`` directory):
 
     python cli.py --help
@@ -24,6 +37,7 @@ Usage (from the ``cli/`` directory):
     python cli.py validate <workflow.json>
     python cli.py list-templates
     python cli.py run <workflow.json|template-name> --input key=value
+    python cli.py run <workflow.json> --timeout 300 --run-id <32-hex>
     python cli.py import-pack examples/tools/android
     python cli.py import-templates examples/workflows/android
     python cli.py history [--limit 20]
@@ -31,10 +45,16 @@ Usage (from the ``cli/`` directory):
 """
 
 import argparse
+import contextlib
 import json
 import os
+import re
+import signal
 import sys
+import threading
 import time
+import uuid
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -222,17 +242,47 @@ def cmd_tool(
     raw_inputs: Optional[List[str]],
     json_output: bool,
     tool_dirs: Optional[List[str]] = None,
+    *,
+    run_id: Optional[str] = None,
 ) -> int:
     """Invoke a single tool/operation headlessly and print the result.
 
-    Resolves *name* as a builtin tool or a descriptor tool (loaded via
-    ``--tool-dir``), parses ``--input key=value`` pairs, executes the
-    tool or operation, and prints the result as JSON (``--json``) or a
-    human-readable summary.  Returns 0 on success, non-zero on failure.
+    Registers a run identity first, so the tool's subprocess is cancellable
+    (Ctrl+C kills it) exactly like a workflow node; then delegates to
+    :func:`_cmd_tool_impl`.
+
+    Returns 0 on success, non-zero on failure, 2 when cancelled.
     """
+    run_id = run_id or uuid.uuid4().hex
+    with _run_scope(run_id, None):
+        return _cmd_tool_impl(
+            name, operation, raw_inputs, json_output, tool_dirs, run_id
+        )
+
+
+def _cmd_tool_impl(
+    name: str,
+    operation: Optional[str],
+    raw_inputs: Optional[List[str]],
+    json_output: bool,
+    tool_dirs: Optional[List[str]],
+    run_id: str,
+) -> int:
+    """Execute one tool under an already-registered run identity."""
+    from app.common.exceptions import WorkflowCancelled
+    from app.common.task_manager import TaskManager
     from app.tools.builtin.base import BuiltinTool, ToolContext
 
     inputs = _parse_key_values(raw_inputs or [])
+
+    def _tool_context() -> ToolContext:
+        """Context carrying the run's holder + cancellation source."""
+        return ToolContext(
+            work_dir=os.getcwd(),
+            run_id=run_id,
+            process_holder={},
+            cancel_check=lambda: TaskManager().is_cancelled(run_id),
+        )
 
     # ── 1. Resolve the tool ──────────────────────────────────────────
     tool: Any = None
@@ -253,9 +303,12 @@ def cmd_tool(
 
     # ── 2. Execute ───────────────────────────────────────────────────
     if isinstance(tool, BuiltinTool):
-        tool_context = ToolContext(work_dir=os.getcwd())
+        tool_context = _tool_context()
         try:
             result = tool.execute(inputs, tool_context)
+        except WorkflowCancelled:
+            print("cancelled", file=sys.stderr)
+            return 2
         except Exception as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
@@ -297,11 +350,14 @@ def cmd_tool(
                         print(f"error: {err}", file=sys.stderr)
                     return 1
 
-            tool_context = ToolContext(work_dir=os.getcwd())
+            tool_context = _tool_context()
             try:
                 result = tool.execute(
                     {**inputs, "operation": operation}, tool_context
                 )
+            except WorkflowCancelled:
+                print("cancelled", file=sys.stderr)
+                return 2
             except Exception as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 1
@@ -515,6 +571,139 @@ _STATUS_COLORS = {
 }
 
 
+# ------------------------------------------------------------------
+# Run identity, cancellation sources and interruption
+# ------------------------------------------------------------------
+
+#: History ids are uuid4 hex (see ``app.history.store``); a ``--run-id`` must
+#: match so ``history <run_id>`` can resolve the record the run wrote.
+_HISTORY_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+#: The run currently executing in this process — the only slot a signal
+#: handler touches.  Keys: token, event, timed_out, run_id, task_log_id,
+#: interrupts.
+_ACTIVE_RUN: Dict[str, Any] = {}
+
+
+def _write_stderr(text: str) -> None:
+    """Write *text* to fd 2 without raising (safe inside a signal handler)."""
+    try:
+        os.write(2, text.encode("utf-8", errors="replace"))
+    except Exception:
+        pass
+
+
+def _set_active_run(token, event, run_id, task_log_id) -> None:
+    """Publish *event* as this process's cancellation source."""
+    _ACTIVE_RUN.clear()
+    _ACTIVE_RUN.update(
+        {
+            "token": token,
+            "event": event,
+            "timed_out": False,
+            "run_id": run_id,
+            "task_log_id": task_log_id,
+            "interrupts": 0,
+        }
+    )
+
+
+def _clear_active_run(token) -> None:
+    """Retire the active-run slot when *token* is still the current one."""
+    if _ACTIVE_RUN.get("token") is token:
+        _ACTIVE_RUN.clear()
+
+
+def _on_interrupt(signum, frame) -> None:
+    """Handle SIGINT/SIGTERM: request cancellation, force exit on the second.
+
+    Deliberately tiny and lock-free: taking ``TaskManager``'s lock or
+    flushing the task log here can deadlock against the interrupted thread
+    (which may already hold those locks).  Only ``Event.set()`` and
+    ``os.write`` are used, so a forced exit may lose log lines still
+    buffered in memory.
+    """
+    event = _ACTIVE_RUN.get("event")
+    if event is None:
+        _write_stderr("\ninterrupted\n")
+        os._exit(130)
+        return  # os._exit does not return; kept for defensiveness/tests
+    if _ACTIVE_RUN.get("interrupts"):
+        _write_stderr("\nforced exit\n")
+        os._exit(130)
+        return
+    _ACTIVE_RUN["interrupts"] = 1
+    _write_stderr("\ninterrupt: cancelling run (interrupt again to force exit)\n")
+    event.set()
+
+
+def _install_signal_handlers() -> None:
+    """Install :func:`_on_interrupt` for SIGINT/SIGTERM when possible.
+
+    ``signal.signal`` only works on the main thread, and SIGTERM is not
+    catchable on Windows (``os.kill`` terminates the process outright).
+    """
+    for name in ("SIGINT", "SIGTERM"):
+        sig = getattr(signal, name, None)
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _on_interrupt)
+        except (ValueError, OSError, RuntimeError):
+            pass
+
+
+def _fire_timeout(token, event, seconds: float) -> None:
+    """``--timeout`` watchdog: cancel the run unless it already finished."""
+    if _ACTIVE_RUN.get("token") is not token:
+        return  # a late fire after completion must be inert
+    _ACTIVE_RUN["timed_out"] = True
+    _write_stderr(f"\nrun timeout after {seconds:g}s: cancelling\n")
+    event.set()
+
+
+def _sweep_live_children() -> None:
+    """Cancel (and tree-kill) every run still registered with TaskManager.
+
+    Insurance for the paths that leave ``main`` normally; a forced
+    ``os._exit`` cannot run it.
+    """
+    try:
+        from app.common.task_manager import TaskManager
+
+        manager = TaskManager()
+        for run in manager.list_tasks():
+            try:
+                manager.cancel(run.get("run_id") or "")
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+@contextlib.contextmanager
+def _run_scope(run_id: str, task_id: Optional[str], event=None):
+    """Register *run_id* for cancellation and mark it as the active run.
+
+    Yields the per-run :class:`threading.Event` that the signal handler and
+    the ``--timeout`` watchdog set.  ``honor_stop_event=True`` is what lets
+    the engine observe that event through ``TaskManager.is_cancelled`` — the
+    CLI's own cancellation path — without the handler ever taking a lock.
+    """
+    from app.common.task_manager import TaskManager
+
+    manager = TaskManager()
+    cancel_event = event if event is not None else threading.Event()
+    token = object()
+    manager.register(run_id, task_id or "", cancel_event, honor_stop_event=True)
+    _set_active_run(token, cancel_event, run_id, task_id)
+    try:
+        yield cancel_event, token
+    finally:
+        manager.unregister(run_id)
+        _clear_active_run(token)
+
+
 def _coerce_input_value(value: str) -> Any:
     """Coerce a raw ``--input`` value to a typed Python value.
 
@@ -614,6 +803,10 @@ def cmd_run(
     task_id: Optional[str],
     json_output: bool,
     tool_dirs: Optional[List[str]] = None,
+    *,
+    run_id: Optional[str] = None,
+    timeout: Optional[float] = None,
+    interrupt_event: Optional[threading.Event] = None,
 ) -> int:
     """Run a workflow from a JSON file or template name.
 
@@ -626,9 +819,22 @@ def cmd_run(
     folder, or the template store's folder), so relative paths and produced
     artifacts stay next to the workflow instead of landing in the process CWD.
 
-    Returns 0 on success, 1 on failure, 2 when the run was cancelled.
+    Args:
+        run_id: the run identity (32-char hex).  It names ``$rundir``, is the
+            key the run registers for cancellation under, and — when it has
+            the history id format — becomes the history record id.  Defaults
+            to a fresh ``uuid4().hex``, so concurrent CLI runs never share a
+            run directory.
+        timeout: whole-run wall-clock budget in seconds; on expiry the run is
+            cancelled and 124 is returned.  ``None``/``0`` means no limit.
+        interrupt_event: the per-run cancellation event the signal handler
+            sets.  Defaults to a fresh event (used by in-process callers and
+            tests that pre-set it to request cancellation).
+
+    Returns 0 on success, 1 on failure, 2 when the run was cancelled and 124
+    when it hit *timeout*.
     """
-    from app.workflow.engine import ExecutionContext, WorkflowEngine
+    from app.workflow.engine import ExecutionContext, WorkflowEngine, WorkflowResult
     from app.workflow.runner import record_history
     from app.workflow.streaming import WorkflowStreamHandler
     from app.utils.task_log_writer import cleanup_task_log
@@ -643,71 +849,124 @@ def cmd_run(
     use_color = (not json_output) and sys.stdout.isatty()
     stream = sys.stderr if json_output else sys.stdout
     raw_stream_handler = _make_console_stream_handler(use_color, stream)
-    run_id = task_id or "cli"
-    workflow_stream = WorkflowStreamHandler(
-        workflow_id=definition.name,
-        callback=raw_stream_handler,
-        run_id=run_id,
-        task_log_id=task_id,
-    )
 
-    context = ExecutionContext(
-        work_dir=work_dir or os.getcwd(),
-        task_id=task_id,
-        run_id=run_id,
-        stream_handler=raw_stream_handler,
-        workflow_stream=workflow_stream,
-    )
-
+    run_id = run_id or uuid.uuid4().hex
     registry = (
         _augment_registry_with_tool_dirs(tool_dirs)
         if tool_dirs
         else None
     )
-    try:
-        try:
-            result = WorkflowEngine(registry=registry).execute(definition, inputs, context)
-        except Exception as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
 
-        # CLI runs are top-level runs too — record them (best-effort).
-        record_history(
-            definition, {"path": target}, task_id, inputs, result,
-            started_at, start,
+    with _run_scope(run_id, task_id, interrupt_event) as (cancel_event, token):
+        workflow_stream = WorkflowStreamHandler(
+            workflow_id=definition.name,
+            callback=raw_stream_handler,
+            run_id=run_id,
+            task_log_id=task_id,
+        )
+        context = ExecutionContext(
+            work_dir=work_dir or os.getcwd(),
+            task_id=task_id,
+            run_id=run_id,
+            stream_handler=raw_stream_handler,
+            workflow_stream=workflow_stream,
         )
 
-        if json_output:
-            print(
-                json.dumps(
-                    {
-                        "success": result.success,
-                        "status": result.status,
-                        "cancelled": result.cancelled,
-                        "outputs": result.outputs,
-                        "node_results": result.node_results,
-                        "error": result.error,
-                    },
-                    indent=2,
-                    default=str,
-                    ensure_ascii=False,
-                )
+        timer = None
+        if timeout and timeout > 0:
+            timer = threading.Timer(
+                float(timeout), _fire_timeout, args=(token, cancel_event, float(timeout))
             )
-        else:
-            print(f"status: {result.status}")
-            if result.outputs:
-                print(
-                    "outputs: "
-                    + json.dumps(result.outputs, indent=2, default=str, ensure_ascii=False)
-                )
-            if result.error:
-                print(f"error: {result.error}")
+            timer.daemon = True
+            timer.start()
 
-        # A cancelled run is neither success (0) nor a plain failure (1).
-        return 0 if result.success else (2 if result.cancelled else 1)
-    finally:
-        if task_id:
-            cleanup_task_log(task_id)
+        try:
+            try:
+                result = WorkflowEngine(registry=registry).execute(
+                    definition, inputs, context
+                )
+            except KeyboardInterrupt:
+                # Only reachable when the SIGINT handler could not be
+                # installed; treat it exactly like a requested cancel.
+                result = WorkflowResult(
+                    success=False,
+                    outputs={},
+                    node_results={},
+                    error="run interrupted",
+                    cancelled=True,
+                )
+            except BaseException as exc:  # noqa: BLE001 - never lose the record
+                result = WorkflowResult(
+                    success=False,
+                    outputs={},
+                    node_results={},
+                    error=f"internal error: {exc}",
+                )
+                if json_output:
+                    print(f"error: {exc}", file=sys.stderr)
+
+            # A timeout only counts when the engine actually observed the
+            # cancellation: a timer that fires after the run already
+            # finished must not turn a success into a timeout.
+            timed_out = bool(
+                _ACTIVE_RUN.get("timed_out")
+                and _ACTIVE_RUN.get("token") is token
+                and result.cancelled
+            )
+            if timed_out:
+                result = replace(
+                    result,
+                    success=False,
+                    cancelled=True,
+                    error=f"run timed out after {timeout:g}s",
+                )
+
+            # Every terminal path is recorded — success, failure, cancel,
+            # timeout and internal error alike (best-effort).
+            record_history(
+                definition, {"path": target}, task_id, inputs, result,
+                started_at, start,
+                run_id=run_id if _HISTORY_ID_RE.match(run_id) else None,
+            )
+
+            if json_output:
+                print(
+                    json.dumps(
+                        {
+                            "success": result.success,
+                            "status": result.status,
+                            "cancelled": result.cancelled,
+                            "timeout": timed_out,
+                            "run_id": run_id,
+                            "outputs": result.outputs,
+                            "node_results": result.node_results,
+                            "error": result.error,
+                        },
+                        indent=2,
+                        default=str,
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                print(f"run_id: {run_id}")
+                print(f"status: {result.status}")
+                if result.outputs:
+                    print(
+                        "outputs: "
+                        + json.dumps(result.outputs, indent=2, default=str, ensure_ascii=False)
+                    )
+                if result.error:
+                    print(f"error: {result.error}")
+
+            if timed_out:
+                return 124
+            # A cancelled run is neither success (0) nor a plain failure (1).
+            return 0 if result.success else (2 if result.cancelled else 1)
+        finally:
+            if timer is not None:
+                timer.cancel()
+            if task_id:
+                cleanup_task_log(task_id)
 
 
 def _parse_key_values(pairs: List[str]) -> Dict[str, Any]:
@@ -742,7 +1001,17 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # run
-    run_parser = subparsers.add_parser("run", help="Run a workflow from file or template")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a workflow from file or template",
+        description=(
+            "Run a workflow and stream node events.\n"
+            "Exit codes: 0 success, 1 failure, 2 cancelled, 124 timed out, "
+            "130 forced exit on a second Ctrl+C (argparse itself also exits 2 "
+            "on a usage error)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     run_parser.add_argument("target", help="Path to workflow JSON file or template name")
     run_parser.add_argument("--input", action="append", help="Input as key=value (repeatable)")
     run_parser.add_argument("--task-id", help="Task ID for logging")
@@ -750,6 +1019,17 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--tool-dir", action="append", default=None,
         help="Directory of *.json tool descriptors to load (repeatable)",
+    )
+    run_parser.add_argument(
+        "--run-id", default=None,
+        help=(
+            "32-char lowercase hex run id: names the run directory "
+            "($rundir) and the history record (default: random)"
+        ),
+    )
+    run_parser.add_argument(
+        "--timeout", type=float, default=None, metavar="SECONDS",
+        help="Cancel the whole run after SECONDS (0 or omitted = no limit)",
     )
 
     # list-tools
@@ -784,6 +1064,13 @@ def _build_parser() -> argparse.ArgumentParser:
     tool_parser.add_argument(
         "--tool-dir", action="append", default=None,
         help="Directory of *.json tool descriptors to load (repeatable)",
+    )
+    tool_parser.add_argument(
+        "--run-id", default=None,
+        help=(
+            "32-char lowercase hex run id for this invocation "
+            "(default: random); the tool is cancellable under it"
+        ),
     )
 
     # list-templates
@@ -826,11 +1113,23 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     """Bootstrap, parse arguments and dispatch to a subcommand handler."""
     bootstrap()
+    _install_signal_handlers()
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    run_id = getattr(args, "run_id", None)
+    if run_id and not _HISTORY_ID_RE.match(run_id):
+        print(
+            f"error: --run-id must be 32 lowercase hex characters, got {run_id!r}",
+            file=sys.stderr,
+        )
+        return 1
+
     handlers = {
-        "run": lambda: cmd_run(args.target, args.input, args.task_id, args.json, args.tool_dir),
+        "run": lambda: cmd_run(
+            args.target, args.input, args.task_id, args.json, args.tool_dir,
+            run_id=run_id, timeout=args.timeout,
+        ),
         "list-tools": cmd_list_tools,
         "list-envs": cmd_list_envs,
         "validate": lambda: cmd_validate(args.path, args.tool_dir),
@@ -839,15 +1138,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         "import-templates": lambda: cmd_import_templates(args.path),
         "history": lambda: cmd_history(args.run_id, args.limit),
         "tool": lambda: cmd_tool(
-            args.name, args.operation, args.input, args.json, args.tool_dir
+            args.name, args.operation, args.input, args.json, args.tool_dir,
+            run_id=run_id,
         ),
     }
 
     try:
         return handlers[args.command]()
+    except KeyboardInterrupt:
+        # Belt-and-braces: _on_interrupt normally turns Ctrl+C into a
+        # cancelled run (exit 2).  A KeyboardInterrupt raised before the
+        # handler was installed must not print a traceback.
+        print("interrupted", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    finally:
+        _sweep_live_children()
 
 
 if __name__ == "__main__":
