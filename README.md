@@ -67,8 +67,9 @@ npm run build:linux  # Linux (AppImage)
 
 > ⚠️ 不要手工改 `package.json` 的 `version` 然后直接跑默认 patch：bump 的基数是 package.json
 > 的当前值，手工提前提到 2.5.0 后会发出 v2.5.1。要按手工改过的号发版，请用
-> `npm run release -- --version=2.5.0`。产物名、latest.yml 的 `version`、应用内自报版本三者
-> 都来自 package.json.version，一旦与 tag 脱节，用户端自更新会静默失效。
+> `npm run release -- --version=2.5.0`（package.json 已是该版本时脚本会跳过 bump 提交）。
+> 产物名、latest.yml 的 `version`、应用内自报版本三者都来自 package.json.version：tag 与它脱节
+> 时，tag 对应的源码就再也构建不出发布出去的那个安装包（可复现性丢失）。
 
 ### 发布
 
