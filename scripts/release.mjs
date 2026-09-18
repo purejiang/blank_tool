@@ -596,6 +596,19 @@ function bumpPackageJson(newVersion) {
     run('git add package.json', 'bump_version', {
       hint: 'git 操作失败，检查仓库状态',
     });
+    // 已经是目标版本 = 没有东西可提交。用 `--version=<package.json 当前版本>` 时必然发生
+    // （package.json 被手工预提过，见 RELEASE_GUIDE §1）：此时 `git commit` 会以
+    // 「nothing to commit」退出 1，让整个发版中断在 bump 阶段 —— 但双源本来就已经一致，
+    // 直接跳过即可。`git add` 顺便刷新了索引里的 stat 缓存，所以工作区依旧是干净的。
+    const staged = run('git diff --cached --name-only', 'bump_version', {
+      hint: 'git 操作失败，检查仓库状态',
+    }).stdout.trim();
+    if (!staged) {
+      console.log(
+        `[phase 3a] package.json 已经是 ${newVersion}，没有需要提交的改动，跳过 bump 提交。\n`,
+      );
+      return;
+    }
     run(`git commit -m "chore(release): bump version to ${newVersion}"`, 'bump_version', {
       hint: 'git commit 失败',
     });
