@@ -2,7 +2,7 @@ import os
 import platform
 import re
 import datetime
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from app.tools.base_tool import BinaryTool
 from app.common.base_executor import CommandExecutionContext
 
@@ -10,23 +10,8 @@ class Adb(BinaryTool):
     """ADB工具类"""
 
     def _validate_tool(self) -> bool:
-        """
-        验证 adb 工具是否有效
-        
-        检查 adb 工具路径是否存在，并且通过执行 adb version 命令来验证工具是否有效。
-        
-        Returns:
-            bool: 如果工具路径存在且 adb version 命令执行成功且输出包含 "Android Debug Bridge"，则返回 True，否则返回 False
-        """
-        if not self.tool_path or not os.path.exists(self.tool_path):
-            return False
-        # 可以通过执行 adb version 命令来验证工具是否有效
-        command = ["version"]
-        result = self.execute(command)
-        output = result.get("stdout", "")
-        is_valid = "Android Debug Bridge" in output
-        self._logger.info(f"adb is_valid: {is_valid}")
-        return is_valid
+        """See ``probe`` — it is the single source of truth for this tool."""
+        return self.probe()[0]
 
     def _get_possible_tool_names(self) -> List[str]:
         """
@@ -43,23 +28,24 @@ class Adb(BinaryTool):
             return ["adb"]
 
     def _get_tool_version(self) -> str:
-        """
-        获取 adb 工具版本
-        
-        执行 adb version 命令，解析输出中的版本号。
-        
-        Returns:
-            str: adb 工具版本号，如 "1.0.41"，如果无法获取则返回空字符串
-        """
-        command = ["version"]
-        result = self.execute(command)
-        output = result.get("stdout", "")
-        match = re.search(r"version (\S+)", output)
-        self._logger.info(f"adb version output: {output}")
-        if match:
-            return match.group(1)
-        return ""
+        """See ``probe`` — it is the single source of truth for this tool."""
+        return self.probe()[1]
     
+    def probe(self) -> Tuple[bool, str]:
+        """One ``adb version`` run answers both questions.
+
+        校验与取版本用的是同一条命令（历史上跑了两遍），合并成一次子进程。
+        """
+        if not self.tool_path or not os.path.exists(self.tool_path):
+            return False, ""
+        result = self.execute(["version"])
+        output = result.get("stdout", "") if isinstance(result, dict) else ""
+        self._logger.info(f"adb version output: {output}")
+        if "Android Debug Bridge" not in output:
+            return False, ""
+        match = re.search(r"version (\S+)", output)
+        return True, (match.group(1) if match else "")
+
     def get_devices(self) -> List[str]:
         """
         获取连接的设备列表

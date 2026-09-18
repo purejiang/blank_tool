@@ -54,6 +54,13 @@ def get_tools(params, stream_handler):
         "adb", "apktool", "apksigner", "zipalign", "aapt",
         "bundletool", "jarsigner",
     ]
+    # Warm every tool in parallel before building the report. Seven tools cost
+    # up to two subprocess launches each — four of them JVM cold starts — and
+    # resolving them one after another is what dominated the app's first paint.
+    # Cached verdicts (app.tools.probe_cache) make this a no-op on every launch
+    # after the first, so the wall time is logged for regression watching.
+    manager.ensure_all_probed()
+    logger.info(f"tool.get_tools probe wall time = {manager.last_probe_ms}ms")
     report = {}
     for name in names:
         tool = manager.get_tool(name)
