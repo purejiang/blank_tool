@@ -11,8 +11,8 @@
         :percentage="progress"
         :height="6"
         :border-radius="3"
-        color="#22C55E"
-        rail-color="rgba(255,255,255,0.1)"
+        color="var(--app-green)"
+        rail-color="var(--app-progress-rail)"
       />
       <div class="loading-info">
         <p class="loading-step">{{ step }}</p>
@@ -70,15 +70,15 @@ const emit = defineEmits<{
   margin: 0 auto;
 }
 .loading-title {
-  font-family: Inter, sans-serif;
-  font-size: 24px;
+  font-family: var(--app-font);
+  font-size: var(--app-font-size-2xl);
   font-weight: 700;
   color: var(--app-text-primary);
   margin: 12px 0 0;
 }
 .loading-subtitle {
-  font-family: Inter, sans-serif;
-  font-size: 13px;
+  font-family: var(--app-font);
+  font-size: var(--app-font-size-md);
   color: var(--app-text-muted);
   margin: 4px 0 0;
 }
@@ -89,12 +89,12 @@ const emit = defineEmits<{
   margin-top: 12px;
 }
 .loading-step {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   color: var(--app-text-muted);
   margin: 0;
 }
 .loading-timer {
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   color: var(--app-text-muted);
   margin: 0;
   font-variant-numeric: tabular-nums;

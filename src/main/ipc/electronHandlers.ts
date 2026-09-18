@@ -3,8 +3,9 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
-import { getPythonProcess } from '../state'
+import { getPythonProcess, getPythonStartedAt } from '../state'
 import { getAppLocalDataPath } from '../utils/appPaths'
+import { getBaseDir, resolvePathFromBase } from '../python/paths'
 
 export function setupElectronHandlers(): void {
   ipcMain.handle(IPC_CHANNEL_NAMES.showSystemNotification, async (event: IpcMainInvokeEvent, payload: { title?: string; body?: string }) => {
@@ -74,13 +75,37 @@ export function setupElectronHandlers(): void {
       return { success: false, error: error.message }
     }
   })
+
+  // Read an image file off disk and return it as a base64 data URL. Used to
+  // render APK launcher icons whose path is persisted in task.result instead
+  // of the (large) inline base64 blob.
+  ipcMain.handle(IPC_CHANNEL_NAMES.readImageAsDataURL, async (event: IpcMainInvokeEvent, filePath: string) => {
+    try {
+      const ext = (filePath.split('.').pop() || 'png').toLowerCase()
+      const mimeMap: Record<string, string> = {
+        png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg',
+        jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml',
+      }
+      const mime = mimeMap[ext] || 'image/png'
+      const buf = await fs.readFile(filePath)
+      const b64 = buf.toString('base64')
+      return { success: true, dataUrl: `data:${mime};base64,${b64}` }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
   
-  // 文件/目录打开
-  ipcMain.handle(IPC_CHANNEL_NAMES.openPath, async (event: IpcMainInvokeEvent, targetPath: string) => {
+  // 文件/目录打开。opts.reveal === false 表示「用系统默认程序真正打开」
+  // （.html 报告 → 浏览器）；缺省保持历史行为：目录 openPath，
+  // 文件 showItemInFolder（资源管理器中显示并选中）。
+  ipcMain.handle(IPC_CHANNEL_NAMES.openPath, async (event: IpcMainInvokeEvent, targetPath: string, opts?: { reveal?: boolean }) => {
     if (!targetPath) return { success: false, error: 'Path is required' }
     try {
+      const reveal = opts?.reveal !== false
       const stat = await fs.stat(targetPath).catch(() => null)
-      if (stat && stat.isDirectory()) {
+      if (!reveal && stat && stat.isFile()) {
+        await shell.openPath(targetPath)
+      } else if (stat && stat.isDirectory()) {
         await shell.openPath(targetPath)
       } else {
         shell.showItemInFolder(targetPath)
@@ -146,7 +171,11 @@ export function setupElectronHandlers(): void {
       appDescription,
       nodeVersion: process.versions.node,
       chromeVersion: process.versions.chrome,
-      electronVersion: process.versions.electron
+      electronVersion: process.versions.electron,
+      // The Node binary this app actually runs on — shown on the settings
+      // page so the "local runtimes" card can display a path (Electron has no
+      // separate Node install to discover).
+      nodePath: process.execPath
     }
   })
 
@@ -160,27 +189,22 @@ export function setupElectronHandlers(): void {
     return true
   })
   
-  // 路径解析
+  // 路径解析（相对路径一律相对应用根目录；基准目录单一来源 getBaseDir）
   ipcMain.handle(IPC_CHANNEL_NAMES.pathResolve, async (event: IpcMainInvokeEvent, pathStr: string) => {
-    if (!pathStr) return pathStr;
-  
-    if (path.isAbsolute(pathStr)) return pathStr;
-    
-    // 如果是相对路径，则相对于应用根目录解析
-    const baseDir = !app.isPackaged
-      ? path.join(__dirname, '..', '..')
-      : process.resourcesPath;
-      
-    // 移除可能存在的开头的 .\ 或 ./
-    const cleanPath = pathStr.replace(/^\.[\\/]/, '');
-    return path.join(baseDir, cleanPath);
+    return resolvePathFromBase(getBaseDir(), pathStr);
   })
 
   // Backend health check — lightweight, < 5ms (no stdin roundtrip)
   ipcMain.handle(IPC_CHANNEL_NAMES.getBackendHealth, async () => {
     const proc = getPythonProcess()
     const healthy = Boolean(proc && !proc.killed && proc.exitCode === null)
-    return { healthy, uptime_s: null, pending_requests: null }
+    // 运行时间在本地按 spawn 时刻算（不为了它发一次 JSON-RPC 往返）。
+    // 进程不健康时给 null，前端显示「—」而不是一个没意义的时间。
+    const startedAt = getPythonStartedAt()
+    const uptimeS = healthy && startedAt
+      ? Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+      : null
+    return { healthy, uptime_s: uptimeS }
   })
 
   // Electron log tail — reads last N lines of electron.log

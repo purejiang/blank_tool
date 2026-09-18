@@ -3,25 +3,50 @@
 """
 Storage directory management handlers.
 
-Three top-level directories, each with independent lifecycle:
-  - tasks/   user work products (signed APKs, decompiled sources)
-  - output/  standalone exports
-  - logs/    backend diagnostic logs (3-day rotation)
+Four top-level directories, each with independent lifecycle:
+  - tasks/       user work products (signed APKs, decompiled sources)
+  - auto_tasks/  script automation runs (artifacts + report.json each)
+  - output/      standalone exports
+  - logs/        backend diagnostic logs (3-day rotation)
+
+``tasks`` and ``auto_tasks`` are cleared independently: the "tasks" action
+only touches APK/package work products, so it can never wipe a run report
+by accident; ``all`` covers everything.
 """
 
+import copy
 import os
 import shutil
+import time
 
 from app.utils.logger import Logger
-from app.utils.env import get_output_dir, get_tasks_root
-from app.common.exceptions import ToolException
+from app.utils.env import get_auto_tasks_root, get_cache_dir, get_output_dir, get_tasks_root
 from app.common.decorators import logs_errors
 
 logger = Logger.get_logger("StorageHandler")
 
+# `cache.info` walks four directory trees; the settings page calls it on every
+# mount AND after every clear. Sizes do not need to be second-fresh, so the
+# result is memoised briefly and invalidated by the clear handlers below.
+_INFO_TTL_SECONDS = 60
+_info_cache = {"at": 0.0, "payload": None}
+
+
+def _invalidate_info_cache():
+    _info_cache["at"] = 0.0
+    _info_cache["payload"] = None
+
+
+def _cache_root():
+    return get_cache_dir()
+
 
 def _tasks_root():
     return get_tasks_root()
+
+
+def _auto_tasks_root():
+    return get_auto_tasks_root()
 
 
 def _output_root():
@@ -50,19 +75,47 @@ def _get_dir_size(path):
 
 @logs_errors("StorageHandler")
 def cache_info(params, stream_handler):
+    """Directory sizes for the storage card.
+
+    Cached for ``_INFO_TTL_SECONDS`` (``params.force`` bypasses it): the walk
+    is the expensive part and the settings page re-asks on every mount. The
+    clear handlers invalidate the memo so a size never survives a deletion.
+    """
+    now = time.time()
+    if (not params.get("force") and _info_cache["payload"] is not None
+            and now - _info_cache["at"] < _INFO_TTL_SECONDS):
+        return copy.deepcopy(_info_cache["payload"])
+
+    cache_root = _cache_root()
     tasks_root = _tasks_root()
+    auto_tasks_root = _auto_tasks_root()
     output_root = _output_root()
     logs_root = _logs_root()
 
+    cache_size, cache_files = _get_dir_size(cache_root)
     tasks_size, tasks_files = _get_dir_size(tasks_root)
+    auto_size, auto_files = _get_dir_size(auto_tasks_root)
     output_size, output_files = _get_dir_size(output_root)
     logs_size, logs_files = (_get_dir_size(logs_root) if logs_root else (0, 0))
 
-    return {
+    payload = {
+        # Reported for completeness but excluded from `total`: in a dev run
+        # without BT_TASKS_DIR the tasks root lives inside the cache dir, so
+        # adding it would double-count.
+        "cache": {
+            "path": cache_root,
+            "size": cache_size,
+            "files": cache_files,
+        },
         "tasks": {
             "path": tasks_root,
             "size": tasks_size,
             "files": tasks_files,
+        },
+        "auto_tasks": {
+            "path": auto_tasks_root,
+            "size": auto_size,
+            "files": auto_files,
         },
         "output": {
             "path": output_root,
@@ -75,10 +128,13 @@ def cache_info(params, stream_handler):
             "files": logs_files,
         },
         "total": {
-            "size": tasks_size + output_size + logs_size,
-            "files": tasks_files + output_files + logs_files,
+            "size": tasks_size + auto_size + output_size + logs_size,
+            "files": tasks_files + auto_files + output_files + logs_files,
         },
     }
+    _info_cache["at"] = now
+    _info_cache["payload"] = payload
+    return copy.deepcopy(payload)
 
 
 
@@ -99,9 +155,31 @@ def _clear_directory(path):
 
 
 @logs_errors("StorageHandler")
+def cache_clear(params, stream_handler):
+    """Clear the standalone cache directory (``BT_CACHE_DIR``).
+
+    It never touches tasks/auto_tasks/output — user work products are only
+    removed by the explicit ``storage.clear`` targets.
+
+    The historical preload wrapper forwarded ``cache_types`` (a list of
+    sub-caches) and ``confirm``; the cache root is cleared as a whole
+    regardless, so both are ignored.
+
+    No current renderer code calls this route (``src/preload/api/cache.ts``
+    exposes ``cache.info`` / ``output.clear`` / ``storage.clear``); it is kept
+    because ``tests/contracts/test_cache_handler.py`` locks its shape.
+    """
+    root = _cache_root()
+    _clear_directory(root)
+    _invalidate_info_cache()
+    return {"path": root, "size": 0, "files": 0}
+
+
+@logs_errors("StorageHandler")
 def output_clear(params, stream_handler):
     root = _output_root()
     _clear_directory(root)
+    _invalidate_info_cache()
     return {"path": root, "size": 0, "files": 0}
 
 
@@ -116,6 +194,11 @@ def storage_clear(params, stream_handler):
         if _clear_directory(tasks_root):
             cleared_paths.append(tasks_root)
 
+    if target in ["all", "auto_tasks", "autoTasks"]:
+        auto_tasks_root = _auto_tasks_root()
+        if _clear_directory(auto_tasks_root):
+            cleared_paths.append(auto_tasks_root)
+
     if target in ["all", "output"]:
         output_root = _output_root()
         if _clear_directory(output_root):
@@ -126,30 +209,22 @@ def storage_clear(params, stream_handler):
         if logs_root and _clear_directory(logs_root):
             cleared_paths.append(logs_root)
 
+    # Explicit `cache` target only — deliberately not part of "all", because in
+    # a dev run without BT_TASKS_DIR the tasks root lives *inside* the cache
+    # dir, and clearing it would delete user work products.
+    if target == "cache":
+        cache_root = _cache_root()
+        if _clear_directory(cache_root):
+            cleared_paths.append(cache_root)
+
+    _invalidate_info_cache()
     return {"success": True, "cleared_paths": cleared_paths}
-
-
-@logs_errors("StorageHandler")
-def tasks_clear(params, stream_handler):
-    root = _tasks_root()
-    _clear_directory(root)
-    return {"path": root, "size": 0, "files": 0}
-
-
-@logs_errors("StorageHandler")
-def logs_clear(params, stream_handler):
-    root = _logs_root()
-    if not root:
-        raise ToolException("Log directory not available")
-    _clear_directory(root)
-    return {"path": root, "size": 0, "files": 0}
 
 
 API_MAP = {
     "cache.get_info": cache_info,
     "cache.info": cache_info,
+    "cache.clear": cache_clear,
     "output.clear": output_clear,
-    "tasks.clear": tasks_clear,
-    "logs.clear": logs_clear,
     "storage.clear": storage_clear,
 }

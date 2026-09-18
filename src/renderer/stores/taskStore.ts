@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { log } from '@utils/logger'
+import { notifySystem } from '@utils/systemNotify'
 
 export interface Task {
   id: number
@@ -12,9 +13,18 @@ export interface Task {
   operationLabel: string
   status: 'downloading' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancelling'
   phase: 'idle' | 'download' | 'operation' | 'finished'
+  /** Which phase the task failed in — drives the "retry failed stage" button. */
+  failedPhase: '' | 'download' | 'operation'
   progress: number
   progressLabel: string
   result: string
+  /**
+   * Raw analyze payload (analyze tasks only). `result` is a *rendered HTML
+   * snapshot* — it is frozen in whatever language was active when the analysis
+   * finished. Keeping the source data lets the report be re-rendered when the
+   * UI language changes (see PackagePage's locale watcher).
+   */
+  resultData?: any
   outputPath: string
   logs: string[]
   error: string
@@ -48,6 +58,7 @@ function loadTasks(): Task[] {
       const tasks: Task[] = JSON.parse(raw)
       for (const t of tasks) {
         t.startedAt ??= t.createdAt
+        t.failedPhase ??= ''
         // Backward compat: infer phase from status for pre-phase data
         if (!t.phase) {
           if (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled') {
@@ -56,6 +67,19 @@ function loadTasks(): Task[] {
             t.phase = 'idle'
           }
         }
+        // Zombie guard: a non-terminal status can only survive a restart from
+        // older app versions (current saveTasks filters terminal-only) or a
+        // mid-write anomaly. The executors/backend job is gone after restart,
+        // so leave it failed — otherwise hasActive stays true forever and the
+        // "clear all" button is permanently disabled.
+        if (t.status === 'queued' || t.status === 'downloading' || t.status === 'running' || t.status === 'cancelling') {
+          t.failedPhase = t.phase === 'operation' ? 'operation' : 'download'
+          t.status = 'failed'
+          t.phase = 'finished'
+          t.finishedAt = t.finishedAt ?? Date.now()
+          t.progressLabel = ''
+          t.error ||= 'Task interrupted by app restart'
+        }
       }
       return tasks
     }
@@ -63,14 +87,27 @@ function loadTasks(): Task[] {
   return []
 }
 
-function saveTasks(tasks: Task[]) {
+function writeTasks(toSave: unknown[]): boolean {
   try {
-    const toSave = tasks
-      .filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
-      .slice(0, 100)
-      .map(t => ({ ...t, logs: [] }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
-  } catch {}
+    return true
+  } catch {
+    return false
+  }
+}
+
+function saveTasks(tasks: Task[]) {
+  const toSave = tasks
+    .filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')
+    .slice(0, 100)
+    .map(t => ({ ...t, logs: t.logs.slice(-100) }))
+  if (writeTasks(toSave)) return
+  // Quota exceeded: shed the bulky raw analyze payloads oldest-first (the list
+  // is stored newest-first). Those tasks keep their rendered HTML and simply
+  // stop following locale switches — better than losing the whole history.
+  for (let keep = toSave.length - 1; keep >= 0; keep--) {
+    if (writeTasks(toSave.map((t, i) => (i < keep ? t : { ...t, resultData: undefined })))) return
+  }
 }
 
 // Collect deletable task IDs from terminal tasks (completed/failed/cancelled).
@@ -121,15 +158,10 @@ async function persistLine(id: number, line: string): Promise<void> {
 
 // Fire-and-forget OS notification when a task reaches a terminal state.
 // Never throws; only console.errors on failure. Respects the
-// `enableNotifications` toggle. Uses plain strings (store stays i18n-decoupled).
+// `enableNotifications` toggle (checked inside `notifySystem`). Uses plain
+// strings (store stays i18n-decoupled).
 async function notifyTaskTerminal(task: Task): Promise<void> {
-  const notify = window.electronAPI?.showSystemNotification as
-    | ((title: string, body: string) => Promise<boolean>)
-    | undefined
-  if (!window.electronAPI?.appConfig?.get || typeof notify !== 'function') return
   try {
-    const enabled = await window.electronAPI.appConfig.get('enableNotifications')
-    if (enabled !== true) return
     const title = `${task.operationLabel || 'Task'} ${task.fileName || ''}`.trim()
     let body: string
     if (task.status === 'completed' && task.operation === 'install' && task.deviceLabel) {
@@ -141,7 +173,7 @@ async function notifyTaskTerminal(task: Task): Promise<void> {
     } else {
       body = '已取消'
     }
-    await notify(title, body)
+    await notifySystem(title, body)
   } catch (err) {
     log.error('[taskStore] notify failed', err)
   }
@@ -160,13 +192,25 @@ export const useTaskStore = defineStore('task', () => {
   const runningCount = computed(() => tasks.value.filter(t => t.status === 'running').length)
   const hasRunning = computed(() => runningCount.value > 0)
   const hasCompleted = computed(() => tasks.value.some(t => t.status === 'completed' || t.status === 'failed'))
+  // True while any task is queued/downloading/running/cancelling (not yet in a
+  // terminal state). Drives the "clear all" guard — clearing while tasks are
+  // still in flight would orphan them: their entries vanish from the UI but
+  // the executor/backend keeps working with no way to see or cancel them.
+  const hasActive = computed(
+    () => tasks.value.some(
+      t => t.status === 'queued' || t.status === 'downloading' || t.status === 'running' || t.status === 'cancelling',
+    ),
+  )
 
   function createTask(partial: Pick<Task, 'source' | 'url' | 'filePath' | 'fileName' | 'operation' | 'operationLabel'>): Task {
     const task: Task = {
       id: nextId++,
       ...partial,
-      status: partial.source === 'url' ? 'downloading' : 'queued',
-      phase: partial.source === 'url' ? 'download' : 'idle',
+      // Always start queued — TaskExecutionService pulls tasks into execution
+      // respecting the global concurrency limit (default 3).
+      status: 'queued',
+      phase: 'idle',
+      failedPhase: '',
       progress: 0,
       progressLabel: '',
       result: '',
@@ -214,6 +258,9 @@ export const useTaskStore = defineStore('task', () => {
         updates.phase = 'download'
         updates.status = 'downloading'
         updates.progress = 0
+        // Duration measures execution only, not queue wait: start the clock
+        // when the task first leaves the queue (queued → downloading).
+        if (task.status === 'queued') updates.startedAt = Date.now()
         break
       case 'download_progress':
         updates.progress = payload?.progress ?? 0
@@ -227,16 +274,29 @@ export const useTaskStore = defineStore('task', () => {
         updates.phase = 'operation'
         updates.status = 'running'
         updates.progress = 0
+        // Drop the stale download percentage (last download_progress event,
+        // e.g. "99%") — the running tag renders `progressLabel || running`,
+        // so without this the install/analyze phase shows a frozen "99%".
+        updates.progressLabel = ''
+        // Same as start_download: for local-file tasks (no download phase)
+        // this is the first transition out of the queue.
+        if (task.status === 'queued') updates.startedAt = Date.now()
         break
       case 'operation_complete':
         updates.status = 'completed'
         updates.phase = 'finished'
         updates.progress = 100
         updates.finishedAt = Date.now()
+        // Clear any stale error left over from a previous attempt/retry so a
+        // successful run never shows an outdated error block.
+        updates.error = ''
         // Accept any of the backend's payload shapes (output_dir / output_apk / apk_path)
         updates.outputPath = payload?.output_dir || payload?.output_apk || payload?.apk_path || ''
         // For analyze, PackagePage already converted payload → HTML via renderApkInfo
         updates.result = payload?.result ?? ''
+        // Keep the raw analyze payload alongside the HTML so the report can be
+        // re-rendered in another language later.
+        if (payload?.resultData) updates.resultData = payload.resultData
         if (payload?.deviceLabel) updates.deviceLabel = payload.deviceLabel
         terminal = true
         break
@@ -244,6 +304,10 @@ export const useTaskStore = defineStore('task', () => {
         updates.status = 'failed'
         updates.phase = 'finished'
         updates.error = payload?.message || ''
+        // Record the phase that failed so "retry failed stage" can skip a
+        // completed download. Fall back to the task's live phase.
+        updates.failedPhase = payload?.failedPhase
+          || (task.phase === 'operation' ? 'operation' : 'download')
         updates.finishedAt = Date.now()
         terminal = true
         break
@@ -263,6 +327,7 @@ export const useTaskStore = defineStore('task', () => {
         updates.result = ''
         updates.progress = 0
         updates.progressLabel = ''
+        updates.failedPhase = ''
         updates.startedAt = Date.now()
         updates.finishedAt = null
         break
@@ -279,24 +344,28 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  function appendLog(id: number, line: string) {
+  function appendLog(id: number, line: string, persist = true) {
     const task = tasks.value.find(t => t.id === id)
     if (task) {
       task.logs.push(line)
       if (task.logs.length > 500) task.logs.shift()
     }
-    // Persist to per-task log file (fire-and-forget, best-effort)
-    void persistLine(id, line)
+    // Persist to per-task log file (fire-and-forget, best-effort).
+    // `persist=false` is used for backend-mirrored lines: the Python
+    // backend already wrote them via append_task_log, so the renderer
+    // must not double-write. Front-end-authored lines (e.g. the
+    // "download started/failed" markers) keep persist=true.
+    if (persist) void persistLine(id, line)
   }
 
-  function appendLogBatch(id: number, lines: string[]) {
+  function appendLogBatch(id: number, lines: string[], persist = false) {
     const task = tasks.value.find(t => t.id === id)
     if (task) {
       task.logs.push(...lines)
       if (task.logs.length > 500) task.logs.splice(0, task.logs.length - 500)
     }
     // Persist lines in background (fire-and-forget, best-effort)
-    for (const line of lines) void persistLine(id, line)
+    if (persist) for (const line of lines) void persistLine(id, line)
   }
 
   function removeTask(id: number) {
@@ -322,5 +391,5 @@ export const useTaskStore = defineStore('task', () => {
     persist()
   }
 
-  return { tasks, runningCount, hasRunning, hasCompleted, maxTasks, createTask, updateTask, transition, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll }
+  return { tasks, runningCount, hasRunning, hasActive, hasCompleted, maxTasks, createTask, updateTask, transition, appendLog, appendLogBatch, removeTask, clearCompleted, clearAll, persist }
 })

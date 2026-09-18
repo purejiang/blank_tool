@@ -3,8 +3,9 @@ Contract tests for APK handler API methods.
 """
 import json
 import time
+import base64
 from unittest.mock import patch, MagicMock
-from app.handlers.apk_handler import _extract_signature_hashes
+from app.handlers.apk_handler import _extract_signature_hashes, _extract_app_icon
 
 
 def make_fake_proc(stdout_lines=None, returncode=0):
@@ -392,3 +393,92 @@ def test_extract_signature_hashes_handles_unsigned():
         result = _extract_signature_hashes("/fake.apk")
         assert result["sig_md5"] == "-"
         assert "sig_warning" in result
+
+
+# ---------------------------------------------------------------------------
+# _extract_app_icon contract tests
+# ---------------------------------------------------------------------------
+
+class _FakeZip:
+    """Minimal zipfile.ZipFile stand-in that returns canned entry bytes."""
+
+    def __init__(self, path, *a, **k):
+        self.path = path
+        self._files = {}  # optional: path -> bytes
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self, name):
+        # Tests inject bytes via _files[path] or a single _bytes fallback.
+        if name in self._files:
+            return self._files[name]
+        return self._bytes
+
+
+def _fake_png(w, h):
+    """Tiny but header-valid PNG carrying the given intrinsic dimensions."""
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00" * 8
+        + w.to_bytes(4, "big")
+        + h.to_bytes(4, "big")
+        + b"\x00" * 8
+    )
+
+
+def test_extract_app_icon_prefers_highest_density_raster():
+    fake_png = b"\x89PNG\r\n\x1a\nFAKEDATA"
+    badging = (
+        "application-label:'MyApp'\n"
+        "application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'\n"
+        "application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'\n"
+        "application-icon-anydpi-v26:'res/mipmap-anydpi-v26/ic_launcher.xml'\n"
+    )
+    zf = _FakeZip("/fake.apk")
+    zf._bytes = fake_png
+    with patch("app.handlers.apk_handler.zipfile.ZipFile", lambda *a, **k: zf):
+        uri = _extract_app_icon("/fake.apk", badging)
+    assert uri == "data:image/png;base64," + base64.b64encode(fake_png).decode()
+
+
+def test_extract_app_icon_prefers_largest_pixel_size_over_density():
+    # A lower-density PNG can be physically larger than a higher-density one;
+    # we must pick by intrinsic pixels, not the density label.
+    big = _fake_png(512, 512)  # mdpi (160)
+    small = _fake_png(48, 48)  # xxxhdpi (640)
+    badging = (
+        "application-icon-160:'res/mipmap-mdpi-v4/ic_launcher.png'\n"
+        "application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'\n"
+    )
+    zf = _FakeZip("/fake.apk")
+    zf._files = {
+        "res/mipmap-mdpi-v4/ic_launcher.png": big,
+        "res/mipmap-xxxhdpi-v4/ic_launcher.png": small,
+    }
+    with patch("app.handlers.apk_handler.zipfile.ZipFile", lambda *a, **k: zf):
+        uri = _extract_app_icon("/fake.apk", badging)
+    assert uri == "data:image/png;base64," + base64.b64encode(big).decode()
+
+
+def test_extract_app_icon_returns_dash_when_no_icon():
+    assert _extract_app_icon("/fake.apk", "application-label:'X'\n") == "-"
+
+
+def test_extract_app_icon_returns_dash_when_only_adaptive_xml():
+    badging = "application-icon-anydpi-v26:'res/mipmap-anydpi-v26/ic_launcher.xml'\n"
+    assert _extract_app_icon("/fake.apk", badging) == "-"
+
+
+def test_extract_app_icon_returns_dash_when_zip_read_fails():
+    badging = "application-icon-640:'res/mipmap-xxxhdpi-v4/ic_launcher.png'\n"
+
+    class _BoomZip(_FakeZip):
+        def read(self, name):
+            raise KeyError(name)
+
+    with patch("app.handlers.apk_handler.zipfile.ZipFile", lambda *a, **k: _BoomZip("/fake.apk")):
+        assert _extract_app_icon("/fake.apk", badging) == "-"

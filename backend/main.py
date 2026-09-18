@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app.api_handler import ApiHandler
 from app.utils.logger import Logger
-from app.utils.env import get_env, get_output_dir, load_dotenv, load_server_config, resolve_path
+from app.utils.env import ROOT, get_env, get_output_dir, load_dotenv, load_server_config, resolve_path
 from app.protocol import ErrorCode
 
 # Thread-safe lock for writing to stdout
@@ -102,8 +102,8 @@ def bootstrap():
             # Write sentinel so the warning fires only once
             os.makedirs(os.path.dirname(sentinel), exist_ok=True)
             Path(sentinel).touch()
-    except Exception:
-        pass
+    except Exception as e:
+        Logger.get_logger("Bootstrap").warning(f"legacy orphan check skipped: {e}")
 
 
 # ------------------------------------------------------------------
@@ -150,6 +150,38 @@ def _drain_pending(logger: Logger, timeout: float = 10.0):
     )
 
 
+def _recover_stale_capture(logger: Logger) -> None:
+    """Undo device-side traffic-capture wiring left by a previous process.
+
+    A capture killed without a chance to clean up leaves the device's global
+    HTTP proxy pointing at a dead local proxy (no network). This runs once at
+    startup so the device is restored even when the previous backend was
+    killed hard — see ``app.automation.traffic.recover_stale_capture``.
+    """
+    try:
+        from app.automation import traffic
+        result = traffic.recover_stale_capture()
+        for rec in result.get("restored") or []:
+            logger.warning(
+                "recovered stale traffic capture on "
+                f"{rec.get('device_id')}: proxy={rec.get('proxy_restored')}, "
+                f"reverse={rec.get('reverse_removed')}, "
+                f"port_freed={rec.get('port_freed')}"
+                + (f", error={rec['error']}" if rec.get("error") else "")
+            )
+    except Exception as e:  # recovery must never block startup
+        logger.warning(f"stale traffic-capture recovery failed: {e}")
+
+
+def _release_capture_on_shutdown(logger: Logger) -> None:
+    """Restore device proxies + stop mitmdump on graceful shutdown."""
+    try:
+        from app.automation import traffic
+        traffic.stop_all()
+    except Exception as e:
+        logger.warning(f"traffic capture shutdown cleanup failed: {e}")
+
+
 # ------------------------------------------------------------------
 # Main loop
 # ------------------------------------------------------------------
@@ -160,6 +192,10 @@ def main():
         bootstrap()
         api_handler = ApiHandler(send_response=send_json)
         logger = Logger.get_logger("Main")
+        # Heal device state left behind by a previously killed backend
+        # (a capture in flight when the app was force-closed leaves the
+        # device's HTTP proxy pointing at a dead proxy).
+        _recover_stale_capture(logger)
     except Exception as e:
         error_msg = f"Initialization failed: {e}"
         sys.stderr.write(error_msg + "\n")
@@ -258,6 +294,8 @@ def main():
     # --- Graceful shutdown path ---
     logger.info("Shutting down...")
     _drain_pending(logger, timeout=10.0)
+    # Restore any device-side capture wiring before the process goes away.
+    _release_capture_on_shutdown(logger)
     executor.shutdown(wait=False)
     logger.info("Backend stopped.")
 

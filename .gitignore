@@ -13,7 +13,13 @@ cli-notify-plugin/
 .trae/
 .vscode/
 .agents/
-tests/
 __pycache__/
 *.pyc
 backend/app/cache/logs/
+/.tmp/
+/test-results/
+/backend/logs/
+/.workbuddy/
+/.git.bak-*/
+/blank_tool-git-backup-*.tar
+/foreach_loop.json

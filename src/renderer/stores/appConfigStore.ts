@@ -55,14 +55,20 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     }
   }
 
-  // 批量更新应用配置
+  // 批量更新应用配置 —— 走单次 IPC（set-app-config-batch）。
+  // 以前是 `for (key of updates) await setAppConfig(key)`，一批 N 个键就是 N 次 IPC，
+  // 且配合 SettingsService 的 setMany 会把同一批数据整体写两遍。
   const update = async (updates: Record<string, unknown>) => {
     saving.value = true
     try {
       const configService = await serviceManager.getService('config')
       if (configService) {
-        for (const [key, value] of Object.entries(updates)) {
-          await configService.setAppConfig(key, value)
+        const res = await configService.setManyAppConfig(updates) as
+          | { success?: boolean; error?: string }
+          | undefined
+        if (res && typeof res === 'object' && res.success === false) {
+          error.value = res.error || 'Failed to save app config'
+          return false
         }
       }
       Object.assign(config.value, updates)

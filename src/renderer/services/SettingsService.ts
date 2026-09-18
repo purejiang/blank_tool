@@ -9,8 +9,8 @@ interface StoreServiceLike {
 const EMPTY_SETTINGS_MODEL: SettingsViewModel = {
   settings: {},
   displayPaths: {
-    runtime: '',
-    server: ''
+    server: '',
+    runtimeExecutable: ''
   }
 }
 
@@ -67,11 +67,15 @@ class SettingsService {
 
   async saveSettings(updates: Record<string, unknown>) {
     const appStore = await this.storeService.ensureAppConfigStore()
-    const appConfigApi = this.getAppConfigApi()
-    if (appConfigApi) {
-      try { await appConfigApi.setMany(updates || {}) } catch {}
+    // Single write path. This used to call `appConfigApi.setMany(updates)` and
+    // then `appStore.update(updates)` — the latter looped one IPC per key, so the
+    // same batch was persisted twice (1 + N invokes). `update()` now issues one
+    // `set-app-config-batch`, and still surfaces rejected keys as `false`.
+    const saved = await appStore.update(updates || {})
+    if (saved === false) {
+      // Keep the old behaviour: a rejected key must not look like a save.
+      throw new Error(appStore.error || 'Failed to save settings')
     }
-    await appStore.update(updates)
     return await this.loadSettingsModel()
   }
 
@@ -90,20 +94,20 @@ class SettingsService {
     if (settingsApi) {
       try {
         return await settingsApi.resolvePaths({
-          runtime: source.runtime,
-          server: source.server
+          server: source.server,
+          runtimeExecutable: source.runtimeExecutable
         })
       } catch {}
     }
     const api = unifiedApi.getAPI()
     if (api && typeof api.resolvePath === 'function') {
-      const runtimeInput = typeof source.runtime === 'string' ? source.runtime : ''
       const serverInput = typeof source.server === 'string' ? source.server : ''
-      const [runtime, server] = await Promise.all([
-        runtimeInput ? api.resolvePath(runtimeInput) : Promise.resolve(''),
-        serverInput ? api.resolvePath(serverInput) : Promise.resolve('')
+      const execInput = typeof source.runtimeExecutable === 'string' ? source.runtimeExecutable : ''
+      const [server, runtimeExecutable] = await Promise.all([
+        serverInput ? api.resolvePath(serverInput) : Promise.resolve(''),
+        execInput ? api.resolvePath(execInput) : Promise.resolve('')
       ])
-      return { runtime, server }
+      return { server, runtimeExecutable }
     }
     return { ...EMPTY_SETTINGS_MODEL.displayPaths }
   }

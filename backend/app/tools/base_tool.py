@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 
 from app.common.base_executor import CommandExecutor, CommandExecutionContext
 from app.utils.logger import Logger
-from app.utils.env import get_java_bin, get_python_bin, get_node_bin
+from app.utils.env import get_java_bin
 
 
 class BaseTool(ABC):
@@ -103,6 +103,10 @@ class CommandTool(BaseTool):
         self._running_processes = {}
         super().__init__(name, path, search_system=search_system)
 
+    def is_process_running(self, process_id: str) -> bool:
+        """Public wrapper over ``_is_process_running`` (handlers need it)."""
+        return self._is_process_running(process_id)
+
     def _is_process_running(self, process_id: str) -> bool:
         """
         检查指定ID的进程是否仍在运行
@@ -177,6 +181,16 @@ class CommandTool(BaseTool):
             return
         # 对于非流式命令，直接返回结果
         return self._command_executor.execute(command, context)
+
+    def forget_process(self, process_id: str) -> None:
+        """Drop a FINISHED stream process from the running registry.
+
+        ``stop_process`` removes the entry, but a stream that ends on its own
+        (device unplugged, remote process killed, EOF) never goes through it —
+        the dict then keeps that dead ``Popen`` and its closed pipe objects
+        alive for the rest of the session, one entry per stream.
+        """
+        self._running_processes.pop(process_id, None)
 
     def stop_process(self, process_id: str) -> bool:
         """
@@ -329,25 +343,5 @@ class JavaTool(ScriptTool):
         
     def _get_interpreter_args(self) -> List[str]:
         return ["-jar"]
-
-
-class PythonTool(ScriptTool):
-    """Python 脚本工具"""
-    
-    def _get_interpreter(self) -> str:
-        return get_python_bin()
-    
-    def _get_script_extensions(self) -> List[str]:
-        return [".py"]
-
-
-class NodeTool(ScriptTool):
-    """Node.js 脚本工具"""
-    
-    def _get_interpreter(self) -> str:
-        return get_node_bin()
-    
-    def _get_script_extensions(self) -> List[str]:
-        return [".js"]
 
 

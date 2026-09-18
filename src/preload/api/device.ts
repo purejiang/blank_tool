@@ -31,6 +31,12 @@ export const deviceApi = {
   convertAabToApks: (aabPath: string, deviceId: string) => callBackendAPI('device.convert_aab_to_apks', { aab_path: aabPath, device_id: deviceId }),
   // 设备卸载应用 (not in ApiMethodMap — string fallback)
   uninstallApp: (packageName: string, deviceId: string) => callBackendAPI('device.uninstall_app', { package_name: packageName, device_id: deviceId }),
+  // 设备启动应用 (monkey 方式，无需 activity 名)
+  launchApp: (packageName: string, deviceId: string) => callBackendAPI('device.launch_app', { package_name: packageName, device_id: deviceId }),
+  // 设备清除应用数据 (pm clear，破坏性操作，前端须先确认)
+  clearAppData: (packageName: string, deviceId: string) => callBackendAPI('device.clear_app_data', { package_name: packageName, device_id: deviceId }),
+  // 设备截图 (file_path 缺省时后端存到 output/screenshots)
+  screenshot: (deviceId: string, filePath?: string) => callBackendAPI('device.screenshot', { device_id: deviceId, file_path: filePath }),
   // 设备获取已安装应用 (param name mismatch: backend expects 'type', wrapper passes 'app_type')
   getInstalledApps: (deviceId: string, appType: string) =>
     callBackendAPI('device.get_installed_packages', { device_id: deviceId, type: appType }),

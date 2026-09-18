@@ -10,6 +10,7 @@ Mock strategy:
 import pytest
 import sys
 import os
+import time
 from unittest.mock import MagicMock, patch
 
 # Ensure backend package is importable
@@ -78,3 +79,37 @@ def api_handler(mock_tool_manager):
     # Attach helpers for test assertions
     handler._captured = responses  # type: ignore[attr-defined]
     return handler
+
+
+# ---------------------------------------------------------------------------
+# Streaming helpers
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def stream_events(api_handler):
+    """Collect the stream events emitted by ``@streaming`` handlers.
+
+    Streaming handlers run in a background thread, so the JSON-RPC reply only
+    carries ``{stream_id}``; everything else — including failures — arrives
+    afterwards through ``send_response``.
+    """
+
+    def _wait(timeout: float = 15.0) -> list:
+        """Block until the stream reports ``finished: True``."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if any(r.get("finished") is True for r in api_handler._captured):
+                break
+            time.sleep(0.01)
+        else:
+            raise AssertionError(
+                f"stream did not finish within {timeout}s; "
+                f"captured={api_handler._captured!r}"
+            )
+        return [
+            r["result"]
+            for r in api_handler._captured
+            if r.get("finished") is False and isinstance(r.get("result"), dict)
+        ]
+
+    return _wait

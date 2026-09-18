@@ -1,227 +1,194 @@
-/* 通用section样式 */
-.section {
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: var(--spacing-lg);
-    margin-bottom: var(--spacing-lg);
-    box-shadow: var(--shadow-sm);
+/* ============================================================================
+ * common/components.css — 通用 UI 类（跨页面复用的那一层）。
+ *
+ * 命名一律 app- 前缀。原因：全局规则会静默命中组件里的同名类——`<style
+ * scoped>` 只在自己声明过的属性上赢，没重复声明的属性会被全局值注入。
+ * `.status-bar`（组件是竖排、全局却是 height:100% + space-between）就是这么
+ * 炸掉 RunPanel 的。加前缀后这类意外基本消失。
+ *
+ * 抽离标准：同一组声明在 >=3 个文件里重复出现，才提到这里。
+ * 目前抽的是页面骨架（4~5 个视图各写一遍）：容器宽度 / 标题 / 副标题 /
+ * 区块标题 / 区块头 / 主体。
+ * ========================================================================== */
+
+/* ---- 页面骨架 ----
+ *
+ * 布局契约：**外壳负责滚，页头 sticky 贴顶**。
+ *
+ *   .main-content   固定视口高，是唯一的滚动容器          （App.vue）
+ *   │               —— 顶部不再留 padding，交给页头自己带
+ *   └─ .app-page    内容列（max-width 居中）
+ *        ├─ .app-page-header   position:sticky top:0
+ *        └─ 正文（各页原有那层 wrapper，一行模板都不用改）
+ *
+ * 为什么不给每页加一层「固定页头 + 可滚正文」的容器：这两件事在这里本来
+ * 就是同一件事——外壳滚、页头贴顶，视觉结果完全一样，但省掉 7 个页面的
+ * 模板改动。页面若本来就有内部滚动区（三列布局那种），它撑不满一屏，
+ * 外壳就不会滚，行为与改动前一致。
+ */
+
+/* 所有 view 共用同一宽度，切换页面不再跳宽 */
+.app-page {
+  max-width: var(--app-page-max-width);
+  margin: 0 auto;
 }
 
-.section:last-child {
-    margin-bottom: 0;
+/* 页面主体：竖向堆叠 */
+.app-page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.section h2 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-lg);
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--text-primary);
+/* 页头：左标题 + 可选右侧动作。flex 只影响多子元素的情况，
+   单子元素（只有标题块）时与 block 表现一致，所以 7 个页面共用一个。
+   flex: none 是给那几个把页面根摆成列向 flex 的页面（打包 / 插件 / 自动化）
+   用的——空间不够时先压正文，不要压页头。 */
+.app-page-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  /* 不透明背景是 sticky 成立的前提：内容会从它下面滚过去，靠背景挡住。
+     全站底色都是 --app-body-bg；哪天某页换了自己的背景，这里要跟着换，
+     否则会看到内容从页头后面穿过去。 */
+  background: var(--app-body-bg);
+  /* 上下留白由页头自己带（上 24 / 下 20），所以外壳顶部不再留 padding：
+     否则静止时是 24+24=48px，一滚动页头贴顶、间距突然变 24px，会跳一下。
+     下留白也故意用 padding 而不是 margin——背景正好盖到正文上沿，
+     滚过去的内容不会在页头底下露出一条缝。 */
+  padding: 24px 0 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex: none;
 }
 
-.section-icon {
-    font-size: 1.2rem;
+.app-page-title {
+  margin: 0;
+  font-family: var(--app-font);
+  font-size: var(--app-font-size-2xl);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--app-text-primary);
 }
 
-/* Section Header & Actions (Extracted from components) */
-.section-header {
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    position: relative;
-    gap: 10px;
-}
-  
-.section-actions {
-    display: flex;
-    gap: 8px;
-    position: absolute;
-    top: 0;
-    right: 0;
-}
-  
-.section-actions .btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    padding: 6px 12px;
+.app-page-sub {
+  margin: 4px 0 0;
+  font-size: var(--app-font-size-md);
+  color: var(--app-text-muted);
 }
 
-/* 通用文件拖拽区域样式 */
-.file-drop-zone {
-    border: 2px dashed var(--border-color);
-    border-radius: var(--border-radius);
-    padding: var(--spacing-xl);
-    text-align: center;
-    background-color: var(--bg-secondary);
-    transition: all var(--transition-fast);
-    cursor: pointer;
-    min-height: 120px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-sm);
+/* ---- 区块（卡片内的小节） ---- */
+
+.app-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.file-drop-zone:hover,
-.file-drop-zone.drag-over {
-    border-color: var(--primary-color);
-    background-color: var(--primary-color-alpha);
+.app-section-title {
+  font-family: var(--app-font);
+  font-size: var(--app-font-size-xl);
+  font-weight: 600;
+  color: var(--app-text-primary);
 }
 
-.file-drop-zone.drag-over {
-    transform: scale(1.02);
+/* ---- 小节标题行（列表头 / 卡片外的分组标签） ----
+ *
+ * 分工：公共类只管「排版 + 图标与文字的横向对齐」，外边距 / 是否两端对齐这类
+ * 随上下文变的部分留在使用方自己的类里（所以使用处是 class="col-head app-subhead"）。
+ * 三级层次靠修饰符：
+ *   默认        卡片内栏目标题（md / primary）
+ *   --sm        低一级的小号标题（sm / primary）
+ *   --muted     次要色（sm / secondary）
+ *   --dim       灰标签（sm / dim，卡片外的分组标签）
+ *   --upper     全大写 + 字距（诊断页那种栏目标题）
+ * 标题若是容器的直接文本，排版会正常继承；若包了一层 span，删掉 span 自己的类即可。
+ */
+.app-subhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--app-font-size-md);
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+.app-subhead--sm { font-size: var(--app-font-size-sm); }
+.app-subhead--muted { color: var(--app-text-secondary); }
+.app-subhead--dim { color: var(--app-text-dim); }
+.app-subhead--upper { letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* 标题行右端的动作组（图标按钮） */
+.app-subhead-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.file-drop-icon {
-    font-size: 2rem;
-    color: var(--text-secondary);
-    margin-bottom: var(--spacing-sm);
+/* ---- 空状态 / 行内提示 ----
+ * 只有文本的那种空态，两种层次；带插图的大空态（.empty-state）各页差异太大，
+ * 没有强行合并。
+ * 这两个类目前各只有 2 处使用，低于上面「>=3 个文件才抽」的标准——但两处声明
+ * 是逐字相同的，重复本身就是要消除的问题，所以仍然提上来。
+ */
+.app-empty-hint {
+  font-size: var(--app-font-size-md);
+  color: var(--app-text-dim);
+  padding: 8px 0;
+}
+.app-empty-note {
+  font-size: var(--app-font-size-sm);
+  color: var(--app-text-muted);
+  text-align: center;
 }
 
-.file-drop-text {
-    color: var(--text-secondary);
-    font-size: var(--font-size-sm);
+/* ---- 小标签 / 等宽文本 ---- */
+
+/* 次要说明文字（原先 4 个组件各抄一份 .muted） */
+.app-muted {
+  color: var(--app-text-muted);
+  font-size: var(--app-font-size-sm);
 }
 
-/* 通用进度条样式 */
-.progress-bar {
-    width: 100%;
-    height: 8px;
-    background-color: var(--bg-secondary);
-    border-radius: var(--border-radius-sm);
-    overflow: hidden;
-    position: relative;
+/* 行内小标（层级、设备号、格式名这类） */
+.app-pill {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: var(--app-radius-sm);
+  background: var(--app-storage-bg);
+  color: var(--app-text-dim);
+  font-size: var(--app-font-size-xs);
+  line-height: 16px;
+  white-space: nowrap;
 }
 
-.progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--primary-color), var(--primary-color-light));
-    border-radius: var(--border-radius-sm);
-    transition: width var(--transition-normal);
-    position: relative;
+.app-mono {
+  font-family: var(--app-font-mono);
 }
 
-.progress-bar.striped .progress-fill {
-    background-image: linear-gradient(
-        45deg,
-        rgba(255, 255, 255, 0.15) 25%,
-        transparent 25%,
-        transparent 50%,
-        rgba(255, 255, 255, 0.15) 50%,
-        rgba(255, 255, 255, 0.15) 75%,
-        transparent 75%,
-        transparent
-    );
-    background-size: 1rem 1rem;
+/* 垂直导航 / 菜单项（图标 + 文字）：悬停与选中态统一走主题 token，
+   设置页、诊断页等左侧列表共用；选中态由使用方加 .active */
+.app-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--app-radius-sm);
+  font-size: var(--app-font-size-md);
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-
-.progress-bar.animated .progress-fill {
-    animation: progress-bar-stripes 1s linear infinite;
+.app-nav-item:hover {
+  background: var(--app-hover);
 }
-
-/* 通用代码/日志输出块 */
-.code-output {
-    height: 320px;
-    overflow: auto;
-    font-size: 11px;
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: 4px;
-    font-family: var(--font-family-monospace);
-    /* Performance optimization */
-    content-visibility: auto; 
-    contain-intrinsic-size: 320px;
-}
-
-.code-output pre,
-.code-output div {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
-    line-height: 1.4;
-}
-
-/* 输入组 (输入框+按钮) */
-.input-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-}
-
-.input-group .form-control,
-.input-group input {
-    flex: 1;
-}
-
-/* Toggle Switch */
-.toggle-switch-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 36px;
-    height: 20px;
-    margin: 0;
-}
-
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--border-color);
-    transition: .4s;
-    border-radius: 20px;
-}
-
-.toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 16px;
-    width: 16px;
-    left: 2px;
-    bottom: 2px;
-    background-color: white;
-    transition: .4s;
-    border-radius: 50%;
-}
-
-input:checked + .toggle-slider {
-    background-color: var(--primary-color);
-}
-
-input:focus + .toggle-slider {
-    box-shadow: 0 0 1px var(--primary-color);
-}
-
-input:checked + .toggle-slider:before {
-    transform: translateX(16px);
-}
-
-.toggle-desc {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-right: 8px;
-    display: flex;
-    align-items: center;
+.app-nav-item.active {
+  background: var(--app-green-bg);
+  color: var(--app-green);
+  font-weight: 600;
 }

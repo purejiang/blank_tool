@@ -1,9 +1,10 @@
-import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { app } from 'electron';
-import path from 'path';
+import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { appStore, getConfigValue, isWritableConfigKey, setConfigValue, resetAppConfigToDefaults } from '../stores/index';
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import { APP_CONFIG_KEYS, PATH_CONFIG_DEFAULTS } from '../../shared/config/pathConfig';
+import { getBaseDir, resolvePathFromBase, resolveRuntimeExecutablePath } from '../python/paths';
+import { broadcastToAllWindows } from '../utils/broadcast';
+import { toNonEmptyString } from '../utils/strings';
 
 function getUserConfigStore(): Record<string, unknown> {
     const raw = appStore.get('user');
@@ -18,39 +19,28 @@ function setUserConfigStore(nextConfig: Record<string, unknown>): void {
 }
 
 function broadcastConfigChange(channel: string, key: string, value: unknown): void {
-    BrowserWindow.getAllWindows().forEach(win => {
-        win.webContents.send(channel, key, value);
-    });
-}
-
-function toNonEmptyString(value: unknown, fallback: string): string {
-    if (typeof value === 'string' && value.trim()) {
-        return value.trim();
-    }
-    return fallback;
+    broadcastToAllWindows(channel, key, value);
 }
 
 function resolvePathFromAppBase(targetPath: string): string {
-    if (!targetPath) {
-        return targetPath;
-    }
-    if (path.isAbsolute(targetPath)) {
-        return targetPath;
-    }
-    const baseDir = app.isPackaged ? process.resourcesPath : app.getAppPath();
-    const cleanPath = targetPath.replace(/^\.[\\/]/, '');
-    return path.join(baseDir, cleanPath);
+    return resolvePathFromBase(getBaseDir(), targetPath);
 }
 
 function getSettingsViewModel() {
     const settings = getConfigValue() as Record<string, unknown>;
-    const runtime = toNonEmptyString(settings[APP_CONFIG_KEYS.runtime], PATH_CONFIG_DEFAULTS.runtime);
     const server = toNonEmptyString(settings[APP_CONFIG_KEYS.server], PATH_CONFIG_DEFAULTS.server);
+    const runtimeExecutable = toNonEmptyString(
+        settings[APP_CONFIG_KEYS.runtimeExecutable],
+        PATH_CONFIG_DEFAULTS.runtimeExecutable
+    );
     return {
         settings,
         displayPaths: {
-            runtime: resolvePathFromAppBase(runtime),
-            server: resolvePathFromAppBase(server)
+            server: resolvePathFromAppBase(server),
+            // runtimeExecutable 是相对 runtime/ 的（与真正 spawn 的解释器同一套解析，
+            // 见 python/paths.resolvePythonExecutable）。以前相对 app base 解析，得到
+            // <app>\python\python.exe —— 一个永远不存在的路径，设置页因此显示假路径。
+            runtimeExecutable: resolveRuntimeExecutablePath(getBaseDir(), runtimeExecutable)
         }
     };
 }
@@ -140,12 +130,15 @@ export function setupAppConfigHandlers(): void {
         return getSettingsViewModel();
     });
 
-    ipcMain.handle(IPC_CHANNEL_NAMES.resolveSettingsPaths, (event: IpcMainInvokeEvent, paths: { runtime?: unknown; server?: unknown } = {}) => {
-        const runtime = toNonEmptyString(paths.runtime, PATH_CONFIG_DEFAULTS.runtime);
+    ipcMain.handle(IPC_CHANNEL_NAMES.resolveSettingsPaths, (event: IpcMainInvokeEvent, paths: { server?: unknown; runtimeExecutable?: unknown } = {}) => {
         const server = toNonEmptyString(paths.server, PATH_CONFIG_DEFAULTS.server);
+        const runtimeExecutable = toNonEmptyString(
+            paths.runtimeExecutable,
+            PATH_CONFIG_DEFAULTS.runtimeExecutable
+        );
         return {
-            runtime: resolvePathFromAppBase(runtime),
-            server: resolvePathFromAppBase(server)
+            server: resolvePathFromAppBase(server),
+            runtimeExecutable: resolveRuntimeExecutablePath(getBaseDir(), runtimeExecutable)
         };
     });
 }

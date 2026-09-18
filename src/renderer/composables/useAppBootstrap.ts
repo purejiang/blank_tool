@@ -8,6 +8,7 @@ import { useAppConfigStore, useSystemStore, useToolStore } from '@stores/index'
 import unifiedApi from '../api/unifiedApi'
 import { log, setLogLevel, _setRingPusher } from '@utils/logger'
 import { useRendererLogStore } from '@stores/rendererLogStore'
+import { setMaxConcurrent } from '@services/TaskExecutionService'
 
 export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
   const { t, locale: i18nLocale } = useI18n()
@@ -75,6 +76,11 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
     if (level) {
       setLogLevel(level as 'debug' | 'info' | 'warn' | 'error')
     }
+    // Apply saved task concurrency cap (Settings → "Max concurrent tasks").
+    const mct = appConfigStore.get('maxConcurrentTasks')
+    if (typeof mct === 'number' && mct >= 1) {
+      setMaxConcurrent(mct)
+    }
   }
 
   async function checkToolsStatus() {
@@ -132,6 +138,16 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
     // Initialize TaskStreamService (subscribes to stream-event IPC globally)
     try {
       await serviceManager.getService('taskStream')
+    } catch {}
+
+    // Global device monitoring: refresh the device list (and re-poll every
+    // 5s) for ALL pages, not just while the Device page is mounted — other
+    // pages (automation/install) read deviceStore.devices and used to show
+    // stale disconnected devices until the user visited the Device page.
+    try {
+      const deviceSvc = await serviceManager.getService('device')
+      await deviceSvc.refreshDevices()
+      void deviceSvc.startMonitoring()
     } catch {}
   }
 

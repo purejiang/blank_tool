@@ -1,47 +1,1197 @@
 <template>
-  <div class="tools-page">
-    <div class="page-header">
+  <div class="auto-page app-page">
+    <div class="app-page-header">
       <div>
-        <h1 class="page-title">{{ t('tools.title') }}</h1>
-        <p class="page-subtitle">{{ t('tools.subtitle') }}</p>
+        <h1 class="app-page-title">{{ t('automation.title') }}</h1>
+        <p class="app-page-sub">{{ t('automation.subtitle') }}</p>
       </div>
     </div>
 
-    <n-empty :description="t('task.pluginDevDesc')" size="large">
-      <template #icon>
-        <n-icon size="64" color="var(--app-text-dim)"><Puzzle /></n-icon>
+    <div class="three-cols" :style="gridStyle">
+      <!-- ============ LEFT: project / script tree ============ -->
+      <ProjectTree :store="store" :running="runner.running" />
+
+      <div class="col-divider" @pointerdown.prevent="startResize('left', $event)" />
+
+      <!-- ============ CENTER: script editor ============ -->
+      <section class="col col-center">
+        <n-empty v-if="!store.selectedProjectId || !store.selectedScriptId" :description="t('automation.noSelection')" class="col-empty" />
+
+        <template v-else>
+          <div class="col-head app-subhead">
+            <span class="editor-title">
+              <span class="editor-name">{{ store.selectedScript?.name }}</span>
+              <span v-if="store.selectedScript?.description" class="editor-desc">{{ store.selectedScript.description }}</span>
+            </span>
+            <transition name="fade">
+              <span v-if="store.savedFlash" class="autosave-hint saved">{{ t('automation.savedNow') }}</span>
+            </transition>
+            <!-- 这一行只放脚本身份 + 自动保存提示：右上角是"已保存"闪现的位置，
+                 视图切换/添加按钮放这儿会跟它抢，所以都留在 .steps-head -->
+          </div>
+
+          <div class="editor-body">
+            <div class="field steps-field">
+              <!-- 工具行：视图切换靠左、计数贴右（计数原来独占一行，并进这里，
+                   腾出的高度给下面的「插入位」，整体净高度不变） -->
+              <div class="steps-head">
+                <n-radio-group
+                  class="view-switch"
+                  size="small"
+                  :value="store.stepsView"
+                  :disabled="runner.running"
+                  @update:value="store.onSwitchView"
+                >
+                  <n-radio-button value="ui">{{ t('automation.viewSteps') }}</n-radio-button>
+                  <n-radio-button value="json">{{ t('automation.viewJson') }}</n-radio-button>
+                </n-radio-group>
+                <span class="steps-count">{{ t('automation.stepCountLabel', { n: stepCountDisplay }) }}</span>
+              </div>
+
+              <!-- 添加步骤的入口在步骤列表底部（StepListEditor 里常驻），这里不再有
+                   顶部「插入到开头」幽灵行；行内「⋮」菜单可以插到任意行下方。 -->
+
+              <StepListEditor
+                v-if="store.stepsView === 'ui'"
+                ref="stepListRef"
+                v-model="store.editor.steps"
+                v-model:selected-index="store.selectedStepIndex"
+                :disabled="runner.running"
+                :default-timeout="elementTimeoutMs"
+                :default-interval="store.ui.stepIntervalMs"
+                :can-grab="!!autoDeviceId"
+                :add-options="addOptions"
+                class="steps-editor"
+                @pick="onStepPick"
+                @grab-activity="onGrabActivity"
+                @insert-below="(p: { index: number; key: string }) => onAdd(p.key, p.index + 1)"
+                @run-from="runFromStep"
+              />
+              <template v-else>
+                <n-input
+                  v-model:value="store.stepsText"
+                  type="textarea"
+                  :autosize="{ minRows: 14, maxRows: 26 }"
+                  :disabled="runner.running"
+                  class="steps-json"
+                  @update:value="store.refreshJsonStatus"
+                />
+                <div v-if="store.jsonError" class="json-status bad">
+                  {{ t('automation.jsonInvalid', { msg: store.jsonError }) }}
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- 录制面板：弹窗外壳统一走 AppModal（标题左上、X 右上、功能按钮右下），
+               RecordPanel 只负责内容。原来 n-modal 的 X + 面板自绘的 X 会同时出现。 -->
+          <AppModal
+            :show="recordPanelOpen"
+            :title="t('automation.recordSegment')"
+            :width="560"
+            @update:show="onRecordModalShow"
+          >
+            <RecordPanel
+              ref="recordPanelRef"
+              :device-id="autoDeviceId"
+              :disabled="runner.running && !recording"
+              :has-selection="store.selectedStepIndex >= 0"
+              :default-insert-at="recordInsertAt"
+              @recording-start="onRecStart"
+              @recorded="store.onRecorded"
+              @recording-end="onRecEnd"
+            />
+          </AppModal>
+        </template>
+      </section>
+
+      <div class="col-divider" @pointerdown.prevent="startResize('right', $event)" />
+
+      <!-- ============ RIGHT: run console ============ -->
+      <!-- 控制区 + 运行面板。次级入口（运行设置 / 运行记录）收进控制区最右的
+           「功能」菜单，各自开弹窗 —— 右栏的常驻高度全部留给产出的运行面板。 -->
+      <section class="col col-right">
+        <RunControls
+          v-model:auto-device-id="autoDeviceId"
+          v-model:capture-traffic="captureTraffic"
+          v-model:traffic-host-filter="trafficHostFilter"
+          v-model:continue-on-error="continueOnError"
+          v-model:abort-on-crash="abortOnCrash"
+          v-model:enable-chinese-input="enableChineseInput"
+          :step-interval-ms="store.ui.stepIntervalMs"
+          @update:step-interval-ms="onStepIntervalChange"
+          :running="runner.running"
+          :can-run="canRun"
+          :hints="runHints"
+          :capture-unavailable="captureUnavailable"
+          :traffic-status="trafficStatus"
+          :ime-status="imeStatus"
+          :detecting="detecting"
+          :installing-ca="installingCa"
+          :resetting-traffic="resettingTraffic"
+          :history-count="runs.length"
+          @run="() => runScript(0)"
+          @stop="runner.stopRun"
+          @open-history="showHistory = true"
+          @detect="detectCapabilities"
+          @open-tools="openToolInstall"
+          @install-ca="installCaCert"
+          @reset-traffic="resetTrafficProxy"
+        />
+        <RunPanel
+          :running="runner.running"
+          :run-result="runner.runResult"
+          :live-steps="runner.liveSteps"
+          :logs="runner.logs"
+          :dropped-logs="runner.droppedLogs"
+          :screenshots="runner.screenshots"
+          :run-started-ts="runner.runStartedTs"
+          :live-traffic="liveTraffic"
+          :report="viewingReport"
+          :exporting="exporting"
+          @open-file="openReportFile"
+          @download-report="downloadRunReport"
+          @close-report="closeReport"
+        />
+      </section>
+    </div>
+
+    <!-- ============ Element picker modal ============ -->
+    <ElementPickerModal
+      v-model:show="showElements"
+      :dumping="dumping"
+      :elements="elements"
+      @apply="applyElement"
+    />
+
+    <!-- ============ Screenshot coordinate picker modal ============ -->
+    <ScreenshotPickerModal
+      v-model:show="showShotPicker"
+      :device-id="autoDeviceId"
+      @apply="applyShotCoords"
+    />
+
+    <!-- ============ Run history dialog ============ -->
+    <!-- 从「功能」菜单打开；点某一条会恢复进右栏面板并自动关掉本弹窗，
+         删除某一条则保持打开（连续清理）。列表在弹窗里可以给到 60vh；
+         标题只由弹窗提供（RunHistory 不再自绘第二个标题），刷新在右下角。 -->
+    <AppModal
+      :show="showHistory"
+      :title="t('automation.runHistory')"
+      :width="560"
+      @update:show="showHistory = $event"
+    >
+      <div class="history-dialog">
+        <RunHistory
+          :runs="runs"
+          :selected-task-id="viewingReport?.task_id || ''"
+          @select="onSelectRunFromDialog"
+          @remove="onDeleteRun"
+        />
+      </div>
+      <template #footer>
+        <span class="history-count">{{ t('automation.runCountLabel', { n: runs.length }) }}</span>
+        <n-button size="small" :loading="runsLoading" @click="fetchRuns">
+          {{ t('automation.refresh') }}
+        </n-button>
       </template>
-      <template #extra>
-        <p class="plugin-dev-title">{{ t('task.pluginDev') }}</p>
+    </AppModal>
+
+    <!-- ============ Tool install modal (traffic capture / ADBKeyBoard) ============ -->
+    <ToolInstallModal
+      v-model:show="toolInstallVisible"
+      :device-id="autoDeviceId"
+      :section="toolInstallSection"
+      @changed="onToolInstallChanged"
+    />
+
+    <!-- ============ Project / script meta editor modal ============ -->
+    <AppModal :show="store.showMeta" :title="t('automation.editInfo')" :width="440" @update:show="store.showMeta = $event">
+      <div class="field">
+        <label>{{ store.metaForm.kind === 'project' ? t('automation.projectName') : t('automation.scriptName') }}</label>
+        <n-input v-model:value="store.metaForm.name" size="small" />
+      </div>
+      <div v-if="store.metaForm.kind === 'project'" class="field">
+        <label>{{ t('automation.packageName') }}</label>
+        <n-input v-model:value="store.metaForm.packageName" size="small" placeholder="com.example.app" />
+      </div>
+      <div class="field">
+        <label>{{ t('automation.description') }}</label>
+        <n-input
+          v-model:value="store.metaForm.description"
+          type="textarea"
+          size="small"
+          :autosize="{ minRows: 2, maxRows: 4 }"
+        />
+      </div>
+      <template #footer>
+        <n-button size="small" @click="store.showMeta = false">{{ t('common.cancel') }}</n-button>
+        <n-button size="small" type="primary" @click="store.saveMeta">{{ t('common.confirm') }}</n-button>
       </template>
-    </n-empty>
+    </AppModal>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NEmpty } from 'naive-ui'
-import { Puzzle } from 'lucide-vue-next'
+import {
+  NButton,
+  NInput,
+  NEmpty,
+  NIcon,
+  NRadioButton,
+  NRadioGroup,
+  NDropdown,
+  useMessage,
+  useDialog,
+} from 'naive-ui'
+
+import { useDeviceStore } from '@stores/deviceStore'
+import serviceManager from '@services/ServiceManager'
+import type { TrafficStatus, ImeStatus } from '@services/AutomationService'
+import { notifySystem } from '@utils/systemNotify'
+import AppModal from '@components/common/AppModal.vue'
+import RecordPanel from '@components/automation/RecordPanel.vue'
+import StepListEditor from '@components/automation/StepListEditor.vue'
+import ProjectTree from '@components/automation/ProjectTree.vue'
+import RunControls from '@components/automation/RunControls.vue'
+import RunPanel from '@components/automation/RunPanel.vue'
+import RunHistory from '@components/automation/RunHistory.vue'
+import ToolInstallModal from '@components/automation/ToolInstallModal.vue'
+import ElementPickerModal from '@components/automation/ElementPickerModal.vue'
+import ScreenshotPickerModal from '@components/automation/ScreenshotPickerModal.vue'
+import { parseUiDump, boundsCenter, type UiNode } from '@components/automation/uiDump'
+import {
+  ADDABLE_ACTIONS, defaultStep, type Step, type StepAction,
+} from '@components/automation/stepTypes'
+import { stepActionLabel } from '@components/automation/stepMeta'
+import { useScriptRunner } from '@composables/automation/useScriptRunner'
+import { useAutomationStore } from '@composables/automation/useAutomationStore'
 
 const { t } = useI18n()
+const message = useMessage()
+const dialog = useDialog()
+const deviceStore = useDeviceStore()
+
+// ---------------- domain state (extracted) ----------------
+// Runner owns the run lifecycle; the store owns projects/scripts/editor.
+// Store mutations are blocked while a run (or recording, which flips the
+// runner's running flag) is in flight.
+const runner = useScriptRunner()
+const store = useAutomationStore(() => runner.running)
+
+// ---------------- column resize ----------------
+// Side columns are user-resizable via the drag dividers; widths persist.
+// Center column is minmax(0,1fr) and absorbs the remaining space.
+const COL_MIN = 180
+const COL_MAX = 520
+function clampCol(v: number) {
+  return Math.max(COL_MIN, Math.min(COL_MAX, Math.round(v)))
+}
+// Column widths live in the automation `ui` bag (storage v3) — see
+// `store.ui`. The drag updates the refs on every pointer move; the debounced
+// `persistUiSoon()` is what turns that into (at most) one config write.
+const colLeft = computed({
+  get: () => clampCol(store.ui.colLeft),
+  set: (v: number) => { store.ui.colLeft = clampCol(v) },
+})
+const colRight = computed({
+  get: () => clampCol(store.ui.colRight),
+  set: (v: number) => { store.ui.colRight = clampCol(v) },
+})
+const gridStyle = computed(() => ({
+  gridTemplateColumns: `${colLeft.value}px 12px minmax(0, 1fr) 12px ${colRight.value}px`,
+}))
+
+function startResize(side: 'left' | 'right', e: PointerEvent) {
+  const startX = e.clientX
+  const startW = side === 'left' ? colLeft.value : colRight.value
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  const onMove = (ev: PointerEvent) => {
+    // Left divider: drag right → wider. Right divider: drag right → narrower.
+    const w = side === 'left' ? startW + (ev.clientX - startX)
+                              : startW - (ev.clientX - startX)
+    if (side === 'left') colLeft.value = clampCol(w)
+    else colRight.value = clampCol(w)
+  }
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    store.persistUiSoon(0)
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+}
+
+// ---------------- page-local state ----------------
+// Everything here is persisted in the app-config `automation.ui` bag
+// (storage v3) instead of page-local `bt:*` localStorage keys, so one schema
+// owns the whole feature. The v2 keys are adopted once on first load — see
+// `adoptLegacyUi` in useAutomationStore.
+//
+// Automation-page device selection — deliberately DECOUPLED from the
+// device page's list selection (which is only for the detail panel).
+const autoDeviceId = computed({
+  get: () => store.ui.deviceId,
+  set: (v: string) => { store.ui.deviceId = v; store.persistUiSoon() },
+})
+// Traffic capture (mitmdump) — the backend still restores the device proxy
+// in a finally block on every exit path.
+const captureTraffic = computed({
+  get: () => store.ui.captureTraffic,
+  set: (v: boolean) => { store.ui.captureTraffic = v; store.persistUiSoon() },
+})
+// Filter conditions, comma-joined (the tags input in the run settings dialog
+// edits this string).
+const trafficHostFilter = computed({
+  get: () => store.ui.trafficHostFilter,
+  set: (v: string) => { store.ui.trafficHostFilter = v; store.persistUiSoon() },
+})
+// 失败策略：默认与历史行为完全一致（首错中止 / 崩溃中止）。
+const continueOnError = computed({
+  get: () => store.ui.continueOnError,
+  set: (v: boolean) => { store.ui.continueOnError = v; store.persistUiSoon() },
+})
+const abortOnCrash = computed({
+  get: () => store.ui.abortOnCrash,
+  set: (v: boolean) => { store.ui.abortOnCrash = v; store.persistUiSoon() },
+})
+// 「开启中文输入」：关闭后运行时不切换设备输入法，含非 ASCII 的输入步骤直接失败
+// （后端 `use_ime` 参数，见 useScriptRunner.RunPayload）。
+const enableChineseInput = computed({
+  get: () => store.ui.enableChineseInput !== false,
+  set: (v: boolean) => { store.ui.enableChineseInput = v; store.persistUiSoon() },
+})
+
+// ---------------- preflight capability probes (read-only) ----------------
+// mitmproxy is PC-side (global); ADBKeyBoard is device-side (per device).
+// Both surface as non-blocking hints under the run controls — they never
+// block a run, the backend error messages carry the final word. The run
+// settings dialog also renders them and offers an explicit 「检测」.
+const trafficStatus = ref<TrafficStatus | null>(null)
+const imeStatus = ref<ImeStatus | null>(null)
+/** 正在进行的「检测」（按钮 loading）：'' = 空闲 */
+const detecting = ref<'' | 'traffic' | 'ime'>('')
+
+async function refreshTrafficStatus(force = false) {
+  try {
+    const svc = await serviceManager.getService('automation')
+    // 带上设备：返回里会多出设备侧就绪信息（连接状态 / 设备是否已装 CA）
+    trafficStatus.value = await svc.getTrafficStatus(force, autoDeviceId.value)
+  } catch { /* 探测失败 = 未知态，不给提示 */ }
+}
+
+async function refreshImeStatus(deviceId: string) {
+  imeStatus.value = null
+  if (!deviceId) return
+  try {
+    const svc = await serviceManager.getService('automation')
+    imeStatus.value = await svc.getImeStatus(deviceId)
+  } catch { /* best-effort */ }
+}
+
+/** 「检测」：按要求强制重探，并把结论直接告知（弹窗内状态同步刷新）。 */
+async function detectCapabilities(target: 'traffic' | 'ime') {
+  if (detecting.value) return
+  detecting.value = target
+  try {
+    if (target === 'traffic') {
+      await refreshTrafficStatus(true)
+      const s = trafficStatus.value
+      const ok = s?.ready === true
+        && (!autoDeviceId.value || s?.device_state === 'device')
+      ok ? message.success(t('automation.detectOk')) : message.warning(t('automation.detectFail'))
+    } else {
+      await refreshImeStatus(autoDeviceId.value)
+      imeStatus.value?.installed === true
+        ? message.success(t('automation.detectOk'))
+        : message.warning(t('automation.detectFail'))
+    }
+  } finally {
+    detecting.value = ''
+  }
+}
+
+// ---------------- tool install / cert / proxy repair entries ----------------
+// 工具安装入口从页头挪进了「运行配置」的抓包/输入面板（页头不再有自动化工具入口）
+const toolInstallVisible = ref(false)
+const toolInstallSection = ref<'' | 'traffic' | 'ime'>('')
+
+function openToolInstall(target: 'traffic' | 'ime') {
+  toolInstallSection.value = target
+  toolInstallVisible.value = true
+}
+
+/** 工具安装弹窗报成功：清探测缓存 → force 重探两侧，runHints 与状态行即时更新。 */
+async function onToolInstallChanged() {
+  try {
+    const svc = await serviceManager.getService('automation')
+    svc.clearTrafficCache()
+  } catch { /* best-effort */ }
+  await refreshTrafficStatus(true)
+  await refreshImeStatus(autoDeviceId.value)
+}
+
+const installingCa = ref(false)
+
+/** 把已生成的 CA 证书装到当前设备（非流式；失败原因由后端给出）。 */
+async function installCaCert() {
+  if (installingCa.value) return
+  if (!autoDeviceId.value) {
+    message.warning(t('automation.noDevice'))
+    return
+  }
+  installingCa.value = true
+  try {
+    const svc = await serviceManager.getService('automation')
+    const res = await svc.installCa(autoDeviceId.value)
+    if (res?.success === false) {
+      message.error(res?.error || t('automation.tools.installFailed'))
+      return
+    }
+    message.success(t('automation.tools.caInstallDone'))
+    await refreshTrafficStatus(true)
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    installingCa.value = false
+  }
+}
+
+const resettingTraffic = ref(false)
+
+/**
+ * 手动修复设备代理（原设置页入口，能力不变）：抓包被强杀后设备会卡在已失效的
+ * HTTP 代理上；后端启动时也会自愈，这里是运行中的逃生口。幂等。
+ */
+async function resetTrafficProxy() {
+  if (resettingTraffic.value) return
+  resettingTraffic.value = true
+  try {
+    const svc = await serviceManager.getService('automation')
+    const res = await svc.resetTraffic(autoDeviceId.value || undefined)
+    if (!res?.success) {
+      message.error(res?.error || t('automation.repairProxyFailed'))
+      return
+    }
+    const restored = res.restored || []
+    if (!restored.length) {
+      message.info(t('automation.repairProxyNothing'))
+      return
+    }
+    message.success(t('automation.repairProxyDone', { count: restored.length }))
+    await refreshTrafficStatus(true)
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    resettingTraffic.value = false
+  }
+}
+
+// Mirrors backend input.py: `any(ord(c) > 0x7F for c in text)` — the exact
+// condition that makes the backend require ADBKeyBoard. Kept char-by-char
+// equivalent on purpose; changing one side without the other desyncs the hint.
+function hasNonAsciiInput(steps: Step[]): boolean {
+  return steps.some(s => {
+    if (s.action !== 'input' || !s.text) return false
+    for (const c of s.text) {
+      if (c.charCodeAt(0) > 0x7F) return true
+    }
+    return false
+  })
+}
+
+// Capture requested but this machine can't do it (mitmproxy missing / Python
+// version mismatch). Surfaced twice on purpose: under the run row (visible
+// when the dialog is closed) and inside the run settings dialog itself —
+// that's where the capture switch lives now, so the warning must be visible
+// while the user is toggling it (the row is masked then).
+const captureUnavailable = computed(
+  () => !!captureTraffic.value && !!trafficStatus.value && !trafficStatus.value.ready,
+)
+
+const runHints = computed(() => {
+  const hints: string[] = []
+  if (captureUnavailable.value) {
+    hints.push(t('automation.captureTrafficUnavailable'))
+  }
+  const needsIme = hasNonAsciiInput(store.editor.steps)
+  if (needsIme && enableChineseInput.value === false) {
+    // 中文输入被显式关闭：含非 ASCII 的输入步骤会直接失败
+    hints.push(t('automation.inputDisabledHint'))
+  } else if (autoDeviceId.value && imeStatus.value && !imeStatus.value.installed && needsIme) {
+    hints.push(t('automation.imeUnavailable'))
+  }
+  return hints
+})
+
+// Probes: traffic status once (service caches, keyed per device), IME per device
+// selection. Toggling capture on re-checks (cached) so a just-installed
+// mitmproxy is seen.
+watch(captureTraffic, (on) => { if (on) void refreshTrafficStatus() })
+watch(autoDeviceId, (id) => {
+  void refreshImeStatus(id)
+  // 设备变了，抓包工具行上的「设备是否就绪」也要跟着刷新
+  void refreshTrafficStatus()
+}, { immediate: true })
+// Default element-poll timeout (ms): applied when a step switches to
+// element mode / picks an element; editable in the right column.
+function clampTimeout(v: number): number {
+  return Math.max(500, Math.min(120000, Math.round(v)))
+}
+const elementTimeoutMs = computed({
+  get: () => clampTimeout(store.ui.elementTimeoutMs),
+  set: (v: number) => { store.ui.elementTimeoutMs = clampTimeout(v); store.persistUiSoon() },
+})
+// Drop the selection when the device vanishes from the live list.
+watch(() => deviceStore.devices, (list) => {
+  if (autoDeviceId.value && !(list as any[]).some(d => d.id === autoDeviceId.value)) {
+    autoDeviceId.value = ''
+  }
+}, { immediate: true })
+
+// Run is allowed only when both a device and a script are selected.
+const canRun = computed(() => !!autoDeviceId.value && !!store.selectedScriptId && !recording.value)
+
+// ---------------- steps header (count / add / view switch) ----------------
+const stepListRef = ref<InstanceType<typeof StepListEditor> | null>(null)
+/** 左侧计数：UI 视图取编辑器实时列表，JSON 视图取解析后的 stepCount */
+const stepCountDisplay = computed(() =>
+  store.stepsView === 'json' ? store.stepCount : store.editor.steps.length
+)
+
+const RECORD_KEY = '__record__'
+const addOptions = computed(() => [
+  {
+    key: RECORD_KEY,
+    label: t('automation.recordSegment'),
+  },
+  { type: 'divider' as const, key: 'd1' },
+  ...ADDABLE_ACTIONS.map(a => ({
+    key: a,
+    label: stepActionLabel(a, t),
+  })),
+])
+
+function onAdd(action: string, atIndex = 0) {
+  if (action === RECORD_KEY) {
+    // 顶部「插入位」传 0 → 插到开头；行内「+」传 i+1 → 插到第 i 行下方。
+    // 录制片段走 store.onRecorded：'start' 插开头、'after' 插在选中行之后。
+    onRecordRequest(atIndex > 0 ? atIndex - 1 : null)
+    return
+  }
+  const at = atIndex
+  const list = [...store.editor.steps]
+  list.splice(at, 0, defaultStep(action as StepAction))
+  store.editor.steps = list
+  if (store.stepsView === 'json') store.syncJsonText()
+  // 新行成为选中行，并直接进入编辑状态
+  store.selectedStepIndex = at
+  nextTick(() => stepListRef.value?.openEditor(at))
+}
+
+/** 录制面板停靠开关（中栏编辑器下方）；入口 = 顶部「插入位」或行内「+」，
+ * 关闭走面板自带的 X 按钮 */
+const recordPanelOpen = ref(false)
+const recording = ref(false)
+const recordPanelRef = ref<InstanceType<typeof RecordPanel> | null>(null)
+/** 录制片段的落点：由**入口**决定（顶部 = 开头；行内「+」= 该行下方），
+ *  交给 RecordPanel 当默认值 */
+const recordInsertAt = ref<'start' | 'after'>('start')
+
+/** 录制弹窗关闭（X / 遮罩点击）→ 先停掉进行中的录制，再关弹窗。
+ *  原来这一步挂在 RecordPanel 自绘的 X 上；自绘头删掉后必须由页面接手。 */
+function onRecordModalShow(v: boolean) {
+  if (!v) void recordPanelRef.value?.stop()
+  recordPanelOpen.value = v
+}
+
+/** 录制片段入口：targetRow = null → 插到开头（顶部「插入位」）；
+ *  传行下标 → 插在该行下方（行内「+」，靠选中行 + onRecorded 的 'after' 分支）。 */
+function onRecordRequest(targetRow: number | null = null) {
+  if (runner.running && !recording.value) {
+    message.warning(t('automation.runStopFirst'))
+    return
+  }
+  recordInsertAt.value = targetRow === null ? 'start' : 'after'
+  if (targetRow !== null) store.selectedStepIndex = targetRow
+  recordPanelOpen.value = true
+  message.info(t('automation.recordSegmentHint'))
+}
+
+// Recording reuses the runner's `running` flag as the global busy signal —
+// every busy-guard in the store/runner keys off it.
+function onRecStart() {
+  recording.value = true
+  runner.running = true
+}
+function onRecEnd() {
+  recording.value = false
+  runner.running = false
+}
+
+// ---------------- run history ----------------
+// Each run persists report.json + categorized artifacts under
+// {BT_AUTO_TASKS_DIR}/{task_id}/; the history list is always visible on the
+// run page (no collapse) and a click restores that run into the panel below.
+const runs = ref<any[]>([])
+const runsLoading = ref(false)
+const viewingReport = ref<any | null>(null)
+/** 运行记录弹窗（从运行控件旁的「功能」菜单打开） */
+const showHistory = ref(false)
+
+async function fetchRuns() {
+  runsLoading.value = true
+  try {
+    const api = window.electronAPI
+    const res = await api.callBackendAPI('automation.list_runs', {})
+    runs.value = res?.runs || []
+  } catch {
+    /* history is best-effort */
+  } finally {
+    runsLoading.value = false
+  }
+}
+onMounted(() => { void fetchRuns() })
+
+/** 从运行记录弹窗里选一条：把运行恢复进面板后**关掉弹窗**，
+ *  否则报告被弹窗盖住 —— 这一步不能省。 */
+async function onSelectRunFromDialog(taskId: string) {
+  await onSelectRun(taskId)
+  showHistory.value = false
+}
+
+/** 点运行记录 → 把那次运行的报告恢复到页面里 */
+async function onSelectRun(taskId: string) {
+  try {
+    const api = window.electronAPI
+    const res = await api.callBackendAPI('automation.read_run', { task_id: taskId })
+    if (!res?.success || !res.report) {
+      message.error(t('automation.reportLoadFailed'))
+      return
+    }
+    viewingReport.value = res.report
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  }
+}
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+/** 实时视图的抓包明细：流式不推，跑完后从落盘的 jsonl 补读一次 */
+const liveTraffic = ref<any[]>([])
+
+async function loadFinishedTraffic(taskId: string) {
+  try {
+    const api = window.electronAPI
+    const res = await api.callBackendAPI('automation.read_run', { task_id: taskId, traffic_limit: 500 })
+    // 只有还是同一次运行的结果时才填充（防止慢返回覆盖掉新开跑的空态）
+    if (res?.success && res.report
+        && String(runner.runResult?.task_id || runner.taskId || '') === taskId) {
+      // `report` is `Record<string, unknown>` per the IPC contract, so the
+      // traffic slice needs an explicit array narrowing before it can be
+      // assigned to the `any[]` ref.
+      const traffic = res.report.traffic
+      liveTraffic.value = Array.isArray(traffic) ? traffic : []
+    }
+  } catch { /* 明细拉不到就空着，计数（traffic_requests）还在 */ }
+}
+
+/**
+ * 运行结束后的对账。
+ *
+ * `report.json` 是插件在 `finally` 里写的 —— 也就是**在 `complete` 事件之后**
+ * 一点点。所以「收到 complete 就立刻刷一次列表」必然和写盘抢跑：列表里看不到
+ * 刚跑完的那条（这就是「运行记录不会自动刷新」的原因）。
+ *
+ * 注意：自从后端在**开跑时**就写 `summary.json`（status=running），这条记录
+ * 一开始就会出现在列表里 —— 所以对账不能只看「有没有这条」，必须等它变成
+ * `finished`（不是 running / orphan），否则会拿一个还没落盘的报告去回放。
+ * 轮询封顶 4 次：报告就在 complete 之前写盘，正常情况下第 1 次就命中。
+ *
+ * 另外：如果实时控制台什么都没收到（没有日志也没有步骤），但磁盘上有这次运行
+ * 的记录，就把落盘的报告回放到面板里 —— 保证「运行完，运行信息里有日志和步骤」。
+ */
+async function reconcileFinishedRun() {
+  const taskId = String(runner.runResult?.task_id || runner.taskId || '')
+  const isFinal = (r: any) =>
+    String(r?.task_id) === taskId && !r?.running && !r?.orphan
+  let persisted = false
+  for (let i = 0; i < 4; i++) {
+    await fetchRuns()
+    persisted = !!taskId && runs.value.some(isFinal)
+    if (persisted) break
+    await sleep(200)
+  }
+  // 报告落盘了就把抓包明细补进实时视图 —— 「请求」页签跑完才有数据靠的就是这一步
+  if (persisted) void loadFinishedTraffic(taskId)
+  // 实时流一条都没到（既没日志也没步骤）：用落盘报告回放面板，并明确提示 ——
+  // 否则又是一个「运行信息里就一点点信息」的无声故障。
+  if (persisted && !runner.liveSteps.length && !runner.logs.length) {
+    await onSelectRun(taskId)
+    message.warning(t('automation.streamSilentHint'))
+  }
+}
+
+/** 回到实时/最近一次运行视图 */
+function closeReport() {
+  viewingReport.value = null
+}
+
+function onDeleteRun(taskId: string) {
+  dialog.warning({
+    title: t('automation.deleteRun'),
+    content: t('automation.deleteRunConfirm'),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      const api = window.electronAPI
+      try {
+        const res = await api.callBackendAPI('automation.delete_run', { task_id: taskId })
+        if (!res?.deleted) {
+          message.error(res?.error || 'delete failed')
+          return
+        }
+        if (viewingReport.value?.task_id === taskId) viewingReport.value = null
+        void fetchRuns()
+      } catch (e: any) {
+        message.error(e?.message || String(e))
+      }
+    },
+  })
+}
+
+// The run record is written to disk a beat AFTER the `complete` event, so the
+// list must be reconciled rather than refreshed once — see
+// `reconcileFinishedRun`. Called from the run's finally block below.
+
+/** 当前要操作的那次运行：优先页面里正在看的那条，否则最近一次运行 */
+function currentRunTaskId(): string {
+  return viewingReport.value?.task_id || String(runner.runResult?.task_id || '')
+}
+
+const exporting = ref(false)
+
+/** 内置 API：导出 HTML（始终在运行目录里留一份归档，返回其路径） */
+async function buildRunReportHtml(taskId: string, target = ''): Promise<string> {
+  const api = window.electronAPI
+  const r = await api.callBackendAPI('automation.export_run', { task_id: taskId, target })
+  if (!r?.success) {
+    message.error(r?.error || t('automation.reportExportFailed'))
+    return ''
+  }
+  return r.file_path || r.archive_path || ''
+}
+
+/** 浏览器打开：先落盘归档，再交给系统用默认程序打开 */
+async function openReportFile() {
+  const taskId = currentRunTaskId()
+  if (!taskId) {
+    message.warning(t('automation.reportUnavailable'))
+    return
+  }
+  exporting.value = true
+  try {
+    const path = await buildRunReportHtml(taskId)
+    if (!path) return
+    // reveal:false → 系统默认程序真正打开（.html → 浏览器）；缺省会变成
+    // 「在资源管理器中显示」——openPath 主进程对文件的历史语义就是 reveal
+    await (window.electronAPI as any)?.openPath?.(path, { reveal: false })
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    exporting.value = false
+  }
+}
+
+/** 下载报告：自包含 HTML（截图 base64 内嵌 + 请求表），存到用户选定路径 */
+async function downloadRunReport() {
+  const taskId = currentRunTaskId()
+  if (!taskId) {
+    message.warning(t('automation.reportUnavailable'))
+    return
+  }
+  const api = window.electronAPI
+  let target = ''
+  if (api?.showSaveDialog) {
+    const now = new Date()
+    const pad = (v: number) => String(v).padStart(2, '0')
+    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
+    const res = await api.showSaveDialog({
+      title: t('automation.downloadReport'),
+      defaultPath: `automation-${taskId}-${ts}.html`,
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+    })
+    if (!res || res.canceled || !res.filePath) return
+    target = res.filePath
+  }
+  exporting.value = true
+  try {
+    const path = await buildRunReportHtml(taskId, target)
+    if (path) message.success(`${t('automation.downloadReport')} → ${path}`)
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    exporting.value = false
+  }
+}
+
+// ---------------- run ----------------
+/**
+ * 从第 startIndex（0 基）步开始跑；0 = 从头跑。
+ * 起始下标在页面这一层就夹到合法范围（行菜单构建之后步骤可能被删过），
+ * 后端也会再夹一次并打日志。
+ */
+async function runScript(startIndex = 0) {
+  if (runner.running) return
+  if (!autoDeviceId.value) {
+    message.error(t('automation.noDeviceSelectedRun'))
+    return
+  }
+  if (!store.selectedScriptId) {
+    message.warning(t('automation.noScriptSelected'))
+    return
+  }
+  // flush any pending debounced auto-save so the run uses the latest edits
+  store.flushAutoSaveNow()
+  if (!store.commitEditor()) return
+  const s = store.selectedScript
+  if (!s || !s.steps.length) {
+    message.warning(t('automation.noSteps'))
+    return
+  }
+  const start = Math.max(0, Math.min(Math.floor(Number(startIndex) || 0), s.steps.length - 1))
+  try {
+    // 报告视图会让位给实时日志：开跑就关掉历史报告，否则看不到运行中的日志
+    viewingReport.value = null
+    liveTraffic.value = []
+    if (start > 0) message.info(t('automation.runFromStepHint', { n: start + 1 }))
+    await runner.runScript({
+      device_id: autoDeviceId.value,
+      package_name: store.selectedProject?.package_name || '',
+      steps: s.steps,
+      capture_traffic: captureTraffic.value,
+      traffic_host_filter: trafficHostFilter.value.trim(),
+      continue_on_error: continueOnError.value,
+      abort_on_crash: abortOnCrash.value,
+      use_ime: enableChineseInput.value,
+      // 从某一步开始（前面的步骤不执行）+ 步骤之间的默认等待
+      start_index: start,
+      step_interval_ms: store.ui.stepIntervalMs,
+    })
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  } finally {
+    // 无论成功、失败还是取消，都要把「刚跑完的那条」对账进列表 —— report.json
+    // 落在 complete 之后，所以这里必须轮询而不是只刷一次。
+    // 但 IPC/流层就失败（没收到 complete、不会有落盘记录）时轮询纯属空转，
+    // 还会让刷新按钮连闪 20 次 —— 只有真跑完过才对账。
+    if (runner.runResult) {
+      notifyRunFinished()
+      void reconcileFinishedRun()
+    }
+  }
+}
+
+/**
+ * 行菜单「从此步开始运行」：起点之前的步骤**完全不执行**（用于调试脚本中段，
+ * 不必每次从头跑）。设备 / 脚本的校验复用 runScript。
+ */
+function runFromStep(index: number) {
+  void runScript(index)
+}
+
+/**
+ * 运行配置里的「步骤间隔」：写进页面偏好并持久化。实际等待是**叠加**的 ——
+ * `默认间隔 + 步骤的 recorded_gap_ms`（录制带入的实测停顿）；单独一步填了
+ * `delay_ms` 则整体覆盖这两者（0 = 该步不等待）。
+ */
+function onStepIntervalChange(v: number) {
+  const n = Math.max(0, Math.round(Number(v) || 0))
+  if (n === store.ui.stepIntervalMs) return
+  store.ui.stepIntervalMs = n
+  store.persistUiSoon()
+}
+
+/**
+ * 运行结束的系统通知：成功与失败都要告知（受设置里的「系统通知」开关控制，
+ * 开关判断在 notifySystem 里）。取消也算一次结束，但用「已取消」表述 ——
+ * 用户自己按的停止不该被报成失败。
+ */
+function notifyRunFinished() {
+  const res = runner.runResult
+  if (!res) return
+  const name = store.selectedScript?.name || ''
+  const title = name ? `${t('automation.title')} · ${name}` : t('automation.title')
+  const passed = Number(res.passed) || 0
+  const total = Number(res.total) || 0
+  const failed = Number(res.failed) || 0
+  if (res.cancelled) {
+    void notifySystem(title, t('automation.notifyRunCancelled'))
+    return
+  }
+  if (res.success) {
+    void notifySystem(title, `${t('automation.notifyRunDone')} ${passed}/${total}`)
+    return
+  }
+  void notifySystem(title, `${t('automation.notifyRunFailed')} ${failed}/${total}`)
+}
+
+// ---------------- element picker / screenshot picker ----------------
+const dumping = ref(false)
+const showElements = ref(false)
+const elements = ref<UiNode[]>([])
+/** 抽屉始终处于“填充步骤”模式（由编辑表单的拾取按钮打开）：
+ *  element → UI dump 抽屉，screenshot → 截图取点弹窗，coord 为遗留分支 */
+const pickTarget = ref<{ index: number; mode: 'coord' | 'element' | 'screenshot' } | null>(null)
+const showShotPicker = ref(false)
+
+async function getElements() {
+  if (runner.running) return
+  if (!autoDeviceId.value) {
+    message.error(t('automation.noDevice'))
+    return
+  }
+  dumping.value = true
+  // Open the picker immediately with a loading state — a dump can take
+  // seconds and a silent button looks frozen.
+  showElements.value = true
+  try {
+    const api = window.electronAPI
+    const res = await api.callBackendAPI('device.ui_dump', {
+      device_id: autoDeviceId.value,
+      timeout_ms: 15000,
+    })
+    if (!res || !res.success) {
+      showElements.value = false
+      message.error(t('automation.dumpFailed', { msg: res?.error || 'unknown' }))
+      return
+    }
+    elements.value = parseUiDump(res.xml || '')
+  } catch (e: any) {
+    showElements.value = false
+    message.error(t('automation.dumpFailed', { msg: e?.message || String(e) }))
+  } finally {
+    dumping.value = false
+  }
+}
+
+function onStepPick(payload: { index: number; mode: 'coord' | 'element' | 'screenshot' }) {
+  pickTarget.value = payload
+  // screenshot pick: the modal captures + shows on open, then reports coords
+  if (payload.mode === 'screenshot') {
+    showShotPicker.value = true
+    return
+  }
+  void getElements()
+}
+
+/** 截图上点选一个坐标：写入 coord 模式步骤（与 applyElement 的 coord 分支
+ *  同样的写法 —— 换 mode、清 target/ms 防脏字段） */
+function applyShotCoords(c: { x: number; y: number }) {
+  const target = pickTarget.value
+  if (!target) {
+    message.warning(t('automation.pickNoTarget'))
+    return
+  }
+  const steps = [...store.editor.steps]
+  const s = { ...steps[target.index] } as any
+  if (!s) return
+  s.mode = 'coord'
+  s.coord = { x: c.x, y: c.y }
+  delete s.target
+  delete s.ms
+  steps[target.index] = s
+  store.editor.steps = steps
+  if (store.stepsView === 'json') store.syncJsonText()
+  pickTarget.value = null
+  showShotPicker.value = false
+  message.success(`${c.x}, ${c.y}`)
+}
+
+/** 元素抽屉里选中一个元素：填充正在编辑的步骤（v2 模型） */
+function applyElement(el: UiNode) {
+  const target = pickTarget.value
+  if (!target) {
+    // should not happen (modal only opens from a form pick) — surface it
+    // instead of failing silently if state ever desyncs
+    message.warning(t('automation.pickNoTarget'))
+    return
+  }
+  const steps = [...store.editor.steps]
+  const s = { ...steps[target.index] } as any
+  if (!s) return
+  if (target.mode === 'coord') {
+    const c = boundsCenter(el.bounds)
+    if (!c) {
+      message.error(t('automation.dumpFailed', { msg: 'no bounds' }))
+      return
+    }
+    s.mode = 'coord'
+    s.coord = c
+    delete s.target
+    delete s.ms
+  } else {
+    // element target: tap/wait switch modes; input keeps its optional focus
+    if (s.action === 'tap' || s.action === 'wait') s.mode = 'element'
+    s.target = {
+      by: el.by,
+      value: el.value,
+      instance: s.target?.instance ?? 0,
+      timeout_ms: s.target?.timeout_ms ?? elementTimeoutMs.value,
+    }
+    delete s.coord
+    delete s.ms
+  }
+  steps[target.index] = s
+  store.editor.steps = steps
+  if (store.stepsView === 'json') store.syncJsonText()
+  pickTarget.value = null
+  showElements.value = false
+  if (el.matchCount > 1) {
+    message.warning(t('automation.matchWarning', { n: el.matchCount }))
+  } else {
+    message.success(el.label)
+  }
+}
+
+/**
+ * assert_activity「抓取当前」：页面持有设备 id 与后端调用（表单只发事件），
+ * 抓住设备当前前台 Activity 后写回**正在编辑的那一步**。写回路径与
+ * applyElement 完全一致（复制步骤数组 → 替换该行 → 回写 editor.steps →
+ * JSON 视图同步），保证自动保存/运行都拿到新值。探测失败只弹错，不改字段。
+ */
+async function onGrabActivity(payload: { index: number }) {
+  const idx = payload?.index ?? store.selectedStepIndex
+  const step = store.editor.steps[idx]
+  if (!step) return
+  if (!autoDeviceId.value) {
+    message.error(t('automation.noDevice'))
+    return
+  }
+  try {
+    const api = window.electronAPI
+    const res = await api.callBackendAPI('device.current_activity', {
+      device_id: autoDeviceId.value,
+      timeout_ms: 3000,
+    })
+    if (!res || !res.success) {
+      message.error(res?.error || 'grab activity failed')
+      return
+    }
+    const steps = [...store.editor.steps]
+    steps[idx] = { ...steps[idx], activity: res.activity }
+    store.editor.steps = steps
+    if (store.stepsView === 'json') store.syncJsonText()
+  } catch (e: any) {
+    message.error(e?.message || String(e))
+  }
+}
+
+onMounted(() => {
+  store.loadConfig()
+})
 </script>
 
 <style scoped>
-.tools-page { max-width: 1000px; margin: 0 auto; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.page-title {
-  font-family: Inter, sans-serif;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-text-primary);
-  margin: 0;
-  letter-spacing: -0.02em;
+.auto-page { height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.three-cols {
+  flex: 1; display: grid;
+  /* 列宽由 gridStyle 内联给定：两侧列可拖拽调宽（automation.ui.columns 持久化），
+     中栏 minmax(0,1fr) 吸收剩余空间——1fr 的 min-width 是 auto，内容会顶开
+     轨道压到相邻列，因此必须 minmax(0,1fr)。
+     行高同理用 minmax(0,1fr) 锁死：否则某列内容一高，auto 行就顶破容器，
+     溢出内容会让外层 .main-content 长出页面级滚动条。 */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0; min-height: 0; overflow: hidden;
 }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
-.plugin-dev-title {
-  font-size: 16px;
+.col-divider {
+  cursor: col-resize;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+.col-divider:hover { background: var(--app-card-border); }
+.col {
+  background: var(--app-card-bg); border: 1px solid var(--app-card-border);
+  border-radius: 10px; padding: 12px; display: flex; flex-direction: column; min-height: 0;
+  min-width: 0;
+  /* clip: a child that outgrows the column must scroll inside it, never
+     paint over the neighbouring column or the run history below */
+  overflow: hidden;
+}
+.col-head {
+  gap: 10px;
+  margin-bottom: 10px;
+}
+/* NOTE: the "元素超时" (element default timeout) control used to sit on this
+   row. It is gone from the UI — whichever row it lived on it read as clutter,
+   and a per-step timeout can already be set inside the step editor. The
+   underlying `elementTimeoutMs` state is KEPT (it is still the fallback used
+   when building steps), only the control is removed. */
+.col-empty { margin: auto; text-align: center; }
+
+/* center editor */
+.editor-title {
+  display: flex;
+  flex-direction: column;
+  /* absorb the slack so the view switch is pinned to the right edge */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.view-switch { flex: none; }
+.editor-name {
+  font-size: var(--app-font-size-md);
   font-weight: 600;
-  color: var(--app-text-muted);
-  margin-top: 16px;
+  color: var(--app-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.editor-desc {
+  font-size: var(--app-font-size-xs);
+  font-weight: 400;
+  color: var(--app-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.autosave-hint {
+  flex: none;
+  font-size: var(--app-font-size-xs);
+  color: var(--app-text-muted);
+}
+.autosave-hint.saved { color: var(--app-green); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* right run console: controls / panel / history stacked with a uniform gap
+   (the panel itself absorbs the slack) */
+.col-right { gap: 8px; }
+.steps-json { font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); }
+.json-status { font-size: var(--app-font-size-sm); margin-top: 4px; }
+.json-status.ok { color: var(--app-green); }
+.json-status.bad { color: var(--app-red); }
+/* 注意：这里**不要**加 scrollbar-gutter: stable —— 它会在右侧常驻 10px 滚动条车道，
+   把步骤工具行、「插入到开头」按钮和步骤列表整体压窄并左移（看起来就是「没居中」）。
+   真正的滚动容器是下面的步骤列表（.sl-scroll / n-scrollbar，覆盖式滚动条不占宽度）。 */
+.editor-body { overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
+.steps-field { flex: 1; min-height: 0; min-width: 0; }
+/* 工具行：视图切换靠左、计数贴右（两端撑开） */
+.steps-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; flex-wrap: wrap;
+}
+.steps-count { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
+.steps-editor { flex: 1; min-height: 0; min-width: 0; }
+
+/* 运行记录弹窗：列表在弹窗里可以给到接近整屏（右栏常驻时只有 140px）；
+   计数靠左、刷新在右下（AppModal 的 footer 默认右对齐） */
+.history-dialog :deep(.rh-list) { max-height: 60vh; }
+.history-count { margin-right: auto; font-size: var(--app-font-size-sm); color: var(--app-text-muted); }
 </style>

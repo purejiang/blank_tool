@@ -1,6 +1,6 @@
 <template>
   <n-modal :show="visible" @update:show="(v: boolean) => !v && close()">
-    <n-card :bordered="false" style="width:420px;max-width:90vw" title-style="font-size:16px;font-weight:600">
+    <n-card :bordered="false" style="width:420px;max-width:90vw" title-style="font-size: var(--app-font-size-xl);font-weight:600">
       <template #header>
         <span>{{ isEdit ? t('signature.editTitle') : t('signature.addTitle') }}</span>
       </template>
@@ -39,8 +39,11 @@ import { reactive, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'
+import { useNotification } from '@composables/useNotification'
 
 const { t } = useI18n()
+// 原生 alert() 会弹系统模态框并阻塞渲染进程；校验失败走应用统一通知（与设置页同一通道）
+const { showWarning } = useNotification()
 
 const props = defineProps<{
   visible: boolean
@@ -84,7 +87,7 @@ const close = () => {
 
 const save = () => {
   if (!form.name || !form.path || !form.alias) {
-    alert(t('signature.fillRequired'))
+    showWarning(t('signature.fillRequired'))
     return
   }
   emit('save', { ...form })

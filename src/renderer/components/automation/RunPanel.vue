@@ -1,0 +1,754 @@
+<template>
+  <div class="run-panel">
+    <!-- ============ status bar (one line: status + summary + 详情 + report
+         actions; replaces the old title + summary + run-dir rows) ============ -->
+    <!-- NOTE: this bar is `.run-status`, deliberately NOT `.status-bar` —
+         main.css styles `.status-bar` globally for the app footer
+         (height:100% + space-between). A scoped rule only wins for the
+         properties it declares, so the global `height: 100%` silently
+         stretched this bar across the whole panel and pushed the tabs +
+         steps/logs out of the clipped area. -->
+    <div class="run-status" :class="statusClass">
+      <!-- left half: status + summary. It may wrap internally (the summary
+           drops to a second line as ONE block), which keeps the actions
+           pinned to the right instead of being pushed off the edge. -->
+      <div class="st-main">
+        <span class="dot" />
+        <span class="st-label">{{ statusLabel }}</span>
+        <span class="st-meta" v-if="!idle">
+          <span>{{ src.passed }}/{{ src.total }}</span>
+          <template v-if="src.startIndex">
+            <span class="sep">·</span>
+            <span :title="t('automation.startIndexLabel')">{{ t('automation.startIndexShort', { n: src.startIndex + 1 }) }}</span>
+          </template>
+          <span class="sep">·</span>
+          <span>{{ fmtDur(src.durationMs) }}</span>
+          <template v-if="shotCount">
+            <span class="sep">·</span>
+            <span>{{ t('automation.shotCountLabel', { n: shotCount }) }}</span>
+          </template>
+          <template v-if="src.trafficTotal">
+            <span class="sep">·</span>
+            <span>{{ t('automation.fRequests') }} {{ src.trafficTotal }}</span>
+          </template>
+        </span>
+      </div>
+
+      <div class="st-acts">
+        <n-popover v-if="hasDetails" trigger="click" placement="bottom-end" :show-arrow="false">
+          <template #trigger>
+            <n-button size="tiny" text>{{ t('automation.details') }}</n-button>
+          </template>
+          <div class="detail-pop">
+            <div class="dp-row" v-if="src.runDir">
+              <span class="dp-k">{{ t('automation.runDir') }}</span>
+              <span class="dp-v path" :title="t('automation.clickToOpen')" @click="openPath(src.runDir)">
+                {{ src.runDir }}
+              </span>
+            </div>
+            <div class="dp-row" v-if="src.deviceId">
+              <span class="dp-k">{{ t('automation.device') }}</span>
+              <span class="dp-v">{{ src.deviceId }}</span>
+            </div>
+            <div class="dp-row" v-if="src.packageName">
+              <span class="dp-k">{{ t('automation.packageLabel') }}</span>
+              <span class="dp-v">{{ src.packageName }}</span>
+            </div>
+            <div class="dp-row" v-if="src.startedAt">
+              <span class="dp-k">{{ t('automation.duration') }}</span>
+              <span class="dp-v">{{ src.startedAt }} → {{ src.finishedAt }}</span>
+            </div>
+            <div class="dp-row" v-if="src.trafficLog">
+              <span class="dp-k">{{ t('automation.trafficFile') }}</span>
+              <span class="dp-v path" :title="t('automation.clickToOpen')" @click="openPath(src.trafficLog)">
+                {{ src.trafficLog }}
+              </span>
+            </div>
+            <div class="dp-row" v-if="src.crashLog">
+              <span class="dp-k">{{ t('automation.crashLog') }}</span>
+              <span class="dp-v path" :title="src.crashLog" @click="copyText(src.crashLog, 'crash')">
+                {{ copied === 'crash' ? t('automation.copied') : src.crashLog }}
+              </span>
+            </div>
+          </div>
+        </n-popover>
+        <!-- Report actions live here (status bar, right end) so the tabs row
+             keeps only the log filter + the report-view close button. -->
+        <n-button v-if="src.taskId && !running" size="tiny" :loading="exporting" @click="emit('open-file')">
+          <template #icon><n-icon size="14"><ExternalLink /></n-icon></template>
+          {{ t('automation.openInBrowser') }}
+        </n-button>
+        <n-button v-if="src.taskId && !running" size="tiny" @click="emit('download-report')">
+          <template #icon><n-icon size="14"><Download /></n-icon></template>
+          {{ t('automation.downloadReport') }}
+        </n-button>
+      </div>
+    </div>
+
+    <!-- crash is exceptional — stays inline instead of hiding in 详情 -->
+    <div class="crash-note" v-if="src.abortedByCrash">
+      <span class="crash-text">{{ t('automation.crashAborted') }}</span>
+      <span v-if="src.crashLog" class="crash-log">{{ src.crashLog }}</span>
+    </div>
+
+    <!-- ============ tabs: steps / requests / logs share ONE block; only the
+         log filter + the report-view close button sit on this row — the
+         report actions live up in the status bar ============ -->
+    <div class="tabs">
+      <button
+        v-for="tb in tabs" :key="tb.key" type="button"
+        class="tab" :class="{ on: tab === tb.key }"
+        @click="tab = tb.key"
+      >
+        {{ tb.label }}<span v-if="tb.count" class="tab-n">{{ tb.count }}</span>
+      </button>
+      <div class="tabs-acts">
+        <span v-if="tab === 'logs' && logs.length" class="only-err">
+          <n-checkbox v-model:checked="onlyErrors" size="small">{{ t('automation.onlyErrors') }}</n-checkbox>
+        </span>
+        <IconButton
+          v-if="isReport"
+          :icon="X"
+          :label="t('common.close')"
+          size="tiny"
+          text
+          @click="emit('close-report')"
+        />
+      </div>
+    </div>
+
+    <div class="panel-body">
+      <!-- ---- steps ---- -->
+      <div v-if="tab === 'steps'" class="scroll">
+        <div v-if="!stepsWithShots.length" class="empty">{{ t('automation.noResult') }}</div>
+        <div v-for="st in stepsWithShots" :key="st.index" class="step-block">
+          <div class="srow" :class="rowClass(st)" @click="toggle(st.index)">
+            <span class="s-rel">{{ relText(st) }}</span>
+            <span class="s-idx">#{{ st.index }}</span>
+            <span class="s-act">{{ actLabel(st.action) }}</span>
+            <span
+              class="s-msg"
+              :title="st.pending ? t('automation.stepPending') : (st.message || (st.ok ? 'ok' : 'fail'))"
+            >{{ st.pending ? t('automation.stepPending') : (st.message || (st.ok ? 'ok' : 'fail')) }}</span>
+            <span v-if="st.shots.length" class="s-shots" :title="t('automation.shotCountLabel', { n: st.shots.length })">
+              <n-icon size="12"><ImageIcon /></n-icon>{{ st.shots.length }}
+            </span>
+            <span class="s-dur" v-if="st.duration_ms">{{ fmtDur(st.duration_ms) }}</span>
+          </div>
+          <div v-if="expanded === st.index" class="sdetail">
+            <div class="sd-msg">{{ st.message || (st.ok ? 'ok' : 'fail') }}</div>
+            <div v-if="st.shots.length" class="sd-shots">
+              <template v-for="(p, k) in st.shots" :key="k">
+                <n-image
+                  v-if="shotUrls[p]"
+                  :src="shotUrls[p]" width="64" height="114" object-fit="cover" :alt="p"
+                  :preview-src="shotUrls[p]"
+                />
+                <div v-else class="sd-shot-slot" :title="shotFailed[p] ? t('automation.shotLoadFail') : p">
+                  <n-spin v-if="!shotFailed[p]" size="small" />
+                  <n-icon v-else size="14"><ImageOff /></n-icon>
+                </div>
+              </template>
+            </div>
+            <div v-else class="sd-empty">{{ t('automation.noShots') }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- requests ---- -->
+      <div v-else-if="tab === 'requests'" class="scroll">
+        <div v-if="!requests.length" class="empty">
+          {{ running ? t('automation.requestsLiveHint') : t('automation.noRequests') }}
+        </div>
+        <div v-else class="req-list">
+          <template v-for="(rq, i) in requests" :key="i">
+            <div class="req-row" :class="[reqClass(rq), { open: expandedReq === i }]" @click="toggleReq(i)">
+              <span class="req-t">{{ reqRel(rq.ts) }}</span>
+              <span class="req-m">{{ rq.method }}</span>
+              <span class="req-s">{{ rq.status ?? (rq.error ? 'ERR' : '-') }}</span>
+              <span class="req-u" :title="rq.url">{{ rq.url }}</span>
+            </div>
+            <div v-if="expandedReq === i" class="req-detail">
+              <template v-if="reqDetail[i]">
+                <div class="rd-sec">{{ t('automation.reqHeaders') }}</div>
+                <pre class="rd-pre">{{ headersText(reqDetail[i].req_headers) || t('automation.reqEmpty') }}</pre>
+                <div class="rd-sec">{{ t('automation.reqBody') }}</div>
+                <pre class="rd-pre">{{ bodyText(reqDetail[i].req_body) || t('automation.reqEmpty') }}</pre>
+                <div class="rd-sec">{{ t('automation.respHeaders') }}</div>
+                <pre class="rd-pre">{{ headersText(reqDetail[i].resp_headers) || t('automation.reqEmpty') }}</pre>
+                <div class="rd-sec">{{ t('automation.respBody') }}</div>
+                <pre class="rd-pre">{{ bodyText(reqDetail[i].resp_body) || t('automation.reqEmpty') }}</pre>
+              </template>
+              <div v-else-if="reqDetailLoading === i" class="rd-note">{{ t('automation.reqDetailLoading') }}</div>
+              <div v-else class="rd-note">{{ reqDetailError[i] || t('automation.reqDetailFail') }}</div>
+            </div>
+          </template>
+          <div v-if="src.truncated" class="trunc-note">
+            {{ t('automation.trafficTruncated', { n: src.trafficTotal }) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- logs ---- -->
+      <div v-else class="scroll log-scroll" ref="logEl">
+        <div v-if="!visibleLogs.length" class="empty">
+          {{ logs.length ? t('automation.noErrorLines') : t('automation.noLogs') }}
+        </div>
+        <!-- 实时日志是有上限的环形缓冲：先丢最早的行，完整日志在报告里 -->
+        <div v-if="droppedLogs" class="log-truncated">{{ t('automation.logsTruncated') }}</div>
+        <div v-for="(l, i) in visibleLogs" :key="i" class="log-line" :class="l.level">
+          <span class="ll-ts">{{ logTime(l.ts) }}</span>
+          <span class="ll-text">{{ l.body }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { NButton, NCheckbox, NIcon, NImage, NPopover } from 'naive-ui'
+import { Download, ExternalLink, Image as ImageIcon, ImageOff, X } from 'lucide-vue-next'
+import { stepActionLabel } from '@components/automation/stepMeta'
+import IconButton from '@components/common/IconButton.vue'
+
+const props = defineProps<{
+  running: boolean
+  runResult: any
+  liveSteps: any[]
+  /** live console lines (renderer clock, epoch seconds) */
+  logs: { ts: number; text: string }[]
+  /** 实时日志超过上限、最早的行已被丢弃（历史报告里仍是完整日志） */
+  droppedLogs?: boolean
+  screenshots: string[]
+  /** run start (renderer clock, epoch seconds) — baseline for the live log tab */
+  runStartedTs: number
+  /** 抓包明细：实时流不推送，运行结束后由父页面读盘补一次（report 模式忽略此 prop） */
+  liveTraffic?: any[]
+  /** set when replaying a historical run (read_run payload); null = live view */
+  report?: any | null
+  exporting?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'open-file'): void
+  (e: 'download-report'): void
+  (e: 'close-report'): void
+}>()
+
+const { t } = useI18n()
+
+const isReport = computed(() => !!props.report)
+const tab = ref<'steps' | 'requests' | 'logs'>('steps')
+const onlyErrors = ref(false)
+const expanded = ref<number | null>(null)
+const copied = ref('')
+
+// ---------------------------------------------------------------- source --
+// One normalized view for both the live console and a replayed report, so
+// the two modes render identically instead of swapping whole layouts.
+const src = computed(() => {
+  if (props.report) {
+    const r = props.report
+    return {
+      steps: r.steps || [],
+      logs: r.logs || [],
+      shots: r.screenshots || [],
+      shotsMeta: r.shots_meta || [],
+      requests: r.traffic || [],
+      trafficTotal: r.traffic_total ?? 0,
+      truncated: !!r.traffic_truncated,
+      startedTs: Number(r.started_ts) || 0,
+      startedAt: r.started_at || '',
+      finishedAt: r.finished_at || '',
+      durationMs: Number(r.duration_ms) || 0,
+      total: r.total ?? 0,
+      passed: r.passed ?? 0,
+      failed: r.failed ?? 0,
+      cancelled: !!r.cancelled,
+      success: !!r.success,
+      crashLog: r.crash_log || '',
+      trafficLog: r.traffic_log || '',
+      runDir: r.run_dir || '',
+      packageName: r.package_name || '',
+      deviceId: r.device_id || '',
+      abortedByCrash: !!r.aborted_by_crash,
+      taskId: r.task_id || '',
+      startIndex: Number(r.start_index) || 0,
+    }
+  }
+  const res = props.runResult || {}
+  const st = (props.liveSteps || []) as any[]
+  const tss = st.map(s => Number(s.started_at)).filter(n => n > 0)
+  const ends = st.map(s => Number(s.ended_at)).filter(n => n > 0)
+  return {
+    steps: st,
+    logs: props.logs || [],
+    shots: res.screenshots || props.screenshots || [],
+    shotsMeta: res.shots_meta || [],
+    requests: (props.liveTraffic || []) as any[],
+    trafficTotal: res.traffic_requests ?? 0,
+    truncated: false,
+    startedTs: props.runStartedTs || 0,
+    startedAt: fmtClock(props.runStartedTs),
+    finishedAt: res.task_id ? fmtClock(Date.now() / 1000) : '',
+    durationMs: tss.length && ends.length ? Math.round((Math.max(...ends) - Math.min(...tss)) * 1000) : 0,
+    total: res.total ?? st.length,
+    passed: res.passed ?? st.filter(s => s.ok === true).length,
+    failed: res.failed ?? st.filter(s => s.ok === false).length,
+    cancelled: !!res.cancelled,
+    success: !!res.success,
+    crashLog: res.crash_log || '',
+    trafficLog: res.traffic_log || '',
+    runDir: res.run_dir || '',
+    packageName: res.package_name || '',
+    deviceId: '',
+    abortedByCrash: !!res.aborted_by_crash,
+    taskId: res.task_id || '',
+    startIndex: Number(res.start_index) || 0,
+  }
+})
+
+const steps = computed(() => src.value.steps)
+/** 请求列表只有回放历史运行时才有（实时流不推送抓包明细） */
+const requests = computed(() => src.value.requests || [])
+
+/** Nothing has run yet — the status bar shows a neutral hint instead of 0/0. */
+const idle = computed(() =>
+  !props.running && !isReport.value && !src.value.taskId && !steps.value.length
+)
+
+/** Timeline anchor: the report's start (same clock as its timestamps), or —
+ *  in live mode — the first step seen. Never mix renderer and backend clocks
+ *  inside one tab. */
+const baseline = computed(() => {
+  if (isReport.value) return src.value.startedTs || 0
+  const tss = (props.liveSteps || []).map((s: any) => Number(s.started_at)).filter((n: number) => n > 0)
+  return tss.length ? Math.min(...tss) : 0
+})
+
+function relText(st: any): string {
+  if (st.pending) return '—'
+  return rel(st.started_at)
+}
+
+function rel(ts: any): string {
+  const v = Number(ts)
+  const b = baseline.value
+  if (!Number.isFinite(v) || v <= 0 || !b) return '—'
+  const d = v - b
+  return d < 0 ? '—' : `+${d.toFixed(2)}s`
+}
+
+function reqRel(ts: any): string {
+  return rel(ts)
+}
+
+// ------------------------------------------------------- request detail --
+// The report payload only carries summaries (ts/method/status/url) — bodies
+// and headers stay in the capture jsonl on disk (a run can log thousands of
+// requests, 16 KiB per body). Clicking a row lazily fetches ONE full record
+// via automation.traffic_detail and caches it for re-expansion.
+const expandedReq = ref<number | null>(null)
+const reqDetail = ref<Record<number, any>>({})
+const reqDetailLoading = ref<number | null>(null)
+const reqDetailError = ref<Record<number, string>>({})
+
+/** v-for 的 index 在松散类型（any[]）下被 vue-tsc 推断为 string | number，
+ *  这里统一归一为数字下标（traffic jsonl 的行号）。 */
+async function toggleReq(raw: number | string) {
+  const i = Number(raw)
+  if (!Number.isFinite(i)) return
+  if (expandedReq.value === i) {
+    expandedReq.value = null
+    return
+  }
+  expandedReq.value = i
+  if (reqDetail.value[i] || reqDetailLoading.value === i) return
+  const taskId = src.value.taskId
+  if (!taskId) {
+    reqDetailError.value = { ...reqDetailError.value, [i]: t('automation.reqDetailFail') }
+    return
+  }
+  reqDetailLoading.value = i
+  try {
+    const res = await (window.electronAPI as any)?.callBackendAPI?.(
+      'automation.traffic_detail', { task_id: taskId, index: i })
+    if (res?.success && res.record) {
+      reqDetail.value = { ...reqDetail.value, [i]: res.record }
+    } else {
+      reqDetailError.value = {
+        ...reqDetailError.value,
+        [i]: res?.error || t('automation.reqDetailFail'),
+      }
+    }
+  } catch {
+    reqDetailError.value = { ...reqDetailError.value, [i]: t('automation.reqDetailFail') }
+  } finally {
+    reqDetailLoading.value = null
+  }
+}
+
+/** headers dict → "name: value" lines (sorted, stable order for reading) */
+function headersText(h: any): string {
+  if (!h || typeof h !== 'object') return ''
+  return Object.entries(h)
+    .map(([k, v]) => `${k}: ${String(v)}`)
+    .sort()
+    .join('\n')
+}
+
+/** addon wire shape → displayable text: {"text"} | {"b64"} | {"truncated",size} */
+function bodyText(b: any): string {
+  if (b == null) return ''
+  if (typeof b === 'string') return b
+  if (typeof b !== 'object') return String(b)
+  if (typeof b.text === 'string') return b.text
+  if (b.truncated) {
+    return t('automation.bodyTruncated', { n: Number(b.size) || 0 })
+  }
+  if (typeof b.b64 === 'string') {
+    const bytes = Math.floor((b.b64.length * 3) / 4)
+    return t('automation.bodyBinary', { n: bytes })
+  }
+  return ''
+}
+
+// ------------------------------------------------------------------ shots --
+/** per-step screenshots: the step's own shot + shots_meta entries for it */
+function shotsFor(index: number): string[] {
+  const out: string[] = []
+  const own = steps.value.find((s: any) => s.index === index)?.screenshot
+  if (own) out.push(own)
+  for (const m of src.value.shotsMeta || []) {
+    if (Number(m?.step_index) === index && m?.path && !out.includes(m.path)) out.push(m.path)
+  }
+  return out
+}
+
+const stepsWithShots = computed(() =>
+  steps.value.map((s: any) => ({ ...s, shots: shotsFor(s.index) }))
+)
+
+const shotCount = computed(() => {
+  const set = new Set<string>(src.value.shots || [])
+  for (const s of stepsWithShots.value) for (const p of s.shots) set.add(p)
+  return set.size
+})
+
+// ------------------------------------------------------------------- logs --
+/** `[automation] msg` → level + body. The emitter tag is noise; level words
+ *  ([FAIL]/[ERROR]/[WARN]/[CANCELLED]) are what the eye needs to catch. */
+function normalizeLog(text: string) {
+  let body = String(text)
+  let level: 'error' | 'warn' | 'info' = 'info'
+  if (/\[(FAIL|ERROR)\]/i.test(body)) level = 'error'
+  else if (/\[(WARN|CANCEL)/i.test(body)) level = 'warn'
+  const m = /^\[([A-Za-z_][\w.\-]*)\]\s+([\s\S]*)$/.exec(body)
+  if (m && !/^(FAIL|ERROR|WARN|CANCEL)/i.test(m[1])) body = m[2]
+  return { ts: 0, body, level }
+}
+
+const logs = computed(() => (src.value.logs || []).map((l: any) => {
+  const n = normalizeLog(l?.text ?? l ?? '')
+  return { ...n, ts: Number(l?.ts) || 0 }
+}))
+
+const errCount = computed(() => logs.value.filter(l => l.level === 'error').length)
+const visibleLogs = computed(() => (onlyErrors.value ? logs.value.filter(l => l.level === 'error') : logs.value))
+
+function logTime(ts: number): string {
+  if (!ts) return '—'
+  const base = isReport.value ? (src.value.startedTs || ts) : (props.runStartedTs || ts)
+  const d = ts - base
+  return d < 0 ? fmtClock(ts) : `+${d.toFixed(2)}s`
+}
+
+// ------------------------------------------------------------------ tabs ---
+const tabs = computed(() => [
+  { key: 'steps' as const, label: t('automation.fSteps'), count: steps.value.length },
+  { key: 'requests' as const, label: t('automation.fRequests'), count: src.value.requests.length || src.value.trafficTotal },
+  { key: 'logs' as const, label: t('automation.tabLogs'), count: logs.value.length },
+])
+
+// Switching to a different run (or a new one) resets the transient UI state
+// and lands on the steps tab (default per user preference); the log tab is
+// one click away while a run is in progress.
+watch(
+  () => [src.value.taskId, isReport.value].join('|'),
+  () => {
+    expanded.value = null
+    onlyErrors.value = false
+    tab.value = 'steps'
+  },
+  { immediate: true },
+)
+// When a run ends without any logs (e.g. failed before starting), an open
+// log tab would just show emptiness — fall back to steps.
+watch(() => props.running, (v) => {
+  if (v) {
+    expanded.value = null
+  } else if (tab.value === 'logs' && !logs.value.length) {
+    tab.value = 'steps'
+  }
+})
+
+// ------------------------------------------------------------------- misc --
+const statusClass = computed(() => {
+  if (idle.value) return 'idle'
+  if (props.running) return 'run'
+  if (src.value.cancelled) return 'warn'
+  return src.value.success ? 'ok' : 'bad'
+})
+
+const statusLabel = computed(() => {
+  if (idle.value) return t('automation.noResult')
+  if (props.running) return t('automation.running')
+  if (src.value.cancelled) return t('automation.cancelled')
+  return src.value.success ? t('automation.success') : t('automation.failed')
+})
+
+const hasDetails = computed(() =>
+  !!(src.value.runDir || src.value.trafficLog || src.value.crashLog || src.value.deviceId)
+)
+
+function rowClass(st: any) {
+  if (st.pending) return 'pending'
+  return st.ok ? 'ok' : 'bad'
+}
+
+function actLabel(action: string): string {
+  return stepActionLabel(action, t)
+}
+
+function fmtDur(ms: any): string {
+  const n = Number(ms) || 0
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${n}ms`
+}
+
+function fmtClock(ts: any): string {
+  const v = Number(ts)
+  if (!Number.isFinite(v) || v <= 0) return ''
+  const d = new Date(v * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function reqClass(rq: any): string {
+  if (rq?.error) return 'bad'
+  const c = rq?.status
+  if (typeof c !== 'number') return 'bad'
+  return c < 400 ? 'ok' : 'warn'
+}
+
+// 截图以**本地路径**落盘。dev 下渲染层源是 http://localhost:3000，Chromium 会拦截
+// http 源加载 file:// 子资源（生产是 file:// 源所以正常）→ 表现为只显示占位图。
+// 改走既有的 readImageAsDataURL（主进程读盘 → base64 data URL），
+// 与 PackagePage 加载 APK 图标同一套路；data URL 也让 n-image 的 preview 可用。
+const shotUrls = ref<Record<string, string>>({})
+const shotFailed = ref<Record<string, boolean>>({})
+
+async function ensureShot(p: string) {
+  if (!p || shotUrls.value[p] || shotFailed.value[p]) return
+  try {
+    const res = await window.electronAPI.readImageAsDataURL(p)
+    if (res?.success && res.dataUrl) {
+      shotUrls.value = { ...shotUrls.value, [p]: res.dataUrl }
+    } else {
+      shotFailed.value = { ...shotFailed.value, [p]: true }
+    }
+  } catch {
+    shotFailed.value = { ...shotFailed.value, [p]: true }
+  }
+}
+
+const shotPaths = computed(() =>
+  stepsWithShots.value.flatMap((s: any) => (s.shots || []) as string[]))
+watch(shotPaths, (paths) => {
+  for (const p of paths) void ensureShot(p)
+}, { immediate: true })
+
+function toggle(index: number) {
+  expanded.value = expanded.value === index ? null : index
+}
+
+async function copyText(text: string, key: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = key
+    setTimeout(() => { if (copied.value === key) copied.value = '' }, 1500)
+  } catch {
+    /* clipboard unavailable — the path is still selectable in the DOM */
+  }
+}
+
+/** Direct-open from the details popover. openPath's default semantics fit
+ * both: a DIRECTORY (run_dir) opens in Explorer, a FILE (traffic log) is
+ * revealed selected in Explorer. */
+function openPath(path?: string) {
+  if (!path) return
+  void (window.electronAPI as any)?.openPath?.(path)
+}
+
+// auto-scroll the log feed
+const logEl = ref<HTMLElement | null>(null)
+watch(visibleLogs, async () => {
+  await nextTick()
+  const el = logEl.value
+  if (el) el.scrollTop = el.scrollHeight
+})
+</script>
+
+<style scoped>
+.run-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+/* ---- status bar ---- */
+.run-status {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; border-radius: 8px;
+  border: 1px solid var(--app-card-border);
+  background: var(--app-card-bg);
+  flex: none;
+}
+/* left half: status + summary — absorbs the slack and wraps internally
+   (summary moves to a second line as ONE block, so numbers never split) */
+.st-main { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; flex: 1 1 auto; min-width: 0; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--app-text-muted); }
+.run-status.idle .st-label { color: var(--app-text-muted); font-weight: 400; }
+.run-status.ok .dot { background: var(--app-green); }
+.run-status.bad .dot { background: var(--app-red); }
+.run-status.warn .dot { background: var(--app-yellow); }
+.run-status.run .dot { background: var(--app-blue); }
+.st-label { font-size: var(--app-font-size-sm); font-weight: 600; flex: none; }
+.run-status.ok .st-label { color: var(--app-green); }
+.run-status.bad .st-label { color: var(--app-red); }
+.run-status.warn .st-label { color: var(--app-yellow); }
+.run-status.run .st-label { color: var(--app-blue); }
+/* min-width stays auto: the summary must keep its min-content width so it
+   wraps to the next line as a whole instead of breaking between numbers */
+.st-meta { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); flex: 1 1 auto; }
+.st-meta .sep { color: var(--app-text-muted); margin: 0 3px; }
+/* right half: 详情 + report actions — never wraps, always flush right */
+.st-acts { display: flex; align-items: center; gap: 5px; flex: none; }
+
+/* ---- details popover ---- */
+.detail-pop { display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
+.dp-row { display: flex; gap: 8px; font-size: var(--app-font-size-sm); align-items: baseline; }
+.dp-k { flex: none; color: var(--app-text-muted); min-width: 62px; }
+.dp-v { color: var(--app-text-secondary); word-break: break-all; }
+.dp-v.path { cursor: copy; }
+.dp-v.path:hover { color: var(--app-blue); }
+
+.crash-note { display: flex; flex-direction: column; gap: 2px; font-size: var(--app-font-size-sm); margin-top: 6px; flex: none; }
+.crash-text { color: var(--app-red); font-weight: 600; }
+.crash-log { color: var(--app-text-muted); word-break: break-all; }
+
+/* ---- tabs ---- */
+.tabs {
+  display: flex; align-items: center; gap: 2px;
+  margin-top: 8px; flex: none;
+  border-bottom: 1px solid var(--app-card-border);
+}
+.tab {
+  appearance: none; background: none; border: none; cursor: pointer;
+  padding: 5px 10px; font-size: var(--app-font-size-sm); color: var(--app-text-muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  font-family: inherit; display: flex; align-items: center; gap: 5px;
+}
+.tab:hover { color: var(--app-text-primary); }
+.tab.on { color: var(--app-blue); font-weight: 600; border-bottom-color: var(--app-blue); }
+.tab-n {
+  font-size: var(--app-font-size-xs); font-weight: 400; color: var(--app-text-muted);
+  background: var(--app-blue-bg); border-radius: 8px; padding: 0 5px; line-height: 15px;
+}
+.only-err { display: flex; align-items: center; padding-bottom: 2px; }
+/* log filter + report-view close, right-aligned; bottom padding keeps their
+   hit area above the tab underline */
+.tabs-acts {
+  margin-left: auto; display: flex; align-items: center; gap: 5px;
+  padding-bottom: 3px; flex: none;
+}
+
+/* ---- panel body ---- */
+.panel-body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; margin-top: 6px; }
+/* min-height MUST stay 0: any floor here makes the list outgrow the panel and
+   paint over the run history underneath it */
+.scroll { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.empty { padding: 18px 8px; text-align: center; color: var(--app-text-muted); font-size: var(--app-font-size-sm); }
+
+/* ---- step rows ---- */
+.step-block + .step-block { border-top: 1px dashed var(--app-card-border); }
+.srow {
+  display: flex; gap: 7px; align-items: baseline;
+  padding: 4px 2px; font-size: var(--app-font-size-sm); cursor: pointer; border-radius: 5px;
+}
+.srow:hover { background: var(--app-blue-bg); }
+.s-rel { flex: none; width: 48px; font-size: var(--app-font-size-xs); color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
+.s-idx { flex: none; font-weight: 600; color: var(--app-text-muted); }
+.srow.ok .s-idx { color: var(--app-green); }
+.srow.bad .s-idx { color: var(--app-red); }
+.srow.pending .s-idx { color: var(--app-blue); }
+.s-act { flex: none; color: var(--app-text-primary); font-weight: 500; }
+.s-msg { flex: 1; min-width: 0; color: var(--app-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow.pending .s-msg { color: var(--app-blue); font-style: italic; }
+.s-shots {
+  flex: none; display: flex; align-items: center; gap: 2px;
+  font-size: var(--app-font-size-xs); color: var(--app-text-muted);
+  background: var(--app-blue-bg); border-radius: 6px; padding: 0 5px;
+}
+.s-dur { flex: none; font-size: var(--app-font-size-xs); color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
+.sdetail {
+  margin: 0 0 6px 55px; padding: 6px 8px;
+  background: var(--app-blue-bg); border-radius: 6px;
+}
+.sd-msg { font-size: var(--app-font-size-sm); color: var(--app-text-secondary); word-break: break-all; }
+.sd-shots { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+/* 截图未就绪/读取失败时的占位槽：与缩略图同尺寸，避免加载完成时布局跳动 */
+.sd-shot-slot { width: 64px; height: 114px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--app-card-border); border-radius: 6px; color: var(--app-text-dim); }
+.sd-empty { font-size: var(--app-font-size-xs); color: var(--app-text-muted); margin-top: 4px; }
+
+/* ---- requests ---- */
+.req-list { display: flex; flex-direction: column; }
+.req-row { display: flex; gap: 7px; align-items: baseline; font-size: var(--app-font-size-sm); padding: 2px 0; cursor: pointer; }
+.req-row:hover .req-u { color: var(--app-text-primary); }
+.req-row.open .req-u { color: var(--app-blue); }
+.req-row.ok .req-s { color: var(--app-green); }
+.req-row.warn .req-s { color: var(--app-yellow); }
+.req-row.bad .req-s { color: var(--app-red); }
+.req-t { flex: none; width: 50px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; font-size: var(--app-font-size-xs); }
+.req-m { flex: none; width: 48px; font-weight: 600; color: var(--app-text-primary); }
+.req-s { flex: none; width: 32px; }
+.req-u { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--app-text-muted); }
+.req-detail {
+  margin: 2px 0 6px 55px; padding: 6px 8px;
+  background: var(--app-blue-bg); border-radius: 6px;
+}
+.rd-sec { font-size: var(--app-font-size-xs); font-weight: 600; color: var(--app-text-secondary); margin: 6px 0 2px; }
+.rd-sec:first-child { margin-top: 0; }
+.rd-pre {
+  margin: 0; padding: 5px 7px; max-height: 180px; overflow: auto;
+  background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 5px;
+  font-family: var(--app-font-mono); font-size: var(--app-font-size-xs); line-height: 1.5;
+  color: var(--app-console-fg); white-space: pre-wrap; word-break: break-all;
+}
+.rd-note { font-size: var(--app-font-size-xs); color: var(--app-text-muted); padding: 2px 0; }
+.trunc-note { font-size: var(--app-font-size-xs); color: var(--app-yellow); padding: 6px 0; }
+
+/* ---- logs ---- */
+.log-scroll { background: var(--app-console-bg); border: 1px solid var(--app-card-border); border-radius: 8px; padding: 6px 8px; }
+.log-truncated {
+  font-family: var(--app-font-mono);
+  font-size: var(--app-font-size-sm);
+  color: var(--app-console-warn);
+  padding-bottom: 4px;
+}
+.log-line { display: flex; gap: 8px; font-family: var(--app-font-mono); font-size: var(--app-font-size-sm); line-height: 1.55; }
+.ll-ts { flex: none; width: 46px; color: var(--app-console-dim); font-variant-numeric: tabular-nums; }
+.ll-text { flex: 1; min-width: 0; color: var(--app-console-fg); white-space: pre-wrap; word-break: break-all; }
+.log-line.error .ll-text { color: var(--app-console-err); }
+.log-line.error .ll-ts { color: var(--app-console-err-dim); }
+.log-line.warn .ll-text { color: var(--app-console-warn); }
+.log-scroll .empty { color: var(--app-console-dim); }
+</style>

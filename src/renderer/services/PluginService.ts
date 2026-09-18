@@ -1,53 +1,81 @@
-import unifiedApi from '../api/unifiedApi'
-import { log } from '@utils/logger'
+/**
+ * PluginService — thin wrapper over the plugin.* backend API.
+ *
+ * Plugins are external .py files (builtin/ + user dir); running one is a
+ * STREAMING operation, so `run` is NOT here — pages drive it through
+ * TaskStreamService with `plugin.run` (see PluginsPage.vue), same pattern
+ * as useScriptRunner does for automation.run.
+ */
 
-interface PluginApiLike {
-  callBackend?: (method: string, payload: Record<string, unknown>) => Promise<unknown>
+export interface PluginParam {
+  key: string
+  label?: string
+  type?: 'string' | 'number' | 'bool'
+  required?: boolean
+  default?: unknown
+}
+
+export interface PluginInfo {
+  /** plugin id — the identity every plugin.* call keys on */
+  name: string
+  /** manifest `name` for packages, else the id; display only */
+  display_name?: string
+  description: string
+  version: string
+  author: string
+  params?: PluginParam[]
+  /** package plugin with custom UI: absolute path of the ui html */
+  ui_path?: string
+  /** ships with the app (builtin dir) rather than the user plugin dir */
+  builtin?: boolean
 }
 
 class PluginService {
-  private api: PluginApiLike | null
+  private api(method: string, params: Record<string, unknown> = {}): Promise<any> {
+    const api = (window as any).electronAPI
+    if (!api || typeof api.callBackendAPI !== 'function') {
+      return Promise.reject(new Error('backend API unavailable'))
+    }
+    return api.callBackendAPI(method, params)
+  }
 
-  constructor() {
-    this.api = unifiedApi.getAPI() as PluginApiLike | null
+  /** plugin.list → PluginInfo[] */
+  async list(): Promise<PluginInfo[]> {
+    const res = await this.api('plugin.list')
+    return Array.isArray(res) ? res : []
+  }
+
+  /** plugin.reload → PluginInfo[] (rescans builtin + user dirs) */
+  async reload(): Promise<PluginInfo[]> {
+    const res = await this.api('plugin.reload')
+    return Array.isArray(res) ? res : []
   }
 
   /**
-   * 获取插件列表
+   * plugin.delete — remove a plugin from its scan dir and rescan.
+   * Returns the refreshed PluginInfo[].
    */
-  async getPlugins() {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.list', {})
-    }
-    // Mock data for browser environment
-    return [
-      { name: 'hello_world', description: 'Mock Plugin', version: '1.0.0', author: 'Dev' }
-    ]
+  async deletePlugin(name: string): Promise<PluginInfo[]> {
+    const res = await this.api('plugin.delete', { name })
+    return Array.isArray(res) ? res : []
   }
 
   /**
-   * 运行插件
-   * @param {string} pluginName 插件名称
-   * @param {Object} params 参数
+   * plugin.import — install a zip plugin package.
+   * Returns PluginInfo[] on success; { needs_overwrite: true, id } when
+   * the target exists and overwrite was not confirmed.
    */
-  async runPlugin(pluginName: string, params: Record<string, unknown> = {}) {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.run', {
-        name: pluginName,
-        params: params
-      })
+  async importPackage(zipPath: string, overwrite = false): Promise<PluginInfo[] | { needs_overwrite: boolean; id: string }> {
+    const res = await this.api('plugin.import', { zip_path: zipPath, overwrite })
+    if (res && typeof res === 'object' && !Array.isArray(res) && (res as any).needs_overwrite) {
+      return res as { needs_overwrite: boolean; id: string }
     }
-    return { success: true, message: 'Mock execution result' }
+    return Array.isArray(res) ? res : []
   }
 
-  /**
-   * 重新加载插件
-   */
-  async reloadPlugins() {
-    if (this.api && typeof this.api.callBackend === 'function') {
-      return await this.api.callBackend('plugin.reload', {})
-    }
-    return await this.getPlugins()
+  /** plugin.export — zip an installed plugin to targetPath. */
+  async exportPackage(name: string, targetPath: string): Promise<{ path: string }> {
+    return await this.api('plugin.export', { name, target_path: targetPath })
   }
 }
 

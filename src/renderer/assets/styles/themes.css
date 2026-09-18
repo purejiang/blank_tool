@@ -1,4 +1,14 @@
-/* ===== App Color Variables ===== */
+/* ============================================================================
+ * themes.css — 【自动生成，请勿手改】
+ *
+ * 源：src/renderer/theme/tokens.ts（colorTokens：颜色 token）
+ * 生成：npm run theme:css（scripts/generate-theme-css.mjs）
+ * 守卫：tests/unit/theme/tokens-css-parity.test.ts
+ *
+ * 铁律：组件里禁止写死色值；新增色相必须 light / dark 两边都加，否则另一主题下会静默落到别的颜色。
+ * 分组的语义注释见 tokens.ts；本文件只保证「token → CSS 变量」的逐一对应。
+ * ========================================================================== */
+
 :root,
 [data-theme="light"] {
   --app-body-bg: #F1F5F9;
@@ -8,6 +18,11 @@
   --app-card-border: #E2E8F0;
   --app-input-bg: #FFFFFF;
   --app-input-border: #CBD5E1;
+  --app-code-bg: #F1F5F9;
+  --app-drop-zone-bg: #F8FAFC;
+  --app-drop-zone-border: #94A3B8;
+  --app-storage-bg: rgba(0, 0, 0, 0.04);
+  --app-action-bg: #E2E8F0;
   --app-text-primary: #0F172A;
   --app-text-secondary: #334155;
   --app-text-muted: #475569;
@@ -17,19 +32,24 @@
   --app-green-bg: rgba(22, 163, 74, 0.1);
   --app-green-bg-hover: rgba(22, 163, 74, 0.06);
   --app-green-bg-active: rgba(22, 163, 74, 0.12);
+  --app-green-pressed: #166534;
   --app-blue: #2563EB;
+  --app-blue-hover: #1D4ED8;
   --app-blue-bg: rgba(37, 99, 235, 0.1);
   --app-yellow: #B45309;
+  --app-yellow-bg: rgba(180, 83, 9, 0.12);
+  --app-purple: #7C3AED;
+  --app-purple-bg: rgba(124, 58, 237, 0.1);
   --app-red: #DC2626;
+  --app-red-bg: rgba(220, 38, 38, 0.1);
+  --app-green-border: rgba(22, 163, 74, 0.4);
+  --app-red-border: rgba(220, 38, 38, 0.4);
   --app-hover: rgba(0, 0, 0, 0.04);
   --app-hover-strong: rgba(0, 0, 0, 0.08);
-  --app-code-bg: #F1F5F9;
-  --app-drop-zone-bg: #F8FAFC;
-  --app-drop-zone-border: #94A3B8;
   --app-scrollbar-thumb: #CBD5E1;
   --app-scrollbar-hover: #94A3B8;
   --app-placeholder-color: #CBD5E1;
-  --app-storage-bg: rgba(0, 0, 0, 0.04);
+  --app-progress-rail: rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="dark"] {
@@ -40,6 +60,11 @@
   --app-card-border: #334155;
   --app-input-bg: #1E293B;
   --app-input-border: #334155;
+  --app-code-bg: #0C1322;
+  --app-drop-zone-bg: #0C1322;
+  --app-drop-zone-border: #334155;
+  --app-storage-bg: rgba(15, 23, 42, 0.5);
+  --app-action-bg: #334155;
   --app-text-primary: #F8FAFC;
   --app-text-secondary: #CBD5E1;
   --app-text-muted: #94A3B8;
@@ -49,35 +74,22 @@
   --app-green-bg: rgba(34, 197, 94, 0.1);
   --app-green-bg-hover: rgba(34, 197, 94, 0.06);
   --app-green-bg-active: rgba(34, 197, 94, 0.12);
+  --app-green-pressed: #15803D;
   --app-blue: #3B82F6;
+  --app-blue-hover: #2563EB;
   --app-blue-bg: rgba(59, 130, 246, 0.1);
   --app-yellow: #F59E0B;
+  --app-yellow-bg: rgba(245, 158, 11, 0.14);
+  --app-purple: #A78BFA;
+  --app-purple-bg: rgba(167, 139, 250, 0.14);
   --app-red: #EF4444;
+  --app-red-bg: rgba(239, 68, 68, 0.14);
+  --app-green-border: rgba(34, 197, 94, 0.4);
+  --app-red-border: rgba(239, 68, 68, 0.4);
   --app-hover: rgba(34, 197, 94, 0.06);
   --app-hover-strong: rgba(34, 197, 94, 0.12);
-  --app-code-bg: #0C1322;
-  --app-drop-zone-bg: #0C1322;
-  --app-drop-zone-border: #334155;
   --app-scrollbar-thumb: #334155;
   --app-scrollbar-hover: #475569;
   --app-placeholder-color: #334155;
-  --app-storage-bg: rgba(15, 23, 42, 0.5);
-}
-
-/* ===== Global Element Styles ===== */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--app-scrollbar-thumb); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--app-scrollbar-hover); }
-
-/* Naive UI dark-mode fixes */
-[data-theme="dark"] .n-modal,
-[data-theme="dark"] .n-drawer { --n-color: var(--app-card-bg); }
-
-/* Transition */
-.n-config-provider,
-.n-layout,
-.n-card,
-.n-layout-sider {
-  transition: background-color .25s ease, color .25s ease;
+  --app-progress-rail: rgba(255, 255, 255, 0.1);
 }

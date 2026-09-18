@@ -48,12 +48,12 @@ function respond(action: string) {
 
 <style scoped>
 .qd-message {
-  font-size: 15px;
+  font-size: var(--app-font-size-xl);
   color: var(--app-text-primary);
   margin: 0 0 6px;
 }
 .qd-detail {
-  font-size: 13px;
+  font-size: var(--app-font-size-md);
   color: var(--app-text-muted);
   margin: 0;
 }

@@ -13,11 +13,15 @@
                   <img src="@assets/images/logo.svg" class="brand-logo" alt="Blank Tool" />
                   <span v-if="!sidebarCollapsed" class="brand-text">{{ $t('app.title') }}</span>
                   <div class="brand-collapse">
-                    <n-button quaternary circle size="tiny" @click="sidebarCollapsed = !sidebarCollapsed">
-                      <template #icon>
-                        <n-icon size="16"><ChevronsLeft v-if="!sidebarCollapsed" /><ChevronsRight v-else /></n-icon>
-                      </template>
-                    </n-button>
+                    <IconButton
+                      :icon="sidebarCollapsed ? ChevronsRight : ChevronsLeft"
+                      :label="sidebarCollapsed ? $t('app.expandSidebar') : $t('app.collapseSidebar')"
+                      quaternary
+                      circle
+                      size="tiny"
+                      :icon-size="16"
+                      @click="sidebarCollapsed = !sidebarCollapsed"
+                    />
                   </div>
                 </div>
                 <n-menu :value="activeMenuKey" :collapsed="sidebarCollapsed" :collapsed-width="64"
@@ -44,8 +48,9 @@ import { ref, h, computed, provide, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { darkTheme, NIcon, zhCN, enUS, type GlobalTheme, type MenuOption } from 'naive-ui'
-import { Package, Settings, Wrench, ChevronsLeft, ChevronsRight, Info, Activity } from 'lucide-vue-next'
+import { Package, Settings, ChevronsLeft, ChevronsRight, Activity, Smartphone, Bot, Puzzle } from 'lucide-vue-next'
 import StatusBar from '@components/common/StatusBar.vue'
+import IconButton from '@components/common/IconButton.vue'
 import QuitDialog from '@components/QuitDialog.vue'
 import Notification from '@components/common/Notification.vue'
 import LoadingScreen from '@components/LoadingScreen.vue'
@@ -57,7 +62,18 @@ import { persistLocale } from './i18n'
 const router = useRouter()
 const route = useRoute()
 const { t, locale: i18nLocale } = useI18n()
-const currentTheme = ref<GlobalTheme | null>(darkTheme)
+// 首帧主题与 index.html 的防闪烁脚本同源（bt:theme 优先，matchMedia 兜底），
+// 否则亮色用户冷启动会先渲染一帧暗色（Naive 默认 darkTheme）。
+const resolveInitialTheme = (): GlobalTheme | null => {
+  try {
+    const saved = localStorage.getItem('bt:theme')
+    if (saved) return saved === 'dark' ? darkTheme : null
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? darkTheme : null
+  } catch {
+    return null
+  }
+}
+const currentTheme = ref<GlobalTheme | null>(resolveInitialTheme())
 const { isLoading, progress, step, time, error, retryCount, maxRetries, retry } = useAppBootstrap(currentTheme)
 const themeOverrides = computed(() => selectOverrides(currentTheme.value))
 const sidebarCollapsed = ref(false)
@@ -80,10 +96,11 @@ const renderMenuLabel = (option: MenuOption) => option.label as string
 const renderIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
 const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.package'), key: '/package', icon: renderIcon(Package) },
-  { label: t('nav.tools'), key: '/plugins', icon: renderIcon(Wrench) },
+  { label: t('nav.device'), key: '/device', icon: renderIcon(Smartphone) },
+  { label: t('nav.automation'), key: '/automation', icon: renderIcon(Bot) },
+  { label: t('nav.plugins'), key: '/plugins', icon: renderIcon(Puzzle) },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(Settings) },
   { label: t('diagnostics.title'), key: '/diagnostics', icon: renderIcon(Activity) },
-  { label: t('nav.about'), key: '/about', icon: renderIcon(Info) },
 ])
 const handleMenuSelect = (key: string) => { activeMenuKey.value = key; router.push(key) }
 watch(() => route.path, (p) => { if (p !== '/') activeMenuKey.value = p }, { immediate: true })
@@ -96,6 +113,6 @@ watch(() => route.path, (p) => { if (p !== '/') activeMenuKey.value = p }, { imm
 .brand-collapse { margin-left: auto; } .brand-logo { width: 28px; height: 28px; flex-shrink: 0; }
 .sider-brand.collapsed { justify-content: center; flex-direction: column; gap: 8px; padding: 16px 0 12px; }
 .sider-brand.collapsed .brand-collapse { margin-left: 0; }
-.brand-text { font-family: Inter, sans-serif; font-size: 16px; font-weight: 700; color: var(--app-text-primary); letter-spacing: -0.02em; }
-.sider-menu { flex: 1; overflow-y: auto; } .main-content { padding: 24px; background: var(--app-body-bg); height: 100vh; overflow-y: auto; }
+.brand-text { font-family: var(--app-font); font-size: var(--app-font-size-xl); font-weight: 700; color: var(--app-text-primary); letter-spacing: -0.02em; }
+.sider-menu { flex: 1; overflow-y: auto; } .main-content { padding: 0 24px 24px; background: var(--app-body-bg); height: 100vh; overflow-y: auto; }
 </style>

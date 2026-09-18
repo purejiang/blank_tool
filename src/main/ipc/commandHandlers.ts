@@ -1,15 +1,21 @@
-import { ipcMain, BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, WebContents, IpcMainInvokeEvent } from 'electron';
 import log from 'electron-log';
 import { ChildProcessWithoutNullStreams } from 'child_process';
 import { IPC_CHANNELS, IPC_CHANNEL_NAMES } from '../../shared/ipc/channels';
 import type { BackendApiRequest, BackendStdioMessage, BackendEventMessage, BackendResponse, JsonObject } from '../../shared/ipc/protocol';
+import { getConfigValue } from '../stores/appStore';
+import { broadcastToAllWindows } from '../utils/broadcast';
+import { isProcessWritable } from '../python/processHealth';
 
 interface CallbackInfo {
     resolve: (value: unknown) => void;
     reject: (reason?: any) => void;
     sender: WebContents;
     process: ChildProcessWithoutNullStreams;
+    method: string;
     resolved?: boolean;
+    stream_id?: string;
+    task_id?: string;
 }
 
 function isBackendEventMessage(message: BackendStdioMessage): message is BackendEventMessage {
@@ -25,25 +31,36 @@ export const createErrorResponse = (message: string, code: number = -32603) => (
     payload: { code, message }
 });
 
+/**
+ * Emit a synthetic terminal `error` event for a stream whose transport died
+ * (per-request timeout fired or the backend process exited) so renderer
+ * promises settled only by a terminal event cannot hang forever. Shaped like
+ * the backend's own error events ({ type, payload, task_id }) so the renderer
+ * services routing by `data.task_id` handle it verbatim. Never sent on the
+ * logcat dedicated channels. No-op when the stream was never established or
+ * the sender is gone.
+ */
+function emitSyntheticStreamTerminal(callbackInfo: CallbackInfo, message: string, code: number): void {
+    if (!callbackInfo.stream_id || callbackInfo.sender.isDestroyed()) {
+        return;
+    }
+    const data: JsonObject = { type: 'error', payload: { code, message } };
+    if (callbackInfo.task_id !== undefined) {
+        data.task_id = callbackInfo.task_id;
+    }
+    callbackInfo.sender.send(IPC_CHANNEL_NAMES.streamEvent, {
+        stream_id: callbackInfo.stream_id,
+        data
+    });
+}
+
 export function setupCommandHandlers(
     getPythonProcess: () => ChildProcessWithoutNullStreams | null,
     ensurePythonProcess?: () => Promise<ChildProcessWithoutNullStreams | null>,
-    requestTimeout = 300000
+    requestTimeout: number | (() => number) = 300000
 ): void {
     const requestCallbacks = new Map<string | number, CallbackInfo>();
     const attachedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
-
-    const isBackendWritable = (pythonProcess: ChildProcessWithoutNullStreams | null): boolean => {
-        return Boolean(
-            pythonProcess &&
-            !pythonProcess.killed &&
-            pythonProcess.exitCode === null &&
-            pythonProcess.stdin &&
-            !pythonProcess.stdin.destroyed &&
-            !pythonProcess.stdin.writableEnded &&
-            pythonProcess.stdin.writable
-        );
-    };
 
     const bindProcess = (pythonProcess: ChildProcessWithoutNullStreams | null): void => {
         if (!pythonProcess || attachedProcesses.has(pythonProcess)) {
@@ -65,14 +82,7 @@ export function setupCommandHandlers(
                     const response = JSON.parse(msg) as BackendStdioMessage;
 
                     if (isBackendEventMessage(response)) {
-                        const broadcast = (channel: string, payload: unknown) => {
-                            BrowserWindow.getAllWindows().forEach(win => {
-                                if (!win.isDestroyed()) {
-                                    win.webContents.send(channel, payload);
-                                }
-                            });
-                        };
-                        broadcast(response.event, response.data);
+                        broadcastToAllWindows(response.event, response.data);
                         return;
                     }
 
@@ -87,25 +97,45 @@ export function setupCommandHandlers(
                             if (response.finished === false) {
                                 // Streaming event — forward to renderer regardless of result type
                                 const result = (response.result || {}) as JsonObject;
+                                // Remember the stream identity so a later
+                                // timeout/backend-exit can synthesize a
+                                // terminal event. The INIT carries it inside
+                                // `result` ({ stream_id }, no `type`); typed
+                                // events carry it at the top level.
+                                if (typeof response.stream_id === 'string') {
+                                    callbackInfo.stream_id = response.stream_id;
+                                } else if (typeof result.stream_id === 'string') {
+                                    callbackInfo.stream_id = result.stream_id;
+                                }
                                 const resultType = typeof result.type === 'string' ? result.type : '';
                                 if (resultType && sender && !sender.isDestroyed()) {
-                                    const channelMap: Record<string, string> = {
-                                        'log': IPC_CHANNEL_NAMES.logcatOutput,
-                                        'started': IPC_CHANNEL_NAMES.logcatStarted,
-                                        'process_finished': IPC_CHANNEL_NAMES.logcatFinished
-                                    };
-
-                                    const channel = channelMap[resultType];
-
-                                    if (channel) {
-                                        const resultPayload = typeof result.payload === 'object' && result.payload !== null
-                                            ? result.payload as JsonObject
-                                            : {};
-                                        const payload = {
-                                            stream_id: response.stream_id,
-                                            ...resultPayload
+                                    // logcat streams (adb.logcat) keep their dedicated channels;
+                                    // every other streaming request (download/apk/install/aab)
+                                    // is forwarded verbatim to streamEvent so task log lines
+                                    // (type:'log', carrying line + task_id) reach the renderer.
+                                    const isLogcat = requestCallbacks.get(response.id)?.method === 'adb.logcat';
+                                    if (isLogcat) {
+                                        const channelMap: Record<string, string> = {
+                                            'log': IPC_CHANNEL_NAMES.logcatOutput,
+                                            'started': IPC_CHANNEL_NAMES.logcatStarted,
+                                            'process_finished': IPC_CHANNEL_NAMES.logcatFinished
                                         };
-                                        sender.send(channel, payload);
+                                        const channel = channelMap[resultType];
+                                        if (channel) {
+                                            const resultPayload = typeof result.payload === 'object' && result.payload !== null
+                                                ? result.payload as JsonObject
+                                                : {};
+                                            const payload = {
+                                                stream_id: response.stream_id,
+                                                ...resultPayload
+                                            };
+                                            sender.send(channel, payload);
+                                        } else {
+                                            sender.send(IPC_CHANNEL_NAMES.streamEvent, {
+                                                stream_id: response.stream_id,
+                                                data: result
+                                            });
+                                        }
                                     } else {
                                         sender.send(IPC_CHANNEL_NAMES.streamEvent, {
                                             stream_id: response.stream_id,
@@ -115,8 +145,17 @@ export function setupCommandHandlers(
                                 }
 
                                 if (!callbackInfo.resolved) {
-                                    resolve(response.result);
-                                    callbackInfo.resolved = true;
+                                    // Only the streaming INIT ({stream_id}, no
+                                    // `type` field) resolves the invoke. A first
+                                    // streaming event can beat the init onto
+                                    // stdout (worker-thread race in the backend);
+                                    // resolving with a typed event envelope
+                                    // (log/complete/…) would make the renderer's
+                                    // unwrapBackendResponse misread it as an error.
+                                    if (!resultType) {
+                                        resolve(response.result);
+                                        callbackInfo.resolved = true;
+                                    }
                                 }
                             } else if (response.result && (response.result as unknown as JsonObject).type === 'error') {
                                 const errorPayload = ((response.result as unknown as JsonObject).payload) as JsonObject | undefined;
@@ -140,6 +179,9 @@ export function setupCommandHandlers(
         pythonProcess.on('close', () => {
             for (const [id, callbackInfo] of requestCallbacks.entries()) {
                 if (callbackInfo.process === pythonProcess) {
+                    // Streams of a dying backend must still get a terminal
+                    // event, or the renderer's per-task promise hangs forever.
+                    emitSyntheticStreamTerminal(callbackInfo, '后端服务已退出：任务已中断，请重试', -32002);
                     callbackInfo.reject(new Error('后端服务已退出'));
                     requestCallbacks.delete(id);
                 }
@@ -150,13 +192,13 @@ export function setupCommandHandlers(
     const getWritableProcess = async (): Promise<ChildProcessWithoutNullStreams | null> => {
         const current = getPythonProcess();
         bindProcess(current);
-        if (isBackendWritable(current)) {
+        if (isProcessWritable(current)) {
             return current;
         }
         if (ensurePythonProcess) {
             const ensured = await ensurePythonProcess();
             bindProcess(ensured);
-            if (isBackendWritable(ensured)) {
+            if (isProcessWritable(ensured)) {
                 return ensured;
             }
         }
@@ -180,9 +222,17 @@ export function setupCommandHandlers(
                 log.info(`[trace ${request.id}] rejected: ${message}`);
                 reject(reason);
             };
-            requestCallbacks.set(request.id, { resolve: wrappedResolve, reject: wrappedReject, sender: event.sender, process: pythonProcess });
+            const rawTaskId = (request.params as JsonObject | undefined)?.task_id;
+            const callbackInfo: CallbackInfo = { resolve: wrappedResolve, reject: wrappedReject, sender: event.sender, process: pythonProcess, method: request.method };
+            if (typeof rawTaskId === 'string' || typeof rawTaskId === 'number') {
+                callbackInfo.task_id = String(rawTaskId);
+            }
+            requestCallbacks.set(request.id, callbackInfo);
 
             try {
+                if (request.method === 'download.file') {
+                    request.params = { ...(request.params ?? {}), use_proxy: getConfigValue('useProxyForDownload') === true };
+                }
                 const payload = JSON.stringify(request) + '\n';
                 const success = pythonProcess.stdin.write(payload);
                 if (!success && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {
@@ -196,11 +246,20 @@ export function setupCommandHandlers(
 
             setTimeout(() => {
                 if (requestCallbacks.has(request.id)) {
+                    const callbackInfo = requestCallbacks.get(request.id);
+                    if (callbackInfo) {
+                        // The invoke was already resolved by the streaming
+                        // init — the timeout envelope below is a no-op for
+                        // the renderer. Emit the synthetic terminal BEFORE
+                        // the entry is deleted, or the stream's terminal
+                        // event never reaches the renderer.
+                        emitSyntheticStreamTerminal(callbackInfo, '请求超时：任务可能仍在后台执行，请查看日志后重试', -32003);
+                    }
                     requestCallbacks.delete(request.id);
                     log.info(`[trace ${request.id}] timed out`);
                     resolve(createErrorResponse('请求超时', -32003));
                 }
-            }, requestTimeout);
+            }, typeof requestTimeout === 'function' ? requestTimeout() : requestTimeout);
         });
     });
 }

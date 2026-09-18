@@ -131,18 +131,22 @@ def analyze_compression(apk_path: str) -> Dict:
     - ``stored``: 未压缩条目数（compress_type == 0）
     - ``deflated``: Deflate 压缩条目数（compress_type == 8）
     - ``stored_size``: 未压缩条目的原始大小总和（字节）
+    - ``uncompressed``: 该类别所有条目的原始大小总和（字节，含已压缩与未压缩）
+    - ``compressed``: 该类别所有条目的压缩后大小总和（字节，即 ZIP 内占用的实际体积；
+      STORED 条目的 compress_size == file_size，故对体积无贡献缩减）
 
     Args:
         apk_path: APK 文件路径。
 
     Returns:
-        形如 ``{"assets": {"stored": N, "deflated": M, "stored_size": B}, ...}`` 的字典。
+        形如 ``{"assets": {"stored": N, "deflated": M, "stored_size": B,
+        "uncompressed": U, "compressed": C}, ...}`` 的字典。
         不存在某类别的条目时，对应值为零。
     """
     categories = {
-        "assets": {"stored": 0, "deflated": 0, "stored_size": 0},
-        "lib": {"stored": 0, "deflated": 0, "stored_size": 0},
-        "dex": {"stored": 0, "deflated": 0, "stored_size": 0},
+        "assets": {"stored": 0, "deflated": 0, "stored_size": 0, "uncompressed": 0, "compressed": 0},
+        "lib": {"stored": 0, "deflated": 0, "stored_size": 0, "uncompressed": 0, "compressed": 0},
+        "dex": {"stored": 0, "deflated": 0, "stored_size": 0, "uncompressed": 0, "compressed": 0},
     }
 
     if not apk_path or not os.path.exists(apk_path):
@@ -157,6 +161,8 @@ def analyze_compression(apk_path: str) -> Dict:
                     continue
 
                 entry = categories[category]
+                entry["uncompressed"] += info.file_size
+                entry["compressed"] += info.compress_size
                 if info.compress_type == 0:  # ZIP_STORED
                     entry["stored"] += 1
                     entry["stored_size"] += info.file_size

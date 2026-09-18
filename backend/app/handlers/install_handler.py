@@ -10,7 +10,7 @@ from app.tools.tool_manager import ToolManager
 from app.common.base_executor import CommandExecutionContext
 from app.common.task_manager import TaskManager
 from app.common.decorators import streaming, logs_errors
-from app.common.exceptions import ToolNotFoundError, ToolException
+from app.common.exceptions import ToolNotFoundError, ToolException, error_payload
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
 
@@ -61,6 +61,7 @@ def device_install_apk(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
 
+        output_lines: list = []
         for line in iter(proc.stdout.readline, ''):
             if task_id and task_manager.is_cancelled(task_id):
                 proc.kill()
@@ -68,8 +69,9 @@ def device_install_apk(params, stream_handler):
                 return
             line = line.rstrip('\n')
             if line:
+                output_lines.append(line)
                 append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 
@@ -77,8 +79,23 @@ def device_install_apk(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
 
-        if proc.returncode != 0:
-            stream_handler({"type": "error", "payload": {"message": "Installation failed"}})
+        # adb sometimes prints "Failure [INSTALL_FAILED_...]" to stdout while
+        # still returning exit code 0. Treat that as a failure too, otherwise
+        # the task looks successful but the app was never actually installed.
+        output_blob = '\n'.join(output_lines)
+        failed = (
+            proc.returncode != 0
+            or 'Failure' in output_blob
+            or 'INSTALL_FAILED' in output_blob
+        )
+        if failed:
+            detail = output_blob[-2000:] if output_blob else ''
+            stream_handler({
+                "type": "error",
+                "payload": {
+                    "message": "Installation failed" + (('\n' + detail) if detail else '')
+                },
+            })
             return
 
         if task_id:
@@ -89,7 +106,7 @@ def device_install_apk(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
         logger.error(f"APK installation failed: {e}")
-        stream_handler({"type": "error", "payload": {"message": str(e)}})
+        stream_handler(error_payload(e))
     finally:
         if task_id:
             task_manager.unregister(task_id)
@@ -148,6 +165,7 @@ def device_install_apks(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
 
+        output_lines: list = []
         for line in iter(proc.stdout.readline, ''):
             if task_id and task_manager.is_cancelled(task_id):
                 proc.kill()
@@ -155,8 +173,9 @@ def device_install_apks(params, stream_handler):
                 return
             line = line.rstrip('\n')
             if line:
+                output_lines.append(line)
                 append_task_log(task_id, line)
-                stream_handler({"type": "log", "line": line})
+                stream_handler({"type": "log", "task_id": task_id, "line": line})
 
         proc.wait()
 
@@ -164,8 +183,23 @@ def device_install_apks(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
 
-        if proc.returncode != 0:
-            stream_handler({"type": "error", "payload": {"message": "APKS installation failed"}})
+        # bundletool/adb may print "Failure [INSTALL_FAILED_...]" while returning
+        # exit code 0 — treat that as a failure so the task isn't silently marked
+        # successful when nothing was installed.
+        output_blob = '\n'.join(output_lines)
+        failed = (
+            proc.returncode != 0
+            or 'Failure' in output_blob
+            or 'INSTALL_FAILED' in output_blob
+        )
+        if failed:
+            detail = output_blob[-2000:] if output_blob else ''
+            stream_handler({
+                "type": "error",
+                "payload": {
+                    "message": "APKS installation failed" + (('\n' + detail) if detail else '')
+                },
+            })
             return
 
         if task_id:
@@ -176,7 +210,7 @@ def device_install_apks(params, stream_handler):
             stream_handler({"type": "cancelled", "payload": {"task_id": task_id}})
             return
         logger.error(f"APKS installation failed: {e}")
-        stream_handler({"type": "error", "payload": {"message": str(e)}})
+        stream_handler(error_payload(e))
     finally:
         if task_id:
             task_manager.unregister(task_id)

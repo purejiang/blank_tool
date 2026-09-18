@@ -144,8 +144,8 @@ class Adb(BinaryTool):
                     break
                 stream_callback({"type": "log", "payload": {"process_id": process_id, "line": line.strip()}})
                 # self._logger.info(f"adb logcat log: {line.strip()}")
-        except Exception:
-            pass
+        except Exception as e:
+            self._logger.warning(f"logcat stream read error: {e}")
         finally:
             try:
                 if process.stdout:
@@ -155,6 +155,10 @@ class Adb(BinaryTool):
             except Exception:
                 pass
             rc = process.wait()
+            # A logcat stream that ends on its own (device unplugged, EOF)
+            # never goes through stop_process, so the registry entry must be
+            # dropped here or every session leaks a dead Popen.
+            self.forget_process(process_id)
             self._logger.info(f"adb logcat finished: {process_id}, return code: {rc}")
             stream_callback({"type": "process_finished", "payload": {"process_id": process_id, "return_code": rc}})
     

@@ -6,10 +6,16 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
+      // NOTE: kept as `src` (not `src/renderer`) — existing tests import via
+      // `@/renderer/...`; changing it would break them.
       '@': path.resolve(__dirname, 'src'),
+    '@components': path.resolve(__dirname, 'src/renderer/components'),
+    '@views': path.resolve(__dirname, 'src/renderer/views'),
     '@stores': path.resolve(__dirname, 'src/renderer/stores'),
     '@services': path.resolve(__dirname, 'src/renderer/services'),
     '@utils': path.resolve(__dirname, 'src/renderer/utils'),
+    '@composables': path.resolve(__dirname, 'src/renderer/composables'),
+    '@assets': path.resolve(__dirname, 'src/renderer/assets'),
     },
   },
   test: {

@@ -6,13 +6,14 @@ Base command executor — template method pattern with ProcessExecutor delegatio
 
 import re
 import subprocess
+import threading
 import traceback
 import shutil
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Union, Optional
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
-from app.common.executor import ProcessExecutor
+from app.common.executor import ProcessExecutor, terminate_gracefully
 from app.common.exceptions import TimeoutException
 
 
@@ -179,10 +180,23 @@ class CommandExecutor(BaseCommandExecutor):
             f"[CONTEXT] cwd={context.cwd} shell={context.shell} stream={context.stream}"
         )
 
-        # Streaming mode: return a live Popen object for line-by-line reading
+        # Streaming mode: return a live Popen object for line-by-line reading.
+        # The caller owns the read loop, so a timeout cannot be enforced with
+        # communicate(timeout=...) — arm a watcher thread instead, otherwise
+        # `context.timeout` would be silently ignored on this path (streaming
+        # tools such as apktool/apksigner could then hang forever).
         if context.stream:
             proc = subprocess.Popen(
                 command,
+                # DEVNULL is REQUIRED here. Without it the child inherits
+                # THIS process's stdin — the JSON-RPC pipe Electron writes
+                # requests into. `adb shell -tt ...` runs a stdin-forwarding
+                # thread that races us for that pipe: request lines get
+                # stolen or torn mid-line, the dispatcher never sees them
+                # and the renderer waits on a response that never comes
+                # (record_stop hang, 09-14). Long-lived children must never
+                # share our stdin.
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=context.text,
@@ -194,6 +208,7 @@ class CommandExecutor(BaseCommandExecutor):
             )
             if context.process_holder is not None:
                 context.process_holder["process"] = proc
+            self._arm_stream_deadline(proc, context.timeout, cmd_str)
             return proc
 
         # Non-streaming mode: delegate to ProcessExecutor
@@ -246,6 +261,31 @@ class CommandExecutor(BaseCommandExecutor):
             tb = traceback.format_exc()
             self._log_error(f"[COMMAND] {error_msg}\n{tb}")
             raise
+
+    def _arm_stream_deadline(self, proc: subprocess.Popen, timeout: int, cmd_str: str) -> None:
+        """Kill a streaming process that outlives ``timeout`` seconds.
+
+        Caller reads ``proc.stdout`` line by line, so nothing else can enforce
+        the deadline. The watcher exits as soon as the process does.
+        """
+        if not timeout or timeout <= 0:
+            return
+
+        def _watch() -> None:
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                self._log_error(
+                    f"[COMMAND] Streaming command exceeded {timeout}s, terminating "
+                    f"(pid={proc.pid}): {self._redact_sensitive_args(cmd_str)}"
+                )
+                terminate_gracefully(proc)
+            except Exception:  # pragma: no cover - watcher must never raise
+                pass
+
+        threading.Thread(
+            target=_watch, daemon=True, name=f"bt-stream-deadline-{proc.pid}"
+        ).start()
 
     def validate_command(self, command: Union[str, List[str]]) -> bool:
         """

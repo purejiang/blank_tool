@@ -2,25 +2,25 @@
   <div class="status-bar" :class="{ collapsed }">
     <!-- Minimal mode: icon + dot only when sidebar collapsed -->
     <template v-if="collapsed">
-      <n-icon size="18" :color="deviceStatus === 'online' ? '#22C55E' : '#64748B'"><Smartphone /></n-icon>
-      <span class="status-dot" :class="deviceStatus"></span>
+      <n-icon size="18" :color="hasOnlineDevice ? 'var(--app-green)' : 'var(--app-text-dim)'"><Smartphone /></n-icon>
+      <span class="status-dot" :class="hasOnlineDevice ? 'online' : 'offline'"></span>
     </template>
     <!-- Full mode -->
     <template v-else>
       <div class="status-device" @click="goToDevice">
-        <div class="device-badge" v-if="connectedDevice">
+        <div class="device-badge" v-if="hasOnlineDevice">
           <n-icon size="14"><Smartphone /></n-icon>
-          <span>{{ connectedDevice.name || connectedDevice.id }}</span>
-          <span class="status-dot" :class="deviceStatusClass"></span>
+          <span>{{ t('device.connected', { count: onlineCount }) }}</span>
+          <span class="status-dot online"></span>
         </div>
         <div class="device-badge off" v-else>
-          <n-icon size="14" color="#64748B"><Smartphone /></n-icon>
-          <span class="dim">{{ t('statusBar.noDevice') }}</span>
+          <n-icon size="14" color="var(--app-text-dim)"><Smartphone /></n-icon>
+          <span class="dim">{{ t('device.noDevices') }}</span>
           <span class="status-dot offline"></span>
         </div>
       </div>
       <div class="status-version">
-        <span class="version-text">v{{ frontendVersion }} | backend {{ backendVersion || 'N/A' }}</span>
+        <span class="version-text">{{ t('statusBar.versionLine', { app: frontendVersion, service: backendVersion || 'N/A' }) }}</span>
         <span class="health-dot" :class="healthClass" :title="healthTitle"></span>
       </div>
     </template>
@@ -35,7 +35,6 @@ import { NIcon } from 'naive-ui'
 import { Smartphone } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
-import { storeToRefs } from 'pinia'
 import serviceManager from '@services/ServiceManager'
 
 const { t } = useI18n()
@@ -48,19 +47,18 @@ const goToDevice = () => {
 }
 
 const deviceStore = useDeviceStore()
-const { selectedDevice } = storeToRefs(deviceStore)
-const connectedDevice = computed(() => selectedDevice.value || null)
+// Bottom-left badge = how many devices are online (not which one is
+// selected — each page has its own device selector).
+const onlineCount = computed(() => {
+  const list = (deviceStore.devices || []) as Array<{ status?: string }>
+  const online = list.filter(d => !d.status || d.status === 'device' || d.status === 'online')
+  return online.length
+})
+const hasOnlineDevice = computed(() => onlineCount.value > 0)
 const frontendVersion = ref('1.0.0')
 const backendVersion = ref('')
 
-const deviceStatus = computed(() => {
-  if (!connectedDevice.value) return 'offline'
-  const s = connectedDevice.value.state || connectedDevice.value.status
-  if (s === 'device') return 'online'
-  if (s === 'unauthorized') return 'connecting'
-  return 'offline'
-})
-
+const deviceStatus = computed(() => (hasOnlineDevice.value ? 'online' : 'offline'))
 const deviceStatusClass = computed(() => deviceStatus.value)
 
 const getVersions = async () => {
@@ -84,8 +82,8 @@ const healthClass = computed(() =>
   healthStore.isHealthy ? 'dot-healthy' : 'dot-unhealthy'
 )
 const healthTitle = computed(() =>
-  healthStore.isHealthy === null ? 'Backend status unknown' :
-  healthStore.isHealthy ? 'Backend healthy' : 'Backend down'
+  healthStore.isHealthy === null ? t('statusBar.healthUnknown') :
+  healthStore.isHealthy ? t('statusBar.healthHealthy') : t('statusBar.healthDown')
 )
 </script>
 
@@ -93,13 +91,15 @@ const healthTitle = computed(() =>
 .status-bar {
   display: flex;
   flex-direction: column;
+  /* 两行都相对侧栏居中（列方向的主轴居中 → 交叉轴 align-items 决定水平） */
+  align-items: center;
   gap: 4px;
   padding: 10px 18px;
   height: auto;
   background: var(--app-sidebar-bg);
   border-top: 1px solid var(--app-sidebar-border);
-  font-size: 11px;
-  font-family: Inter, sans-serif;
+  font-size: var(--app-font-size-xs);
+  font-family: var(--app-font);
   flex-shrink: 0;
 }
 .status-bar.collapsed {
@@ -143,12 +143,11 @@ const healthTitle = computed(() =>
   flex-shrink: 0;
 }
 .status-dot.online { background: var(--app-green); }
-.status-dot.connecting { background: var(--app-yellow); animation: pulse 1.5s infinite; }
 .status-dot.offline { background: var(--app-red); }
 .version-text {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--app-font-mono);
   color: var(--app-text-dim);
-  font-size: 10px;
+  font-size: var(--app-font-size-xs);
 }
 .health-dot {
   display: inline-block;
@@ -162,8 +161,4 @@ const healthTitle = computed(() =>
 .health-dot.dot-healthy { background: var(--app-green); }
 .health-dot.dot-unhealthy { background: var(--app-red); }
 .health-dot.dot-unknown { background: var(--app-text-dim); }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
 </style>

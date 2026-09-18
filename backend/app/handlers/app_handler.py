@@ -7,6 +7,7 @@ System info, build info, and app info handlers.
 from app.common.decorators import logs_errors
 from app.utils.logger import Logger
 from app.utils.env import ENV_APP_VERSION
+from app.utils.selfcheck import build_report
 
 logger = Logger.get_logger("AppHandler")
 
@@ -124,8 +125,20 @@ def app_info(params, stream_handler):
     return {"version": version}
 
 
+@logs_errors("AppHandler")
+def system_selfcheck(params, stream_handler):
+    """Installation self-check: directories, interpreters, proxy environment.
+
+    Backs the diagnostics page's self-check card. Returns machine-readable
+    check ids plus raw values — see ``app/utils/selfcheck.py`` for why the
+    wording lives in the renderer.
+    """
+    return build_report()
+
+
 API_MAP = {
     "system.info": system_info,
     "build.info": build_info,
     "app.info": app_info,
+    "system.selfcheck": system_selfcheck,
 }

@@ -174,6 +174,24 @@ class TaskManager:
             task = self._tasks.get(task_id)
             return task["cancelled"] if task else False
 
+    def is_registered(self, task_id: str) -> bool:
+        """Return True if a task entry exists for this id.
+
+        Nested handlers (e.g. install_aab → convert_aab_to_apks pass the
+        same task_id down) use this to avoid double-registering, which
+        would overwrite the caller's process_holder, and to avoid the
+        nested finally-unregister tearing down the caller's registration
+        while the outer operation is still running.
+        """
+        with self._tasks_lock:
+            return task_id in self._tasks
+
+    def get_process_holder(self, task_id: str) -> dict | None:
+        """Return the registered process_holder for a task, or None."""
+        with self._tasks_lock:
+            task = self._tasks.get(task_id)
+            return task.get("process_holder") if task else None
+
     def unregister(self, task_id: str) -> None:
         """Cleanly remove a task entry after successful completion.
         

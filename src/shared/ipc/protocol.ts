@@ -170,6 +170,35 @@ export interface ExportApkResult {
   output_dir: string
 }
 
+/** Return type of device.uninstall_app */
+export interface UninstallAppResult {
+  device_id: string
+  package_name: string
+  success: boolean
+}
+
+/** Return type of device.launch_app / device.clear_app_data */
+export type DeviceAppOpResult = UninstallAppResult
+
+/** Return type of device.screenshot */
+export interface ScreenshotResult {
+  success: boolean
+  file_path: string
+  /** error envelope detail when the capture failed */
+  error?: string
+}
+
+/** Return type of device.display_transform */
+export interface DisplayTransformResult {
+  success: boolean
+  /** 0..3, current surface rotation */
+  rotation: number
+  /** natural (unrotated) panel size */
+  width: number
+  height: number
+  error: string
+}
+
 /** Return type of cache.info / cache.get_info */
 export interface CacheInfoResult {
   tasks: { path: string; size: number; files: number }
@@ -189,6 +218,32 @@ export interface BuildInfoResult {
   java_version: string
   python_path: string
   java_path: string
+}
+
+/** One probe's verdict in the diagnostics self-check. */
+export type SelfCheckStatus = 'ok' | 'warn' | 'fail'
+
+/** Section a self-check probe is grouped under. */
+export type SelfCheckCategory = 'env' | 'tool' | 'config' | 'runtime'
+
+/** A single self-check probe (backend/app/utils/selfcheck.py).
+ *
+ *  `id` is stable and doubles as the i18n key source — wording never travels
+ *  over the wire, so the report stays translatable. `value` is raw (a path, a
+ *  version, a URL), never a sentence; `facts` carries the few extra fields the
+ *  renderer needs to pick a hint. */
+export interface SelfCheckItem {
+  id: string
+  category: SelfCheckCategory
+  status: SelfCheckStatus
+  value: string
+  facts?: Record<string, unknown>
+}
+
+/** Return type of system.selfcheck */
+export interface SelfCheckResult {
+  generated_at: number
+  checks: SelfCheckItem[]
 }
 
 /** Return type of apk.get_progress / apk.getProgress */
@@ -252,7 +307,7 @@ export interface ConvertAabToApksResult {
   task_id?: string
 }
 
-/** Return type of storage.clear / output.clear / tasks.clear / logs.clear */
+/** Return type of storage.clear / output.clear / cache.clear */
 export interface ClearResult {
   path?: string
   size?: number
@@ -290,6 +345,20 @@ export interface DeleteOutputResult {
 export interface DeleteTaskDirResult {
   deleted: boolean
   path: string
+  error?: string
+}
+
+/** Return type of task.export_log */
+export interface ExportLogResult {
+  success: boolean
+  file_path?: string
+  error?: string
+}
+
+/** Return type of task.save_report (mirrors handle_save_report) */
+export interface SaveReportResult {
+  success: boolean
+  file_path?: string
   error?: string
 }
 
@@ -359,7 +428,21 @@ export interface ApiMethodMap {
   'device.shell': { params: { device_id: string; command: string }; result: DeviceShellResult }
   'device.reboot': { params: { device_id: string; mode?: string }; result: DeviceRebootResult }
   'device.get_installed_packages': { params: { device_id: string; type?: string }; result: string[] }
+  'device.uninstall_app': { params: { device_id: string; package_name: string }; result: UninstallAppResult }
+  'device.uninstall': { params: { device_id: string; package_name: string }; result: UninstallAppResult }
+  'device.launch_app': { params: { device_id: string; package_name: string }; result: DeviceAppOpResult }
+  'device.clear_app_data': { params: { device_id: string; package_name: string }; result: DeviceAppOpResult }
+  'device.screenshot': { params: { device_id: string; file_path?: string }; result: ScreenshotResult }
   'device.export_apk': { params: { device_id: string; package_name: string; output_dir?: string }; result: ExportApkResult }
+  'device.tap': { params: { device_id: string; x: number; y: number }; result: { success: boolean } }
+  'device.swipe': { params: { device_id: string; x1: number; y1: number; x2: number; y2: number; duration_ms?: number }; result: { success: boolean } }
+  'device.input_text': { params: { device_id: string; text: string }; result: { success: boolean } }
+  'device.keyevent': { params: { device_id: string; key: string }; result: { success: boolean } }
+  'device.ui_dump': { params: { device_id: string; timeout_ms?: number }; result: { success: boolean; xml: string; error: string } }
+  'device.display_transform': { params: { device_id: string }; result: DisplayTransformResult }
+  'device.find_element': { params: { device_id: string; by: string; value: string; timeout_ms?: number }; result: { found: boolean; node: Record<string, unknown> | null; error: string } }
+  'device.tap_element': { params: { device_id: string; by: string; value: string; timeout_ms?: number }; result: { success: boolean; node: Record<string, unknown> | null; error: string } }
+  'device.current_activity': { params: { device_id: string; timeout_ms?: number }; result: { success: boolean; activity: string; error: string } }
 
   // --- apk_handler.py ---
   'apk.analyze': { params: { apk_path: string; task_id?: string }; result: void }
@@ -381,13 +464,16 @@ export interface ApiMethodMap {
   // --- app_handler.py ---
   'system.info': { params: Record<string, never>; result: SystemInfoResult }
   'build.info': { params: Record<string, never>; result: BuildInfoResult }
+  'system.selfcheck': { params: Record<string, never>; result: SelfCheckResult }
 
   // --- cache_handler.py ---
+  // `tasks.clear` / `auto_tasks.clear` / `logs.clear` are gone: every one of
+  // them was a thin wrapper over `_clear_directory`, and `storage.clear`
+  // already accepts `target: 'tasks' | 'auto_tasks' | 'logs'` — nothing in
+  // src/, tests/ or cli/ ever called the standalone routes.
   'cache.get_info': { params: Record<string, never>; result: CacheInfoResult }
   'cache.info': { params: Record<string, never>; result: CacheInfoResult }
   'output.clear': { params: Record<string, never>; result: ClearResult }
-  'tasks.clear': { params: Record<string, never>; result: ClearResult }
-  'logs.clear': { params: Record<string, never>; result: ClearResult }
   'storage.clear': { params: { target?: string }; result: ClearResult }
 
   // --- download_handler.py ---
@@ -408,7 +494,9 @@ export interface ApiMethodMap {
   // --- task_handler.py ---
   'task.delete_output': { params: { paths: string[] }; result: DeleteOutputResult }
   'task.read_log': { params: { task_id: string; tail_bytes?: number }; result: TaskLogResult }
+  'task.export_log': { params: { task_id: string; file_path: string }; result: ExportLogResult }
   'task.append_log': { params: { task_id: string; line: string }; result: { written: boolean } }
+  'task.save_report': { params: { task_id: string; html: string; target?: string }; result: SaveReportResult }
   'task.delete_task_dir': { params: { task_id: string }; result: DeleteTaskDirResult }
   'task.list': { params: Record<string, never>; result: TaskListResult }
   'request.cancel': { params: { request_id?: string; task_id?: string }; result: CancelRequestResult }
@@ -418,6 +506,169 @@ export interface ApiMethodMap {
 
   // --- plugin_handler.py ---
   'plugin.list': { params: Record<string, never>; result: Record<string, unknown>[] }
-  'plugin.run': { params: { name: string; params?: Record<string, unknown> }; result: Record<string, unknown> }
+  'plugin.run': { params: { name: string; params?: Record<string, unknown>; task_id?: string }; result: Record<string, unknown> }
   'plugin.reload': { params: Record<string, never>; result: Record<string, unknown>[] }
+  'plugin.delete': { params: { name: string }; result: Record<string, unknown>[] }
+
+  // --- plugin_package_handler.py ---
+  // import returns the refreshed list, or { needs_overwrite: true, id }
+  // when the target already exists and overwrite was not requested.
+  'plugin.import': { params: { zip_path: string; overwrite?: boolean }; result: Record<string, unknown>[] | { needs_overwrite: boolean; id: string } }
+  'plugin.export': { params: { name: string; target_path: string }; result: { path: string } }
+
+  // --- automation_record_handler.py ---
+  // record_start is a @streaming handler: the envelope init resolves to
+  // undefined on the renderer side, hence result: void.
+  'automation.record_start': { params: { device_id: string; task_id: string }; result: void }
+  'automation.record_stop': { params: { device_id: string }; result: { steps: Array<Record<string, unknown>>; record_device: { serial: string; screen_w: number; screen_h: number } } }
+
+  // --- automation_handler.py ---
+  // automation.run is @streaming (same envelope as the former
+  // plugin.run name=adb_auto): init resolves to undefined on the
+  // renderer side, hence result: void. task_id is required — the
+  // orchestrator uses it to locate the per-run artifact directory.
+  'automation.run': {
+    params: {
+      device_id?: string
+      package_name?: string
+      steps?: Array<Record<string, unknown>>
+      /** 步骤失败后继续（默认 false：首个失败即中止）。单个步骤可用
+       *  `on_error: 'continue' | 'abort'` 覆盖这一设置。 */
+      continue_on_error?: boolean
+      /** 目标应用进程消失/重启时中止并导出日志（默认 true）。 */
+      abort_on_crash?: boolean
+      /** 允许运行时切换设备输入法以输入非 ASCII 文本（默认 true）。
+       *  关闭时含非 ASCII 的 input 步骤直接失败，不再切换输入法。 */
+      use_ime?: boolean
+      capture_traffic?: boolean
+      /** Comma-separated host substrings; only matching hosts are recorded. */
+      traffic_host_filter?: string
+      /** 从脚本的第几步开始执行（0 基；缺省 0 = 从头跑）。前面的步骤完全不执行，
+       *  报告里步骤编号仍保留脚本里的原始位置（第 5 步还是 #5）。 */
+      start_index?: number
+      /** 步骤之间的默认等待（ms，0 = 不等待）。每个步骤可用自身的 `delay_ms`
+       *  覆盖；从某一步开始时，第一个真正执行的步骤前不插入这个等待。 */
+      step_interval_ms?: number
+      task_id: string
+    }
+    result: void
+  }
+
+  // --- automation_handler.py (read-only capability probes) ---
+  // Back the settings page's "automation capabilities" card and the
+  // automation page's non-blocking run hints.
+  'automation.traffic_status': {
+    /** 可选 device_id：带上时额外返回该设备的抓包就绪信息（只读探测）。 */
+    params: { device_id?: string }
+    result: {
+      installed: boolean
+      ready: boolean
+      lib_path: string
+      python_mismatch: string | null
+      ca_cert_exists: boolean
+      /** 以下字段仅在请求带 device_id 时出现 */
+      device_id?: string
+      device_state?: string
+      ca_on_device?: boolean | null
+      root_available?: boolean | null
+    }
+  }
+  'automation.ime_status': {
+    params: { device_id: string }
+    result: { device_id: string; package: string; installed: boolean; active: boolean }
+  }
+  // Undo device-side capture wiring left by a hard-killed backend (device
+  // stuck on a dead HTTP proxy / orphaned mitmdump holding the port).
+  // Idempotent and safe when nothing is stale — restored stays [].
+  'automation.traffic_reset': {
+    params: { device_id?: string }
+    result: {
+      success: boolean
+      restored: Array<{
+        device_id: string
+        proxy_restored: boolean
+        reverse_removed: boolean
+        port_freed: boolean | null
+        error?: string
+      }>
+      error?: string
+    }
+  }
+
+  // --- automation_handler.py (tool installs) ---
+  // install_mitmproxy / install_ime are @streaming (same envelope as
+  // automation.run): the init call resolves to undefined on the renderer
+  // side, hence result: void. install_ca is non-streaming.
+  'automation.install_ca': { params: { device_id: string }; result: { success: boolean; already_installed: boolean; error?: string } }
+  'automation.install_mitmproxy': { params: { task_id: string }; result: void }
+  'automation.install_ime': { params: { device_id: string; task_id: string; apk_path?: string }; result: void }
+
+  // --- automation_runs_handler.py ---
+  // Run history / report viewer. Consumed by OtherToolsPage.vue; shaped after
+  // the handlers' actual return dicts (they never raise — they return a
+  // `success`/`deleted` flag plus an optional `error`).
+  //
+  // `orphans` counts the interrupted leftovers inside `runs` (a run whose
+  // summary still says `running` while nothing executes — the backend was
+  // killed mid-run). They carry `orphan: true` and no steps/report.
+  'automation.list_runs': {
+    params: Record<string, never>
+    result: {
+      success: boolean
+      runs: Array<Record<string, unknown>>
+      total?: number
+      orphans?: number
+      error?: string
+    }
+  }
+  'automation.read_run': {
+    params: {
+      task_id: string
+      traffic_limit?: number
+      /** false → omit `report.logs` entirely (metadata only). */
+      include_logs?: boolean
+      /** Return only the LAST N log lines; 0 = unlimited. Default 5000. */
+      log_limit?: number
+    }
+    result: { success: boolean; report: Record<string, unknown> | null; error?: string }
+  }
+  'automation.traffic_detail': {
+    params: { task_id: string; index: number }
+    result: { success: boolean; record: Record<string, unknown> | null; error?: string }
+  }
+  'automation.delete_run': {
+    params: { task_id: string }
+    result: { deleted: boolean; size?: number; error?: string }
+  }
+  // Storage reclamation by rule. Every rule is optional and they are ANDed;
+  // a run executing right now is never touched, and a call with NO rule is
+  // refused by the backend (a stray request must not wipe the history).
+  'automation.prune_runs': {
+    params: {
+      /** Keep the N most recent runs (orphans included). */
+      keep_last?: number
+      /** Only delete runs older than N days. */
+      older_than_days?: number
+      /** Restrict to interrupted leftovers. */
+      orphans_only?: boolean
+      /** Report what would be deleted without deleting anything. */
+      dry_run?: boolean
+    }
+    result: {
+      success: boolean
+      dry_run?: boolean
+      deleted?: Array<{ task_id: string; orphan: boolean; size?: number | null }>
+      deleted_count?: number
+      kept?: number
+      skipped_active?: number
+      freed_bytes?: number
+      errors?: Array<{ task_id: string; error: string }>
+      error_count?: number
+      error?: string
+    }
+  }
+  'automation.export_run': {
+    params: { task_id: string; target?: string }
+    result: { success: boolean; file_path?: string; archive_path?: string; error?: string }
+  }
 }

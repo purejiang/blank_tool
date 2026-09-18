@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import serviceManager from '../services/ServiceManager'
 import { log } from '@utils/logger'
+import { formatBytes } from '@utils/format'
 
 export const useSystemStore = defineStore('system', () => {
   const systemInfo = reactive({
@@ -28,7 +29,12 @@ export const useSystemStore = defineStore('system', () => {
     nodeVersion: '',
     chromeVersion: '',
     javaVersion: '',
-    pythonVersion: ''
+    pythonVersion: '',
+    // Paths of the runtimes actually in use — the settings page shows these
+    // next to each version so a user can tell "auto-detected" from "override".
+    javaPath: '',
+    pythonPath: '',
+    nodePath: ''
   })
 
   const loading = ref(false)
@@ -38,14 +44,7 @@ export const useSystemStore = defineStore('system', () => {
     return err instanceof Error ? err.message : String(err)
   }
 
-  // Helper to format file size
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+  // Helper to format file size — shared implementation, see @utils/format
 
   const fetchSystemInfo = async () => {
     try {
@@ -71,16 +70,16 @@ export const useSystemStore = defineStore('system', () => {
         const memoryUsed = sysInfo.memoryUsed || memory.used
         const memoryPercent = sysInfo.memoryPercent ?? memory.percent
 
-        if (memoryTotal) systemInfo.memoryTotal = formatFileSize(memoryTotal)
-        if (memoryUsed) systemInfo.memoryUsed = formatFileSize(memoryUsed)
+        if (memoryTotal) systemInfo.memoryTotal = formatBytes(memoryTotal)
+        if (memoryUsed) systemInfo.memoryUsed = formatBytes(memoryUsed)
         if (memoryPercent !== undefined && memoryPercent !== null && memoryPercent !== '') {
           const pct = typeof memoryPercent === 'number' ? memoryPercent : parseFloat(memoryPercent)
           if (!Number.isNaN(pct)) systemInfo.memoryPercent = `${pct.toFixed(1)}%`
         }
 
         // Disk info
-        if (sysInfo.diskTotal) systemInfo.diskTotal = formatFileSize(sysInfo.diskTotal)
-        if (sysInfo.diskUsed) systemInfo.diskUsed = formatFileSize(sysInfo.diskUsed)
+        if (sysInfo.diskTotal) systemInfo.diskTotal = formatBytes(sysInfo.diskTotal)
+        if (sysInfo.diskUsed) systemInfo.diskUsed = formatBytes(sysInfo.diskUsed)
         if (sysInfo.diskPercent !== undefined) systemInfo.diskPercent = `${sysInfo.diskPercent.toFixed(1)}%`
       }
     } catch (err: unknown) {
@@ -102,6 +101,9 @@ export const useSystemStore = defineStore('system', () => {
         buildInfo.electronVersion = frontendInfo.electronVersion || ''
         buildInfo.nodeVersion = frontendInfo.nodeVersion || ''
         buildInfo.chromeVersion = frontendInfo.chromeVersion || ''
+        // Electron has no separate Node install to discover — the running
+        // binary's own path is the only honest answer.
+        buildInfo.nodePath = frontendInfo.nodePath || ''
         buildInfo.appName = frontendInfo.appName || ''
         buildInfo.appVersion = frontendInfo.appVersion || ''
         buildInfo.appDescription = frontendInfo.appDescription || ''
@@ -110,6 +112,10 @@ export const useSystemStore = defineStore('system', () => {
       if (backendInfo) {
         buildInfo.pythonVersion = backendInfo.python_version || ''
         buildInfo.javaVersion = backendInfo.java_version || ''
+        // 「实际在用」的解释器（后端 sys.executable / BT_PYTHON_BIN），与配置无关：
+        // Python 的覆盖键是 `runtimeExecutable`（相对 runtime/），没有 pythonPath。
+        buildInfo.pythonPath = backendInfo.python_path || ''
+        buildInfo.javaPath = backendInfo.java_path || ''
       }
     } catch (err: unknown) {
       log.error('Failed to fetch build info:', err)

@@ -93,8 +93,20 @@ def convert_aab_to_apks(params, stream_handler):
 
     task_manager = TaskManager()
     process_holder: dict = {}
+    own_registration = False
     if task_id:
-        task_manager.register(task_id, process_holder, cleanup_paths=[output_path])
+        if task_manager.is_registered(task_id):
+            # Nested call (install_aab passes its task_id down): the caller
+            # already registered this id. Re-registering would overwrite the
+            # caller's process_holder, and our finally-unregister would tear
+            # down the caller's registration while its install step is still
+            # running — leaving the task uncancellable ("task not found") and
+            # the UI stuck at "running" forever. Reuse the caller's holder so
+            # cancel can kill the build-apks java process.
+            process_holder = task_manager.get_process_holder(task_id) or process_holder
+        else:
+            task_manager.register(task_id, process_holder, cleanup_paths=[output_path])
+            own_registration = True
 
     try:
         bundletool = manager.get_tool("bundletool")
@@ -143,7 +155,10 @@ def convert_aab_to_apks(params, stream_handler):
             append_task_log(task_id, f"[AAB_CONVERT] apks_path: {output_path}")
         return {"apks_path": output_path}
     finally:
-        if task_id:
+        # Only tear down a registration this call created — a nested call
+        # (task_id already registered by install_aab) must leave the
+        # caller's entry intact so cancel keeps working for the install.
+        if task_id and own_registration:
             task_manager.unregister(task_id)
 
 
@@ -179,7 +194,7 @@ def install_aab(params, stream_handler):
 
     try:
         if stream_handler:
-            stream_handler({"type": "log", "line": "[AAB] Converting to APKS..."})
+            stream_handler({"type": "log", "task_id": task_id, "line": "[AAB] Converting to APKS..."})
         convert_result = convert_aab_to_apks(
             {
                 "aab_path": aab_path,
@@ -198,7 +213,7 @@ def install_aab(params, stream_handler):
             raise ToolException("No APKS path after conversion")
 
         if stream_handler:
-            stream_handler({"type": "log", "line": f"[AAB] APKS generated: {apks_path}"})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[AAB] APKS generated: {apks_path}"})
 
         bundletool = manager.get_tool("bundletool")
         if not bundletool or not bundletool.is_valid:
@@ -217,7 +232,7 @@ def install_aab(params, stream_handler):
             raise ToolException("Java runtime not found or invalid")
 
         if stream_handler:
-            stream_handler({"type": "log", "line": f"[AAB] Installing to device {device_id}..."})
+            stream_handler({"type": "log", "task_id": task_id, "line": f"[AAB] Installing to device {device_id}..."})
 
         args = [
             java, "-jar", bundletool.tool_path,

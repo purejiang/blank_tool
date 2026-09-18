@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { PATH_CONFIG_DEFAULTS, type WritableAppConfigKey } from '../../shared/config/pathConfig';
 
-export const APP_CONFIG_VERSION = 5;
+export const APP_CONFIG_VERSION = 6;
 export { PATH_CONFIG_DEFAULTS };
 
 const LEGACY_SETTINGS_DEFAULTS = {
@@ -9,11 +9,14 @@ const LEGACY_SETTINGS_DEFAULTS = {
     theme: 'auto',
     enableNotifications: true,
     autoDeleteOutputOnTaskRemove: false,
+    useProxyForDownload: false,
+    maxConcurrentTasks: 3,
     adbPath: '',
     aaptPath: '',
     apktoolPath: '',
     bundletoolPath: '',
-    javaPath: ''
+    javaPath: '',
+    nodePath: ''
 };
 
 const schema = {
@@ -162,6 +165,12 @@ const schema = {
         enum: ['auto', 'light', 'dark'],
         default: LEGACY_SETTINGS_DEFAULTS.theme
     },
+    timeout: {
+        type: 'number',
+        minimum: 10,
+        maximum: 600,
+        default: 300
+    },
     enableNotifications: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.enableNotifications
@@ -169,6 +178,16 @@ const schema = {
     autoDeleteOutputOnTaskRemove: {
         type: 'boolean',
         default: LEGACY_SETTINGS_DEFAULTS.autoDeleteOutputOnTaskRemove
+    },
+    useProxyForDownload: {
+        type: 'boolean',
+        default: LEGACY_SETTINGS_DEFAULTS.useProxyForDownload
+    },
+    maxConcurrentTasks: {
+        type: 'number',
+        minimum: 1,
+        maximum: 16,
+        default: LEGACY_SETTINGS_DEFAULTS.maxConcurrentTasks
     },
     adbPath: {
         type: 'string',
@@ -190,9 +209,38 @@ const schema = {
         type: 'string',
         default: LEGACY_SETTINGS_DEFAULTS.javaPath
     },
+    nodePath: {
+        type: 'string',
+        default: LEGACY_SETTINGS_DEFAULTS.nodePath
+    },
     signatureConfigs: {
         type: 'array',
         default: []
+    },
+    automation: {
+        // v3: `projects` + the `ui` page-preference bag (which used to be six
+        // ad-hoc `bt:*` localStorage keys on the renderer side). The nested
+        // defaults are merged into an existing document by
+        // `mergeMissingDefaults`, so `projects` and the user's saved values
+        // survive the upgrade.
+        type: 'object',
+        default: {
+            version: 3,
+            projects: [],
+            ui: {
+                deviceId: '',
+                captureTraffic: false,
+                trafficHostFilter: '',
+                elementTimeoutMs: 10000,
+                colLeft: 240,
+                colRight: 320,
+                continueOnError: false,
+                abortOnCrash: true,
+                enableChineseInput: true,
+                // 每个步骤执行前的默认等待（ms，0 = 不等待）；单步可用 delay_ms 覆盖
+                stepIntervalMs: 300
+            }
+        }
     }
 };
 
@@ -268,6 +316,12 @@ const MIGRATIONS: Record<number, () => void> = {
     4: () => {
         appStore.set('preloadCandidates', cloneDefaultValue(PATH_CONFIG_DEFAULTS.preloadCandidates));
         appStore.set('rendererEntry', PATH_CONFIG_DEFAULTS.rendererEntry);
+    },
+    5: () => {
+        // `runtime` stopped being a configurable path: runtime/ is just the
+        // container of the bundled tools, always resolved from
+        // PATH_CONFIG_DEFAULTS.runtime. Drop any stored override.
+        appStore.delete('runtime');
     }
 };
 

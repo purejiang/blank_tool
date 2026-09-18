@@ -6,6 +6,22 @@ import { unwrapBackendResponse } from './unwrapBackendResponse';
 type MethodParams<M extends keyof ApiMethodMap> = ApiMethodMap[M]['params'];
 type MethodResult<M extends keyof ApiMethodMap> = ApiMethodMap[M]['result'];
 
+/**
+ * Vue reactive proxies are not structured-cloneable, so a params object that
+ * holds a reactive array (e.g. automation steps straight out of a Pinia/Vue
+ * state) makes `ipcRenderer.invoke` reject with "could not be cloned".
+ * The backend speaks JSON-RPC anyway, so normalizing to plain JSON data here
+ * is always safe and keeps every caller cloneable.
+ */
+function toPlainParams<T>(params: T): T {
+  if (params === undefined || params === null) return params
+  try {
+    return JSON.parse(JSON.stringify(params)) as T
+  } catch {
+    return params
+  }
+}
+
 // 统一的后端API调用函数
 export const callBackendByRequest = async (request: BackendApiRequest) => {
   return await ipcInvoke(IPC_CHANNEL_NAMES.callBackendApi, request);
@@ -30,7 +46,7 @@ export async function callBackendAPI(method: string, params: JsonObject = {}): P
   const request: BackendApiRequest = {
     id: requestId,
     method,
-    params,
+    params: toPlainParams(params) as JsonObject,
   };
   const resp = await callBackendByRequest(request);
   return unwrapBackendResponse(resp);

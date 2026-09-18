@@ -1,9 +1,10 @@
 import { autoUpdater } from 'electron-updater'
-import { BrowserWindow, app } from 'electron'
+import { app } from 'electron'
 import path from 'path'
 import log from 'electron-log'
 import { IPC_CHANNEL_NAMES } from '../../shared/ipc/channels'
 import { getAppLocalDataPath, ensureDir } from '../utils/appPaths'
+import { broadcastToAllWindows } from '../utils/broadcast'
 
 let initialized = false
 let isInstalling = false
@@ -17,15 +18,6 @@ function normalizeReleaseNotes(notes: unknown): string {
   if (typeof notes === 'string') return notes
   if (Array.isArray(notes)) return notes.map(n => typeof n === 'string' ? n : (n?.note ?? '')).join('\n')
   return ''
-}
-
-function sendToAllWindows(channel: string, data: unknown): void {
-  const wins = BrowserWindow.getAllWindows()
-  for (const w of wins) {
-    if (!w.isDestroyed()) {
-      w.webContents.send(channel, data)
-    }
-  }
 }
 
 export function initAutoUpdater(): void {
@@ -47,7 +39,7 @@ export function initAutoUpdater(): void {
 
   autoUpdater.on('update-available', (info) => {
     log.info('AutoUpdater: update available', info.version)
-    sendToAllWindows(IPC_CHANNEL_NAMES.updateAvailable, {
+    broadcastToAllWindows(IPC_CHANNEL_NAMES.updateAvailable, {
       version: info.version,
       releaseNotes: normalizeReleaseNotes(info.releaseNotes),
       releaseDate: info.releaseDate || '',
@@ -56,11 +48,11 @@ export function initAutoUpdater(): void {
 
   autoUpdater.on('update-not-available', (info) => {
     log.info('AutoUpdater: already up to date', info.version)
-    sendToAllWindows(IPC_CHANNEL_NAMES.updateNotAvailable, { version: info.version })
+    broadcastToAllWindows(IPC_CHANNEL_NAMES.updateNotAvailable, { version: info.version })
   })
 
   autoUpdater.on('download-progress', (p) => {
-    sendToAllWindows(IPC_CHANNEL_NAMES.downloadProgress, {
+    broadcastToAllWindows(IPC_CHANNEL_NAMES.downloadProgress, {
       percent: p.percent,
       bytesPerSecond: p.bytesPerSecond,
       transferred: p.transferred,
@@ -70,12 +62,12 @@ export function initAutoUpdater(): void {
 
   autoUpdater.on('update-downloaded', (info) => {
     log.info('AutoUpdater: update downloaded', info.version)
-    sendToAllWindows(IPC_CHANNEL_NAMES.updateDownloaded, { version: info.version })
+    broadcastToAllWindows(IPC_CHANNEL_NAMES.updateDownloaded, { version: info.version })
   })
 
   autoUpdater.on('error', (err) => {
     log.error('AutoUpdater: error', err)
-    sendToAllWindows(IPC_CHANNEL_NAMES.updateError, { message: err.message })
+    broadcastToAllWindows(IPC_CHANNEL_NAMES.updateError, { message: err.message })
   })
 }
 

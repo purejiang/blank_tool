@@ -26,6 +26,7 @@ export const IPC_CHANNELS = {
   getFileStats: { name: 'get-file-stats', direction: 'renderer-to-main', payload: 'string' },
   writeFile: { name: 'write-file', direction: 'renderer-to-main', payload: '{ path: string, content: string }' },
   readFile: { name: 'read-file', direction: 'renderer-to-main', payload: 'string' },
+  readImageAsDataURL: { name: 'read-image-as-dataurl', direction: 'renderer-to-main', payload: 'string' },
   openPath: { name: 'open-path', direction: 'renderer-to-main', payload: 'string' },
   openDevTools: { name: 'open-dev-tools', direction: 'renderer-to-main' },
   toggleDevTools: { name: 'toggle-dev-tools', direction: 'renderer-to-main' },
@@ -34,9 +35,6 @@ export const IPC_CHANNELS = {
   readClipboardText: { name: 'read-clipboard-text', direction: 'renderer-to-main' },
   writeClipboardText: { name: 'write-clipboard-text', direction: 'renderer-to-main', payload: 'string' },
   pathResolve: { name: 'path-resolve', direction: 'renderer-to-main', payload: 'string' },
-  getDiskUsage: { name: 'get-disk-usage', direction: 'renderer-to-main' },
-  openExternal: { name: 'open-external', direction: 'renderer-to-main', payload: 'string' },
-  restart: { name: 'restart', direction: 'renderer-to-main' },
   // Main → Renderer (send/on)
   appConfigChanged: { name: 'app-config-changed', direction: 'main-to-renderer', payload: '{ key: string, value: unknown }' },
   userConfigChanged: { name: 'user-config-changed', direction: 'main-to-renderer', payload: '{ key: string, value: unknown }' },

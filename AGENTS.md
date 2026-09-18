@@ -2,16 +2,10 @@
 
 本文件为 OpenCode / Claude Code 会话提供本仓库的工作指引。仅记录容易踩坑、文件名看不出来、与默认约定不同的高信号信息。
 
-## 分支纪律（最高优先级）
-
-- **所有开发必须在 `dev` 分支上进行**，禁止在 `main` 上直接写代码。
-- `main` 只用于发版（`dev → main` merge + tag），始终保持可发布状态。
-- 进入会话后第一件事：`git branch --show-current`，如果不是 `dev` 立即 `git checkout dev`。
-
 ## 常用命令
 
 ```bash
-npm run dev          # 启动开发模式（仅运行 vite；vite-plugin-electron 自动拉起 Electron 主进程/preload）
+npm run dev          # 启动开发模式（electron-vite dev：构建 main/preload + renderer dev server + 自动拉起 Electron）
 npm run lint         # vue-tsc --noEmit --pretty false（非 ESLint，是 Vue 类型检查）
 npm run typecheck    # vue-tsc --noEmit（带详细输出）
 npm run test         # vitest run（仅跑 TS 单测 + 集成测试）
@@ -19,9 +13,10 @@ npm run test:watch   # vitest 监听模式
 npm run test:coverage
 npm run check        # lint && typecheck && test（提交前一键三连）
 npm run build:win    # node scripts/build.mjs --win（mac/linux 同理）
+npm run release     # 一键发版（流程见下方"发版流程"）
 ```
 
-Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。Vite 的 `root` 是 `src/`，不是项目根。
+Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。构建工具是 `electron-vite`（配置在 `electron.vite.config.ts`，分 main/preload/renderer 三段），renderer 的 `root` 是 `src/`，不是项目根；输出仍为 `dist/{main,preload,renderer}`，`package.json` 的 `main` 指向 `dist/main/main.js`。注意：electron-vite 对 main/preload 强制 `copyPublicDir = false`，`src/main/public` 的图标靠配置里的内联插件 `copy-main-public-assets` 拷入 `dist/main/`。
 
 ## 测试有三套，分别由不同运行器驱动（最容易踩坑）
 
@@ -40,7 +35,7 @@ Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接�
 
 `tsconfig.json` 显式关闭了 `strict`、`noImplicitAny`、`strictNullChecks`、`noUnusedLocals`、`noUnusedParameters`。**不要**按默认严格模式去"修复"已有代码，也不要在 PR review 时把 nullable 误判为 bug。新增代码可以写得严格些，但不要大面积重构老代码。
 
-路径别名（在 `tsconfig.json` 和 `vite.config.ts` 都有定义）：`@/` → `src/renderer/`，另有 `@components`、`@views`、`@services`、`@stores`、`@composables`、`@utils`、`@assets`。
+路径别名（在 `tsconfig.json` 和 `electron.vite.config.ts` 的 renderer 段都有定义）：`@/` → `src/renderer/`，另有 `@components`、`@views`、`@services`、`@stores`、`@composables`、`@utils`、`@assets`。
 
 ## 架构（三进程桌面应用）
 
@@ -64,7 +59,7 @@ Python Backend (backend/main.py)
 ### 后端自动发现
 
 - **Handlers**：`backend/app/handlers/` 下任何导出 `API_MAP` 字典的 `.py` 都会被 `ApiHandler` 自动注册。键是方法名（如 `"adb.devices"`），值是 handler 函数。新增 handler 不需要改注册表。
-- **Tools**：`backend/app/tools/` 下任何 `BaseTool` 子类被 `ToolManager` 自动发现。子类按工具类型分：`BinaryTool`（exe）、`JavaTool`（.jar）、`PythonTool`（.py）、`NodeTool`（.js）。
+- **Tools**：`backend/app/tools/` 下任何 `BaseTool` 子类被 `ToolManager` 自动发现。现有子类都经由两个中间基类之一：`BinaryTool`（exe，adb / aapt / zipalign / jarsigner）、`JavaTool`（.jar，apktool / apksigner / bundletool）。`ScriptTool` 下的 `PythonTool`（.py）/ `NodeTool`（.js）两条支线已删除——零子类、零实例，且 `runtime/` 并不分发 node。需要时再加（各约 5 行）。
 - **Plugins**：`backend/plugins/` 下任何带 `run(context, **params)` 的 `.py` 会被自动加载。**目前该目录为空**，自动发现机制已就绪但无实际插件。
 
 后端 Python 仅用标准库（`main.py`、`api_handler.py` 全部 import 自 stdlib + 本地 `app/` 包），**没有 `requirements.txt`**，开发时直接用系统或 `runtime/python/python.exe` 即可运行。
@@ -95,17 +90,18 @@ Python Backend (backend/main.py)
 
 ## 发版流程
 
-发版流程分两层规范：
+发版流程分两层规范，配合三份独立文档：
 
-- **通用规范**（分支策略、版本号、质量门禁、GitHub Release、存储治理、检查清单）：见 `.agents/rules/RELEASE_GENERAL.md`
-- **本项目 Electron 特有部分**（版本注入、electron-builder 构建、产物上传）：见 `.agents/rules/RELEASE_GUIDE.md`
+- **分支策略与分支纪律**（dev/main 模型、合并规则、会话起步检查）：见 `.agents/rules/BRANCHING.md`
+- **通用发版规范**（版本号与 tag 规则、质量门禁、GitHub Release、存储治理、检查清单模板）：见 `.agents/rules/RELEASE_GENERAL.md`
+- **本项目 Electron 特有部分**（npm run release 用法与前置条件、版本号与产物事实、失败恢复地图、手动兜底发布）：见 `.agents/rules/RELEASE_GUIDE.md`
 
 ## 其他约定
 
 - 仓库根有 `dev-app-update.yml`，是 `electron-updater` 在开发模式下的测试配置，**不要提交生产凭证**。
-- `.github/` 目录目前为空（没有 CI workflow），所有检查靠本地 `npm run check`。
+- 没有 CI workflow（`.github/` 目录不存在），所有检查靠本地 `npm run check`。
 - 国际化在 `src/renderer/i18n/`（zh-CN、en-US），UI 文案改动需同步两个语言文件。
-- 主题系统用 CSS 变量驱动，三模式（浅色/深色/自动）在 `src/renderer/assets/styles/themes/`。
+- 样式：单一 token 命名空间 `--app-*`。颜色（浅/深两套）在 `src/renderer/assets/styles/themes.css`，非颜色 token（间距/圆角/字体/阴影/页宽/控制台色）在 `variables.css`，跨页复用的通用类在 `common/components.css`（一律 `app-` 前缀，避免全局规则静默命中组件同名类），全局重置在 `main.css`，第三方覆盖在 `naive-overrides.css`；加载顺序见 `main.ts`。主题切换靠 `data-theme`（浅色/深色/自动）**不是** `prefers-color-scheme`。组件里禁止写死色值和字体栈：颜色只有 `--app-font` / `--app-font-mono` 两个字体栈，新增色相必须 light / dark 两边都加。
 - 提交信息、文档、注释混用中英文是本仓库的常态，无需统一。
   
 # 项目规则

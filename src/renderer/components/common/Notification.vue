@@ -47,15 +47,20 @@
             </div>
           </div>
 
-          <!-- 关闭按钮 -->
-          <button
-            v-if="notification.type !== 'loading'"
-            class="notification-close"
-            @click="hideNotification(notification.id)"
-            aria-label="Close notification"
-          >
-            <span class="close-icon">×</span>
-          </button>
+          <!-- 关闭按钮（图标按钮 → 必须有悬停提示，提示兼可访问名） -->
+          <n-tooltip v-if="notification.type !== 'loading'" placement="left" trigger="hover">
+            <template #trigger>
+              <button
+                class="notification-close"
+                type="button"
+                :aria-label="t('common.close')"
+                @click="hideNotification(notification.id)"
+              >
+                <span class="close-icon">×</span>
+              </button>
+            </template>
+            {{ t('common.close') }}
+          </n-tooltip>
         </div>
       </TransitionGroup>
     </div>
@@ -64,8 +69,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { NTooltip } from 'naive-ui'
 import serviceManager from '@services/ServiceManager'
 import { log } from '@utils/logger'
+
+const { t } = useI18n()
 
 // 响应式数据
 const notifications = ref([])
@@ -205,15 +214,16 @@ defineExpose({
   max-width: 480px;
   margin-top: 12px;
   padding: 16px;
-  background: var(--bg-color, #ffffff);
-  border: 1px solid var(--border-color, #e1e5e9);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--app-radius-md);
+  box-shadow: var(--app-shadow-md);
   pointer-events: auto;
   position: relative;
   overflow: hidden;
 }
 
+/* 左侧色条：由通知类型决定，默认信息蓝 */
 .notification::before {
   content: '';
   position: absolute;
@@ -221,29 +231,15 @@ defineExpose({
   top: 0;
   bottom: 0;
   width: 4px;
-  background: var(--accent-color, #007acc);
+  background: var(--app-blue);
 }
 
 /* 通知类型样式 */
-.notification-success::before {
-  background: #52c41a;
-}
-
-.notification-error::before {
-  background: #ff4d4f;
-}
-
-.notification-warning::before {
-  background: #faad14;
-}
-
-.notification-info::before {
-  background: #1890ff;
-}
-
-.notification-loading::before {
-  background: #1890ff;
-}
+.notification-success::before { background: var(--app-green); }
+.notification-error::before { background: var(--app-red); }
+.notification-warning::before { background: var(--app-yellow); }
+.notification-info::before { background: var(--app-blue); }
+.notification-loading::before { background: var(--app-blue); }
 
 /* 图标样式 */
 .notification-icon {
@@ -257,32 +253,21 @@ defineExpose({
 }
 
 .notification-icon-symbol {
-  font-size: 16px;
+  font-size: var(--app-font-size-xl);
   font-weight: bold;
 }
 
-.notification-success .notification-icon-symbol {
-  color: #52c41a;
-}
-
-.notification-error .notification-icon-symbol {
-  color: #ff4d4f;
-}
-
-.notification-warning .notification-icon-symbol {
-  color: #faad14;
-}
-
-.notification-info .notification-icon-symbol {
-  color: #1890ff;
-}
+.notification-success .notification-icon-symbol { color: var(--app-green); }
+.notification-error .notification-icon-symbol { color: var(--app-red); }
+.notification-warning .notification-icon-symbol { color: var(--app-yellow); }
+.notification-info .notification-icon-symbol { color: var(--app-blue); }
 
 /* 加载动画 */
 .loading-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #1890ff;
+  border: 2px solid var(--app-card-border);
+  border-top: 2px solid var(--app-blue);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -299,16 +284,16 @@ defineExpose({
 }
 
 .notification-title {
-  font-size: 14px;
+  font-size: var(--app-font-size-lg);
   font-weight: 600;
-  color: var(--text-color, #333333);
+  color: var(--app-text-primary);
   margin-bottom: 4px;
   line-height: 1.4;
 }
 
 .notification-message {
-  font-size: 13px;
-  color: var(--text-color-secondary, #666666);
+  font-size: var(--app-font-size-md);
+  color: var(--app-text-muted);
   line-height: 1.4;
   word-wrap: break-word;
 }
@@ -321,14 +306,14 @@ defineExpose({
 .notification-progress-track {
   width: 100%;
   height: 4px;
-  background: var(--hover-bg-color, #f0f0f0);
+  background: var(--app-storage-bg);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .notification-progress-fill {
   height: 100%;
-  background: #1890ff;
+  background: var(--app-blue);
   border-radius: 2px;
   transition: width 0.3s ease;
 }
@@ -343,7 +328,7 @@ defineExpose({
 
 .notification-action-btn {
   padding: 5px 14px;
-  font-size: 12px;
+  font-size: var(--app-font-size-sm);
   border-radius: 4px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -353,21 +338,21 @@ defineExpose({
 
 .notification-action-btn.default {
   background: transparent;
-  border-color: var(--border-color, #e1e5e9);
-  color: var(--text-color, #333);
+  border-color: var(--app-card-border);
+  color: var(--app-text-primary);
 }
 
 .notification-action-btn.default:hover {
-  background: var(--hover-bg-color, #f5f5f5);
+  background: var(--app-hover);
 }
 
 .notification-action-btn.primary {
-  background: #1890ff;
-  color: #fff;
+  background: var(--app-blue);
+  color: var(--app-text-inverse);
 }
 
 .notification-action-btn.primary:hover {
-  background: #1677cc;
+  background: var(--app-blue-hover);
 }
 
 /* 关闭按钮 */
@@ -383,17 +368,17 @@ defineExpose({
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  color: var(--text-color-secondary, #999999);
+  color: var(--app-text-dim);
   transition: all 0.2s ease;
 }
 
 .notification-close:hover {
-  background: var(--hover-bg-color, #f5f5f5);
-  color: var(--text-color, #333333);
+  background: var(--app-hover);
+  color: var(--app-text-primary);
 }
 
 .close-icon {
-  font-size: 18px;
+  font-size: var(--app-font-size-title);
   line-height: 1;
 }
 
@@ -420,41 +405,9 @@ defineExpose({
   transition: transform 0.3s ease;
 }
 
-/* 深色主题适配 */
-@media (prefers-color-scheme: dark) {
-  .notification {
-    background: var(--bg-color-dark, #2d2d2d);
-    border-color: var(--border-color-dark, #404040);
-    color: var(--text-color-dark, #ffffff);
-  }
-  
-  .notification-title {
-    color: var(--text-color-dark, #ffffff);
-  }
-  
-  .notification-message {
-    color: var(--text-color-secondary-dark, #cccccc);
-  }
-  
-  .notification-close {
-    color: var(--text-color-secondary-dark, #999999);
-  }
-  
-  .notification-close:hover {
-    background: var(--hover-bg-color-dark, #404040);
-    color: var(--text-color-dark, #ffffff);
-  }
-
-  .notification-action-btn.default {
-    color: var(--text-color-dark, #cccccc);
-    border-color: var(--border-color-dark, #555);
-  }
-
-  .notification-action-btn.default:hover {
-    background: var(--hover-bg-color-dark, #404040);
-    color: var(--text-color-dark, #ffffff);
-  }
-}
+/* 深色适配由 --app-* token 在 themes.css 里统一切换，
+   这里不再用 prefers-color-scheme —— 应用主题跟随的是 data-theme，
+   两者不一致时通知会跟界面撞色。 */
 
 /* 响应式设计 */
 @media (max-width: 768px) {

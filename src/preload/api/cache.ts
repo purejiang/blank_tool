@@ -2,11 +2,9 @@
 import { callBackendAPI } from '../core/callBackend';
 
 export const cacheApi = {
-  getCacheInfo: () => callBackendAPI('cache.info'),
-  // Legacy 'cache.clear' entry in ApiMethodMap has wrong param shape ({ target?: string }).
-  // The real backend expects { cache_types, confirm } — string fallback preserves behavior.
-  clearCache: (cacheTypes: unknown, confirm: unknown) =>
-    callBackendAPI('cache.clear', { cache_types: cacheTypes, confirm }),
+  // `force` bypasses the backend's short size-walk memo (see cache_handler):
+  // the settings page passes it for an explicit user refresh.
+  getCacheInfo: (force = false) => callBackendAPI('cache.info', { force }),
   clearOutput: () => callBackendAPI('output.clear'),
   clearStorage: (target?: string) => callBackendAPI('storage.clear', { target }),
 };

@@ -1,0 +1,387 @@
+/**
+ * RecordPanel mount tests (plan: .omo/plans/adb-auto-test.md, Todo 4).
+ *
+ * Mock strategy (mirrors Notification.test.ts):
+ *  - @services/ServiceManager is module-mocked; getService resolves a
+ *    programmable recording-service mock whose call order is recorded.
+ *  - naive-ui's useMessage is replaced so message.error/warning are
+ *    assertable without an <n-message-provider> ancestor.
+ *  - vue-i18n's useI18n returns a loose identity t() — the
+ *    automation.record* keys are added by a later task (T6); a missing
+ *    key must never break these assertions (t renders the key itself).
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import { createPinia } from 'pinia'
+import { useDeviceStore } from '@stores/deviceStore'
+
+type AnyCb = (...args: any[]) => void
+
+const { mockRecordingService, mockMessage, callOrder, callbacks } = vi.hoisted(() => {
+  const callOrder: string[] = []
+  const callbacks: Record<string, AnyCb> = {}
+  return {
+    callOrder,
+    callbacks,
+    mockMessage: {
+      success: vi.fn(),
+      error: vi.fn(),
+      warning: vi.fn(),
+      info: vi.fn(),
+    },
+    mockRecordingService: {
+      initialize: vi.fn(async () => { callOrder.push('initialize') }),
+      // Mirrors the real service: callbacks passed with the start call are
+      // live BEFORE it resolves. Fires one in-flight step synchronously so
+      // tests can observe subscription-precedes-launch.
+      startRecording: vi.fn(async (_deviceId: string, cbs: any) => {
+        callOrder.push('startRecording')
+        Object.assign(callbacks, cbs)
+        cbs?.onStep?.({ action: 'tap', x: 7, y: 8 })
+        return 'rec-test-id'
+      }),
+      stopRecording: vi.fn(async () => ({ steps: [], record_device: 'dev-1' })),
+      finish: vi.fn(),
+    },
+  }
+})
+
+vi.mock('@services/ServiceManager', () => ({
+  default: {
+    getService: vi.fn(() => Promise.resolve(mockRecordingService)),
+    getServiceSync: vi.fn(),
+    register: vi.fn(),
+  },
+}))
+
+vi.mock('naive-ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('naive-ui')>()
+  return { ...actual, useMessage: () => mockMessage }
+})
+
+vi.mock('vue-i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-i18n')>()
+  return { ...actual, useI18n: () => ({ t: (k: string) => k }) }
+})
+
+import RecordPanel from '@/renderer/components/automation/RecordPanel.vue'
+
+function mountPanel(disabled = false, deviceId = '', hasSelection = false) {
+  const pinia = createPinia()
+  const wrapper = mount(RecordPanel, {
+    props: { disabled, deviceId, hasSelection },
+    global: { plugins: [pinia] },
+  })
+  return { wrapper, store: useDeviceStore(pinia) }
+}
+
+function findButton(wrapper: any, label: string) {
+  return wrapper.findAll('button').find((b: any) => b.text().includes(label))
+}
+
+function isDisabled(btn: any): boolean {
+  return (btn.element as HTMLButtonElement).disabled
+}
+
+/** 录制目标设备自 commit 3b94c34 起由 prop 传入（与设备页列表选中解耦），
+ *  不再读 device store —— 这里通过 prop 切换以匹配当前契约。 */
+async function selectDevice(wrapper: any, id = 'dev-1') {
+  await wrapper.setProps({ deviceId: id })
+}
+
+async function startRecording(wrapper: any) {
+  await findButton(wrapper, 'automation.recordStart').trigger('click')
+  await flushPromises()
+}
+
+describe('RecordPanel', () => {
+  beforeEach(() => {
+    callOrder.length = 0
+    for (const k of Object.keys(callbacks)) delete callbacks[k]
+    vi.clearAllMocks()
+  })
+
+  it('disables the start button and shows the empty state when no device is selected', async () => {
+    const { wrapper } = mountPanel()
+    await nextTick()
+
+    const start = findButton(wrapper, 'automation.recordStart')
+    expect(start).toBeTruthy()
+    expect(isDisabled(start)).toBe(true)
+    expect(wrapper.text()).toContain('automation.recordEmpty')
+
+    await start.trigger('click')
+    await flushPromises()
+    expect(mockRecordingService.startRecording).not.toHaveBeenCalled()
+    expect(mockRecordingService.initialize).not.toHaveBeenCalled()
+  })
+
+  it('disables the start button when props.disabled is true', async () => {
+    const { wrapper, store } = mountPanel(true)
+    await selectDevice(wrapper)
+
+    const start = findButton(wrapper, 'automation.recordStart')
+    expect(isDisabled(start)).toBe(true)
+  })
+
+  it('starts a recording: callbacks live before launch — in-flight step survives, later steps appended', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    // Callbacks ride with the start call (the service registers them before
+    // the backend call); initialize still precedes startRecording.
+    expect(callOrder).toEqual(['initialize', 'startRecording'])
+    expect(mockRecordingService.startRecording).toHaveBeenCalledWith('dev-1', {
+      onStep: expect.any(Function),
+      onError: expect.any(Function),
+      onStopped: expect.any(Function),
+    })
+
+    expect(wrapper.emitted('recording-start')).toHaveLength(1)
+    expect(findButton(wrapper, 'automation.recordStop')).toBeTruthy()
+    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(true)
+
+    // Observable proof of subscription-before-launch: the mock fired
+    // cbs.onStep synchronously inside startRecording (before resolving);
+    // that in-flight step must be rendered and must survive the await.
+    const inflight = wrapper.findAll('.step-line')
+    expect(inflight).toHaveLength(1)
+    expect(inflight[0].text()).toContain('#1')
+    expect(inflight[0].text()).toContain('7,8')
+
+    // Two more live steps → rows with index + action label + coordinate summary
+    callbacks.onStep({ action: 'tap', x: 100, y: 200 })
+    await nextTick()
+    callbacks.onStep({ action: 'swipe', x1: 30, y1: 40, x2: 80, y2: 120, duration_ms: 300 })
+    await nextTick()
+
+    const rows = wrapper.findAll('.step-line')
+    expect(rows).toHaveLength(3)
+    expect(rows[1].text()).toContain('#2')
+    expect(rows[1].text()).toContain('tap')
+    expect(rows[1].text()).toContain('100,200')
+    expect(rows[2].text()).toContain('swipe')
+    expect(rows[2].text()).toContain('30,40→80,120')
+    expect(wrapper.find('.record-count').text()).toBe('3')
+    expect(wrapper.text()).not.toContain('automation.recordEmpty')
+  })
+
+  it('stop via button: stages steps locally (no auto-emit); apply button emits recorded; reset + recording-end once', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    const steps = [
+      { action: 'tap', x: 5, y: 6 },
+      { action: 'swipe', x1: 1, y1: 2, x2: 3, y2: 4, duration_ms: 250 },
+    ]
+    mockRecordingService.stopRecording.mockResolvedValueOnce({ steps, record_device: 'dev-1' })
+
+    await findButton(wrapper, 'automation.recordStop').trigger('click')
+    await flushPromises()
+
+    expect(mockRecordingService.stopRecording).toHaveBeenCalledWith('dev-1')
+    // 停止只暂存展示，不自动导入脚本
+    expect(wrapper.emitted('recorded')).toBeUndefined()
+    expect(wrapper.emitted('recording-end')).toHaveLength(1)
+    expect(mockRecordingService.finish).toHaveBeenCalledWith('rec-test-id')
+    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
+
+    // 点击「插入到脚本」才把 { steps, insertAt } 交给页面 —— 没有等待信息：
+    // 步骤之间的节奏由运行配置的默认步骤间隔控制，录制不再合成等待步骤。
+    const applyBtn = findButton(wrapper, 'automation.applySteps')
+    expect(applyBtn).toBeTruthy()
+    await applyBtn.trigger('click')
+    const recorded = wrapper.emitted('recorded')
+    expect(recorded).toHaveLength(1)
+    expect(recorded![0][0]).toEqual({ steps, insertAt: 'end' })
+  })
+
+  it('录制面板不再有「自动插入等待」设置，只给一行节奏说明', async () => {
+    const { wrapper } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    // 阈值 / 上限 / 开关都没有了
+    expect(wrapper.find('.gap-settings').exists()).toBe(false)
+    expect(wrapper.find('.gap-num').exists()).toBe(false)
+    expect(wrapper.find('.n-checkbox').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('automation.autoWaitEnabled')
+    expect(wrapper.text()).not.toContain('automation.waitThreshold')
+    // 取而代之：等待由运行配置的「步骤间隔」统一控制的说明
+    expect(wrapper.get('.record-hint').text()).toBe('automation.recordIntervalHint')
+  })
+
+  it('录制列表里不再插入「+ Nms」等待行 —— 只列步骤', async () => {
+    const { wrapper } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    // 带 ts（录制时间线）的两步之间就算隔了 8 秒，也不再画等待行
+    callbacks.onStep({ action: 'tap', x: 1, y: 2, ts: 10.0 })
+    await nextTick()
+    callbacks.onStep({ action: 'tap', x: 3, y: 4, ts: 18.0 })
+    await nextTick()
+
+    expect(wrapper.findAll('.step-line')).toHaveLength(3)
+    expect(wrapper.findAll('.gap-line')).toHaveLength(0)
+    // 列表里不该再出现「+ 8000ms」这种合成等待行
+    expect(wrapper.get('.record-list').text()).not.toMatch(/\d+\s*ms/)
+  })
+
+  it('takes the insert position from the ENTRY POINT (defaultInsertAt), not from the selection', async () => {
+    // 顶部「插入位」进来 → defaultInsertAt 'start' → 插到开头
+    const top = mountPanel(false, 'dev-1', false)
+    await top.wrapper.setProps({ defaultInsertAt: 'start' })
+    await startRecording(top.wrapper)
+    mockRecordingService.stopRecording.mockResolvedValueOnce({
+      steps: [{ action: 'tap', x: 1, y: 2 }],
+      record_device: 'dev-1',
+    })
+    await findButton(top.wrapper, 'automation.recordStop').trigger('click')
+    await flushPromises()
+    await findButton(top.wrapper, 'automation.applySteps').trigger('click')
+    expect(top.wrapper.emitted('recorded')![0][0].insertAt).toBe('start')
+
+    // 行内「+ 录制片段」进来 → defaultInsertAt 'after' → 插在选中行之后
+    const row = mountPanel(false, 'dev-1', true)
+    await row.wrapper.setProps({ defaultInsertAt: 'after' })
+    await startRecording(row.wrapper)
+    mockRecordingService.stopRecording.mockResolvedValueOnce({
+      steps: [{ action: 'tap', x: 1, y: 2 }],
+      record_device: 'dev-1',
+    })
+    await findButton(row.wrapper, 'automation.recordStop').trigger('click')
+    await flushPromises()
+    await findButton(row.wrapper, 'automation.applySteps').trigger('click')
+    expect(row.wrapper.emitted('recorded')![0][0].insertAt).toBe('after')
+  })
+
+  it('degrades "after" to "end" when the selected row is gone before apply', async () => {
+    const { wrapper } = mountPanel(false, 'dev-1', true)
+    await wrapper.setProps({ defaultInsertAt: 'after' })
+    await startRecording(wrapper)
+    mockRecordingService.stopRecording.mockResolvedValueOnce({
+      steps: [{ action: 'tap', x: 1, y: 2 }],
+      record_device: 'dev-1',
+    })
+    await findButton(wrapper, 'automation.recordStop').trigger('click')
+    await flushPromises()
+
+    // 选中行没了 → 失效位置兜底回落到末尾
+    await wrapper.setProps({ hasSelection: false })
+    await findButton(wrapper, 'automation.applySteps').trigger('click')
+    expect(wrapper.emitted('recorded')![0][0].insertAt).toBe('end')
+  })
+
+  it('startRecording rejection: error toast, recording-end emitted, start re-enabled', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+    mockRecordingService.startRecording.mockRejectedValueOnce(new Error('adb boom'))
+
+    await findButton(wrapper, 'automation.recordStart').trigger('click')
+    await flushPromises()
+
+    expect(mockMessage.error).toHaveBeenCalledTimes(1)
+    expect(mockMessage.error).toHaveBeenCalledWith('automation.recordFailed: adb boom')
+    // State flips synchronously before the call (Finding 1 fix); the error
+    // path rolls it back — exactly one recording-start, one recording-end.
+    expect(wrapper.emitted('recording-start')).toHaveLength(1)
+    expect(wrapper.emitted('recording-end')).toHaveLength(1)
+    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
+  })
+
+  it('onStopped (natural end): warns, emits recording-end once; recorded is never emitted from this path', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    callbacks.onStopped({ count: 0, record_device: 'dev-1' })
+    await flushPromises()
+
+    expect(mockMessage.warning).toHaveBeenCalledWith('automation.recordStopped')
+    expect(wrapper.emitted('recorded')).toBeUndefined()
+    expect(wrapper.emitted('recording-end')).toHaveLength(1)
+    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
+
+    // Race: a late record_stopped event and a ref-driven stop() must not
+    // emit recording-end a second time (idempotent reset via ended flag).
+    callbacks.onStopped({ count: 0 })
+    await flushPromises()
+    await (wrapper.vm as any).stop()
+    await flushPromises()
+    expect(wrapper.emitted('recording-end')).toHaveLength(1)
+  })
+
+  it('onStopped ignores steps in the payload ({count} only) — recorded is not emitted', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    callbacks.onStopped({ count: 3, record_device: 'dev-1' })
+    await flushPromises()
+
+    expect(mockMessage.warning).toHaveBeenCalledWith('automation.recordStopped')
+    expect(wrapper.emitted('recorded')).toBeUndefined()
+    expect(wrapper.emitted('recording-end')).toHaveLength(1)
+  })
+
+  it('ignores a second start while the first startRecording call is still pending (reentry guard)', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+
+    let release!: (id: string) => void
+    mockRecordingService.startRecording.mockImplementationOnce(
+      () => new Promise<string>((resolve) => { release = resolve })
+    )
+
+    await findButton(wrapper, 'automation.recordStart').trigger('click')
+    await flushPromises()
+
+    // Recording state flipped synchronously while the call is in flight.
+    expect(wrapper.emitted('recording-start')).toHaveLength(1)
+    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(true)
+
+    // Second click while pending → the reentry guard swallows it.
+    await findButton(wrapper, 'automation.recordStart').trigger('click')
+    await flushPromises()
+    expect(mockRecordingService.startRecording).toHaveBeenCalledTimes(1)
+
+    // Release the pending start — still exactly one call, one recording-start.
+    release('rec-test-id')
+    await flushPromises()
+    expect(mockRecordingService.startRecording).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('recording-start')).toHaveLength(1)
+  })
+
+  it('stops an active recording on unmount (no orphaned backend session)', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+    expect(mockRecordingService.stopRecording).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+    await flushPromises()
+
+    expect(mockRecordingService.stopRecording).toHaveBeenCalledWith('dev-1')
+    expect(mockRecordingService.finish).toHaveBeenCalledWith('rec-test-id')
+  })
+
+  it('stopRecording rejection still resets and emits recording-end without crashing', async () => {
+    const { wrapper, store } = mountPanel()
+    await selectDevice(wrapper)
+    await startRecording(wrapper)
+
+    mockRecordingService.stopRecording.mockRejectedValueOnce(new Error('device gone'))
+    await (wrapper.vm as any).stop()
+    await flushPromises()
+
+    expect(mockMessage.error).toHaveBeenCalledWith('automation.recordFailed: device gone')
+    expect(wrapper.emitted('recorded')).toBeUndefined()
+    expect(wrapper.emitted('recording-end')).toHaveLength(1)
+    expect(isDisabled(findButton(wrapper, 'automation.recordStart'))).toBe(false)
+    expect(findButton(wrapper, 'automation.recordStop')).toBeUndefined()
+  })
+})

@@ -1,10 +1,12 @@
 {
   "name": "blank_tool",
-  "version": "2.2.0",
+  "version": "2.5.0",
   "main": "dist/main/main.js",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "electron-vite dev",
+    "predev": "npm run theme:css",
+    "theme:css": "node scripts/generate-theme-css.mjs",
     "lint": "vue-tsc --noEmit --pretty false",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
@@ -16,7 +18,8 @@
     "build:win": "node scripts/build.mjs --win",
     "build:mac": "node scripts/build.mjs --mac",
     "build:linux": "node scripts/build.mjs --linux",
-    "dist": "npm run build"
+    "dist": "npm run build",
+    "release": "node scripts/release.mjs"
   },
   "keywords": [
     "electron",
@@ -78,37 +81,35 @@
       "repo": "blank_tool"
     }
   },
+  "dependencies": {},
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/electron": "^1.4.38",
     "@types/node": "^25.5.0",
+    "@vicons/ionicons5": "^0.13.0",
     "@vitest/coverage-v8": "^4.1.7",
     "@vitest/ui": "^4.1.7",
+    "@vitejs/plugin-vue": "^5.2.4",
     "@vue/test-utils": "^2.4.10",
     "concurrently": "^9.2.1",
     "electron": "^38.3.0",
     "electron-builder": "^26.0.12",
+    "electron-log": "^5.4.3",
+    "electron-store": "^11.0.2",
+    "electron-updater": "^6.6.2",
+    "electron-vite": "^5.0.0",
     "express": "^5.1.0",
     "happy-dom": "^20.9.0",
-    "typescript": "^5.9.3",
-    "vite-plugin-electron": "^0.29.1",
-    "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^4.1.7",
-    "vue-tsc": "^3.2.5",
-    "wait-on": "^9.0.1"
-  },
-  "dependencies": {
-    "@vicons/ionicons5": "^0.13.0",
-    "@vitejs/plugin-vue": "^5.2.4",
-    "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2",
-    "electron-store": "^11.0.2",
     "lucide-vue-next": "^1.0.0",
     "naive-ui": "^2.44.1",
     "pinia": "^3.0.3",
+    "typescript": "^5.9.3",
     "vite": "^6.4.1",
+    "vitest": "^4.1.7",
     "vue": "^3.2.25",
     "vue-i18n": "^9.14.4",
-    "vue-router": "^4.6.3"
+    "vue-router": "^4.6.3",
+    "vue-tsc": "^3.2.5",
+    "wait-on": "^9.0.1"
   }
 }

@@ -1,0 +1,51 @@
+/* ============================================================================
+ * variables.css — 【自动生成，请勿手改】
+ *
+ * 源：src/renderer/theme/tokens.ts（staticTokens：非颜色 token）
+ * 生成：npm run theme:css（scripts/generate-theme-css.mjs）
+ * 守卫：tests/unit/theme/tokens-css-parity.test.ts
+ *
+ * 命名空间与颜色一致，全部 --app-*，避免再出现 --space-sm / --spacing-sm 这类「一件事两个名字」的重复体系。
+ * 分组的语义注释见 tokens.ts；本文件只保证「token → CSS 变量」的逐一对应。
+ * ========================================================================== */
+
+:root {
+  --app-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --app-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --app-space-xs: 4px;
+  --app-space-sm: 8px;
+  --app-space-md: 16px;
+  --app-space-lg: 24px;
+  --app-space-xl: 32px;
+  --app-font-size-xs: 11px;
+  --app-font-size-sm: 12px;
+  --app-font-size-md: 13px;
+  --app-font-size-lg: 14px;
+  --app-font-size-xl: 16px;
+  --app-font-size-title: 18px;
+  --app-font-size-2xl: 22px;
+  --app-font-size-display: 32px;
+  --app-duration-fast: 0.15s;
+  --app-duration-slow: 0.3s;
+  --app-z-raised: 10;
+  --app-z-overlay: 9999;
+  --app-scrollbar-size: 6px;
+  --app-scrollbar-radius: 3px;
+  --app-radius-sm: 4px;
+  --app-radius-md: 8px;
+  --app-radius-lg: 12px;
+  --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --app-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --app-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --app-page-max-width: 1040px;
+  --app-text-inverse: #FFFFFF;
+  --app-overlay-bg: rgba(0, 0, 0, 0.72);
+  --app-shadow-icon: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --app-shadow-overlay: 0 8px 40px rgba(0, 0, 0, 0.5);
+  --app-console-bg: #0F1115;
+  --app-console-fg: #C8D0DA;
+  --app-console-dim: #5C6672;
+  --app-console-err: #FF7A85;
+  --app-console-err-dim: #8A4A52;
+  --app-console-warn: #F0C060;
+}
