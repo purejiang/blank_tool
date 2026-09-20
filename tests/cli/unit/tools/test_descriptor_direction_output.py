@@ -21,6 +21,7 @@ import pytest
 
 from app.protocol import Port, TypeAnnotation
 from app.protocol.types import BaseType
+from app.tools.builtin.base import ToolContext
 from app.tools.descriptor_tool import (
     DescriptorTool,
     Operation,
@@ -123,7 +124,7 @@ def test_execute_operation_surfaces_output_direction_input_in_result():
                 "src": "/tmp/src.js",
                 "out_path": "/tmp/bundle.js",
             },
-            context=SimpleNamespace(
+            context=ToolContext(
                 work_dir="/tmp", task_id="t1", env={}, process_holder={}
             ),
         )
@@ -164,7 +165,7 @@ def test_execute_operation_does_not_overwrite_real_output_with_input_value():
                 "src": "/tmp/src.js",
                 "out_path": "/user/supplied/path.js",  # user-supplied input
             },
-            context=SimpleNamespace(
+            context=ToolContext(
                 work_dir="/tmp", task_id="t1", env={}, process_holder={}
             ),
         )
@@ -208,7 +209,7 @@ def test_execute_operation_skips_missing_output_direction_input():
     with patch.object(tool, "_run", return_value=fake_result):
         result = tool.execute(
             inputs={"operation": "compile", "src": "/tmp/src.js"},
-            context=SimpleNamespace(
+            context=ToolContext(
                 work_dir="/tmp", task_id="t1", env={}, process_holder={}
             ),
         )

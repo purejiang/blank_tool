@@ -23,13 +23,14 @@ registers the child in the run's ``process_holder`` and polls
 descendants* and raises :class:`~app.common.exceptions.WorkflowCancelled`
 (a cancelled run is not a failed node and never spends a retry).  A timeout
 still returns the historical ``{"returncode": -1, "stderr": "timeout after Ns"}``
-result shape.
+result shape, and keeps whatever the child had already written to stdout.
 """
 
 # allow: SIZE_OK — port-contract declarations (PortSet inputs/outputs with
 # descriptions) are declarative data, not logic; actual executable logic is
 # ~130 LOC. Splitting would violate the plan's single-file mandate.
 import json
+import locale
 import os
 import shlex
 
@@ -45,6 +46,18 @@ from app.env import get_python_bin
 _EXEC_RESULT_SENTINEL = "===CODE_EXEC_RESULT==="
 # Environment variable carrying the JSON-serialized inputs to the child.
 _EXEC_INPUTS_ENV = "CODE_EXEC_INPUTS"
+
+
+def _child_text_encoding() -> str:
+    """Encoding used to decode a child process's output.
+
+    ``subprocess.run(text=True)`` decoded with the locale encoding (the ANSI
+    code page — ``cp936`` on a Chinese Windows — for ``cmd.exe`` output), while
+    ``ProcessExecutor`` defaults to UTF-8.  Pinning the locale encoding here
+    keeps the switch to the cancellable executor from changing how non-ASCII
+    output is read.
+    """
+    return locale.getpreferredencoding(False) or "utf-8"
 
 
 def _timeout_from(value, default: int) -> int:
@@ -204,12 +217,13 @@ class ShellExec(BuiltinTool):
         )
         try:
             returncode, stdout, stderr = executor.run(
-                args, cwd=cwd, env=env, shell=shell
+                cmd=args, cwd=cwd, env=env, shell=shell,
+                encoding=_child_text_encoding(),
             )
         except TimeoutException:
             return {
                 "returncode": -1,
-                "stdout": "",
+                "stdout": executor.drain_output()[1],
                 "stderr": f"timeout after {timeout}s",
                 "success": False,
             }
@@ -333,12 +347,13 @@ class CodeExec(BuiltinTool):
         )
         try:
             returncode, child_stdout, child_stderr = executor.run(
-                [python_bin, "-c", wrapped], env=child_env
+                cmd=[python_bin, "-c", wrapped], env=child_env,
+                encoding=_child_text_encoding(),
             )
         except TimeoutException:
             return {
                 "result": None,
-                "stdout": "",
+                "stdout": executor.drain_output()[1],
                 "stderr": f"timeout after {timeout}s",
                 "success": False,
             }

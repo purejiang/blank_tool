@@ -761,6 +761,36 @@ def test_exec_shell_timeout_returns_error_shape(tmp_path):
     assert "timeout" in result["stderr"]
 
 
+def test_exec_shell_timeout_keeps_the_output_produced_before_the_kill(tmp_path):
+    """The timeout path must drain the pipe, not discard it (B1.6).
+
+    This is the *only* path that surfaces partial output: a **cancelled** run
+    raises ``WorkflowCancelled`` instead, so its output is dropped at the tool
+    boundary.  That asymmetry is a deliberate scope decision — see the plan
+    doc §6.5 (option A).
+
+    The marker is emitted by the shell itself (``cmd.exe`` / ``sh``) rather
+    than by a fresh interpreter.  A child interpreter needs ~1.6-2.0s just to
+    reach its first ``print`` on this machine (measured), which is longer than
+    the timeout below — the child would then be killed *before writing
+    anything*, and the drain logic under test would never get a chance to
+    show what it keeps.  ``echo`` runs in milliseconds, so the assertion is
+    about the drain, not about interpreter start-up.
+    """
+    if os.name == "nt":
+        # echo first, then block for ~29s so the 1s timeout is what ends it.
+        command = "echo before-timeout & ping -n 30 127.0.0.1 >nul"
+    else:
+        command = 'sh -c "echo before-timeout; sleep 30"'
+
+    result = ShellExec().execute({"command": command, "timeout": 1}, _ctx(tmp_path))
+    assert result["success"] is False
+    assert "timeout" in result["stderr"]
+    assert "before-timeout" in result["stdout"], (
+        "output produced before the timeout must survive the kill"
+    )
+
+
 # ---------------------------------------------------------------------------
 # exec.code
 # ---------------------------------------------------------------------------

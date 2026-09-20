@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Union, Optional, Callable
 from app.utils.logger import Logger
 from app.utils.task_log_writer import append_task_log
+from app.common import proc_tree
 from app.common.executor import ProcessExecutor
 from app.common.exceptions import TimeoutException, WorkflowCancelled
 
@@ -187,6 +188,8 @@ class CommandExecutor(BaseCommandExecutor):
         # Streaming mode: return a live Popen object for line-by-line reading.
         # The caller owns the read loop; cancellation reaches the process
         # through ``context.process_holder`` (TaskManager terminates it).
+        # The same spawn options as ProcessExecutor are applied so a streamed
+        # child is reachable by ``os.killpg`` on POSIX.
         if context.stream:
             proc = subprocess.Popen(
                 command,
@@ -198,9 +201,11 @@ class CommandExecutor(BaseCommandExecutor):
                 cwd=context.cwd,
                 shell=context.shell,
                 env=context.env,
+                **proc_tree.spawn_options(),
             )
             if context.process_holder is not None:
                 context.process_holder["process"] = proc
+                context.process_holder["_pid"] = proc.pid
             return proc
 
         # Non-streaming mode: delegate to ProcessExecutor

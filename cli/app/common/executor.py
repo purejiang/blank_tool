@@ -11,6 +11,7 @@ import subprocess
 import time
 from typing import Callable, Optional, Union
 
+from app.common import proc_tree
 from app.common.exceptions import TimeoutException
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,12 @@ _TERMINATE_GRACE_SECONDS = 5
 
 #: Timeout for the Windows ``taskkill`` tree-kill helper, in seconds.
 _TASKKILL_TIMEOUT_SECONDS = 10
+
+#: How long to wait for a killed process to be reaped, in seconds.
+_KILL_GRACE_SECONDS = 5.0
+
+#: How long the post-kill drain waits for the pipe buffers, in seconds.
+_DRAIN_TIMEOUT_SECONDS = 5.0
 
 #: A command line may be a list (shell=False on POSIX) or a string
 #: (``shell=True`` — Windows ``exec.shell``).
@@ -57,6 +64,12 @@ class ProcessExecutor:
     itself (a ``(returncode, stdout, stderr)`` tuple) is unchanged, so callers
     that must distinguish "cancelled" from "failed" check that flag (see
     ``app.common.base_executor`` and the ``exec.*`` builtins).
+
+    On Windows the child is additionally enrolled in a job object (see
+    :mod:`app.common.proc_tree`) immediately after ``Popen`` returns.  Job
+    membership is inherited, so that early assignment is what lets a tree kill
+    reach grandchildren whose parent has already exited — the case
+    ``taskkill /T`` cannot cover.
     """
 
     def __init__(
@@ -71,6 +84,11 @@ class ProcessExecutor:
         self.cancelled = False
         self._process_holder = process_holder
         self._cancel_check = cancel_check
+        #: Job-object handle covering the whole child tree (Windows only).
+        self._job: Optional[int] = None
+        #: True once a job covered this process — the job is then the only
+        #: kill mechanism used, never the (possibly recycled) PID.
+        self._job_managed = False
 
     def run(
         self,
@@ -112,34 +130,53 @@ class ProcessExecutor:
             errors=errors,
             **popen_kwargs,
         )
-        if self._process_holder is not None:
-            self._process_holder["process"] = self.process
-            self._process_holder["_pid"] = self.process.pid
-            # Lets TaskManager cancel terminate the tree, not just the child.
-            self._process_holder["kill"] = self._kill_tree
-            # Cancel may have arrived before the subprocess was spawned
-            if self._process_holder.get("_cancel_pending"):
+        try:
+            # Enrol the child in a job object straight after spawn: membership
+            # is inherited, so this is the only moment at which the whole future
+            # tree (``cmd.exe`` plus the real command it is about to start) can
+            # be captured.  On POSIX ``attach_job`` returns ``None`` and the
+            # ``start_new_session`` process group is the tree mechanism.
+            self._job = proc_tree.attach_job(self.process, self._process_holder)
+            self._job_managed = self._job is not None
+
+            if self._process_holder is not None:
+                self._process_holder["process"] = self.process
+                self._process_holder["_pid"] = self.process.pid
+                # Lets TaskManager cancel terminate the tree, not just the child.
+                self._process_holder["kill"] = self._kill_tree
+                # Cancel may have arrived before the subprocess was spawned
+                if self._process_holder.get("_cancel_pending"):
+                    self.cancelled = True
+                    self._kill_tree()
+                    return self.process.returncode or -1, "", ""
+
+            if self._cancel_check is None:
+                result = self._communicate_once()
+            else:
+                result = self._communicate_cancellable(cmd)
+
+            # A process killed out-of-band (holder['kill']) makes communicate()
+            # return normally, so the cancel sources are checked once more here.
+            if not self.cancelled and self._cancelled():
                 self.cancelled = True
                 self._kill_tree()
-                return self.process.returncode or -1, "", ""
-
-        if self._cancel_check is None:
-            result = self._communicate_once()
-        else:
-            result = self._communicate_cancellable(cmd)
-
-        # A process killed out-of-band (holder['kill']) makes communicate()
-        # return normally, so the cancel sources are checked once more here.
-        if not self.cancelled and self._cancelled():
-            self.cancelled = True
-            self._kill_tree()
-        return result
+            return result
+        finally:
+            # Release the handle without terminating anything: descendants
+            # that are meant to outlive the command (``adb start-server``)
+            # must survive a normal exit.  Idempotent with a kill that already
+            # took the handle out of the holder.
+            self._release_job()
 
     def _communicate_once(self) -> tuple[int, str, str]:
         try:
             stdout, stderr = self.process.communicate(timeout=self.timeout)
             return self.process.returncode, stdout, stderr
         except subprocess.TimeoutExpired:
+            # Kill, then let the caller recover the pipes through
+            # :meth:`drain_output` — the same shape as the cancellable path.
+            # The exception itself is no help: on timeout CPython leaves the
+            # reader threads open and raises without attaching any output.
             self._kill_tree()
             raise TimeoutException(
                 f"Command timed out after {self.timeout}s: "
@@ -163,7 +200,11 @@ class ProcessExecutor:
                 if self._cancelled():
                     self.cancelled = True
                     self._kill_tree()
-                    return self.process.returncode or -1, "", ""
+                    # Drain rather than discard: the *tool* boundary drops the
+                    # value anyway (a killed run raises WorkflowCancelled), but
+                    # keeping the branch symmetric with the timeout path means
+                    # `drain_output` is the single recovery mechanism.
+                    return self.drain_output()
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     self._kill_tree()
@@ -198,15 +239,26 @@ class ProcessExecutor:
     def _kill_tree(self) -> None:
         """Shut the process down, then sweep its descendants.
 
-        ``terminate()`` runs first for the direct child (portable, and the only
-        thing a test double can react to).  Descendant cleanup goes through
-        :meth:`_kill_descendants` and is best-effort: it only applies to a real
-        ``subprocess.Popen`` and never raises.
+        When a job object covers this process it is the *only* kill mechanism
+        used: ``TerminateJobObject`` kills the whole tree atomically —
+        including grandchildren reparented to another process.  The PID-based
+        fallbacks are skipped deliberately, because the child is already cold
+        at this point and Windows could in principle have recycled its PID onto
+        an unrelated process.
 
-        Ordering matters on Windows: ``taskkill /T`` only reaches the
-        descendants while the tree is still alive, so it runs *before* the
-        direct child is terminated.
+        Otherwise ``terminate()`` runs first for the direct child (portable,
+        and the only thing a test double can react to).  Descendant cleanup
+        goes through :meth:`_kill_descendants` and is best-effort: it only
+        applies to a real ``subprocess.Popen`` and never raises.  Ordering
+        matters on Windows: ``taskkill /T`` only reaches the descendants while
+        the tree is still alive, so it runs *before* the direct child is
+        terminated.
         """
+        if self._job_managed:
+            self._terminate_job()
+            self._reap()
+            return
+
         process = self.process
         if process is None:
             return
@@ -242,18 +294,85 @@ class ProcessExecutor:
         except Exception:
             pass
 
-        # Release the pipes: a surviving grandchild holding an inherited
-        # handle would otherwise keep a later wait/communicate blocked.
-        for stream in (
-            getattr(process, "stdout", None),
-            getattr(process, "stderr", None),
-            getattr(process, "stdin", None),
-        ):
-            try:
-                if stream is not None and not stream.closed:
-                    stream.close()
-            except Exception:
-                pass
+        # NOTE: the pipes are deliberately *not* closed here.  Closing the
+        # parent's read ends would make a later :meth:`drain_output` return
+        # nothing, silently dropping the output a timeout is supposed to keep
+        # — and a job (Windows) or the child's own session (POSIX, swept just
+        # above) already reaps any surviving grandchild, so the pipes close on
+        # their own once the tree is gone.
+
+    def drain_output(self) -> tuple[int, str, str]:
+        """Return ``(returncode, stdout, stderr)`` of a finished process.
+
+        Called after a kill so the caller sees the output the process had
+        already produced instead of an empty result — the pipes are drained
+        rather than discarded.  A killed process may not have a returncode
+        yet, which is reported as ``-1``.
+
+        Re-entering ``communicate()`` **is** the recovery mechanism, and that is
+        deliberate: after a timeout CPython leaves the reader threads and the
+        pipe handles open precisely so a second call can still collect
+        everything the child wrote.  Do not "simplify" this away by reading the
+        ``TimeoutExpired`` raised on the way here — it carries no output at all.
+        """
+        if self.process is None:
+            return -1, "", ""
+        stdout = stderr = ""
+        try:
+            stdout, stderr = self.process.communicate(timeout=_DRAIN_TIMEOUT_SECONDS)
+        except Exception:
+            pass
+        returncode = self.process.returncode
+        return (
+            returncode if returncode is not None else -1,
+            stdout or "",
+            stderr or "",
+        )
+
+    def _reap(self) -> None:
+        """Collect the exit status of a process that was already killed."""
+        if self.process is None:
+            return
+        try:
+            self.process.wait(timeout=_KILL_GRACE_SECONDS)
+        except Exception:
+            pass
+
+    def _terminate_job(self) -> bool:
+        """Terminate the job covering this process tree. True when one existed.
+
+        When a ``process_holder`` is present it *owns* the handle — the
+        out-of-band cancel path takes it out of the holder under a lock.  This
+        method therefore drops its own mirror without touching it, rather than
+        closing a handle value that the cancel path may already have released
+        and that Windows may since have recycled.
+        """
+        if self._process_holder is not None:
+            self._job = None
+            return proc_tree.terminate_job_in(self._process_holder)
+        job, self._job = self._job, None
+        if job is None:
+            return False
+        proc_tree.terminate_job(job)
+        proc_tree.close_job_handle(job)
+        return True
+
+    def _release_job(self) -> None:
+        """Release the job handle on the normal completion path.
+
+        Same ownership rule as :meth:`_terminate_job`; the holder is asked to
+        release the handle so a racing cancel cannot close it twice.  Closing a
+        handle kills nothing (no ``KILL_ON_JOB_CLOSE``), so descendants that
+        outlive their command survive.
+        """
+        if self._process_holder is not None:
+            self._job = None
+            proc_tree.close_job_in(self._process_holder)
+            return
+        job, self._job = self._job, None
+        if job is None:
+            return
+        proc_tree.close_job_handle(job)
 
     def _kill_descendants(self, process: "subprocess.Popen") -> None:
         """Best-effort tree kill; a non-real Popen (test double) is skipped."""

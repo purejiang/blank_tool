@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from app.common.base_executor import CommandExecutor, CommandExecutionContext
-from app.common.exceptions import ToolException
+from app.common.exceptions import ToolException, WorkflowCancelled
 from app.env.registry import EnvironmentRegistry
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import ToolContext
@@ -443,21 +443,32 @@ class DescriptorTool:
           execute via ``_run`` (backward-compatible).
 
         Returns ``{success, stdout, stderr, returncode, command}``.
+
+        Raises:
+            WorkflowCancelled: when the enclosing run was cancelled while the
+                command ran, so the engine marks the node cancelled rather
+                than failed.
         """
         cmd_context = self._to_command_context(context)
 
         operation_name = inputs.get("operation")
         if operation_name:
-            return self._execute_operation(operation_name, inputs, cmd_context)
+            result = self._execute_operation(operation_name, inputs, cmd_context)
+        else:
+            command_list = inputs.get("args")
+            if not isinstance(command_list, list):
+                raise ToolException(
+                    f"tool {self.name!r} requires either 'operation' or 'args' "
+                    f"in inputs, got keys: {list(inputs.keys())}"
+                )
+            result = self._run(command_list, cmd_context)
 
-        command_list = inputs.get("args")
-        if isinstance(command_list, list):
-            return self._run(command_list, cmd_context)
-
-        raise ToolException(
-            f"tool {self.name!r} requires either 'operation' or 'args' "
-            f"in inputs, got keys: {list(inputs.keys())}"
-        )
+        # A killed process exits non-zero, which would otherwise be reported as
+        # an ordinary tool failure — raise so the engine classifies the node
+        # as cancelled instead.
+        if context.cancelled():
+            raise WorkflowCancelled()
+        return result
 
     def _execute_operation(
         self,
