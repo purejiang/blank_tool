@@ -23,15 +23,23 @@ short-lived tombstone and consumed by the matching :meth:`register` call, so
 a cancel is never silently lost.  A cancel naming a run that *recently
 finished* is simply rejected — it must not poison the next run that happens
 to reuse the same id.
+
+Externally set stop events
+--------------------------
+A caller that must request cancellation from a context where taking this
+class's lock is unsafe (a Python signal handler, for example) can register
+with ``honor_stop_event=True``: from then on a *set* ``stop_event`` counts as
+cancelled for that run (see :meth:`is_cancelled`).  The flag is opt-in so a
+caller that reuses one event object across runs (the JSON-RPC layer) keeps
+the original "only :meth:`cancel` cancels" semantics.
 """
 
 import threading
 import time
 from typing import Any, Dict, Optional, Set
 
-from app.common import proc_tree
 from app.utils.logger import Logger
-from app.utils.task_log_writer import cleanup_task_log
+from app.utils.task_log_writer import cleanup_task_log, flush_task_log
 
 #: How long a "cancel arrived before register" tombstone stays armed.
 _TOMBSTONE_TTL_SECONDS = 10.0
@@ -39,10 +47,6 @@ _TOMBSTONE_TTL_SECONDS = 10.0
 #: How long a finished run id / task id is remembered, so a late cancel for
 #: it is rejected instead of being treated as a cancel of a future run.
 _SEEN_TTL_SECONDS = 60.0
-
-#: How long a tree kill may take before the cancel path gives up on it.  The
-#: cancel request is answered on the same thread, so this stays short.
-_TERMINATE_GRACE_SECONDS = 2.0
 
 
 class TaskManager:
@@ -73,6 +77,8 @@ class TaskManager:
         run_id: str,
         task_id: str = "",
         stop_event: Optional[threading.Event] = None,
+        *,
+        honor_stop_event: bool = False,
     ) -> None:
         """Register *run_id* as an in-flight run.
 
@@ -81,6 +87,15 @@ class TaskManager:
         cancellation.  A tombstone planted for this ``run_id`` or
         ``task_id`` (cancel-before-register) is consumed and turns the
         registration cancelled immediately.
+
+        Args:
+            run_id: the run identity (the cancellation key).
+            task_id: optional task identity the run belongs to.
+            stop_event: optional event :meth:`cancel` will set, so a worker
+                blocked on it wakes up.
+            honor_stop_event: when True, a *set* ``stop_event`` is itself
+                treated as a cancellation request (see the module docstring).
+                The caller must pass a fresh event per run.
         """
         if not run_id:
             return
@@ -93,6 +108,7 @@ class TaskManager:
             self._tasks[run_id] = {
                 "task_id": task_id,
                 "stop_event": stop_event,
+                "honor_stop_event": bool(honor_stop_event),
                 "holder": None,
                 "cancelled": bool(cancelled),
                 "entered_at": now,
@@ -103,11 +119,14 @@ class TaskManager:
             self._logger.info(f"Run {run_id}: pre-registration cancel honored")
 
     def unregister(self, run_id: str) -> None:
-        """Remove *run_id* after completion and flush its buffered task log."""
-        try:
-            cleanup_task_log(run_id)
-        except Exception:
-            pass  # best-effort; log cleanup failure shouldn't block teardown
+        """Remove *run_id* after completion and flush its buffered task log.
+
+        Two buffers may hold this run's lines: ``run_id`` (when the run used
+        its own identity as the log id) and ``task_id`` (the usual case — see
+        ``app.workflow.runner``).  Both are flushed.  The ``task_id`` buffer
+        is only *dropped* when no other in-flight run shares that task id, so
+        two concurrent runs under one task never delete each other's lines.
+        """
         now = time.time()
         with self._tasks_lock:
             entry = self._tasks.pop(run_id, None)
@@ -120,6 +139,22 @@ class TaskManager:
             if task_id:
                 self._seen[task_id] = now
             self._prune_expired(now)
+            task_id_still_shared = bool(task_id and task_id in self._by_task)
+
+        self._flush_log(run_id, drop=True)
+        if task_id and task_id != run_id:
+            self._flush_log(task_id, drop=not task_id_still_shared)
+
+    @staticmethod
+    def _flush_log(key: str, drop: bool) -> None:
+        """Flush (and optionally drop) the buffered task log for *key*."""
+        try:
+            if drop:
+                cleanup_task_log(key)
+            else:
+                flush_task_log(key)
+        except Exception:
+            pass  # best-effort; a log flush failure must not block teardown
 
     def attach_process(self, run_id: str, holder: Optional[dict]) -> None:
         """Attach (or clear, with ``None``) the subprocess holder of *run_id*.
@@ -166,11 +201,11 @@ class TaskManager:
                 ]
             for rid in run_ids:
                 entry = self._tasks[rid]
-                if entry.get("cancelled"):
-                    found = True
-                    continue
-                entry["cancelled"] = True
                 found = True
+                # A repeated cancel must still (re-)set the stop event and
+                # re-terminate whatever process is attached now: the first
+                # cancel may have arrived before the process existed.
+                entry["cancelled"] = True
                 stop_event = entry.get("stop_event")
                 if stop_event is not None:
                     holders.append(("event", stop_event))
@@ -205,29 +240,28 @@ class TaskManager:
         return True
 
     def _terminate(self, holder: dict) -> None:
-        """Mark the holder cancelled and kill its process tree, if any.
+        """Mark the holder cancelled and kill its process, if any.
 
-        The job object is the authoritative kill: it covers the whole tree
-        (``cmd.exe`` plus the command it started), including grandchildren
-        whose parent already exited.  Only when no job handle is present does
-        this fall back to tree tools and finally to ``Popen.terminate()``.
+        The holder may carry a ``kill`` callable (installed by
+        :class:`~app.common.executor.ProcessExecutor`) that also terminates
+        the process *tree*; when present it is preferred over terminating the
+        direct child.
         """
         holder["_cancel_pending"] = True
-        if proc_tree.terminate_job_in(holder):
-            self._logger.info(
-                "Terminated the job object covering the run's process tree"
-            )
-            return
+        kill = holder.get("kill")
+        if callable(kill):
+            try:
+                kill()
+                return
+            except Exception as exc:
+                self._logger.warning(f"Tree kill failed, falling back: {exc}")
         process = holder.get("process")
         if process is None:
             return
         try:
             if process.poll() is None:
-                self._logger.info(f"Terminating subprocess tree pid={process.pid}")
-                if not proc_tree.terminate_tree(
-                    process.pid, grace=_TERMINATE_GRACE_SECONDS
-                ):
-                    process.terminate()
+                self._logger.info(f"Terminating subprocess pid={process.pid}")
+                process.terminate()
         except Exception as exc:  # already gone / not a Popen
             self._logger.warning(f"Failed to terminate subprocess: {exc}")
 
@@ -235,11 +269,30 @@ class TaskManager:
     # Query
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _entry_cancelled(entry: Dict[str, Any]) -> bool:
+        """Return True when *entry* counts as cancelled.
+
+        Either the ``cancelled`` flag is set (a real :meth:`cancel` call), or
+        the run registered with ``honor_stop_event=True`` and its stop event
+        was set by an external actor (e.g. a CLI signal handler).
+        """
+        if entry.get("cancelled"):
+            return True
+        stop_event = entry.get("stop_event")
+        return bool(
+            entry.get("honor_stop_event")
+            and stop_event is not None
+            and stop_event.is_set()
+        )
+
     def is_cancelled(self, target: str) -> bool:
         """Return True when *target* (run id or task id) is cancelled.
 
         A still-armed tombstone counts as cancelled so a run that registers
-        after the user clicked cancel aborts at its first checkpoint.
+        after the user clicked cancel aborts at its first checkpoint.  A run
+        registered with ``honor_stop_event=True`` also counts as cancelled
+        once its stop event has been set.
         """
         if not target:
             return False
@@ -248,10 +301,10 @@ class TaskManager:
         with self._tasks_lock:
             entry = self._tasks.get(target)
             if entry is not None:
-                return bool(entry["cancelled"])
+                return self._entry_cancelled(entry)
             for rid in self._by_task.get(target, set()):
                 other = self._tasks.get(rid)
-                if other is not None and other["cancelled"]:
+                if other is not None and self._entry_cancelled(other):
                     return True
             return self._tombstone_active(target, now)
 
@@ -262,7 +315,7 @@ class TaskManager:
                 {
                     "run_id": run_id,
                     "task_id": info.get("task_id", ""),
-                    "cancelled": bool(info.get("cancelled", False)),
+                    "cancelled": self._entry_cancelled(info),
                     "started_at": info.get("entered_at"),
                     "has_process": bool(
                         (info.get("holder") or {}).get("process")

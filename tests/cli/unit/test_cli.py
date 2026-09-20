@@ -12,8 +12,10 @@ without error and expose the expected node/input counts.
 
 import json
 import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -23,6 +25,32 @@ from app.workflow.definition import WorkflowDefinition
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CLI_DIR = PROJECT_ROOT / "cli"
 WORKFLOWS_DIR = PROJECT_ROOT / "examples" / "workflows" / "android"
+
+
+def _pipes_available() -> bool:
+    """True when a captured child process can actually be spawned.
+
+    Every test here runs ``cli.py`` as a subprocess with captured output, which
+    some sandboxes deny (``CreatePipe`` → ``PermissionError [WinError 5]``).
+    Skipping loudly beats 25 identical permission errors.
+    """
+    try:
+        subprocess.run(
+            [sys.executable, "-c", "print(1)"],
+            capture_output=True,
+            timeout=60,
+        )
+        return True
+    except PermissionError:
+        return False
+    except Exception:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not _pipes_available(),
+    reason="captured subprocess pipes are unavailable in this environment",
+)
 
 WORKFLOW_TEMPLATES = {
     "download-install": (2, 2),  # nodes, inputs
@@ -209,6 +237,81 @@ def test_run_missing_template_name_exits_one():
     result = run_cli("run", "no-such-template", "--json")
     assert result.returncode == 1
     assert "error: template" in result.stderr
+
+
+def test_run_rejects_a_non_hex_run_id(tmp_path):
+    wf_path = tmp_path / "run.json"
+    wf_path.write_text(json.dumps(_write_read_workflow(tmp_path / "o.txt")), encoding="utf-8")
+
+    result = run_cli("run", str(wf_path), "--run-id", "not-hex")
+
+    assert result.returncode == 1
+    assert "32 lowercase hex" in result.stderr
+
+
+def test_run_help_documents_the_new_flags():
+    result = run_cli("run", "--help")
+    assert result.returncode == 0
+    assert "--run-id" in result.stdout
+    assert "--timeout" in result.stdout
+    assert "124" in result.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal delivery only")
+def test_sigint_cancels_the_run_and_exits_two(tmp_path):
+    """Ctrl+C mid-run: the node is cancelled, the CLI exits 2, no traceback."""
+    marker = tmp_path / "started.txt"
+    wf_path = tmp_path / "slow.json"
+    wf_path.write_text(
+        json.dumps(
+            {
+                "name": "slow",
+                "nodes": [
+                    {
+                        "id": "marker",
+                        "tool": "file.write",
+                        "params": {"path": str(marker), "content": "started"},
+                        "next": "sleep",
+                    },
+                    {
+                        "id": "sleep",
+                        "tool": "exec.shell",
+                        "params": {
+                            "command": f'"{sys.executable}" -c "import time; time.sleep(30)"'
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    proc = subprocess.Popen(
+        [sys.executable, str(CLI_DIR / "cli.py"), "run", str(wf_path), "--json"],
+        cwd=str(CLI_DIR),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "BT_LOG_LEVEL": "ERROR"},
+    )
+    try:
+        deadline = time.time() + 60
+        while not marker.exists() and time.time() < deadline:
+            time.sleep(0.1)
+        assert marker.exists(), "the workflow never reached its second node"
+
+        proc.send_signal(signal.SIGINT)
+        stdout, stderr = proc.communicate(timeout=60)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+
+    assert proc.returncode == 2
+    assert "KeyboardInterrupt" not in stderr
+    payload = json.loads(stdout)
+    assert payload["cancelled"] is True
+    assert payload["run_id"]
 
 
 # ---------------------------------------------------------------------------

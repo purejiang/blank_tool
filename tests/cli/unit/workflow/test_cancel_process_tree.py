@@ -119,9 +119,11 @@ def test_executor_closes_its_own_handle_when_no_holder_is_shared(recorder):
 
 def test_a_job_managed_process_is_never_killed_by_pid(monkeypatch):
     monkeypatch.setattr(
-        proc_tree,
-        "terminate_tree",
-        lambda pid, grace: pytest.fail("a job-covered process must not be killed by PID"),
+        ProcessExecutor,
+        "_kill_descendants",
+        lambda self, process: pytest.fail(
+            "a job-covered process must not be killed by PID"
+        ),
     )
     monkeypatch.setattr(proc_tree, "terminate_job", lambda job: True)
     monkeypatch.setattr(proc_tree, "close_job_handle", lambda job: None)
@@ -131,7 +133,7 @@ def test_a_job_managed_process_is_never_killed_by_pid(monkeypatch):
     executor._job = 600
     executor._job_managed = True
 
-    executor._kill()
+    executor._kill_tree()
 
     assert executor.process.terminated is False, (
         "TerminateJobObject already killed the tree; Popen must be left alone"
@@ -141,22 +143,26 @@ def test_a_job_managed_process_is_never_killed_by_pid(monkeypatch):
 def test_a_process_without_a_job_falls_back_to_the_tree_then_to_popen(monkeypatch):
     seen = []
     monkeypatch.setattr(
-        proc_tree, "terminate_tree", lambda pid, grace: seen.append(pid) or False
+        ProcessExecutor,
+        "_kill_descendants",
+        lambda self, process: seen.append(process.pid),
     )
 
     executor = ProcessExecutor()
     executor.process = _StubPopen(["stub"])
     executor._job_managed = False
 
-    executor._kill()
+    executor._kill_tree()
 
     assert seen == [4242], "the tree kill is attempted first"
     assert executor.process.terminated, "Popen.terminate() is the last resort"
 
 
 def test_a_process_that_already_exited_is_not_shot_again(monkeypatch):
+    # The Windows branch sweeps descendants before checking liveness; stub the
+    # sweep out so the assertion below is about the direct child only.
     monkeypatch.setattr(
-        proc_tree, "terminate_tree", lambda pid, grace: pytest.fail("nothing to kill")
+        ProcessExecutor, "_kill_descendants", lambda self, process: None
     )
 
     executor = ProcessExecutor()
@@ -164,7 +170,11 @@ def test_a_process_that_already_exited_is_not_shot_again(monkeypatch):
     executor.process.returncode = 0
     executor._job_managed = False
 
-    executor._kill()  # must be a no-op
+    executor._kill_tree()  # must be a no-op
+
+    assert executor.process.terminated is False, (
+        "an already-exited process must not be terminated/killed again"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +195,10 @@ def test_cancel_drains_the_output_produced_before_the_kill(monkeypatch):
     monkeypatch.setattr(executor_module.subprocess, "Popen", _TalkingPopen)
     monkeypatch.setattr(proc_tree, "terminate_job", lambda job: False)
     monkeypatch.setattr(proc_tree, "close_job_handle", lambda job: None)
-    monkeypatch.setattr(proc_tree, "terminate_tree", lambda pid, grace: True)
+    # No real tree sweep: the fake Popen must not reach a `taskkill` call.
+    monkeypatch.setattr(
+        ProcessExecutor, "_kill_descendants", lambda self, process: None
+    )
 
     flag = {"cancelled": False}
     threading.Timer(0.05, lambda: flag.update(cancelled=True)).start()

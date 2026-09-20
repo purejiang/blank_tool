@@ -101,14 +101,23 @@ def run_workflow(
     return payload
 
 
-def record_history(definition, params, task_id, inputs, result, started_at, start):
-    """Best-effort history write — a recording failure never fails the run."""
+def record_history(
+    definition, params, task_id, inputs, result, started_at, start, run_id=None
+):
+    """Best-effort history write — a recording failure never fails the run.
+
+    Args:
+        run_id: optional explicit record id (a uuid4 hex string).  The CLI
+            passes the run identity it used for ``$rundir``, so a run's
+            artifact directory and its history record share one id.  When
+            omitted (the IPC path) a fresh id is generated.
+    """
     try:
         from app.history import store as history_store
 
         history_store.record_run(
             {
-                "run_id": history_store.new_run_id(),
+                "run_id": run_id or history_store.new_run_id(),
                 "task_id": task_id,
                 "workflow_name": getattr(definition, "name", ""),
                 "source": params.get("name") or params.get("path") or "inline",

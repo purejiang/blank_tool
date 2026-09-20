@@ -11,10 +11,13 @@ import io
 import logging
 import os
 import socket
+import subprocess
 import sys
 import tarfile
 import threading
+import time
 import zipfile
+from unittest.mock import patch
 
 import pytest
 
@@ -73,6 +76,14 @@ class _MockHandler(http.server.BaseHTTPRequestHandler):
             self._respond(200, "text/plain", b"hello world")
         elif self.path == "/data.bin":
             self._respond(200, "application/octet-stream", _BIN_BODY)
+        elif self.path == "/truncated":
+            # Declares a length it does not deliver: the client must notice.
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", "1000")
+            self.end_headers()
+            self.wfile.write(b"x" * 10)
+            self.close_connection = True
         elif self.path == "/redirect":
             self.send_response(302)
             self.send_header("Location", "/json")
@@ -499,12 +510,17 @@ def test_archive_create_zip_from_single_file(tmp_path):
 
 # ---------------------------------------------------------------------------
 # net.download
+#
+# Every net.* call passes proxy="direct": the ambient proxy configuration
+# would otherwise be honored, and on a machine with a system proxy these
+# 127.0.0.1 requests would be routed through it.
 # ---------------------------------------------------------------------------
 
 def test_net_download_http_200_writes_file_with_correct_size(tmp_path, http_base_url):
     dest = tmp_path / "down.bin"
     result = NetDownload().execute(
-        {"url": http_base_url + "/text", "dest": str(dest)}, _ctx(tmp_path)
+        {"url": http_base_url + "/text", "dest": str(dest), "proxy": "direct"},
+        _ctx(tmp_path),
     )
     assert result["status_code"] == 200
     assert result["size"] == len(b"hello world")
@@ -513,7 +529,7 @@ def test_net_download_http_200_writes_file_with_correct_size(tmp_path, http_base
 
 def test_net_download_http_404_returns_error(tmp_path, http_base_url):
     result = NetDownload().execute(
-        {"url": http_base_url + "/missing", "dest": str(tmp_path / "x.bin")},
+        {"url": http_base_url + "/missing", "dest": str(tmp_path / "x.bin"), "proxy": "direct"},
         _ctx(tmp_path),
     )
     assert "error" in result
@@ -523,7 +539,7 @@ def test_net_download_http_404_returns_error(tmp_path, http_base_url):
 def test_net_download_reports_progress_events(tmp_path, http_base_url):
     events = []
     result = NetDownload().execute(
-        {"url": http_base_url + "/data.bin", "dest": "down.bin"},
+        {"url": http_base_url + "/data.bin", "dest": "down.bin", "proxy": "direct"},
         _ctx(tmp_path, stream_handler=events.append),
     )
     assert result["size"] == len(_BIN_BODY)
@@ -532,6 +548,43 @@ def test_net_download_reports_progress_events(tmp_path, http_base_url):
     assert events[-1]["type"] == "progress"
     assert events[-1]["downloaded"] == len(_BIN_BODY)
     assert events[-1]["total"] == len(_BIN_BODY)
+    # Throttled: a 200 KB body must not produce one event per 64 KiB chunk.
+    assert len(events) == 1
+
+
+def test_net_download_truncated_body_is_an_error(tmp_path, http_base_url):
+    """A short body must never be reported as a successful download."""
+    dest = tmp_path / "truncated.bin"
+    result = NetDownload().execute(
+        {"url": http_base_url + "/truncated", "dest": str(dest), "proxy": "direct"},
+        _ctx(tmp_path),
+    )
+    assert "error" in result
+    assert "truncated" in result["error"]
+    assert not dest.exists(), "a truncated download must not be published"
+    assert not list(tmp_path.glob("*.part")), "the part file must be cleaned up"
+
+
+def test_net_download_cancel_leaves_no_file(tmp_path, http_base_url):
+    from app.common.exceptions import WorkflowCancelled
+
+    dest = tmp_path / "cancelled.bin"
+    with pytest.raises(WorkflowCancelled):
+        NetDownload().execute(
+            {"url": http_base_url + "/data.bin", "dest": str(dest), "proxy": "direct"},
+            _ctx(tmp_path, cancel_check=lambda: True),
+        )
+    assert not dest.exists()
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_net_download_rejects_an_invalid_proxy(tmp_path, http_base_url):
+    result = NetDownload().execute(
+        {"url": http_base_url + "/text", "dest": "x.bin", "proxy": "not-a-proxy"},
+        _ctx(tmp_path),
+    )
+    assert "error" in result
+    assert "invalid proxy" in result["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -539,23 +592,141 @@ def test_net_download_reports_progress_events(tmp_path, http_base_url):
 # ---------------------------------------------------------------------------
 
 def test_net_request_200_json_returns_parsed_json(tmp_path, http_base_url):
-    result = NetRequest().execute({"url": http_base_url + "/json"}, _ctx(tmp_path))
+    result = NetRequest().execute(
+        {"url": http_base_url + "/json", "proxy": "direct"}, _ctx(tmp_path)
+    )
     assert result["status_code"] == 200
     assert result["json"] == {"ok": True, "n": 1}
     assert "error" not in result
 
 
 def test_net_request_404_returns_status_and_body_not_error(tmp_path, http_base_url):
-    result = NetRequest().execute({"url": http_base_url + "/missing"}, _ctx(tmp_path))
+    result = NetRequest().execute(
+        {"url": http_base_url + "/missing", "proxy": "direct"}, _ctx(tmp_path)
+    )
     assert result["status_code"] == 404
     assert result["body"] == "not found"
     assert "error" not in result
 
 
+def test_net_request_fail_on_http_error_turns_404_into_an_error(tmp_path, http_base_url):
+    result = NetRequest().execute(
+        {
+            "url": http_base_url + "/missing",
+            "proxy": "direct",
+            "fail_on_http_error": True,
+        },
+        _ctx(tmp_path),
+    )
+    assert "error" in result
+    assert "HTTP 404" in result["error"]
+
+
+def test_net_request_max_bytes_rejects_a_large_body(tmp_path, http_base_url):
+    result = NetRequest().execute(
+        {"url": http_base_url + "/data.bin", "proxy": "direct", "max_bytes": 1000},
+        _ctx(tmp_path),
+    )
+    assert "error" in result
+    assert "too large" in result["error"]
+
+
 def test_net_request_connection_refused_returns_error(tmp_path, refused_url):
-    result = NetRequest().execute({"url": refused_url}, _ctx(tmp_path))
+    result = NetRequest().execute(
+        {"url": refused_url, "proxy": "direct"}, _ctx(tmp_path)
+    )
     assert "error" in result
     assert "network error" in result["error"]
+
+
+def test_net_request_cancel_raises(tmp_path, http_base_url):
+    from app.common.exceptions import WorkflowCancelled
+
+    with pytest.raises(WorkflowCancelled):
+        NetRequest().execute(
+            {"url": http_base_url + "/data.bin", "proxy": "direct"},
+            _ctx(tmp_path, cancel_check=lambda: True),
+        )
+
+
+def test_net_env_proxy_is_honored_by_default(tmp_path, refused_url, monkeypatch):
+    """With no ``proxy`` input, an env proxy is used (and its failure is
+    reported instead of hanging)."""
+    monkeypatch.setenv("HTTP_PROXY", refused_url)
+    monkeypatch.setenv("http_proxy", refused_url)
+    monkeypatch.setenv("NO_PROXY", "")
+    monkeypatch.setenv("no_proxy", "")
+
+    result = NetRequest().execute(
+        {"url": "http://example.invalid/x", "timeout": 5}, _ctx(tmp_path)
+    )
+
+    assert "error" in result
+    assert "network error" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# proxy selection (no network: the opener factory is inspected)
+# ---------------------------------------------------------------------------
+
+def test_build_opener_default_keeps_the_ambient_proxy_handler(monkeypatch):
+    from app.tools.builtin import net_tools
+
+    captured = {}
+
+    def fake_build_opener(*handlers):
+        captured["handlers"] = handlers
+        return object()
+
+    monkeypatch.setattr(net_tools, "build_opener", fake_build_opener)
+    net_tools._build_opener(None)
+
+    assert len(captured["handlers"]) == 1, "only the redirect handler is injected"
+    assert isinstance(captured["handlers"][0], net_tools._LimitedRedirectHandler)
+
+
+def test_build_opener_direct_disables_proxying(monkeypatch):
+    from urllib.request import ProxyHandler
+
+    from app.tools.builtin import net_tools
+
+    captured = {}
+
+    def fake_build_opener(*handlers):
+        captured["handlers"] = handlers
+        return object()
+
+    monkeypatch.setattr(net_tools, "build_opener", fake_build_opener)
+    net_tools._build_opener("direct")
+
+    proxy_handler = captured["handlers"][0]
+    assert isinstance(proxy_handler, ProxyHandler)
+    assert proxy_handler.proxies == {}
+
+
+def test_build_opener_explicit_url_maps_both_schemes(monkeypatch):
+    from app.tools.builtin import net_tools
+
+    captured = {}
+
+    def fake_build_opener(*handlers):
+        captured["handlers"] = handlers
+        return object()
+
+    monkeypatch.setattr(net_tools, "build_opener", fake_build_opener)
+    net_tools._build_opener("http://127.0.0.1:8888")
+
+    assert captured["handlers"][0].proxies == {
+        "http": "http://127.0.0.1:8888",
+        "https": "http://127.0.0.1:8888",
+    }
+
+
+def test_build_opener_rejects_a_malformed_proxy():
+    from app.tools.builtin import net_tools
+
+    assert net_tools._build_opener("not-a-proxy") is None
+    assert net_tools._build_opener("ftp://host:21") is None
 
 
 # ---------------------------------------------------------------------------
@@ -643,6 +814,105 @@ def test_exec_code_unsupported_language_raises(tmp_path):
         CodeExec().execute(
             {"code": "x = 1", "language": "javascript"}, _ctx(tmp_path)
         )
+
+
+# ---------------------------------------------------------------------------
+# exec.* cancellation / timeout contract (stubbed Popen: no real process)
+# ---------------------------------------------------------------------------
+
+class _StubPopen:
+    """``subprocess.Popen`` stand-in that never spawns anything.
+
+    Spawning a real child with captured pipes is unavailable in some
+    sandboxes, so the cancellation and timeout contracts are asserted against
+    this double (the behaviour under test is entirely Python-side).
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.args = args[0] if args else []
+        self.pid = 4321
+        self.returncode = None
+        self.terminated = False
+
+    def communicate(self, timeout=None):
+        if timeout is None:
+            raise AssertionError("communicate() must be called with a timeout")
+        time.sleep(min(timeout, 0.02))
+        raise subprocess.TimeoutExpired(cmd="stub", timeout=timeout)
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+        self.returncode = -15
+
+    def kill(self):
+        self.terminated = True
+        self.returncode = -9
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+
+def test_exec_shell_cancel_raises_workflow_cancelled(tmp_path):
+    from app.common.exceptions import WorkflowCancelled
+
+    with patch("app.common.executor.subprocess.Popen", _StubPopen):
+        with pytest.raises(WorkflowCancelled):
+            ShellExec().execute(
+                {"command": "echo hi"},
+                _ctx(tmp_path, cancel_check=lambda: True),
+            )
+
+
+def test_exec_shell_timeout_shape_on_the_cancellable_path(tmp_path):
+    """A cancel source must not change the documented timeout result shape."""
+    with patch("app.common.executor.subprocess.Popen", _StubPopen):
+        result = ShellExec().execute(
+            {"command": "echo hi", "timeout": 0.2},
+            _ctx(tmp_path, cancel_check=lambda: False),
+        )
+
+    assert result["success"] is False
+    assert result["returncode"] == -1
+    assert result["stderr"] == "timeout after 0.2s"
+    assert result["stdout"] == ""
+
+
+def test_exec_shell_registers_its_process_for_tree_kill(tmp_path):
+    holder: dict = {}
+    with patch("app.common.executor.subprocess.Popen", _StubPopen):
+        ShellExec().execute(
+            {"command": "echo hi", "timeout": 0.2},
+            _ctx(tmp_path, cancel_check=lambda: False, process_holder=holder),
+        )
+
+    assert holder["_pid"] == 4321
+    assert callable(holder["kill"]), "TaskManager needs a tree-kill hook"
+
+
+def test_exec_code_cancel_raises_workflow_cancelled(tmp_path):
+    from app.common.exceptions import WorkflowCancelled
+
+    with patch("app.common.executor.subprocess.Popen", _StubPopen):
+        with pytest.raises(WorkflowCancelled):
+            CodeExec().execute(
+                {"code": "result = 1"},
+                _ctx(tmp_path, cancel_check=lambda: True),
+            )
+
+
+def test_exec_code_timeout_shape_on_the_cancellable_path(tmp_path):
+    with patch("app.common.executor.subprocess.Popen", _StubPopen):
+        result = CodeExec().execute(
+            {"code": "result = 1", "timeout": 0.2},
+            _ctx(tmp_path, cancel_check=lambda: False),
+        )
+
+    assert result["success"] is False
+    assert result["result"] is None
+    assert result["stderr"] == "timeout after 0.2s"
 
 
 # ---------------------------------------------------------------------------

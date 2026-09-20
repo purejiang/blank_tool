@@ -8,18 +8,22 @@ In-process ``exec``/``eval`` sandboxes are escapable via the well-known
 ``__class__.__mro__[].__subclasses__()`` chain, so they provide no real
 isolation. Instead ``exec.code`` serializes the user snippet into a wrapper
 script and runs it in a *separate* subprocess via
-``ProcessExecutor.run([get_python_bin(), '-c', wrapped], ...)``. The child only
-receives the inputs handed to it through the ``CODE_EXEC_INPUTS`` environment
-variable — it never sees the workflow engine's internal state.
+``ProcessExecutor.run([get_python_bin(), '-c', wrapped], env=child_env)``. The
+child only receives the inputs handed to it through the ``CODE_EXEC_INPUTS``
+environment variable — it never sees the workflow engine's internal state.
 
 ``exec.shell`` runs a command line in a subprocess too: with ``shell=True`` on
 Windows (cmd.exe interprets the string) or ``shell=False`` with
 :func:`shlex.split` on Unix (no shell involved, metacharacters such as
 ``&``/``|``/``;`` are passed literally to the program — safer).
 
-Both go through :class:`~app.common.executor.ProcessExecutor` so a cancelled
-run interrupts the process instead of waiting for its timeout, and so the node
-is classified as cancelled rather than failed (``WorkflowCancelled``).
+Both tools delegate to :class:`~app.common.executor.ProcessExecutor`, which
+registers the child in the run's ``process_holder`` and polls
+``ToolContext.cancelled()``: cancellation terminates the child *and its
+descendants* and raises :class:`~app.common.exceptions.WorkflowCancelled`
+(a cancelled run is not a failed node and never spends a retry).  A timeout
+still returns the historical ``{"returncode": -1, "stderr": "timeout after Ns"}``
+result shape, and keeps whatever the child had already written to stdout.
 """
 
 # allow: SIZE_OK — port-contract declarations (PortSet inputs/outputs with
@@ -30,10 +34,10 @@ import locale
 import os
 import shlex
 
+from app.common.exceptions import TimeoutException, WorkflowCancelled
+from app.common.executor import ProcessExecutor
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
-from app.common.executor import ProcessExecutor
-from app.common.exceptions import TimeoutException, WorkflowCancelled
 from app.env import get_python_bin
 
 # Sentinel printed by the exec.code child right before the JSON result payload.
@@ -54,6 +58,17 @@ def _child_text_encoding() -> str:
     output is read.
     """
     return locale.getpreferredencoding(False) or "utf-8"
+
+
+def _timeout_from(value, default: int) -> int:
+    """Return a positive timeout in seconds, falling back to *default*.
+
+    A missing, non-numeric, boolean or non-positive value means "use the
+    tool's documented default" rather than "time out immediately".
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return value if value > 0 else default
 
 
 def _build_wrapped_code(code_text: str) -> str:
@@ -104,20 +119,14 @@ class ShellExec(BuiltinTool):
     """Execute a shell command in a subprocess and capture its output.
 
     On Windows the command string is handed to ``cmd.exe`` via
-    ``shell=True``. On Unix the command is split with :func:`shlex.split` and
-    run with ``shell=False`` — no shell is involved, so shell metacharacters
-    (``&``, ``|``, ``;``, ...) are passed literally to the program rather than
-    interpreted, which is safer.
+    ``subprocess.run(command, shell=True)``. On Unix the command is split with
+    :func:`shlex.split` and run with ``shell=False`` — no shell is involved,
+    so shell metacharacters (``&``, ``|``, ``;``, ...) are passed literally to
+    the program rather than interpreted, which is safer.
 
     A non-zero exit code is not an error: the process result is returned as-is
     with ``success=False``; only a subprocess-level failure (e.g. timeout,
-    invalid command) surfaces via ``stderr`` with ``returncode=-1``.  A
-    cancelled run is different again: it raises ``WorkflowCancelled`` so the
-    engine can mark the node cancelled.
-
-    On Windows the real command runs as a grandchild of ``cmd.exe``, so
-    ``Popen.terminate()`` on the immediate child would leave it running — the
-    executor's job object is what actually stops the work.
+    invalid command) surfaces via ``stderr`` with ``returncode=-1``.
     """
 
     name = "exec.shell"
@@ -179,17 +188,21 @@ class ShellExec(BuiltinTool):
     )
 
     def execute(self, inputs: dict, context: ToolContext) -> dict:
-        """Run ``inputs["command"]`` and return its captured result."""
+        """Run ``inputs["command"]`` and return its captured result.
+
+        The command runs through :class:`ProcessExecutor`, so it is registered
+        with the run's process holder and polls ``context.cancelled()`` while
+        it waits: a cancelled run raises :class:`WorkflowCancelled` and kills
+        the whole process tree instead of being reported as a failed node.
+        """
         command = inputs["command"]
         cwd = inputs.get("cwd") or context.work_dir
-        timeout = inputs.get("timeout", 600)
+        timeout = _timeout_from(inputs.get("timeout"), 600)
         extra_env = inputs.get("env") or {}
         env = {**os.environ, **extra_env}
 
         if os.name == "nt":
-            # Windows: cmd.exe interprets the command string, so the command
-            # that actually does the work is a grandchild of the process we
-            # spawn — the executor needs the job object to stop it.
+            # Windows: cmd.exe interprets the command string.
             args = command
             shell = True
         else:
@@ -200,14 +213,11 @@ class ShellExec(BuiltinTool):
         executor = ProcessExecutor(
             timeout=timeout,
             process_holder=context.process_holder,
-            cancel_check=context.cancel_check,
+            cancel_check=context.cancelled,
         )
         try:
             returncode, stdout, stderr = executor.run(
-                cmd=args,
-                cwd=cwd,
-                env=env,
-                shell=shell,
+                cmd=args, cwd=cwd, env=env, shell=shell,
                 encoding=_child_text_encoding(),
             )
         except TimeoutException:
@@ -217,6 +227,8 @@ class ShellExec(BuiltinTool):
                 "stderr": f"timeout after {timeout}s",
                 "success": False,
             }
+        except WorkflowCancelled:
+            raise
         except Exception as exc:
             return {
                 "returncode": -1,
@@ -225,9 +237,9 @@ class ShellExec(BuiltinTool):
                 "success": False,
             }
 
-        # A killed run must not surface as a plain failure: raising lets the
-        # engine classify the node as cancelled instead of failed.
-        if context.cancelled():
+        # Cancellation is control flow: abort the run instead of reporting a
+        # failed node (and never spend a retry on it).
+        if executor.cancelled or context.cancelled():
             raise WorkflowCancelled()
 
         return {
@@ -308,11 +320,16 @@ class CodeExec(BuiltinTool):
     )
 
     def execute(self, inputs: dict, context: ToolContext) -> dict:
-        """Run ``inputs["code"]`` in a separate subprocess and parse the result."""
+        """Run ``inputs["code"]`` in a separate subprocess and parse the result.
+
+        Like ``exec.shell`` the child runs through :class:`ProcessExecutor`,
+        so it is cancellable and killed as a tree (including any process the
+        snippet itself spawned).
+        """
         code_text = inputs["code"]
         language = inputs.get("language", "python")
         user_inputs = inputs.get("inputs") or {}
-        timeout = inputs.get("timeout", 30)
+        timeout = _timeout_from(inputs.get("timeout"), 30)
 
         if language != "python":
             raise NotImplementedError(
@@ -326,13 +343,11 @@ class CodeExec(BuiltinTool):
         executor = ProcessExecutor(
             timeout=timeout,
             process_holder=context.process_holder,
-            cancel_check=context.cancel_check,
+            cancel_check=context.cancelled,
         )
         try:
-            returncode, stdout, stderr = executor.run(
-                cmd=[python_bin, "-c", wrapped],
-                env=child_env,
-                shell=False,
+            returncode, child_stdout, child_stderr = executor.run(
+                cmd=[python_bin, "-c", wrapped], env=child_env,
                 encoding=_child_text_encoding(),
             )
         except TimeoutException:
@@ -342,6 +357,8 @@ class CodeExec(BuiltinTool):
                 "stderr": f"timeout after {timeout}s",
                 "success": False,
             }
+        except WorkflowCancelled:
+            raise
         except Exception as exc:
             return {
                 "result": None,
@@ -350,13 +367,11 @@ class CodeExec(BuiltinTool):
                 "success": False,
             }
 
-        # A killed run must not surface as a plain failure: raising lets the
-        # engine classify the node as cancelled instead of failed.
-        if context.cancelled():
+        if executor.cancelled or context.cancelled():
             raise WorkflowCancelled()
 
-        stdout = stdout or ""
-        stderr = stderr or ""
+        stdout = child_stdout or ""
+        stderr = child_stderr or ""
         result_value = None
         user_stdout = stdout
         if _EXEC_RESULT_SENTINEL in stdout:

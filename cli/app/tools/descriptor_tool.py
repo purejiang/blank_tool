@@ -618,16 +618,17 @@ class DescriptorTool:
     def _to_command_context(context: ToolContext) -> CommandExecutionContext:
         """Convert a workflow ToolContext to a CommandExecutionContext.
 
-        The process holder and the cancel predicate are forwarded verbatim —
-        they are what lets a cancelled run interrupt a long adb / aapt /
-        apktool call instead of waiting for the tool's own timeout to expire.
+        The engine's per-node ``process_holder`` and its cancellation
+        callback are forwarded when present, so a running command is
+        registered for cancellation (TaskManager can terminate it) and polls
+        it while waiting.  ``getattr`` keeps duck-typed contexts working.
         """
         return CommandExecutionContext(
             cwd=context.work_dir,
             task_id=context.task_id,
-            env=dict(context.env) or None,
-            process_holder=context.process_holder,
-            cancel_check=context.cancel_check,
+            env=dict(getattr(context, "env", None) or {}) or None,
+            process_holder=getattr(context, "process_holder", None),
+            cancel_check=getattr(context, "cancel_check", None),
         )
 
     def _run(

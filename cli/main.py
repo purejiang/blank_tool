@@ -163,6 +163,10 @@ def _drain_pending(logger: Logger, timeout: float = 10.0):
         f"Graceful shutdown timed out after {timeout}s "
         f"({_pending_requests} request(s) still pending)"
     )
+    # Belt-and-braces: a run whose tool ignored the first cancel gets a second
+    # one, which re-collects the (possibly newly attached) process holder and
+    # tree-kills it — a long decompile must not outlive the backend.
+    _cancel_all_runs(logger)
 
 
 def _cancel_all_runs(logger: Logger) -> None:

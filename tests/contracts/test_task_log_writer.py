@@ -172,12 +172,21 @@ class TestGracefulFailure:
 
     def test_graceful_on_bad_path(self, task_id):
         """Pass a task_id that would trigger a path error at flush → stderr + no raise."""
+        from app.utils import task_log_writer as writer
         from app.utils.task_log_writer import flush_task_log
 
+        # Something must be buffered for the flush to reach the filesystem:
+        # flushing an empty buffer is a deliberate no-op (it must not create
+        # a <tasks>/<id>/logs directory for a run that never logged).
+        writer.append_task_log("", "buffered line")
         captured = io.StringIO()
-        with patch.object(sys, "stderr", captured):
-            # Empty task_id → ValueError from get_task_subdir during flush → caught
-            flush_task_log("")
+        try:
+            with patch.object(sys, "stderr", captured):
+                # Empty task_id → ValueError from get_task_subdir during flush → caught
+                flush_task_log("")
+        finally:
+            writer._per_task_buffers.pop("", None)
+            writer._per_task_buffer_locks.pop("", None)
 
         output = captured.getvalue()
         assert "Failed to flush log" in output

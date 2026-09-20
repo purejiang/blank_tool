@@ -69,11 +69,15 @@ def _flush_buffer(task_id: str) -> None:
     Must be called while holding the buffer lock for *task_id*.
     """
     try:
-        logs_dir = get_task_subdir(task_id, "logs")
-        path = os.path.join(logs_dir, "task_exec.log")
+        # Check for buffered lines FIRST: resolving the task directory
+        # creates it, and flushing a run that never logged anything must not
+        # leave an empty <tasks>/<id>/logs/ directory behind.
         lines = _per_task_buffers.get(task_id, [])
         if not lines:
             return
+
+        logs_dir = get_task_subdir(task_id, "logs")
+        path = os.path.join(logs_dir, "task_exec.log")
 
         with open(path, "a", encoding="utf-8") as f:
             for line in lines:

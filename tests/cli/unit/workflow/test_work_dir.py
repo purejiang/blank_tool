@@ -197,7 +197,9 @@ def test_cli_run_uses_the_workflow_folder(tmp_path, monkeypatch):
     cli = _load_cli()
     buffer = io.StringIO()
     with redirect_stdout(buffer):
-        exit_code = cli.cmd_run(workflow_path, [], None, True)
+        # A pinned run id keeps the artifact directory deterministic; the
+        # default is a fresh uuid per run.
+        exit_code = cli.cmd_run(workflow_path, [], None, True, run_id="cli")
 
     assert exit_code == 0
     assert (graphs / "cli-artifact.txt").is_file()
@@ -245,7 +247,9 @@ def test_cli_run_reports_engine_artifacts_in_the_run_dir(tmp_path, monkeypatch):
     cli = _load_cli()
     buffer = io.StringIO()
     with redirect_stdout(buffer):
-        exit_code = cli.cmd_run(str(parent_path), ["items=[1, 2]"], None, True)
+        exit_code = cli.cmd_run(
+            str(parent_path), ["items=[1, 2]"], None, True, run_id="cli"
+        )
 
     assert exit_code == 0
     payload = json.loads(buffer.getvalue())
@@ -271,7 +275,7 @@ def test_expressions_expose_the_run_dir(tmp_path, monkeypatch):
     cli = _load_cli()
     buffer = io.StringIO()
     with redirect_stdout(buffer):
-        exit_code = cli.cmd_run(workflow_path, [], None, True)
+        exit_code = cli.cmd_run(workflow_path, [], None, True, run_id="cli")
 
     assert exit_code == 0
     assert not (graphs / "from-rundir.txt").exists()
