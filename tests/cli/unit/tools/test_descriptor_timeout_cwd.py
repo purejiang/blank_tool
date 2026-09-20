@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 from app.protocol import Port, TypeAnnotation
 from app.protocol.types import BaseType
+from app.tools.builtin.base import ToolContext
 from app.tools.descriptor_tool import (
     DescriptorTool,
     Operation,
@@ -138,7 +139,7 @@ def test_execute_operation_applies_timeout_cwd():
                 "operation": "fix",
                 "repo_dir": "/tmp/repo",
             },
-            context=SimpleNamespace(
+            context=ToolContext(
                 work_dir="/wd", task_id="t1", env={}, process_holder={}
             ),
         )

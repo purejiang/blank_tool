@@ -29,6 +29,7 @@ import threading
 import time
 from typing import Any, Dict, Optional, Set
 
+from app.common import proc_tree
 from app.utils.logger import Logger
 from app.utils.task_log_writer import cleanup_task_log
 
@@ -38,6 +39,10 @@ _TOMBSTONE_TTL_SECONDS = 10.0
 #: How long a finished run id / task id is remembered, so a late cancel for
 #: it is rejected instead of being treated as a cancel of a future run.
 _SEEN_TTL_SECONDS = 60.0
+
+#: How long a tree kill may take before the cancel path gives up on it.  The
+#: cancel request is answered on the same thread, so this stays short.
+_TERMINATE_GRACE_SECONDS = 2.0
 
 
 class TaskManager:
@@ -200,15 +205,29 @@ class TaskManager:
         return True
 
     def _terminate(self, holder: dict) -> None:
-        """Mark the holder cancelled and SIGTERM its process, if any."""
+        """Mark the holder cancelled and kill its process tree, if any.
+
+        The job object is the authoritative kill: it covers the whole tree
+        (``cmd.exe`` plus the command it started), including grandchildren
+        whose parent already exited.  Only when no job handle is present does
+        this fall back to tree tools and finally to ``Popen.terminate()``.
+        """
         holder["_cancel_pending"] = True
+        if proc_tree.terminate_job_in(holder):
+            self._logger.info(
+                "Terminated the job object covering the run's process tree"
+            )
+            return
         process = holder.get("process")
         if process is None:
             return
         try:
             if process.poll() is None:
-                self._logger.info(f"Terminating subprocess pid={process.pid}")
-                process.terminate()
+                self._logger.info(f"Terminating subprocess tree pid={process.pid}")
+                if not proc_tree.terminate_tree(
+                    process.pid, grace=_TERMINATE_GRACE_SECONDS
+                ):
+                    process.terminate()
         except Exception as exc:  # already gone / not a Popen
             self._logger.warning(f"Failed to terminate subprocess: {exc}")
 

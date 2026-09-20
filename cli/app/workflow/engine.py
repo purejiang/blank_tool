@@ -454,9 +454,12 @@ class WorkflowEngine:
         The retry budget is ``node.retry`` (extra attempts after the first).
         A non-retryable failure returns immediately without consuming it, and
         so does a cancellation — checked before the first attempt, before
-        every retry, and after every backoff sleep.  Only the LAST attempt's
-        outputs are ever reported: a failed attempt's partial outputs are
-        discarded so a retry cannot leak half-finished state downstream.
+        every retry, after every backoff sleep, and again before a terminal
+        failure is reported (a killed tool surfaces as a plain non-zero exit,
+        which must not be mistaken for a real failure).  Only the LAST
+        attempt's outputs are ever reported: a failed attempt's partial
+        outputs are discarded so a retry cannot leak half-finished state
+        downstream.
         """
         max_retries = node.retry if node.retry > 0 else 0
         tool = self._lookup_tool(node.tool)
@@ -479,6 +482,11 @@ class WorkflowEngine:
             if attempt.error is None:
                 return attempt
             if not attempt.retryable or attempts > max_retries:
+                # A tool killed by cancellation reports a non-zero exit code or
+                # a generic error; without this check the run would be filed as
+                # ``workflow_failed`` instead of ``cancelled``.
+                if context.cancelled():
+                    return _NodeRun(attempts=attempts, cancelled=True)
                 return attempt
             # Check before announcing the retry: a cancelled run must not
             # look like it is about to retry.

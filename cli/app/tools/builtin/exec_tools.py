@@ -8,7 +8,7 @@ In-process ``exec``/``eval`` sandboxes are escapable via the well-known
 ``__class__.__mro__[].__subclasses__()`` chain, so they provide no real
 isolation. Instead ``exec.code`` serializes the user snippet into a wrapper
 script and runs it in a *separate* subprocess via
-``subprocess.run([get_python_bin(), '-c', wrapped], ...)``. The child only
+``ProcessExecutor.run([get_python_bin(), '-c', wrapped], ...)``. The child only
 receives the inputs handed to it through the ``CODE_EXEC_INPUTS`` environment
 variable — it never sees the workflow engine's internal state.
 
@@ -16,18 +16,24 @@ variable — it never sees the workflow engine's internal state.
 Windows (cmd.exe interprets the string) or ``shell=False`` with
 :func:`shlex.split` on Unix (no shell involved, metacharacters such as
 ``&``/``|``/``;`` are passed literally to the program — safer).
+
+Both go through :class:`~app.common.executor.ProcessExecutor` so a cancelled
+run interrupts the process instead of waiting for its timeout, and so the node
+is classified as cancelled rather than failed (``WorkflowCancelled``).
 """
 
 # allow: SIZE_OK — port-contract declarations (PortSet inputs/outputs with
 # descriptions) are declarative data, not logic; actual executable logic is
 # ~130 LOC. Splitting would violate the plan's single-file mandate.
 import json
+import locale
 import os
 import shlex
-import subprocess
 
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
+from app.common.executor import ProcessExecutor
+from app.common.exceptions import TimeoutException, WorkflowCancelled
 from app.env import get_python_bin
 
 # Sentinel printed by the exec.code child right before the JSON result payload.
@@ -36,6 +42,18 @@ from app.env import get_python_bin
 _EXEC_RESULT_SENTINEL = "===CODE_EXEC_RESULT==="
 # Environment variable carrying the JSON-serialized inputs to the child.
 _EXEC_INPUTS_ENV = "CODE_EXEC_INPUTS"
+
+
+def _child_text_encoding() -> str:
+    """Encoding used to decode a child process's output.
+
+    ``subprocess.run(text=True)`` decoded with the locale encoding (the ANSI
+    code page — ``cp936`` on a Chinese Windows — for ``cmd.exe`` output), while
+    ``ProcessExecutor`` defaults to UTF-8.  Pinning the locale encoding here
+    keeps the switch to the cancellable executor from changing how non-ASCII
+    output is read.
+    """
+    return locale.getpreferredencoding(False) or "utf-8"
 
 
 def _build_wrapped_code(code_text: str) -> str:
@@ -86,14 +104,20 @@ class ShellExec(BuiltinTool):
     """Execute a shell command in a subprocess and capture its output.
 
     On Windows the command string is handed to ``cmd.exe`` via
-    ``subprocess.run(command, shell=True)``. On Unix the command is split with
-    :func:`shlex.split` and run with ``shell=False`` — no shell is involved,
-    so shell metacharacters (``&``, ``|``, ``;``, ...) are passed literally to
-    the program rather than interpreted, which is safer.
+    ``shell=True``. On Unix the command is split with :func:`shlex.split` and
+    run with ``shell=False`` — no shell is involved, so shell metacharacters
+    (``&``, ``|``, ``;``, ...) are passed literally to the program rather than
+    interpreted, which is safer.
 
     A non-zero exit code is not an error: the process result is returned as-is
     with ``success=False``; only a subprocess-level failure (e.g. timeout,
-    invalid command) surfaces via ``stderr`` with ``returncode=-1``.
+    invalid command) surfaces via ``stderr`` with ``returncode=-1``.  A
+    cancelled run is different again: it raises ``WorkflowCancelled`` so the
+    engine can mark the node cancelled.
+
+    On Windows the real command runs as a grandchild of ``cmd.exe``, so
+    ``Popen.terminate()`` on the immediate child would leave it running — the
+    executor's job object is what actually stops the work.
     """
 
     name = "exec.shell"
@@ -163,7 +187,9 @@ class ShellExec(BuiltinTool):
         env = {**os.environ, **extra_env}
 
         if os.name == "nt":
-            # Windows: cmd.exe interprets the command string.
+            # Windows: cmd.exe interprets the command string, so the command
+            # that actually does the work is a grandchild of the process we
+            # spawn — the executor needs the job object to stop it.
             args = command
             shell = True
         else:
@@ -171,26 +197,23 @@ class ShellExec(BuiltinTool):
             args = shlex.split(command)
             shell = False
 
+        executor = ProcessExecutor(
+            timeout=timeout,
+            process_holder=context.process_holder,
+            cancel_check=context.cancel_check,
+        )
         try:
-            result = subprocess.run(
-                args,
-                shell=shell,
+            returncode, stdout, stderr = executor.run(
+                cmd=args,
                 cwd=cwd,
                 env=env,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
+                shell=shell,
+                encoding=_child_text_encoding(),
             )
-            return {
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "success": result.returncode == 0,
-            }
-        except subprocess.TimeoutExpired as exc:
+        except TimeoutException:
             return {
                 "returncode": -1,
-                "stdout": exc.stdout or "",
+                "stdout": executor.drain_output()[1],
                 "stderr": f"timeout after {timeout}s",
                 "success": False,
             }
@@ -201,6 +224,18 @@ class ShellExec(BuiltinTool):
                 "stderr": str(exc),
                 "success": False,
             }
+
+        # A killed run must not surface as a plain failure: raising lets the
+        # engine classify the node as cancelled instead of failed.
+        if context.cancelled():
+            raise WorkflowCancelled()
+
+        return {
+            "returncode": returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "success": returncode == 0,
+        }
 
 
 class CodeExec(BuiltinTool):
@@ -288,18 +323,22 @@ class CodeExec(BuiltinTool):
         child_env = {**os.environ, _EXEC_INPUTS_ENV: json.dumps(user_inputs)}
         python_bin = get_python_bin()
 
+        executor = ProcessExecutor(
+            timeout=timeout,
+            process_holder=context.process_holder,
+            cancel_check=context.cancel_check,
+        )
         try:
-            proc = subprocess.run(
-                [python_bin, "-c", wrapped],
+            returncode, stdout, stderr = executor.run(
+                cmd=[python_bin, "-c", wrapped],
                 env=child_env,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
+                shell=False,
+                encoding=_child_text_encoding(),
             )
-        except subprocess.TimeoutExpired as exc:
+        except TimeoutException:
             return {
                 "result": None,
-                "stdout": exc.stdout or "",
+                "stdout": executor.drain_output()[1],
                 "stderr": f"timeout after {timeout}s",
                 "success": False,
             }
@@ -311,8 +350,13 @@ class CodeExec(BuiltinTool):
                 "success": False,
             }
 
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
+        # A killed run must not surface as a plain failure: raising lets the
+        # engine classify the node as cancelled instead of failed.
+        if context.cancelled():
+            raise WorkflowCancelled()
+
+        stdout = stdout or ""
+        stderr = stderr or ""
         result_value = None
         user_stdout = stdout
         if _EXEC_RESULT_SENTINEL in stdout:
@@ -329,5 +373,5 @@ class CodeExec(BuiltinTool):
             "result": result_value,
             "stdout": user_stdout,
             "stderr": stderr,
-            "success": proc.returncode == 0,
+            "success": returncode == 0,
         }
