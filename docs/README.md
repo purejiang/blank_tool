@@ -11,7 +11,7 @@ Blank Tool（本地工作流编排应用）的工程文档入口。旧文档（`
 | [03-数据模型](./03-数据模型.md) | 工具描述符、环境描述符、WorkflowDefinition、Port 类型系统等核心数据模型 | 做后端/引擎/编辑器开发的工程师 |
 | [04-开发指南](./04-开发指南.md) | 常用命令、测试体系、如何新增 handler / 工具 / 环境 / 工作流、排障手册 | 所有在仓库里写代码的人（必读） |
 | [05-分期开发计划](./05-分期开发计划.md) | Phase 0~6 的开发阶段划分、任务清单与验收要点 | 制定排期、领取任务、验收的人 |
-| [06-后续路线图](./06-后续路线图.md) | 已确认延后的功能清单（DAG 分支/并行、动态参数源等）及前置依赖 | 产品决策、远期规划 |
+| [06-后续路线图](./06-后续路线图.md) | 已确认延后的功能清单（DAG 分支/并行、动态参数源、触发与调度等）及前置依赖 | 产品决策、远期规划 |
 | [07-UI设计规范](./07-UI设计规范.md) | 界面重设计的视觉契约与 Stitch 设计产出指引（提示词全集） | 做 UI 设计/前端实现的人 |
 | [08-前端页面与功能清单](./08-前端页面与功能清单.md) | 逐屏功能元素、字段、数据来源（后端方法）、状态与缺口，含逐屏 UI 生成提示词 | 做 UI 设计/前端实现的人、验收的人 |
 | [09-后端缺口修复与优化方案](./09-后端缺口修复与优化方案.md) | 08 第 7 节 16 项缺口的实现方案，按 WP0–WP6 拆包（改动文件/接口/测试/验收/风险） | 实现后端与 preload 的工程师、排期的人 |
@@ -27,7 +27,8 @@ Blank Tool 是本地工作流编排桌面应用（Electron + Vue3 + Python 三�
 ### 已具备
 
 - **工作流引擎**：`cli/app/workflow/`，线性执行（`node.next` 驱动），内置 23 个原子工具 + 描述符工具，支持 `on_failure`（fail / skip）+ `retry`、可中断正在跑的子进程的取消、节点级流式事件。
-- **运行历史**：每次顶层运行落盘到 `<output_dir>/history/`（条数 + 总字节双上限；`history.list/get/delete/clear`）。
+- **运行历史**：每次顶层运行落盘到 `<output_dir>/history/`（条数 + 总字节双上限；`history.list/get/delete/clear`，`history.get_config`/`set_config` 可读写保留策略）；`history.list` 摘要含 `status`/`cancelled`/`run_dir`，`history.get` 记录含 `run_dir` 与 `exec_run_id`（后两者用于关联运行产物目录与 IPC 请求身份）。
+- **界面前置接口（WP0–WP6，2026-09 完成）**：前端重构开工前按 [09-后端缺口修复与优化方案](./09-后端缺口修复与优化方案.md) 补齐 16 项缺口——`protocol.ts`/`electronApi.ts` 类型与后端实际形状对齐；`tool.*`/`env.*` 弱失败改为抛错（不再把失败当成功）；主进程新增 `show-save-dialog`/`write-text-file`/`read-text-file` 三条通道；`env.list` 补 `display_name`/`type`/`env_var_override`/`path_override`/`source` 并新增 `env.set_path`/`env.reset_path`；`workflow.list_tools` 返回 `env_deps`；插件加载失败可见（`loaded=false` + `error`）；`template.load` 附带描述/标签/时间戳；`storage.clear` 默认不再删除 `templates/`、`history/`、`runs/`、`registry/`；系统通知默认关（v6→v7 迁移）。
 - **模板 CRUD + 执行**：`template.save / load / list / delete / execute`，落盘到 `<output_dir>/templates`（可被 `BT_TEMPLATES_DIR` 覆盖）。
 - **工具/环境描述符发现**：工具描述符不再内置，`cli/registry/tools/` 已清空（仅 README）；Android 描述符（12 个）已迁至 `examples/tools/android/`，经工具管理导入后进入可写注册表（T15/T21）；`cli/registry/environments/*.json`（java / python / node 3 个环境，保持内置）自动加载。
 - **统一工具「操作」模型（T3-T5）**：描述符增加 `operations[]`，每个操作带类型化 inputs/outputs + args 映射；引擎按 operation 校验输入、拼命令、返回类型化输出（`engine.py` 的 `_execute_tool`）；APK 链路工具（apktool / adb / bundletool）已迁移为范例。
