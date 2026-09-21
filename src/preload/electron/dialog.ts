@@ -20,4 +20,5 @@ export const dialogApi = {
     const opts = { ...options, properties: props }
     return ipcInvoke(IPC_CHANNEL_NAMES.showOpenDialog, opts)
   },
+  showSave: (options: DialogOptions = {}) => ipcInvoke(IPC_CHANNEL_NAMES.showSaveDialog, options),
 };

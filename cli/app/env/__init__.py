@@ -13,7 +13,7 @@ import platform
 import shutil
 import subprocess
 import sys
-from typing import Dict, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 from app.utils.paths import ROOT, resolve_path, get_runtime_dir
 
@@ -106,6 +106,63 @@ def load_server_config(path: Optional[str] = None, override_keys: Optional[Set[s
         written[key] = str_value
 
     return written
+
+
+def resolve_server_config_path(path: Optional[str] = None) -> str:
+    """Resolve the ``server.config.json`` path (exactly like ``load_server_config``).
+
+    ``BT_SERVER_CONFIG`` wins; the fallback is ``<cli_root>/server.config.json``.
+    Relative paths resolve against the ``cli/`` root, like every other config path.
+    """
+    source_path = path or get_env(ENV_BT_SERVER_CONFIG, os.path.join(ROOT, 'server.config.json'))
+    return resolve_path(source_path)
+
+
+def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge *updates* into *base* in place; nested dicts merge key by key."""
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def save_server_config(updates: Dict[str, Any], path: Optional[str] = None) -> str:
+    """Deep-merge *updates* into ``server.config.json`` and write it atomically.
+
+    The existing file is read first and **every unrelated key is preserved**; a
+    missing or malformed file is treated as ``{}``.  The write goes to
+    ``<path>.tmp`` and is then swapped in with :func:`os.replace`, so a crash
+    can never leave a truncated config behind.  Missing parent directories are
+    created.  Returns the resolved absolute path that was written.
+    """
+    resolved = resolve_server_config_path(path)
+    if not resolved:
+        raise ValueError("server config path could not be resolved")
+
+    raw: Dict[str, Any] = {}
+    if os.path.exists(resolved):
+        try:
+            with open(resolved, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                raw = loaded
+        except Exception:
+            raw = {}
+
+    _deep_merge(raw, updates or {})
+
+    parent = os.path.dirname(resolved)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    tmp_path = resolved + '.tmp'
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        json.dump(raw, f, ensure_ascii=False, indent=2)
+        f.write('\n')
+    os.replace(tmp_path, resolved)
+    return resolved
 
 
 def get_env(key: str, default=None):

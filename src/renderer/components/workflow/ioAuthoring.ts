@@ -15,6 +15,11 @@
  * Reverse mapping: base 'text' + non-empty options (+ multi) → select kinds;
  * base 'text' without options → text; unknown bases degrade to 'text'
  * (mirrors the run dialog's portBase advisory typing).
+ *
+ * `type.subtype` is NOT editable in this panel (the backend treats it as
+ * advisory) but it MUST survive an edit: the draft carries it through
+ * `draftFromPort` → `portFromDraft` so renaming/re-describing a port never
+ * strips it (WP6 of docs/09).
  */
 import type { PortJSON } from './serializer'
 
@@ -63,11 +68,21 @@ export interface PortDraft {
   description: string
   /** Only meaningful when typeKey is single_select / multi_select. */
   options: string[]
+  /**
+   * Advisory wire `type.subtype`, carried through untouched so an edit does not
+   * drop it (the panel has no UI for it).
+   *
+   * ALWAYS present (empty string when the wire port has none): the panel loads
+   * drafts into ONE shared reactive object with `Object.assign`, which cannot
+   * delete a key the source omits — so a stale subtype would leak onto the next
+   * port. Setting `''` explicitly is what makes the carry-through safe.
+   */
+  subtype: string
 }
 
 /** Defaults for a brand-new port. `required` defaults on (backend default). */
 export function createEmptyDraft(): PortDraft {
-  return { name: '', typeKey: 'text', required: true, description: '', options: [] }
+  return { name: '', typeKey: 'text', required: true, description: '', options: [], subtype: '' }
 }
 
 /** True for the two select kinds — the only ones that carry an options list. */
@@ -88,9 +103,12 @@ function wireBase(typeKey: PortTypeKey): string {
 
 /** Draft → wire PortJSON. Performs NO validation; call validatePortDraft first. */
 export function portFromDraft(draft: PortDraft): PortJSON {
+  const type: PortJSON['type'] = { base: wireBase(draft.typeKey) }
+  const subtype = typeof draft.subtype === 'string' ? draft.subtype.trim() : ''
+  if (subtype) type.subtype = subtype
   const port: PortJSON = {
     name: draft.name.trim(),
-    type: { base: wireBase(draft.typeKey) },
+    type,
     required: draft.required,
   }
   const description = draft.description.trim()
@@ -127,12 +145,16 @@ export function portJsonToTypeKey(port: PortJSON): PortTypeKey {
 
 /** Wire PortJSON → editable draft (deep enough: options array is copied). */
 export function draftFromPort(port: PortJSON): PortDraft {
+  const subtype = port?.type?.subtype
   return {
     name: port.name,
     typeKey: portJsonToTypeKey(port),
     required: port.required !== false,
     description: typeof port.description === 'string' ? port.description : '',
     options: Array.isArray(port.options) ? [...port.options] : [],
+    // Always present — see PortDraft.subtype (a missing key would let the
+    // panel's shared draft leak the previous port's subtype).
+    subtype: typeof subtype === 'string' ? subtype : '',
   }
 }
 

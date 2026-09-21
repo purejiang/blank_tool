@@ -70,7 +70,7 @@ class TestPluginList:
         by_module = {p["module"]: p for p in result["plugins"]}
         assert by_module["vplug"] == {
             "module": "vplug", "kind": "native", "version": "1.2.3",
-            "loaded": True, "error": "",
+            "loaded": True, "error": "", "source": "user",
         }
         assert sum(
             1 for p in result["plugins"] if p["kind"] == "shipped-native"
@@ -91,6 +91,133 @@ class TestPluginList:
         result = plugin_handler.list_plugins({}, None)
 
         assert result["plugins"][0]["version"] == ""
+
+
+class TestPluginFailureVisibility:
+    """WP3 #8: failed / never-loaded plugins are visible in plugin.list."""
+
+    def test_apply_failure_reports_loaded_false_and_error(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        _write_module(
+            tmp_path,
+            "badapplyplug",
+            "def apply(ctx, config):\n    raise ValueError('apply boom')\n",
+        )
+        cfg = _write_server_config(
+            tmp_path,
+            [{"module": "badapplyplug", "path": str(tmp_path), "kind": "native"}],
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        loader.load_plugins(PluginContext())
+        result = plugin_handler.list_plugins({}, None)
+
+        entry = next(
+            p for p in result["plugins"] if p["module"] == "badapplyplug"
+        )
+        assert entry["loaded"] is False
+        assert "apply boom" in entry["error"]
+        assert entry["source"] == "user"
+        assert entry["kind"] == "native"
+
+    def test_import_failure_reports_loaded_false_and_error(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        _write_module(tmp_path, "boommplug", "raise RuntimeError('import boom')\n")
+        cfg = _write_server_config(
+            tmp_path,
+            [{"module": "boommplug", "path": str(tmp_path), "kind": "native"}],
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        loader.load_plugins(PluginContext())
+        result = plugin_handler.list_plugins({}, None)
+
+        entry = next(p for p in result["plugins"] if p["module"] == "boommplug")
+        assert entry["loaded"] is False
+        assert "import boom" in entry["error"]
+
+    def test_manifest_entry_that_never_loaded_reports_not_loaded(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        cfg = _write_server_config(
+            tmp_path,
+            [{"module": "ghostplug", "path": str(tmp_path), "kind": "native"}],
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        # The loader never ran (autouse fixture only unmounts).
+        result = plugin_handler.list_plugins({}, None)
+
+        entry = next(p for p in result["plugins"] if p["module"] == "ghostplug")
+        assert entry == {
+            "module": "ghostplug", "kind": "native", "version": "",
+            "loaded": False, "error": "not loaded", "source": "user",
+        }
+
+    def test_healthy_plugin_reports_loaded_true_and_source(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        _write_module(
+            tmp_path,
+            "healthyplug",
+            "__version__ = '3.1.4'\n"
+            "def apply(ctx, config):\n"
+            "    pass\n",
+        )
+        cfg = _write_server_config(
+            tmp_path,
+            [{"module": "healthyplug", "path": str(tmp_path), "kind": "native"}],
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        loader.load_plugins(PluginContext())
+        result = plugin_handler.list_plugins({}, None)
+        by_module = {p["module"]: p for p in result["plugins"]}
+
+        assert by_module["healthyplug"] == {
+            "module": "healthyplug", "kind": "native", "version": "3.1.4",
+            "loaded": True, "error": "", "source": "user",
+        }
+        shipped = by_module["app.plugins.builtin.file"]
+        assert shipped["loaded"] is True
+        assert shipped["source"] == "shipped"
+        assert shipped["error"] == ""
+        # 5 core shipped builtins (no extensions enabled) + the user plugin.
+        assert len(result["plugins"]) == 6
+
+    def test_loaded_record_replaces_the_manifest_placeholder(
+        self, tmp_path, monkeypatch, mock_tool_manager,
+    ):
+        """A module that is both declared and loaded appears exactly once."""
+        _write_module(
+            tmp_path,
+            "onceplug",
+            "__version__ = '0.0.1'\n"
+            "def apply(ctx, config):\n"
+            "    pass\n",
+        )
+        cfg = _write_server_config(
+            tmp_path,
+            [{"module": "onceplug", "path": str(tmp_path), "kind": "native"}],
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+        monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path))
+
+        loader.load_plugins(PluginContext())
+        result = plugin_handler.list_plugins({}, None)
+
+        modules = [p["module"] for p in result["plugins"]]
+        assert modules.count("onceplug") == 1
+        entry = next(p for p in result["plugins"] if p["module"] == "onceplug")
+        assert entry["loaded"] is True
+        assert entry["error"] == ""
+        assert entry["version"] == "0.0.1"
 
 
 class TestPluginAdd:
@@ -114,7 +241,7 @@ class TestPluginAdd:
         by_module = {p["module"]: p for p in result["plugins"]}
         assert by_module["addplug"] == {
             "module": "addplug", "kind": "native", "version": "9.9.9",
-            "loaded": True, "error": "",
+            "loaded": True, "error": "", "source": "user",
         }
 
         manifest_path = tmp_path / "plugins.json"

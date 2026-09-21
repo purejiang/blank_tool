@@ -2,15 +2,20 @@
 
 Covers: a top-level run lands in the history store with the full record
 shape; the ``source`` field reflects template name vs file path vs inline;
-and a recording failure NEVER changes the run's result.
+the per-run artifact directory (``run_dir``) is on both the wire payload and
+the record and is linked to the execution identity via ``exec_run_id``; and a
+recording failure NEVER changes the run's result.
 """
 
 import json
+import os
 
 import pytest
 
+from app.env import get_output_dir
 from app.history import store as history_store
 from app.workflow.definition import WorkflowDefinition
+from app.workflow.rundir import safe_slug
 from app.workflow.runner import run_workflow
 
 
@@ -43,6 +48,12 @@ def test_run_is_recorded_with_full_shape(output_dir):
     )
     assert result["success"] is True
 
+    # WP2 (#4): the payload carries the per-run artifact directory.  With no
+    # explicit run_id the identity falls back to the task id.
+    assert result["run_dir"] == os.path.join(
+        get_output_dir(), "runs", safe_slug("task-1")
+    )
+
     runs = history_store.list_runs()
     assert len(runs) == 1
     summary = runs[0]
@@ -56,6 +67,40 @@ def test_run_is_recorded_with_full_shape(output_dir):
     assert "log" in full["node_results"]
     assert full["node_results"]["log"]["error"] is None
     assert full["ended_at"] >= full["started_at"]
+    assert full["run_dir"] == result["run_dir"]
+    assert full["exec_run_id"] == "task-1"
+
+
+def test_payload_run_dir_is_derivable_from_the_exec_identity(output_dir):
+    """The IPC request id is not a valid history file id — only exec_run_id."""
+    exec_id = "1700000000000-0.1234"
+    result = run_workflow(_definition(), {"inputs": {}}, None, "task-1", exec_id)
+
+    expected = os.path.join(get_output_dir(), "runs", safe_slug(exec_id))
+    assert result["run_dir"] == expected
+    assert os.path.isdir(expected)
+
+    runs = history_store.list_runs()
+    assert len(runs) == 1
+    record_id = runs[0]["run_id"]
+    # The record/file id stays a uuid4 hex; the two identities are linked by
+    # exec_run_id instead of being conflated.
+    assert record_id != exec_id
+    assert history_store.get_run(record_id)["exec_run_id"] == exec_id
+
+
+def test_list_summary_is_light_but_carries_status_cancelled_run_dir(output_dir):
+    """WP2 (#11): the summary gains status/cancelled/run_dir, not heavy keys."""
+    run_workflow(_definition(), {"inputs": {"x": 1}}, None, "task-1")
+
+    summary = history_store.list_runs()[0]
+    assert summary["status"] == "succeeded"
+    assert summary["cancelled"] is False
+    assert summary["run_dir"] == os.path.join(
+        get_output_dir(), "runs", safe_slug("task-1")
+    )
+    assert "node_results" not in summary
+    assert "inputs" not in summary
 
 
 def test_source_falls_back_to_inline(output_dir):

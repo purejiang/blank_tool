@@ -26,6 +26,7 @@ import os
 from app.common.decorators import streaming
 from app.common.exceptions import ToolException
 from app.env.registry import get_env_registry
+from app.handlers.env_handler import serialize_environment
 from app.tools.descriptor_tool import DescriptorTool
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition
@@ -205,6 +206,11 @@ def handle_list_tools(params, stream_handler):
             operations = _operations_payload(tool)
             if operations:
                 entry["operations"] = operations
+            # WP3 #14: descriptor tools declare the environments they need.
+            env_deps = getattr(descriptor, "env_deps", None)
+            entry["env_deps"] = (
+                list(env_deps) if isinstance(env_deps, (list, tuple)) else []
+            )
         else:
             # Unknown kind (a discovered code-class BaseTool) — registry code
             # discovery is currently empty (only the excluded CommandTool), so
@@ -217,19 +223,17 @@ def handle_list_tools(params, stream_handler):
 
 
 def handle_list_envs(params, stream_handler):
-    """List every resolved environment from the :class:`EnvironmentRegistry`."""
+    """List every resolved environment from the :class:`EnvironmentRegistry`.
+
+    Entries use the shared :func:`~app.handlers.env_handler.serialize_environment`
+    shape, so ``workflow.list_envs`` and ``env.list`` stay interchangeable.
+    """
     registry = get_env_registry()
-    envs = registry.list_all()
+    overrides = registry.get_path_overrides()
     return {
         "environments": [
-            {
-                "name": env.name,
-                "is_valid": env.is_valid,
-                "binary_path": env.binary_path,
-                "version": env.version,
-                "root_path": env.root_path,
-            }
-            for env in envs
+            serialize_environment(registry, env, overrides)
+            for env in registry.list_all()
         ]
     }
 

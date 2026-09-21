@@ -381,7 +381,6 @@ export default {
     uptime: '运行时间',
     runningTasks: '运行中任务',
     noTasks: '没有运行中的任务',
-    taskType: '类型',
     startedAt: '开始时间',
     cancelled: '已取消',
     cancelAction: '取消',

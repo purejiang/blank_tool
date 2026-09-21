@@ -203,11 +203,12 @@ class TestToolAdd:
         names = registry.list_all()
         assert "my_tool" in names
 
-    def test_add_invalid_descriptor_returns_error_no_file(
+    def test_add_invalid_descriptor_raises_no_file(
         self, temp_tool_overlay, monkeypatch,
     ):
-        """Invalid descriptor JSON returns a clean error, no partial file."""
+        """Invalid descriptor JSON raises ToolException, no partial file (WP0 #7)."""
         from app.tools.tool_manager import ToolRegistry
+        from app.common.exceptions import ToolException
 
         registry = ToolRegistry(registry_overlay_dir=temp_tool_overlay)
         registry._initialized = True
@@ -220,9 +221,8 @@ class TestToolAdd:
         from app.handlers import tool_handler
 
         bad_desc = {"name": "bad_tool"}  # missing required fields
-        result = tool_handler.handle_tool_add({"descriptor": bad_desc}, None)
-
-        assert "error" in result, f"Expected error, got: {result}"
+        with pytest.raises(ToolException):
+            tool_handler.handle_tool_add({"descriptor": bad_desc}, None)
 
         # No file written
         overlay_file = Path(temp_tool_overlay) / "tools" / "bad_tool.json"
@@ -256,7 +256,7 @@ class TestToolDelete:
 
         # Delete
         result = tool_handler.handle_tool_delete({"name": "to_delete"}, None)
-        assert "error" not in result, f"Delete should succeed, got: {result}"
+        assert result["deleted"] == "to_delete"
 
         # No longer listed
         assert "to_delete" not in registry.list_all()
@@ -265,11 +265,12 @@ class TestToolDelete:
         overlay_file = Path(temp_tool_overlay) / "tools" / "to_delete.json"
         assert not overlay_file.exists()
 
-    def test_delete_nonexistent_or_non_overlay_returns_error(
+    def test_delete_nonexistent_or_non_overlay_raises(
         self, temp_tool_overlay, monkeypatch,
     ):
-        """Deleting a name with no overlay descriptor returns a clean error."""
+        """Deleting a name with no overlay descriptor raises (WP0 #7)."""
         from app.tools.tool_manager import ToolRegistry
+        from app.common.exceptions import ToolException
 
         registry = ToolRegistry(registry_overlay_dir=temp_tool_overlay)
         registry._initialized = True
@@ -282,5 +283,5 @@ class TestToolDelete:
         from app.handlers import tool_handler
 
         # 'adb' has no overlay file — should be refused
-        result = tool_handler.handle_tool_delete({"name": "adb"}, None)
-        assert "error" in result, f"Expected error for non-overlay tool, got: {result}"
+        with pytest.raises(ToolException):
+            tool_handler.handle_tool_delete({"name": "adb"}, None)

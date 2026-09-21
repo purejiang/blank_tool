@@ -245,7 +245,7 @@ const triggerSaved = () => {
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: true, autoDeleteOutputOnTaskRemove: false, timeout: 300 })
+const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: false, autoDeleteOutputOnTaskRemove: false, timeout: 300 })
 const logLevel = ref('info')
 const logLevelOptions = [
   { label: 'Debug', value: 'debug' },

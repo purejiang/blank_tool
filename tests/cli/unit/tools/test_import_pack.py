@@ -7,8 +7,8 @@ Covers the bulk-import contract used by ``tool.import_pack`` and
   ``added``; a second import of the same pack reports ``updated``;
 - two-phase semantics: a single malformed descriptor aborts the whole
   import with ZERO writes (valid entries are reported ``skipped``);
-- unusable inputs (missing dir, dir without *.json) return a top-level
-  ``error`` and write nothing;
+- unusable inputs (missing dir, dir without *.json) raise ``ToolException``
+  and write nothing (WP0 #7: no more top-level ``error`` payload);
 - script-type descriptors keep the self-containment behavior (script file
   copied into ``<overlay>/scripts/<name>/``, path rewritten);
 - non-blocking warnings: an unresolvable env dep does not fail the import
@@ -112,18 +112,19 @@ class TestImportDescriptorDir:
             overlay_tools.glob("*.json")
         )
 
-    def test_missing_directory_returns_error(self, registry, tmp_path):
-        report = registry.import_descriptor_dir(str(tmp_path / "nope"))
-        assert report["ok"] is False
-        assert "error" in report
-        assert report["results"] == []
+    def test_missing_directory_raises(self, registry, tmp_path):
+        from app.common.exceptions import ToolException
 
-    def test_directory_without_descriptors_returns_error(
+        with pytest.raises(ToolException, match="not a directory"):
+            registry.import_descriptor_dir(str(tmp_path / "nope"))
+
+    def test_directory_without_descriptors_raises(
         self, registry, pack_dir
     ):
-        report = registry.import_descriptor_dir(str(pack_dir))
-        assert report["ok"] is False
-        assert "no *.json" in report["error"]
+        from app.common.exceptions import ToolException
+
+        with pytest.raises(ToolException, match=r"no \*\.json"):
+            registry.import_descriptor_dir(str(pack_dir))
 
     def test_script_tool_is_self_contained_after_import(
         self, registry, pack_dir, tmp_path

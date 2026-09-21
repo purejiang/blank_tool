@@ -381,7 +381,6 @@ export default {
     uptime: 'Uptime',
     runningTasks: 'Running Tasks',
     noTasks: 'No running tasks',
-    taskType: 'Type',
     startedAt: 'Started',
     cancelled: 'Cancelled',
     cancelAction: 'Cancel',

@@ -43,7 +43,10 @@ _EVENT_KEYS = {
 
 _NODE_STATUSES = {"ok", "failed", "skipped", "cancelled"}
 
-_PAYLOAD_KEYS = {"success", "status", "cancelled", "outputs", "node_results", "error"}
+_PAYLOAD_KEYS = {
+    "success", "status", "cancelled", "outputs", "node_results", "error",
+    "run_dir",
+}
 
 
 def _inline_definition(name="contract-exec", tool="file.write"):
@@ -214,7 +217,59 @@ def test_workflow_list_envs_returns_java_python_node():
     names = {entry["name"] for entry in result["environments"]}
     assert {"java", "python", "node"} <= names
     for entry in result["environments"]:
-        assert set(entry) == {"name", "is_valid", "binary_path", "version", "root_path"}
+        assert set(entry) == {
+            "name", "is_valid", "binary_path", "version", "root_path",
+            "display_name", "type", "env_var_override", "path_override",
+            "source",
+        }
+
+
+def test_workflow_list_envs_shape_matches_env_list(monkeypatch):
+    """docs/08: ``env.list`` and ``workflow.list_envs`` stay interchangeable."""
+    from app.handlers.env_handler import handle_env_list
+
+    listed = handle_env_list({}, None)["environments"]
+    workflow_listed = handle_list_envs({}, None)["environments"]
+    assert workflow_listed == listed
+
+
+def test_workflow_list_tools_reports_descriptor_env_deps(tmp_path, monkeypatch):
+    """WP3 #14: a descriptor tool's declared env_deps reach the editor."""
+    from app.env.registry import get_env_registry
+    from app.tools.descriptor_tool import DescriptorTool, load_descriptor
+    from app.tools.tool_manager import ToolManager
+
+    binary = tmp_path / "envdepstool.bat"
+    binary.write_text("@echo off\n", encoding="utf-8")
+    descriptor_path = tmp_path / "envdepstool.json"
+    descriptor_path.write_text(
+        json.dumps(
+            {
+                "name": "envdepstool",
+                "display_name": "Env Deps Tool",
+                "type": "binary",
+                "path": str(binary),
+                "env_deps": ["java"],
+                "inputs": [],
+                "outputs": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    tool = DescriptorTool(
+        load_descriptor(str(descriptor_path)),
+        get_env_registry(),
+        source_dir=str(tmp_path),
+    )
+    registry = ToolManager.instance().get_registry()
+    monkeypatch.setitem(registry._descriptor_tools, "envdepstool", tool)
+    monkeypatch.setitem(registry._kinds, "envdepstool", "descriptor")
+
+    result = handle_list_tools({}, None)
+    entry = next(e for e in result["tools"] if e["name"] == "envdepstool")
+    assert entry["kind"] == "descriptor"
+    assert entry["env_deps"] == ["java"]
 
 
 # ---------------------------------------------------------------------------

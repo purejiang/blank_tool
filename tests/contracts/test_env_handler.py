@@ -53,8 +53,14 @@ def temp_registry_root(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def env_registry(temp_registry_root: str):
-    """Return an EnvironmentRegistry with overlay wired to the temp root."""
+def env_registry(temp_registry_root: str, monkeypatch):
+    """Return an EnvironmentRegistry with overlay wired to the temp root.
+
+    ``BT_OUTPUT_DIR`` is pointed at the temp root's parent so the module-level
+    ``_find_binary`` override lookup reads the same ``overrides.json`` the
+    registry writes (it resolves ``<output>/registry/overrides.json``).
+    """
+    monkeypatch.setenv("BT_OUTPUT_DIR", str(Path(temp_registry_root).parent))
     from app.env.registry import EnvironmentRegistry
     registry = EnvironmentRegistry(overlay_dir=temp_registry_root)
     # Discover with bundled descriptor_dir pointing at the real bundled dir
@@ -63,6 +69,20 @@ def env_registry(temp_registry_root: str):
     bundled = _Path(__file__).resolve().parent.parent.parent / "cli" / "registry" / "environments"
     registry.discover(descriptor_dir=str(bundled), overlay_descriptor_dir=temp_registry_root)
     return registry
+
+
+def _make_fake_binary(directory: Path, name: str = "fake.exe") -> Path:
+    """Create an on-disk placeholder binary so path resolution succeeds."""
+    directory.mkdir(parents=True, exist_ok=True)
+    binary = directory / name
+    binary.write_text("", encoding="utf-8")
+    return binary
+
+
+_ENV_ENTRY_KEYS = {
+    "name", "is_valid", "binary_path", "version", "root_path",
+    "display_name", "type", "env_var_override", "path_override", "source",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +102,38 @@ class TestEnvList:
         assert names >= {"java", "python", "node"}, (
             f"Expected java/python/node in env list, got: {names}"
         )
+
+    def test_entries_carry_descriptor_metadata(self, env_registry, monkeypatch):
+        """WP3 #3: entries expose display_name/type/env_var_override/path_override/source."""
+        from app.handlers import env_handler
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        result = env_handler.handle_env_list({}, None)
+        for entry in result["environments"]:
+            assert set(entry) == _ENV_ENTRY_KEYS, entry
+
+        java = next(e for e in result["environments"] if e["name"] == "java")
+        assert java["display_name"]
+        assert java["type"] == "jre"
+        assert java["source"] == "bundled"
+        assert java["env_var_override"] == "BT_JAVA_BIN"
+        assert java["path_override"] == ""
+
+    def test_overlay_environment_is_marked_overlay(
+        self, env_registry, monkeypatch,
+    ):
+        """An env added through the overlay reports source == "overlay"."""
+        from app.handlers import env_handler
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        env_handler.handle_env_add(
+            {"descriptor": _make_env_descriptor_dict("overlay_env")}, None
+        )
+        result = env_handler.handle_env_list({}, None)
+        entry = next(e for e in result["environments"] if e["name"] == "overlay_env")
+        assert entry["source"] == "overlay"
+        assert entry["display_name"] == "overlay_env-display"
+        assert entry["type"] == "custom"
 
 
 # ---------------------------------------------------------------------------
@@ -117,20 +169,20 @@ class TestEnvAdd:
         env_names = {e["name"] for e in listed["environments"]}
         assert "my_custom_env" in env_names
 
-    def test_add_invalid_descriptor_returns_error_no_file_written(
+    def test_add_invalid_descriptor_raises_no_file_written(
         self, env_registry, temp_registry_root, monkeypatch,
     ):
         """Given invalid descriptor JSON (missing required fields), env.add
-        returns an error and writes NO partial file."""
+        raises ToolException and writes NO partial file (WP0 #7)."""
         from app.handlers import env_handler
+        from app.common.exceptions import ToolException
         monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
 
         # Missing 'name' — will fail validation
         bad_desc = {"display_name": "NoName", "type": "custom"}
 
-        result = env_handler.handle_env_add({"descriptor": bad_desc}, None)
-
-        assert "error" in result, f"Expected error in result, got: {result}"
+        with pytest.raises(ToolException):
+            env_handler.handle_env_add({"descriptor": bad_desc}, None)
 
         # No file should have been written (the overlay environments dir
         # should only contain files from previous successful tests, if any)
@@ -166,7 +218,7 @@ class TestEnvDelete:
 
         # Delete
         result = env_handler.handle_env_delete({"name": "to_delete"}, None)
-        assert "error" not in result, f"Delete should succeed, got: {result}"
+        assert result["deleted"] == "to_delete"
 
         # No longer in list
         after = env_handler.handle_env_list({}, None)
@@ -179,14 +231,173 @@ class TestEnvDelete:
     def test_delete_bundled_env_is_refused(
         self, env_registry, temp_registry_root, monkeypatch,
     ):
-        """Deleting a bundled (non-overlay) env like 'java' must return an error."""
+        """Deleting a bundled (non-overlay) env like 'java' must raise (WP0 #7)."""
+        from app.handlers import env_handler
+        from app.common.exceptions import ToolException
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        with pytest.raises(ToolException) as excinfo:
+            env_handler.handle_env_delete({"name": "java"}, None)
+        message = str(excinfo.value).lower()
+        assert "bundled" in message or "protected" in message, (
+            f"Error should mention 'bundled' or 'protected', got: {excinfo.value}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# env.set_path / env.reset_path (WP3 #13)
+# ---------------------------------------------------------------------------
+
+class TestEnvSetPath:
+    def test_set_path_round_trips_and_resolves(
+        self, env_registry, temp_registry_root, tmp_path, monkeypatch,
+    ):
+        """env.set_path persists the override, drops the cache, and returns
+        the updated env.list entry."""
         from app.handlers import env_handler
         monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
 
-        result = env_handler.handle_env_delete({"name": "java"}, None)
-        assert "error" in result, (
-            f"Expected error when deleting bundled env, got: {result}"
+        fake = _make_fake_binary(tmp_path / "custom-jre", "java.exe")
+
+        entry = env_handler.handle_env_set_path(
+            {"name": "java", "path": str(fake)}, None
         )
-        assert "bundled" in str(result).lower() or "protected" in str(result).lower(), (
-            f"Error should mention 'bundled' or 'protected', got: {result}"
+
+        assert entry["name"] == "java"
+        assert set(entry) == _ENV_ENTRY_KEYS
+        assert entry["path_override"] == str(fake)
+        assert entry["binary_path"] == str(fake)
+        assert entry["root_path"] == os.path.dirname(str(fake))
+
+        # Persisted under the new ``env_paths`` key.
+        overrides_file = Path(temp_registry_root) / "overrides.json"
+        assert json.loads(overrides_file.read_text(encoding="utf-8"))["env_paths"] == {
+            "java": str(fake),
+        }
+
+        # env.list reflects the same override.
+        listed = {
+            e["name"]: e
+            for e in env_handler.handle_env_list({}, None)["environments"]
+        }
+        assert listed["java"]["path_override"] == str(fake)
+        assert listed["java"]["binary_path"] == str(fake)
+
+    def test_set_path_preserves_other_override_keys(
+        self, env_registry, temp_registry_root, tmp_path, monkeypatch,
+    ):
+        """The tool ``custom_paths`` key (same file) must survive a set_path."""
+        from app.handlers import env_handler
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        overrides_file = Path(temp_registry_root) / "overrides.json"
+        overrides_file.write_text(
+            json.dumps({"custom_paths": {"apktool": "C:/tools/apktool.jar"}}),
+            encoding="utf-8",
         )
+
+        fake = _make_fake_binary(tmp_path / "custom-jre", "java.exe")
+        env_handler.handle_env_set_path({"name": "java", "path": str(fake)}, None)
+
+        data = json.loads(overrides_file.read_text(encoding="utf-8"))
+        assert data["custom_paths"] == {"apktool": "C:/tools/apktool.jar"}
+        assert data["env_paths"] == {"java": str(fake)}
+
+    def test_reset_path_round_trips(
+        self, env_registry, temp_registry_root, tmp_path, monkeypatch,
+    ):
+        """env.reset_path removes the override and returns the updated entry."""
+        from app.handlers import env_handler
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        fake = _make_fake_binary(tmp_path / "custom-jre", "java.exe")
+        env_handler.handle_env_set_path({"name": "java", "path": str(fake)}, None)
+
+        entry = env_handler.handle_env_reset_path({"name": "java"}, None)
+
+        assert set(entry) == _ENV_ENTRY_KEYS
+        assert entry["path_override"] == ""
+        assert entry["binary_path"] != str(fake)
+
+        overrides_file = Path(temp_registry_root) / "overrides.json"
+        assert json.loads(overrides_file.read_text(encoding="utf-8"))["env_paths"] == {}
+
+    def test_set_path_unknown_env_raises(self, env_registry, monkeypatch):
+        from app.handlers import env_handler
+        from app.common.exceptions import ToolException
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        with pytest.raises(ToolException, match="Unknown environment"):
+            env_handler.handle_env_set_path(
+                {"name": "no_such_env", "path": "C:/tools/x"}, None
+            )
+
+    def test_set_path_missing_path_raises(self, env_registry, monkeypatch):
+        from app.handlers import env_handler
+        from app.common.exceptions import ToolException
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        with pytest.raises(ToolException, match="path"):
+            env_handler.handle_env_set_path({"name": "java"}, None)
+
+    def test_set_path_missing_name_raises(self, env_registry, monkeypatch):
+        from app.handlers import env_handler
+        from app.common.exceptions import ToolException
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        with pytest.raises(ToolException, match="name"):
+            env_handler.handle_env_set_path({"path": "C:/tools/x"}, None)
+
+    def test_reset_path_unknown_env_raises(self, env_registry, monkeypatch):
+        from app.handlers import env_handler
+        from app.common.exceptions import ToolException
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        with pytest.raises(ToolException, match="Unknown environment"):
+            env_handler.handle_env_reset_path({"name": "no_such_env"}, None)
+
+    def test_reset_path_missing_name_raises(self, env_registry, monkeypatch):
+        from app.handlers import env_handler
+        from app.common.exceptions import ToolException
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        with pytest.raises(ToolException, match="name"):
+            env_handler.handle_env_reset_path({}, None)
+
+    def test_reset_path_without_override_is_a_noop(
+        self, env_registry, temp_registry_root, monkeypatch,
+    ):
+        """Resetting an env that never had an override still succeeds."""
+        from app.handlers import env_handler
+        monkeypatch.setattr(env_handler, "get_env_registry", lambda: env_registry)
+
+        entry = env_handler.handle_env_reset_path({"name": "java"}, None)
+        assert entry["path_override"] == ""
+        assert not (Path(temp_registry_root) / "overrides.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Registry persistence details
+# ---------------------------------------------------------------------------
+
+class TestPathOverridePersistence:
+    def test_get_path_overrides_reads_persisted_values(
+        self, env_registry, tmp_path,
+    ):
+        fake = _make_fake_binary(tmp_path / "custom-jre", "java.exe")
+        assert env_registry.get_path_overrides() == {}
+
+        env_registry.set_path_override("java", str(fake))
+        assert env_registry.get_path_overrides() == {"java": str(fake)}
+
+        env_registry.reset_path_override("java")
+        assert env_registry.get_path_overrides() == {}
+
+    def test_get_descriptor_returns_metadata_and_none_for_unknown(
+        self, env_registry,
+    ):
+        descriptor = env_registry.get_descriptor("java")
+        assert descriptor is not None
+        assert descriptor.display_name == "Java Runtime"
+        assert descriptor.type == "jre"
+        assert env_registry.get_descriptor("nope") is None

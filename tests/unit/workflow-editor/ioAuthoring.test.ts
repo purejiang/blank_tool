@@ -154,6 +154,7 @@ describe('reverse mapping — wire PortJSON back to the UI type key', () => {
       required: false,
       description: 'target env',
       options: ['dev', 'prod'],
+      subtype: '',
     })
 
     const file = wirePort({ name: 'apk_path', type: { base: 'file' }, required: true })
@@ -163,7 +164,72 @@ describe('reverse mapping — wire PortJSON back to the UI type key', () => {
       required: true,
       description: '',
       options: [],
+      subtype: '',
     })
+  })
+})
+
+describe('type.subtype survives an edit (WP6 of docs/09)', () => {
+  function wirePort(partial: Partial<PortJSON> = {}): PortJSON {
+    return { name: 'p', type: { base: 'text' }, ...partial }
+  }
+
+  it('draftFromPort carries the wire subtype through', () => {
+    const port = wirePort({ name: 'p', type: { base: 'text', subtype: 'path' } })
+    expect(draftFromPort(port)).toEqual({
+      name: 'p',
+      typeKey: 'text',
+      required: true,
+      description: '',
+      options: [],
+      subtype: 'path',
+    })
+  })
+
+  it('portFromDraft re-emits the subtype when the draft carries one', () => {
+    const port = portFromDraft(makeDraft({ name: 'p', typeKey: 'text', subtype: 'path' }))
+    expect(port.type).toEqual({ base: 'text', subtype: 'path' })
+  })
+
+  it('editing name/description/required keeps the subtype (the panel has no field for it)', () => {
+    const inputs: PortJSON[] = [
+      wirePort({ name: 'p', type: { base: 'directory', subtype: 'path' }, description: 'old' }),
+    ]
+    const draft = { ...draftFromPort(inputs[0]), name: 'renamed', description: 'new', required: false }
+
+    const result = commitPort(inputs, draft, 'p')
+
+    expect(result.error).toBeNull()
+    expect(result.ports?.[0]).toEqual({
+      name: 'renamed',
+      type: { base: 'directory', subtype: 'path' },
+      required: false,
+      description: 'new',
+    })
+  })
+
+  it('a port without a subtype gains no extra key', () => {
+    const port = portFromDraft(makeDraft({ name: 'p', typeKey: 'text' }))
+    expect(port.type).toEqual({ base: 'text' })
+    expect('subtype' in port.type).toBe(false)
+  })
+
+  it('a stale subtype cannot leak onto the next port through the shared panel draft', () => {
+    // IoAuthoringPanel keeps ONE reactive draft and reloads it with
+    // Object.assign, which cannot delete a key the source omits.  Because both
+    // draft factories always emit `subtype`, the reload clears it (regression
+    // guard for the WP6 follow-up).
+    const shared: PortDraft = createEmptyDraft()
+    const withSubtype = wirePort({ name: 'a', type: { base: 'file', subtype: 'path' } })
+    const withoutSubtype = wirePort({ name: 'b', type: { base: 'text' } })
+
+    Object.assign(shared, draftFromPort(withSubtype), { options: [] })
+    expect(portFromDraft(shared).type).toEqual({ base: 'file', subtype: 'path' })
+
+    Object.assign(shared, draftFromPort(withoutSubtype), { options: [] })
+    const port = portFromDraft(shared)
+    expect(port.type).toEqual({ base: 'text' })
+    expect('subtype' in port.type).toBe(false)
   })
 })
 

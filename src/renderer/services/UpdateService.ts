@@ -47,7 +47,7 @@ class UpdateService {
       try {
         const info = await api.getAppInfo()
         if (info && typeof info === 'object' && 'version' in info) {
-          store.setCurrentVersion(String((info as Record<string, unknown>).version))
+          store.setCurrentVersion(String(info.version))
         }
       } catch {}
     }

@@ -9,6 +9,7 @@ import sys
 from app.plugins.loader import (
     PluginLoader,
     SHIPPED_MANIFEST,
+    errors as load_errors,
     load_plugins,
     unmount_all,
 )
@@ -106,6 +107,72 @@ def test_broken_apply_logs_warning_and_does_not_raise(tmp_path, caplog):
     assert loaded == []
     assert any("failed to apply" in r.message for r in caplog.records)
     assert any(r.exc_info for r in caplog.records)
+
+
+def test_errors_records_import_failure(tmp_path):
+    _write_module(tmp_path, "err_import", "raise RuntimeError('import boom')\n")
+    loader = PluginLoader(ctx={})
+    loader.load(
+        [{"module": "err_import", "path": str(tmp_path), "kind": "native"}]
+    )
+    assert loader.errors() == {"err_import": "RuntimeError: import boom"}
+
+
+def test_errors_records_apply_failure(tmp_path):
+    _write_module(
+        tmp_path,
+        "err_apply",
+        "def apply(ctx, config):\n    raise ValueError('apply boom')\n",
+    )
+    loader = PluginLoader(ctx={})
+    loader.load(
+        [{"module": "err_apply", "path": str(tmp_path), "kind": "native"}]
+    )
+    assert loader.errors() == {"err_apply": "ValueError: apply boom"}
+
+
+def test_errors_records_missing_apply(tmp_path):
+    _write_module(tmp_path, "err_noapply", "VALUE = 1\n")
+    loader = PluginLoader(ctx={})
+    loader.load(
+        [{"module": "err_noapply", "path": str(tmp_path), "kind": "native"}]
+    )
+    assert loader.errors()["err_noapply"].startswith("AttributeError:")
+
+
+def test_errors_is_empty_for_healthy_plugins(tmp_path):
+    _write_module(tmp_path, "err_ok", "def apply(ctx, config):\n    pass\n")
+    loader = PluginLoader(ctx={})
+    loader.load([{"module": "err_ok", "path": str(tmp_path), "kind": "native"}])
+    assert loader.errors() == {}
+    loader.unmount_all()
+
+
+def test_errors_cleared_by_subsequent_load(tmp_path):
+    _write_module(tmp_path, "err_flaky", "raise RuntimeError('flaky boom')\n")
+    _write_module(tmp_path, "err_good", "def apply(ctx, config):\n    pass\n")
+    loader = PluginLoader(ctx={})
+
+    loader.load([{"module": "err_flaky", "path": str(tmp_path), "kind": "native"}])
+    assert loader.errors()
+
+    loader.load([{"module": "err_good", "path": str(tmp_path), "kind": "native"}])
+    assert loader.errors() == {}
+    assert [p.module for p in loader.loaded] == ["err_good"]
+    loader.unmount_all()
+
+
+def test_module_level_errors_accessor(tmp_path):
+    _write_module(tmp_path, "err_module", "raise RuntimeError('module boom')\n")
+    try:
+        load_plugins(
+            {},
+            [{"module": "err_module", "path": str(tmp_path), "kind": "native"}],
+        )
+        assert load_errors() == {"err_module": "RuntimeError: module boom"}
+    finally:
+        unmount_all()
+    assert load_errors() == {}
 
 
 def test_broken_entry_does_not_stop_others(tmp_path):

@@ -49,6 +49,9 @@ class UnifiedApi {
   }
 
   createMockAPI(): ElectronApi {
+    // Browser-only fallback: every member is a harmless no-op so callers can
+    // keep their `typeof api.x === 'function'` guards. Real values only exist
+    // in the preload context.
     return {
       callBackendAPI: async () => ({}),
       callBackendByRequest: async () => ({}),
@@ -70,6 +73,31 @@ class UnifiedApi {
         resolvePaths: async () => ({ runtime: '', server: '' }),
       },
       rendererLog: async () => undefined,
+      selectFile: async () => ({ canceled: true, filePaths: [] }),
+      selectDirectory: async () => ({ canceled: true, filePaths: [] }),
+      showSave: async () => ({ canceled: true }),
+      readTextFile: async () => ({ success: false, error: 'not available in browser' }),
+      writeTextFile: async () => ({ success: false, error: 'not available in browser' }),
+      getFileStats: async () => ({ success: false, error: 'not available in browser' }),
+      openPath: async () => ({ success: false, error: 'not available in browser' }),
+      resolvePath: async (path: string) => path,
+      writeClipboardText: async () => false,
+      getAppInfo: async () => ({ version: '' }),
+      getFontendBuildInfo: async () => ({
+        appName: '',
+        appVersion: '',
+        appDescription: '',
+        nodeVersion: '',
+        chromeVersion: '',
+        electronVersion: '',
+      }),
+      getBackendHealth: async () => ({ healthy: false, uptime_s: null }),
+      readElectronLogTail: async () => ({ lines: [], truncated: false, log_path: '', process: 'main' }),
+      showSystemNotification: async () => false,
+      onStreamEvent: () => () => undefined,
+      getTools: async () => ({}),
+      checkTool: async () => ({}),
+      setToolSearchMode: async () => ({}),
     }
   }
 

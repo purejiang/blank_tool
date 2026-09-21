@@ -34,7 +34,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.env import get_env, get_output_dir
 from app.workflow.definition import WorkflowDefinition
@@ -71,6 +71,19 @@ def _atomic_write_json(path: str, data: Dict[str, Any]) -> None:
     except OSError:
         pass
     raise last_error  # type: ignore[misc]
+
+
+def _file_mtime_iso(path: str) -> Optional[str]:
+    """Return *path*'s modification time as an ISO-8601 string, or ``None``.
+
+    Used as the timestamp fallback for raw (bare definition) template files,
+    which carry no wrapper ``created_at``/``updated_at``.  Never raises: an
+    unreadable/unstatable file simply yields ``None``.
+    """
+    try:
+        return datetime.fromtimestamp(os.stat(path).st_mtime).isoformat()
+    except (OSError, OverflowError, ValueError):
+        return None
 
 
 @dataclass
@@ -118,6 +131,24 @@ class TemplateStore(ABC):
             definition: the workflow schema to store.
             metadata: caller-supplied dict; ``description`` and ``tags``
                 keys are stored with the template.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def load_with_meta(
+        self, name: str
+    ) -> Tuple[WorkflowDefinition, Dict[str, Any]]:
+        """Load the definition stored under *name* plus its wrapper metadata.
+
+        Returns:
+            ``(definition, metadata)`` where *metadata* carries the keys
+            ``description`` (str), ``tags`` (list of str), ``created_at`` and
+            ``updated_at`` (ISO-8601 strings, or ``None`` when unknown).
+            Missing metadata keys never raise — each falls back to its
+            default.
+
+        Raises:
+            TemplateNotFoundError: if no template with *name* exists.
         """
         raise NotImplementedError
 
@@ -240,13 +271,28 @@ class FileTemplateStore(TemplateStore):
         }
         _atomic_write_json(path, data)
 
-    def load(self, name: str) -> WorkflowDefinition:
-        """Load the workflow definition stored under *name*.
+    def load_with_meta(
+        self, name: str
+    ) -> Tuple[WorkflowDefinition, Dict[str, Any]]:
+        """Load the definition stored under *name* plus its wrapper metadata.
 
-        Accepts both the wrapped ``{"definition": {...}, ...}`` format written
-        by :meth:`save` and the bare :class:`WorkflowDefinition` dict (a raw
-        file has no ``definition`` key, so the whole file IS the definition —
-        this is the format used by ``examples/`` import files).
+        Two on-disk formats are accepted, mirroring :meth:`save`/:meth:`list`:
+
+        - Wrapped (produced by :meth:`save`): ``{"definition": {...},
+          "description": ..., "tags": [...], "created_at": ...,
+          "updated_at": ...}`` — the wrapper metadata is returned as stored
+          (a missing/blank key falls back to its default).
+        - Raw (import format, e.g. a file copied from ``examples/``): a bare
+          :class:`WorkflowDefinition` dict with no ``definition`` key — the
+          whole file IS the definition.  ``description`` is taken from that
+          definition's own top-level field (identical to what :meth:`list`
+          reports for a raw file), ``tags`` is ``[]`` and the timestamps fall
+          back to the file's modification time (``None`` when it cannot be
+          read).
+
+        Returns:
+            ``(definition, metadata)`` where *metadata* carries
+            ``description``, ``tags``, ``created_at`` and ``updated_at``.
 
         Raises:
             TemplateNotFoundError: if no template with *name* exists.
@@ -271,9 +317,45 @@ class FileTemplateStore(TemplateStore):
         definition_data = data.get("definition")
         if definition_data is None:
             # Raw workflow file (import format from examples/) — the whole file
-            # is the definition.
+            # is the definition and it carries no wrapper metadata.  The
+            # description is read from the definition's own top-level field so
+            # load_with_meta() agrees with list() (which does the same for raw
+            # files); tags have no raw-file equivalent.
             definition_data = data
-        return WorkflowDefinition.from_dict(definition_data)
+            mtime = _file_mtime_iso(path)
+            raw_description = data.get("description")
+            metadata: Dict[str, Any] = {
+                "description": raw_description if isinstance(raw_description, str) else "",
+                "tags": [],
+                "created_at": mtime,
+                "updated_at": mtime,
+            }
+        else:
+            # Wrapped template store format (from save()).
+            description = data.get("description")
+            raw_tags = data.get("tags")
+            metadata = {
+                "description": description if isinstance(description, str) else "",
+                "tags": list(raw_tags) if isinstance(raw_tags, list) else [],
+                "created_at": data.get("created_at") or None,
+                "updated_at": data.get("updated_at") or None,
+            }
+
+        return WorkflowDefinition.from_dict(definition_data), metadata
+
+    def load(self, name: str) -> WorkflowDefinition:
+        """Load the workflow definition stored under *name*.
+
+        Thin wrapper over :meth:`load_with_meta` (single read path) that
+        discards the template metadata.
+
+        Raises:
+            TemplateNotFoundError: if no template with *name* exists.
+            ValueError: if the stored file is not valid JSON, not a dict, or
+                fails :meth:`WorkflowDefinition.from_dict` validation.
+        """
+        definition, _metadata = self.load_with_meta(name)
+        return definition
 
     def list(self) -> List[TemplateInfo]:
         """Return metadata for every ``*.json`` template, sorted by name.

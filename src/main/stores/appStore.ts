@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { PATH_CONFIG_DEFAULTS, type WritableAppConfigKey } from '../../shared/config/pathConfig';
 
-export const APP_CONFIG_VERSION = 6;
+export const APP_CONFIG_VERSION = 7;
 export { PATH_CONFIG_DEFAULTS };
 
 const schema = {
@@ -142,7 +142,7 @@ const schema = {
     },
     enableNotifications: {
         type: 'boolean',
-        default: true
+        default: false
     },
     autoDeleteOutputOnTaskRemove: {
         type: 'boolean',
@@ -227,6 +227,15 @@ const MIGRATIONS: Record<number, () => void> = {
             delete (app as Record<string, unknown>).theme;
             delete (app as Record<string, unknown>).language;
             appStore.set('app', app);
+        }
+    },
+    // 6: system notifications now default to OFF (WP4, #15). A migration is
+    // required rather than relying on syncStoreDefaults(): that only fills in
+    // *missing* keys, so an existing `true` written under the old default would
+    // survive the schema flip. An explicit `false` is left untouched.
+    6: () => {
+        if (appStore.get('enableNotifications') === true) {
+            appStore.set('enableNotifications', false);
         }
     }
 };

@@ -198,16 +198,6 @@ function cancelTask(taskId: string): void {
 const taskColumns = computed(() => [
   { title: 'ID', key: 'task_id', ellipsis: { tooltip: true } },
   {
-    title: t('diagnostics.taskType'),
-    key: 'type',
-    width: 110,
-    render: (row: TaskListItem) => h(
-      NTag,
-      { size: 'tiny', bordered: false, type: row.type === 'streaming' ? 'info' : 'default' },
-      { default: () => row.type }
-    ),
-  },
-  {
     title: t('diagnostics.startedAt'),
     key: 'started_at',
     width: 120,

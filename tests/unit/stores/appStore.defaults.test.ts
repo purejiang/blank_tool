@@ -85,7 +85,7 @@ describe('appStore config defaults', () => {
 
     expect(appStore.get('language')).toBe('zh-CN')
     expect(appStore.get('theme')).toBe('auto')
-    expect(appStore.get('enableNotifications')).toBe(true)
+    expect(appStore.get('enableNotifications')).toBe(false)
     expect(appStore.get('autoDeleteOutputOnTaskRemove')).toBe(false)
     expect(appStore.get('javaPath')).toBe('')
   })

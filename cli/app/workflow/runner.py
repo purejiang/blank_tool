@@ -7,11 +7,15 @@
 build the :class:`WorkflowStreamHandler` (when a task id / run id and a stream
 callback are available), assemble the :class:`ExecutionContext`, run the
 :class:`WorkflowEngine`, and return the ``{success, status, cancelled, outputs,
-node_results, error}`` wire shape.  Definition *loading* stays in the caller
-(file path vs template store).
+node_results, error, run_dir}`` wire shape.  Definition *loading* stays in the
+caller (file path vs template store).
 
 The run identity passed in as ``run_id`` is what the IPC layer registered for
-cancellation; it is stamped on every streamed event and on the history record.
+cancellation; it is stamped on every streamed event and on the history record
+as ``exec_run_id`` — the history *file* id stays a uuid4 hex, so the two
+identities are linked by that field instead of being conflated.  ``run_dir``
+carries the per-run artifact directory (``<output_dir>/runs/<slug>``) so a
+consumer can open it without re-deriving the slug.
 
 Every top-level run is recorded into the run-history store
 (:mod:`app.history.store`) on a best-effort basis: a recording failure is
@@ -53,7 +57,9 @@ def run_workflow(
 
     Returns:
         ``{"success", "status", "cancelled", "outputs", "node_results",
-        "error"}``.
+        "error", "run_dir"}``.  ``run_dir`` is the per-run artifact directory;
+        it is ``""`` when that directory could not be prepared (unwritable
+        output dir), so consumers must tolerate the empty string.
     """
     inputs = params.get("inputs") or {}
     engine = WorkflowEngine()
@@ -96,13 +102,35 @@ def run_workflow(
         "outputs": shrink_outputs(result.outputs),
         "node_results": result.node_results,
         "error": result.error,
+        # ``context.run_dir`` is prepared lazily by ``engine.execute``; ``""``
+        # means "no artifact directory for this run".
+        "run_dir": context.run_dir or "",
     }
-    record_history(definition, params, task_id, inputs, result, started_at, start)
+    record_history(
+        definition,
+        params,
+        task_id,
+        inputs,
+        result,
+        started_at,
+        start,
+        run_dir=context.run_dir or "",
+        exec_run_id=identity,
+    )
     return payload
 
 
 def record_history(
-    definition, params, task_id, inputs, result, started_at, start, run_id=None
+    definition,
+    params,
+    task_id,
+    inputs,
+    result,
+    started_at,
+    start,
+    run_id=None,
+    run_dir="",
+    exec_run_id="",
 ):
     """Best-effort history write — a recording failure never fails the run.
 
@@ -111,6 +139,12 @@ def record_history(
             passes the run identity it used for ``$rundir``, so a run's
             artifact directory and its history record share one id.  When
             omitted (the IPC path) a fresh id is generated.
+        run_dir: per-run artifact directory; ``""`` when it could not be
+            prepared.
+        exec_run_id: the run identity the caller used for cancellation /
+            ``$rundir``.  The IPC request id (``1700000000000-0.1234``) is
+            NOT a valid history file id, so it is recorded here instead;
+            falls back to the record id, then the task id.
     """
     try:
         from app.history import store as history_store
@@ -118,9 +152,11 @@ def record_history(
         history_store.record_run(
             {
                 "run_id": run_id or history_store.new_run_id(),
+                "exec_run_id": exec_run_id or run_id or task_id,
                 "task_id": task_id,
                 "workflow_name": getattr(definition, "name", ""),
                 "source": params.get("name") or params.get("path") or "inline",
+                "run_dir": run_dir,
                 "started_at": started_at,
                 "ended_at": datetime.now().isoformat(),
                 "duration_ms": int((time.perf_counter() - start) * 1000),

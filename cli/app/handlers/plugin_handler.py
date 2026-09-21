@@ -11,6 +11,7 @@ from app.common.decorators import logs_errors
 from app.common.exceptions import ToolException
 from app.plugins import loader
 from app.plugins.context import PluginContext
+from app.plugins.manifest import default_manifest
 from app.env import get_output_dir
 from app.utils.logger import Logger
 
@@ -49,24 +50,52 @@ def _write_plugins_config(plugins: list) -> None:
 
 
 def _serialize_plugins() -> list:
-    """Serialize the currently-loaded plugins (module/kind/version/loaded/error).
+    """Serialize plugin status for the manifest ``load()`` would resolve (WP3 #8).
 
-    The loader does not record per-plugin import/apply errors (it logs and
-    skips), so ``error`` is empty and ``loaded`` reflects membership in the
-    loaded list.
+    Iterates the manifest (shipped core + enabled extensions + user entries)
+    ∪ ``loader.loaded()`` ∪ ``loader.errors()`` so a plugin that failed to
+    import/apply — or that is declared but never loaded — is still visible,
+    with ``loaded=False`` and a concrete ``error``.  Entries are deduplicated
+    by ``module``; loaded/errored records win over the manifest placeholder.
     """
-    plugins = []
-    for p in loader.loaded():
-        plugins.append(
-            {
-                "module": p.module,
-                "kind": p.kind,
-                "version": getattr(p.module_obj, "__version__", ""),
-                "loaded": True,
-                "error": "",
-            }
+    records: dict = {}
+
+    def _record(module, kind, version, loaded, error):
+        # Re-assigning an existing key keeps its first-seen position.
+        records[module] = {
+            "module": module,
+            "kind": kind,
+            "version": version,
+            "loaded": loaded,
+            "error": error,
+            "source": "shipped" if kind == "shipped-native" else "user",
+        }
+
+    # 1. Manifest placeholders: declared but not (yet) loaded or failed.
+    for entry in default_manifest():
+        if not isinstance(entry, dict):
+            continue
+        module = entry.get("module")
+        if not isinstance(module, str) or not module or module in records:
+            continue
+        _record(module, entry.get("kind", ""), "", False, "not loaded")
+
+    # 2. Successfully loaded plugins (win over the manifest placeholder).
+    for plugin in loader.loaded():
+        _record(
+            plugin.module,
+            plugin.kind,
+            getattr(plugin.module_obj, "__version__", ""),
+            True,
+            "",
         )
-    return plugins
+
+    # 3. Failures recorded by the loader (also win over the placeholder).
+    for module, error in loader.errors().items():
+        existing = records.get(module) or {}
+        _record(module, existing.get("kind", ""), "", False, error)
+
+    return list(records.values())
 
 
 def _reload() -> None:

@@ -16,7 +16,7 @@ from app.env.registry import get_env_registry
 from app.env.overrides_store import OverridesStore
 from app.utils.logger import Logger
 from app.env import get_output_dir
-from app.common.exceptions import ToolNotFoundError
+from app.common.exceptions import ToolException, ToolNotFoundError
 from app.tools.bootstrap.plugins import bootstrap_shipped_plugins
 
 
@@ -99,11 +99,16 @@ class ToolRegistry:
 
         The overlay root is created lazily (exist_ok=True) so absent-output-dir
         does not prevent discovery; only the first write materializes the dir.
+
+        The file is SHARED with other override sections (notably ``env_paths``
+        written by the environment registry), so this is a read → mutate →
+        write: every foreign key is preserved.  Overwriting the whole file with
+        ``{"custom_paths": ...}`` would silently drop them.
         """
-        data = {
-            "custom_paths": dict(self._custom_paths),
-        }
-        OverridesStore(self._registry_overlay_dir).save(data)
+        store = OverridesStore(self._registry_overlay_dir)
+        data = store.load()
+        data["custom_paths"] = dict(self._custom_paths)
+        store.save(data)
 
     def _discover_descriptors(self) -> None:
         """Register tool descriptors from bundled and overlay directories.
@@ -470,13 +475,15 @@ class ToolRegistry:
 
         Returns:
             ``{"ok": bool, "imported": int, "updated": int, "failed": int,
-            "results": [{name, status, reason?, warnings?}, ...]}``; when
-            *dir_path* is unusable a top-level ``"error"`` key is set.
+            "results": [{name, status, reason?, warnings?}, ...]}``.
+
+        Raises:
+            ToolException: when *dir_path* is not a directory or contains no
+                ``*.json`` descriptor (WP0 #7: unusable input is an error
+                envelope, not a success payload carrying an ``error`` key).
         """
-        empty = {"ok": False, "imported": 0, "updated": 0, "failed": 0,
-                 "results": []}
         if not isinstance(dir_path, str) or not os.path.isdir(dir_path):
-            return {**empty, "error": f"not a directory: {dir_path!r}"}
+            raise ToolException(f"not a directory: {dir_path!r}")
 
         files = sorted(
             f for f in os.listdir(dir_path)
@@ -484,8 +491,10 @@ class ToolRegistry:
             and os.path.isfile(os.path.join(dir_path, f))
         )
         if not files:
-            return {**empty,
-                    "error": f"no *.json descriptors found in {dir_path!r}"}
+            raise ToolException(f"no *.json descriptors found in {dir_path!r}")
+
+        empty = {"ok": False, "imported": 0, "updated": 0, "failed": 0,
+                 "results": []}
 
         # ── Phase 1: pre-validate everything, write nothing ────────────
         payloads = []  # (filename, raw_dict, descriptor_name)

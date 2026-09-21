@@ -19,6 +19,9 @@ test('IPC channels 包含配置相关契约', async () => {
   assert.match(content, /getSettingsViewModel:\s*'get-settings-view-model'/)
   assert.match(content, /resolveSettingsPaths:\s*'resolve-settings-paths'/)
   assert.match(content, /showSystemNotification:\s*'show-system-notification'/)
+  assert.match(content, /showSaveDialog:\s*'show-save-dialog'/)
+  assert.match(content, /writeTextFile:\s*'write-text-file'/)
+  assert.match(content, /readTextFile:\s*'read-text-file'/)
 })
 
 test('共享路径配置包含主进程关键键名', async () => {

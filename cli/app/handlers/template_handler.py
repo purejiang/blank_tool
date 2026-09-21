@@ -9,7 +9,8 @@ module-level ``API_MAP`` is auto-discovered by :class:`app.api_handler.ApiHandle
 
 - ``template.save``    persist a :class:`WorkflowDefinition` under a name,
   with a description and tag list (create or overwrite);
-- ``template.load``    load a saved definition as a JSON dict; raises
+- ``template.load``    load a saved definition as a JSON dict plus its
+  wrapper metadata (description, tags, created_at, updated_at); raises
   :class:`TemplateNotFoundError` when the name is unknown;
 - ``template.list``    list metadata for every stored template (name,
   description, timestamps, tags, node count);
@@ -77,20 +78,34 @@ def handle_save(params, stream_handler):
 
 @logs_errors("TemplateHandler")
 def handle_load(params, stream_handler):
-    """Load a saved template definition as a JSON-able dict.
+    """Load a saved template definition plus its wrapper metadata.
 
     Params:
         name: template name to load.
 
     Returns:
-        ``{"definition": <WorkflowDefinition.to_dict()>}``.
+        ``{"definition": <WorkflowDefinition.to_dict()>,
+        "description": <str>, "tags": [<str>, ...],
+        "created_at": <ISO-8601 str | None>,
+        "updated_at": <ISO-8601 str | None>}``.  The metadata is purely
+        additive to the old ``{"definition": ...}`` shape.  A raw (bare
+        definition) template file has no wrapper metadata: ``description``
+        comes from that definition's own top-level field (so it agrees with
+        ``handle_list``); ``tags`` is ``[]`` and the timestamps fall back to the
+        file's modification time (``None`` when unavailable).
 
     Raises:
         TemplateNotFoundError: if no template with *name* exists.
     """
     name = params.get("name")
-    definition = _get_store().load(name)
-    return {"definition": definition.to_dict()}
+    definition, metadata = _get_store().load_with_meta(name)
+    return {
+        "definition": definition.to_dict(),
+        "description": metadata.get("description") or "",
+        "tags": list(metadata.get("tags") or []),
+        "created_at": metadata.get("created_at"),
+        "updated_at": metadata.get("updated_at"),
+    }
 
 
 @logs_errors("TemplateHandler")

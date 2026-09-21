@@ -55,7 +55,8 @@ _DEFAULT_MAX_BYTES = 200 * 1024 * 1024
 #: Age past which an abandoned ``*.json.tmp`` is deleted (seconds).
 _TMP_MAX_AGE_SECONDS = 300
 
-#: Keys projected into ``list_runs`` summaries.
+#: Keys projected into ``list_runs`` summaries.  Deliberately excludes the
+#: heavy ``node_results`` / ``inputs`` values.
 _SUMMARY_KEYS = (
     "run_id",
     "task_id",
@@ -66,6 +67,9 @@ _SUMMARY_KEYS = (
     "duration_ms",
     "success",
     "error",
+    "status",
+    "cancelled",
+    "run_dir",
 )
 
 
@@ -222,6 +226,10 @@ def _sweep_orphan_tmp(history_dir: str) -> None:
 
 def list_runs(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     """Return newest-first run summaries (corrupt files skipped).
+
+    Each summary projects ``_SUMMARY_KEYS`` only — including ``status``,
+    ``cancelled`` and ``run_dir`` — so the heavy ``node_results`` / ``inputs``
+    values never reach the wire.
 
     Ordering is decided from ``os.stat`` alone; only the requested window is
     parsed, so listing stays cheap however large the history directory grows.

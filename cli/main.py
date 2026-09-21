@@ -57,10 +57,16 @@ def send_json(data: Dict[str, Any]):
 # ------------------------------------------------------------------
 
 def _handle_health(params: dict, _stream_handler) -> dict:
-    """Lightweight health-check returning status and uptime."""
+    """Lightweight health-check returning status and uptime.
+
+    The uptime key is ``uptime_s`` — the same name the main-process liveness
+    probe returns (with ``null``) and the one declared in
+    ``src/shared/ipc/protocol.ts`` (``HealthResult``), so a renderer can read
+    either source with one field name.
+    """
     return {
         "status": "ok",
-        "uptime": round(time.time() - _start_time, 2),
+        "uptime_s": round(time.time() - _start_time, 2),
     }
 
 

@@ -40,7 +40,7 @@ import inspect
 import logging
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.plugins.manifest import (
     EXTENDED_MANIFEST,
@@ -63,6 +63,7 @@ __all__ = [
     "load_plugins",
     "unmount_all",
     "loaded",
+    "errors",
 ]
 
 
@@ -124,11 +125,21 @@ class PluginLoader:
     def __init__(self, ctx: Any = None) -> None:
         self._ctx = ctx
         self._loaded: List[LoadedPlugin] = []
+        #: ``module -> "ExcType: message"`` for entries whose import/apply raised.
+        self._errors: Dict[str, str] = {}
 
     @property
     def loaded(self) -> List[LoadedPlugin]:
         """A copy of the currently-loaded plugin records."""
         return list(self._loaded)
+
+    def errors(self) -> Dict[str, str]:
+        """A copy of ``module -> error`` for entries that failed to import/apply.
+
+        Populated by :meth:`load` (cleared at its start), so callers can
+        surface load failures that are otherwise only logged.
+        """
+        return dict(self._errors)
 
     def load(self, manifest: Optional[list] = None) -> List[LoadedPlugin]:
         """Import and ``apply`` every manifest entry, in order.
@@ -137,6 +148,7 @@ class PluginLoader:
         ``plugins`` then ``<output_dir>/plugins.json``); an absent/empty
         manifest is a no-op. Returns the loaded-plugin records.
         """
+        self._errors.clear()
         entries = self._resolve_manifest(manifest)
         for entry in entries:
             self._load_entry(entry)
@@ -200,7 +212,8 @@ class PluginLoader:
         before = set(sys.modules)
         try:
             module_obj = importlib.import_module(module_name)
-        except Exception:
+        except Exception as exc:
+            self._errors[module_name] = f"{type(exc).__name__}: {exc}"
             self._revert(path, module_name, before)
             logger.warning(
                 "failed to import plugin %r", module_name, exc_info=True
@@ -213,7 +226,8 @@ class PluginLoader:
             if apply is None or not callable(apply):
                 raise AttributeError("plugin module defines no callable apply")
             _invoke_apply(apply, self._ctx, config)
-        except Exception:
+        except Exception as exc:
+            self._errors[module_name] = f"{type(exc).__name__}: {exc}"
             self._revert(path, module_name, before)
             logger.warning(
                 "failed to apply plugin %r", module_name, exc_info=True
@@ -298,3 +312,14 @@ def loaded() -> List[LoadedPlugin]:
     if _default_loader is None:
         return []
     return _default_loader.loaded
+
+
+def errors() -> Dict[str, str]:
+    """Return ``module -> error`` for the default loader's failed entries.
+
+    Empty when no loader ran (or when every entry loaded cleanly); cleared by
+    the next :func:`load_plugins` call.
+    """
+    if _default_loader is None:
+        return {}
+    return _default_loader.errors()

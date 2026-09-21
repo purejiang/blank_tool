@@ -107,6 +107,55 @@ def test_save_then_load_roundtrips_definition():
     assert [node["id"] for node in result["definition"]["nodes"]] == ["write", "read"]
 
 
+def test_load_returns_wrapper_metadata():
+    # WP5 (#12): template.load is purely additive — it now also returns the
+    # wrapper metadata (description/tags/timestamps) that save() persisted.
+    handle_save(
+        {
+            "name": "meta",
+            "definition": _definition("meta", "meta-roundtrip"),
+            "description": "meta description",
+            "tags": ["android", "install"],
+        },
+        None,
+    )
+    result = handle_load({"name": "meta"}, None)
+
+    assert set(result) == {
+        "definition",
+        "description",
+        "tags",
+        "created_at",
+        "updated_at",
+    }
+    assert result["definition"]["name"] == "meta"
+    assert result["description"] == "meta description"
+    assert result["tags"] == ["android", "install"]
+    assert isinstance(result["created_at"], str) and result["created_at"]
+    assert isinstance(result["updated_at"], str) and result["updated_at"]
+
+
+def test_load_raw_definition_file_returns_metadata_defaults(tmp_path):
+    # The examples/ import format: a bare WorkflowDefinition with no
+    # "definition" wrapper key.  It carries no template metadata: tags default
+    # to [] and the timestamps come from the file's mtime.  The description is
+    # the definition's own top-level field, so load() and list() agree on it.
+    (tmp_path / "raw.json").write_text(
+        json.dumps(_definition("raw")), encoding="utf-8"
+    )
+
+    result = handle_load({"name": "raw"}, None)
+
+    assert result["definition"]["name"] == "raw"
+    assert [node["id"] for node in result["definition"]["nodes"]] == ["write", "read"]
+    assert result["description"] == "contract template"
+    assert result["tags"] == []
+    # Timestamps fall back to the file's mtime (None when it is unreadable),
+    # so a raw file yields either two equal ISO strings or two Nones.
+    assert result["created_at"] == result["updated_at"]
+    assert result["created_at"] is None or isinstance(result["created_at"], str)
+
+
 def test_list_returns_saved_templates_with_metadata():
     handle_save(
         {"name": "beta", "definition": _definition("beta"), "description": "b", "tags": ["x"]},

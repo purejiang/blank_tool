@@ -9,15 +9,18 @@ environment is (as data), :class:`EnvironmentRegistry` decides *where* it
 actually lives on this machine.
 
 Resolution follows the exact priority used by the legacy hardcoded
-``app.env`` helpers (behaviour parity):
+``app.env`` helpers (behaviour parity), plus the user-set path override
+(WP3 #13) inserted right after the env var override:
 
 1. ``env_var_override`` from the descriptor (e.g. ``BT_JAVA_BIN``), when the
    variable is set and the path exists;
-2. bundled runtimes under the runtime directory (``runtime/<search_path>/``),
+2. the persisted per-environment path override (``env_paths`` in
+   ``<output>/registry/overrides.json``, written by ``env.set_path``);
+3. bundled runtimes under the runtime directory (``runtime/<search_path>/``),
    probed via the descriptor's ``search_paths``;
-3. well-known system env vars per type (``JAVA_HOME``/``JRE_HOME`` for ``jre``,
+4. well-known system env vars per type (``JAVA_HOME``/``JRE_HOME`` for ``jre``,
    ``PYTHONHOME`` for ``python``, ``NODE_HOME``/``NODEJS_HOME`` for ``node``);
-4. ``shutil.which()`` over ``PATH`` using the binary file name.
+5. ``shutil.which()`` over ``PATH`` using the binary file name.
 
 Results are cached until :meth:`EnvironmentRegistry.refresh` is called.
 """
@@ -34,6 +37,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from app.env.descriptor import EnvironmentDescriptor
+from app.env.overrides_store import OverridesStore
 from app.utils.paths import resolve_path, get_runtime_dir
 
 logger = logging.getLogger(__name__)
@@ -294,6 +298,56 @@ class EnvironmentRegistry:
             return False
         return (overlay_envs / f"{name}.json").exists()
 
+    def get_descriptor(self, name: str) -> Optional[EnvironmentDescriptor]:
+        """Return the discovered descriptor for *name*, or None when unknown.
+
+        Read-only accessor: handlers must not reach into ``_descriptors``
+        directly.
+        """
+        with self._lock:
+            return self._descriptors.get(name)
+
+    # ------------------------------------------------------------------
+    # Path overrides (WP3 #13)
+    #
+    # Persisted under the ``env_paths`` key of the shared
+    # ``<output>/registry/overrides.json`` (same file as the tool
+    # ``custom_paths``), so every other key must survive a write.
+    # ------------------------------------------------------------------
+
+    def _overrides_store(self) -> OverridesStore:
+        """Return the overrides store for this registry's overlay root."""
+        return OverridesStore(self._overlay_dir or "")
+
+    def get_path_overrides(self) -> Dict[str, str]:
+        """Return the persisted ``env_paths`` overrides (``{}`` when unset)."""
+        data = self._overrides_store().load().get("env_paths")
+        if not isinstance(data, dict):
+            return {}
+        return {str(key): str(value) for key, value in data.items()}
+
+    def set_path_override(self, name: str, path: str) -> None:
+        """Persist ``env_paths[name] = path``, preserving every other key."""
+        store = self._overrides_store()
+        overrides = store.load()
+        env_paths = overrides.get("env_paths")
+        if not isinstance(env_paths, dict):
+            env_paths = {}
+        env_paths[str(name)] = str(path)
+        overrides["env_paths"] = env_paths
+        store.save(overrides)
+
+    def reset_path_override(self, name: str) -> None:
+        """Drop the ``env_paths[name]`` override (no-op when it is absent)."""
+        store = self._overrides_store()
+        overrides = store.load()
+        env_paths = overrides.get("env_paths")
+        if not isinstance(env_paths, dict) or str(name) not in env_paths:
+            return
+        del env_paths[str(name)]
+        overrides["env_paths"] = env_paths
+        store.save(overrides)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -345,13 +399,29 @@ def get_env_registry() -> "EnvironmentRegistry":
     return _default_registry
 
 
+def _path_overrides() -> Dict[str, str]:
+    """Return the persisted ``env_paths`` overrides without a registry instance.
+
+    ``_find_binary`` is module-level (and on a hot path, though results are
+    cached upstream by :meth:`EnvironmentRegistry.resolve`), so it reads the
+    shared overrides file directly through the same
+    :class:`~app.env.overrides_store.OverridesStore` the registry writes with.
+    An absent/malformed file yields ``{}``.
+    """
+    data = OverridesStore().load().get("env_paths")
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): str(value) for key, value in data.items()}
+
+
 def _find_binary(descriptor: EnvironmentDescriptor) -> Tuple[str, str]:
     """
     Locate the environment's binary, returning ``(binary_path, root_path)``.
 
-    Levels (first match wins): 1) env var override, 2) bundled runtime search
-    paths, 3) well-known system env vars per type, 4) ``PATH``. Returns
-    ``("", "")`` when nothing matches.
+    Levels (first match wins): 1) env var override, 2) persisted per-environment
+    path override (``env_paths``), 3) bundled runtime search paths, 4)
+    well-known system env vars per type, 5) ``PATH``. Returns ``("", "")`` when
+    nothing matches.
     """
     # Level 1: env var override — the variable points directly at the binary.
     if descriptor.env_var_override:
@@ -361,7 +431,27 @@ def _find_binary(descriptor: EnvironmentDescriptor) -> Tuple[str, str]:
             if os.path.isfile(override):
                 return override, os.path.dirname(override)
 
-    # Level 2: bundled runtimes under the runtime directory.
+    # Level 2: user-set path override (env.set_path). A file is used directly;
+    # a directory is probed like a runtime root (<dir>/<binary>, then
+    # <dir>/bin/<basename(binary)>).
+    override_path = _path_overrides().get(descriptor.name)
+    if override_path:
+        resolved_override = resolve_path(override_path)
+        if os.path.isfile(resolved_override):
+            return resolved_override, os.path.dirname(resolved_override)
+        if os.path.isdir(resolved_override):
+            for candidate in (
+                os.path.join(resolved_override, descriptor.binary),
+                os.path.join(
+                    resolved_override,
+                    "bin",
+                    os.path.basename(descriptor.binary),
+                ),
+            ):
+                if os.path.isfile(candidate):
+                    return candidate, resolved_override
+
+    # Level 3: bundled runtimes under the runtime directory.
     if descriptor.search_paths:
         runtime_dir = get_runtime_dir()
         if runtime_dir:
@@ -371,7 +461,7 @@ def _find_binary(descriptor: EnvironmentDescriptor) -> Tuple[str, str]:
                 if os.path.isfile(candidate):
                     return candidate, root
 
-    # Level 3: well-known system env vars per type.
+    # Level 4: well-known system env vars per type.
     for env_var in _SYSTEM_ENV_VARS_BY_TYPE.get(descriptor.type, ()):
         env_value = os.environ.get(env_var)
         if not env_value:
@@ -385,7 +475,7 @@ def _find_binary(descriptor: EnvironmentDescriptor) -> Tuple[str, str]:
             if os.path.isfile(candidate):
                 return candidate, env_value
 
-    # Level 4: PATH search using the binary file name only.
+    # Level 5: PATH search using the binary file name only.
     found = shutil.which(os.path.basename(descriptor.binary))
     if found:
         return found, os.path.dirname(found)

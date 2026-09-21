@@ -46,6 +46,11 @@ def get_tools(params, stream_handler):
         }
         info["source"] = _source_for(manager, tool_name, info["path"])
         info["status"] = "available" if info["is_valid"] else "unavailable"
+        # WP3 #14: descriptor tools expose their declared environment deps.
+        descriptor = getattr(tool, "_descriptor", None)
+        env_deps = getattr(descriptor, "env_deps", None)
+        if isinstance(env_deps, (list, tuple)):
+            info["env_deps"] = list(env_deps)
         return info
     report = {}
     for name, tool in manager.get_all_tools().items():
@@ -127,7 +132,13 @@ def get_custom_paths(params, stream_handler):
 
 @logs_errors("ToolHandler")
 def handle_tool_add(params, stream_handler):
-    """Add a tool descriptor to the writable overlay registry."""
+    """Add a tool descriptor to the writable overlay registry.
+
+    Raises:
+        ToolException: on a missing/invalid ``descriptor`` or when the
+            descriptor fails validation (WP0 #7: no more ``{"error"}``
+            payload reported as success).
+    """
     descriptor = params.get("descriptor")
     if not isinstance(descriptor, dict):
         raise ToolException("Missing or invalid 'descriptor' field")
@@ -141,12 +152,17 @@ def handle_tool_add(params, stream_handler):
             "path": getattr(tool, "tool_path", ""),
         }
     except ValueError as e:
-        return {"error": str(e)}
+        raise ToolException(str(e)) from e
 
 
 @logs_errors("ToolHandler")
 def handle_tool_delete(params, stream_handler):
-    """Remove a tool descriptor from the writable overlay registry."""
+    """Remove a tool descriptor from the writable overlay registry.
+
+    Raises:
+        ToolException: on a missing ``name``, or when *name* has no overlay
+            descriptor (bundled tools are protected).
+    """
     name = params.get("name", "")
     if not name:
         raise ToolException("Missing 'name' field")
@@ -156,7 +172,7 @@ def handle_tool_delete(params, stream_handler):
         registry.delete_descriptor(name)
         return {"deleted": name}
     except ValueError as e:
-        return {"error": str(e)}
+        raise ToolException(str(e)) from e
 
 
 @logs_errors("ToolHandler")

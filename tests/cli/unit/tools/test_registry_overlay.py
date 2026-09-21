@@ -195,6 +195,46 @@ def test_set_custom_path_persists_and_survives_reload(
     assert custom_paths.get("testtool") == "/custom/path/to/testtool"
 
 
+def test_set_custom_path_preserves_foreign_override_sections(
+    tmp_path: Path,
+) -> None:
+    """overrides.json is shared with the environment registry (`env_paths`).
+
+    Writing a tool custom path must be a read → mutate → write so the other
+    sections survive (WP3 cross-feature regression).
+    """
+    from app.tools.tool_manager import ToolRegistry
+
+    overlay_root = tmp_path / "overlay-root"
+    overlay_root.mkdir(parents=True)
+    overrides_file = overlay_root / "overrides.json"
+    overrides_file.write_text(
+        json.dumps({"env_paths": {"java": "/opt/jdk/bin/java"}}),
+        encoding="utf-8",
+    )
+
+    registry = ToolRegistry(registry_overlay_dir=str(overlay_root))
+    registry._discovered["testtool"] = type(  # noqa: SLF001
+        "FakeTool", (), {
+            "__init__": lambda self, name, path, search_system: (
+                setattr(self, "name", name)
+                or setattr(self, "tool_path", path)
+                or setattr(self, "is_valid", True)
+                or setattr(self, "version", "1.0")
+                or None
+            ),
+        },
+    )
+
+    registry.set_custom_path("testtool", "/custom/testtool")
+
+    data = json.loads(overrides_file.read_text(encoding="utf-8"))
+    assert data.get("custom_paths", {}).get("testtool") == "/custom/testtool"
+    assert data.get("env_paths") == {"java": "/opt/jdk/bin/java"}, (
+        "env_paths was wiped by the tool-side override write"
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════
 # (c) Malformed overlay descriptor file SKIPPED with warning, not fatal
 # ═════════════════════════════════════════════════════════════════════

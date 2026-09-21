@@ -19,7 +19,9 @@ from app.handlers.history_handler import (
     history_clear,
     history_delete,
     history_get,
+    history_get_config,
     history_list,
+    history_set_config,
 )
 from app.history import store as history_store
 
@@ -302,3 +304,142 @@ class TestHandlers:
         history_store.record_run(_record())
         history_store.record_run(_record())
         assert history_clear({}, None) == {"cleared": 2}
+
+
+def _norm(path) -> str:
+    return os.path.normcase(str(path))
+
+
+class TestConfigHandlers:
+    """#5: history.get_config / history.set_config."""
+
+    def test_get_config_defaults_when_no_config_file(self, output_dir, tmp_path):
+        result = history_get_config({}, None)
+
+        assert result["enabled"] is True
+        assert result["max_runs"] == 200 == history_store._DEFAULT_MAX_RUNS
+        assert result["max_bytes"] == 200 * 1024 * 1024
+        assert result["max_bytes"] == history_store._DEFAULT_MAX_BYTES
+        assert _norm(result["config_path"]) == _norm(tmp_path / "nope.json")
+
+    def test_get_config_reflects_a_partial_section(self, output_dir, tmp_path, monkeypatch):
+        _write_config(tmp_path, monkeypatch, {"max_runs": 0})
+
+        result = history_get_config({}, None)
+
+        assert result["enabled"] is True
+        assert result["max_runs"] == 0
+        assert result["max_bytes"] == history_store._DEFAULT_MAX_BYTES
+
+    def test_set_config_roundtrip_preserves_unrelated_keys(
+        self, output_dir, tmp_path, monkeypatch
+    ):
+        cfg = tmp_path / "server.config.json"
+        cfg.write_text(
+            json.dumps(
+                {
+                    "history": {"enabled": True},
+                    "env": {"FOO": "bar"},
+                    "tools": {"atomic_extensions": ["x"]},
+                    "plugins": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+
+        result = history_set_config(
+            {"enabled": False, "max_runs": 5, "max_bytes": 1024}, None
+        )
+
+        assert result["enabled"] is False
+        assert result["max_runs"] == 5
+        assert result["max_bytes"] == 1024
+        assert _norm(result["config_path"]) == _norm(cfg)
+        assert history_get_config({}, None) == result
+
+        raw = json.loads(cfg.read_text(encoding="utf-8"))
+        assert raw["history"] == {"enabled": False, "max_runs": 5, "max_bytes": 1024}
+        assert raw["env"] == {"FOO": "bar"}
+        assert raw["tools"] == {"atomic_extensions": ["x"]}
+        assert raw["plugins"] == []
+
+    def test_set_config_partial_update_keeps_other_history_keys(
+        self, output_dir, tmp_path, monkeypatch
+    ):
+        _write_config(tmp_path, monkeypatch, {"enabled": True, "max_runs": 7})
+
+        result = history_set_config({"max_bytes": 10}, None)
+
+        assert result["enabled"] is True
+        assert result["max_runs"] == 7
+        assert result["max_bytes"] == 10
+
+    def test_set_config_is_effective_for_the_store_without_restart(
+        self, output_dir, tmp_path, monkeypatch
+    ):
+        _write_config(tmp_path, monkeypatch, {"enabled": True, "max_runs": 50})
+        assert history_store.record_run(_record()) is not None
+
+        history_set_config({"enabled": False}, None)
+
+        assert history_store.record_run(_record()) is None
+        assert len(history_store.list_runs()) == 1
+
+    def test_set_config_creates_a_missing_config_file(self, output_dir, tmp_path):
+        cfg = tmp_path / "nope.json"
+        assert not cfg.exists()
+
+        result = history_set_config({"enabled": False}, None)
+
+        assert result["enabled"] is False
+        assert cfg.exists()
+        assert json.loads(cfg.read_text(encoding="utf-8")) == {
+            "history": {"enabled": False}
+        }
+
+    def test_set_config_repairs_a_malformed_config_file(
+        self, output_dir, tmp_path, monkeypatch
+    ):
+        cfg = tmp_path / "server.config.json"
+        cfg.write_text("{not json", encoding="utf-8")
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+
+        assert history_set_config({"max_runs": 3}, None)["max_runs"] == 3
+        assert json.loads(cfg.read_text(encoding="utf-8")) == {
+            "history": {"max_runs": 3}
+        }
+
+    def test_empty_set_config_does_not_write(self, output_dir, tmp_path):
+        cfg = tmp_path / "nope.json"
+
+        result = history_set_config({}, None)
+
+        assert result["enabled"] is True
+        assert not cfg.exists()
+
+    @pytest.mark.parametrize(
+        "update",
+        [
+            {"enabled": "yes"},
+            {"enabled": 1},
+            {"max_runs": -1},
+            {"max_runs": "many"},
+            {"max_runs": True},
+            {"max_runs": 1.5},
+            {"max_bytes": -5},
+            {"max_bytes": "lots"},
+        ],
+    )
+    def test_invalid_values_raise_and_do_not_touch_the_file(
+        self, output_dir, tmp_path, monkeypatch, update
+    ):
+        cfg = tmp_path / "server.config.json"
+        original = {"history": {"enabled": True}, "env": {"KEEP": "1"}}
+        cfg.write_text(json.dumps(original), encoding="utf-8")
+        monkeypatch.setenv("BT_SERVER_CONFIG", str(cfg))
+
+        with pytest.raises(ToolException):
+            history_set_config(update, None)
+
+        assert json.loads(cfg.read_text(encoding="utf-8")) == original

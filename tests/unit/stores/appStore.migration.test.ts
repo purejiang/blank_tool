@@ -113,8 +113,8 @@ describe('appStore config migrations', () => {
     expect(appStore.get('app').autoStart).toBe(false)
     expect(appStore.get('app').minimizeToTray).toBe(false)
 
-    // Version bumped 1 → 6.
-    expect(appStore.get('configVersion')).toBe(6)
+    // Version bumped 1 → 7.
+    expect(appStore.get('configVersion')).toBe(7)
   })
 
   it('empty store gets canonical top-level defaults without throwing', async () => {
@@ -124,7 +124,34 @@ describe('appStore config migrations', () => {
 
     expect(appStore.get('theme')).toBe('auto')
     expect(appStore.get('language')).toBe('zh-CN')
-    expect(appStore.get('configVersion')).toBe(6)
+    expect(appStore.get('configVersion')).toBe(7)
     expect(appStore.get('app')).toEqual({ autoStart: false, minimizeToTray: false })
+  })
+
+  it('MIGRATIONS[6] flips a store seeded with enableNotifications: true to false', async () => {
+    // A real v6 store already has the key written under the old default; the
+    // schema flip alone cannot reach it because syncStoreDefaults() only fills
+    // in *missing* keys.
+    mocks.setSeed({
+      configVersion: 6,
+      enableNotifications: true,
+    })
+
+    const { default: appStore } = await import('../../../src/main/stores/appStore')
+
+    expect(appStore.get('enableNotifications')).toBe(false)
+    expect(appStore.get('configVersion')).toBe(7)
+  })
+
+  it('MIGRATIONS[6] leaves an explicit enableNotifications: false alone', async () => {
+    mocks.setSeed({
+      configVersion: 6,
+      enableNotifications: false,
+    })
+
+    const { default: appStore } = await import('../../../src/main/stores/appStore')
+
+    expect(appStore.get('enableNotifications')).toBe(false)
+    expect(appStore.get('configVersion')).toBe(7)
   })
 })

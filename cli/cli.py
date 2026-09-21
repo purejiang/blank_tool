@@ -439,12 +439,15 @@ def cmd_import_pack(path: str) -> int:
     0 when every descriptor imported cleanly, 1 otherwise.
     """
     from app.tools.tool_manager import ToolManager
+    from app.common.exceptions import ToolException
 
     registry = ToolManager.instance().get_registry()
-    report = registry.import_descriptor_dir(path)
-
-    if "error" in report:
-        print(f"error: {report['error']}", file=sys.stderr)
+    try:
+        report = registry.import_descriptor_dir(path)
+    except ToolException as exc:
+        # Unusable input (missing directory / no *.json descriptors) is an
+        # error envelope on the IPC path and a non-zero exit here (WP0 #7).
+        print(f"error: {exc}", file=sys.stderr)
         return 1
 
     rows = []
@@ -927,6 +930,8 @@ def cmd_run(
                 definition, {"path": target}, task_id, inputs, result,
                 started_at, start,
                 run_id=run_id if _HISTORY_ID_RE.match(run_id) else None,
+                run_dir=context.run_dir or "",
+                exec_run_id=run_id,
             )
 
             if json_output:
