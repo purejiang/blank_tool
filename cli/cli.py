@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Headless CLI entry point for the Blank Tool workflow system.
+Headless CLI entry point for the Blanks workflow system.
 
 Provides ten subcommands (``run``, ``list-tools``, ``list-envs``,
 ``validate``, ``tool``, ``list-templates``, ``list-tasks``, ``import-pack``,
@@ -1102,8 +1102,8 @@ def _parse_key_values(pairs: List[str]) -> Dict[str, Any]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="blank-tool-cli",
-        description="Blank Tool workflow CLI",
+        prog="blanks-cli",
+        description="Blanks workflow CLI",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

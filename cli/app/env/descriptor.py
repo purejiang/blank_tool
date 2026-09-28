@@ -40,7 +40,7 @@ _REQUIRED_FIELDS = (
 @dataclass
 class EnvironmentDescriptor:
     """
-    Schema for one environment (runtime) that Blank Tool can resolve and run.
+    Schema for one environment (runtime) that Blanks can resolve and run.
 
     Attributes:
         name: snake_case identifier, e.g. ``"java"``, ``"python"``, ``"node"``.

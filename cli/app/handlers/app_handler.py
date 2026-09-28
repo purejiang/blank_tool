@@ -119,8 +119,17 @@ def build_info(params, stream_handler):
 
 @logs_errors("AppHandler")
 def app_info(params, stream_handler):
+    """Return the backend/CLI version.
+
+    ``APP_VERSION`` (set by ``cli/.env`` via ``load_dotenv()``, or by an
+    external caller) wins; when it is absent — e.g. an installed build that
+    ships no ``.env`` — fall back to the package version so the renderer's
+    status bar never renders ``backend N/A``.
+    """
     from app.env import get_env
-    version = get_env(ENV_APP_VERSION, "")
+    from app import __version__ as package_version
+
+    version = get_env(ENV_APP_VERSION, "") or package_version
     return {"version": version}
 
 

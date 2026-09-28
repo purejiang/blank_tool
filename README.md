@@ -1,6 +1,6 @@
-# Blank Tool
+# Blanks
 
-Blank Tool 是本地工作流编排桌面应用（Electron + Vue 3 + Python）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的模板，在任务中心或无头 CLI（`cli/cli.py`）中执行。模型通用、领域无关。
+Blanks 是本地工作流编排桌面应用（Electron + Vue 3 + Python）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的模板，在任务中心或无头 CLI（`cli/cli.py`）中执行。模型通用、领域无关。
 
 应用本体**不包含任何领域内容**：不内置工作流、工具描述符或二进制。仓库提供 `examples/` 可导入示例包：**通用示例工作流**（`examples/workflows/generic/`，仅用内置原子工具、零外部依赖、导入即跑）与 **Android 示例包**（`examples/workflows/android/` + `examples/tools/android/`，需导入描述符并自备二进制）；二进制由用户自行准备（本地 `runtime/` 目录、自定义路径或系统 PATH）。该调整**已完成**（T21，2026-08-04）。
 

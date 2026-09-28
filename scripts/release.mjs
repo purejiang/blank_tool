@@ -655,7 +655,7 @@ function build(newVersion) {
   console.log('  ✓ Build completed');
 
   // Verify artifacts
-  const expectedExe = `Blank-Tool-Setup-${newVersion}.exe`;
+  const expectedExe = `Blanks-Setup-${newVersion}.exe`;
   const exePath = join(buildDir, expectedExe);
   const blockmapPath = join(buildDir, `${expectedExe}.blockmap`);
   const ymlPath = join(buildDir, 'latest.yml');
@@ -807,8 +807,8 @@ async function createRelease(newVersion, notes) {
   console.log(`  ✓ Draft release created: ${tag}`);
 
   // Upload artifacts one by one (exe gets retry, others together)
-  const exePath = join(buildDir, `Blank-Tool-Setup-${newVersion}.exe`);
-  const blockmapPath = join(buildDir, `Blank-Tool-Setup-${newVersion}.exe.blockmap`);
+  const exePath = join(buildDir, `Blanks-Setup-${newVersion}.exe`);
+  const blockmapPath = join(buildDir, `Blanks-Setup-${newVersion}.exe.blockmap`);
   const ymlPath = join(buildDir, 'latest.yml');
 
   // Upload exe with retry
@@ -928,7 +928,7 @@ async function main() {
   const parsedArgs = parseArgs();
 
   console.log('╔══════════════════════════════════════════════════╗');
-  console.log('║           Blank Tool Release Script             ║');
+  console.log('║              Blanks Release Script             ║');
   console.log('╚══════════════════════════════════════════════════╝');
   console.log();
 

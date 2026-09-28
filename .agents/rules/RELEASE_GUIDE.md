@@ -35,12 +35,12 @@ console.log(`[build] Version: ${pkg.version}`);
 
 旧版曾用 git describe 注入并产生 package.json.bak——若工作目录残留手动删除即可，preflight 会检查该残留并阻断。
 
-产物命名由 package.json 的 `build.artifactName = "Blank-Tool-Setup-${version}.${ext}"` 决定，输出到 `build/`：
+产物命名由 package.json 的 `build.artifactName = "Blanks-Setup-${version}.${ext}"` 决定，输出到 `build/`：
 
 | 文件 | 用途 | 是否上传 |
 |---|---|---|
-| `Blank-Tool-Setup-X.Y.Z.exe` | 安装包 | ✅ 上传 |
-| `Blank-Tool-Setup-X.Y.Z.exe.blockmap` | 增量更新块映射 | ✅ 上传 |
+| `Blanks-Setup-X.Y.Z.exe` | 安装包 | ✅ 上传 |
+| `Blanks-Setup-X.Y.Z.exe.blockmap` | 增量更新块映射 | ✅ 上传 |
 | `latest.yml` | 自动更新清单 | ✅ 上传 |
 
 **latest.yml 与自动更新**：electron-updater 按 latest.yml 的 path/url 下载资产，文件名不一致会 404。`npm run release` 已在构建阶段自动校验（path 与 exe 名比对）。手动发布时用 PowerShell 比对：
@@ -83,7 +83,7 @@ git add package.json && git commit -m "chore(release): bump version to X.Y.Z"
 git tag -a vX.Y.Z -m "vX.Y.Z"
 git push origin main vX.Y.Z
 npm run build:win
-gh release create vX.Y.Z "build/Blank-Tool-Setup-X.Y.Z.exe" "build/Blank-Tool-Setup-X.Y.Z.exe.blockmap" "build/latest.yml" --title "vX.Y.Z" --notes "..."
+gh release create vX.Y.Z "build/Blanks-Setup-X.Y.Z.exe" "build/Blanks-Setup-X.Y.Z.exe.blockmap" "build/latest.yml" --title "vX.Y.Z" --notes "..."
 ```
 
 随后按 [通用发版规范](./RELEASE_GENERAL.md#5-旧版本清理) 清理旧版本资产。

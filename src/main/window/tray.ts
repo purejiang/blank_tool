@@ -12,7 +12,7 @@ export function createTray(): Tray {
   const isZh = app.getLocale().startsWith('zh');
 
   const trayInstance = new Tray(iconImage.isEmpty() ? nativeImage.createEmpty() : iconImage);
-  trayInstance.setToolTip('Blank Tool');
+  trayInstance.setToolTip('Blanks');
 
   const contextMenu = Menu.buildFromTemplate([
     {

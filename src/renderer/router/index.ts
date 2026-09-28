@@ -10,7 +10,7 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const pageTitle = to.meta?.title as string | undefined
-  document.title = pageTitle ? `${pageTitle} - Blank Tool` : 'Blank Tool'
+  document.title = pageTitle ? `${pageTitle} - Blanks` : 'Blanks'
   next()
 })
 

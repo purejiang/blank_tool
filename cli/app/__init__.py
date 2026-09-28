@@ -4,6 +4,6 @@
 Blank Tool Python后端
 """
 
-__version__ = "1.0.0"
+__version__ = "0.5.0"
 __author__ = "CyanRain"
-__description__ = "Blank Tool集成后端"
+__description__ = "Blanks 集成后端"
