@@ -1,25 +1,28 @@
 <template>
   <!--
-    NOTE: deliberately NOT `.screen`. `.screen` is the shared router container
-    (assets/styles/preview-layout.css) and is a COLUMN flex box; the editor is a
-    ROW (palette ｜ canvas ｜ dock). Reusing it left `flex-direction: column`
-    in place and stacked the three columns vertically, collapsing the canvas to
-    ~2px. The editor declares its own root layout below instead.
-  -->
-  <div class="workflow-editor-page">
-    <!-- Left panel: tool palette -->
-    <WorkflowNodePalette @append="onAppendTool" />
+    版式逐字取自 docs/ui-prompts/ui-preview.html 的 S2 屏：
+      .screen.editor  顶栏横跨整宽，下面才是三列
+        .ed-top       返回 / 工作流名 / 状态 / 模板 / 问题 / 试运行
+        .warn-bar     线性模型守卫（多余出边）
+        .ed-body      .ed-left(240) ｜ .canvas ｜ .ed-right(320)
+    三列都是**贴边的整高面板**（只有 1px 分隔线），不是三张浮起的圆角卡片——
+    那是之前"很挤"的主因：3 层卡片边框 + 2 个 8px 间隙 + 各自的内边距，全是从
+    画布身上割的。
 
-    <!-- Center: toolbar + banners + vue-flow canvas -->
-    <div class="we-center">
-      <div class="we-toolbar">
-        <n-button size="small" quaternary :title="t('workflow.editor.back')" @click="goBack">
-          <template #icon><AppIcon name="back" /></template>
-        </n-button>
-        <button type="button" class="we-title" :title="meta.name" @click="activeTab = 'workflow'">
-          {{ meta.name || t('workflow.editor.title') }}
-        </button>
-        <span class="we-state" :class="`we-state--${runState}`">{{ stateLabel }}</span>
+    右栏只有一条信息流（没有 tab）：没选中节点 = 工作流信息（名字/版本/描述 +
+    输入输出声明），选中节点 = 节点检查器（顶部一行「← 工作流」返回）。
+  -->
+  <section class="screen editor we-editor">
+    <div class="ed-top">
+      <n-button size="small" quaternary :title="t('workflow.editor.back')" @click="goBack">
+        <template #icon><AppIcon name="back" /></template>
+      </n-button>
+      <button type="button" class="ed-name" :title="meta.name" @click="showWorkflowInfo">
+        {{ meta.name || t('workflow.editor.title') }}
+      </button>
+      <span class="we-state" :class="`we-state--${runState}`">{{ stateLabel }}</span>
+
+      <div class="we-top-actions">
         <TemplateManager
           :get-definition="serializeCanvas"
           :blocked-reason="saveBlockedReason"
@@ -45,113 +48,137 @@
           {{ t('workflow.editor.cancel') }}
         </n-button>
       </div>
+    </div>
 
-      <!-- Linear-model guard: extra outgoing edges cannot be saved -->
-      <n-alert
-        v-if="edgeConflicts.length > 0"
-        class="we-banner"
-        type="warning"
-        :show-icon="true"
-        data-test="edge-guard"
+    <!-- Linear-model guard: extra outgoing edges cannot be saved -->
+    <div v-if="edgeConflicts.length > 0" class="warn-bar" data-test="edge-guard">
+      <div class="w1">
+        <AppIcon name="alert" size="sm" />
+        <span>{{ t('workflow.editor.guard.title', { count: edgeConflicts.length }) }}</span>
+      </div>
+      <div
+        v-for="conflict in edgeConflicts"
+        :key="`${conflict.source}->${conflict.target}`"
+        class="w2"
       >
-        <div class="we-guard-title">
-          {{ t('workflow.editor.guard.title', { count: edgeConflicts.length }) }}
-        </div>
-        <div class="we-guard-edges">
-          <code v-for="conflict in edgeConflicts" :key="`${conflict.source}->${conflict.target}`">
-            {{ conflict.source }} → {{ conflict.target }}
-          </code>
-        </div>
-        <div class="we-guard-hint">{{ t('workflow.editor.guard.hint') }}</div>
-      </n-alert>
+        {{ conflict.source }} → {{ conflict.target }}
+      </div>
+      <div class="w3">{{ t('workflow.editor.guard.hint') }}</div>
+    </div>
 
-      <!-- Terminal execution result banner; closable, persists until next Run -->
-      <n-alert
-        v-if="banner"
-        class="we-banner"
-        :type="banner.type"
-        closable
-        @close="banner = null"
-      >
-        {{ banner.text }}
-      </n-alert>
+    <!-- Terminal execution result banner; closable, persists until next Run -->
+    <n-alert
+      v-if="banner"
+      class="we-banner"
+      :type="banner.type"
+      closable
+      @close="banner = null"
+    >
+      {{ banner.text }}
+    </n-alert>
 
-      <main class="we-canvas" @dragover="onDragOver" @drop="onDrop">
+    <div class="ed-body">
+      <!-- 左栏：工具面板 -->
+      <div class="ed-left">
+        <WorkflowNodePalette @append="onAppendTool" />
+      </div>
+
+      <!-- 画布 -->
+      <main class="canvas" @dragover="onDragOver" @drop="onDrop">
         <!--
           No `fit-view-on-init`: it refires whenever nodes first appear, so the
           first drop/append made vue-flow fit-to-view a 1-node graph and clamp
           to ~3.9x — the canvas jumped and the node left the drop point. The
           canvas now stays at whatever viewport the user has, and fitView is
           called once, explicitly, when a saved template is loaded.
+
+          `<Background variant="dots" :gap="20">` matches the preview's 20px dot
+          grid but pans/zooms with the canvas (the CSS dot pattern from
+          `.pv .canvas` is switched off in the style block — two grids would
+          double the dots).
+
+          `connection-radius="40"` widens the drop target: each node has exactly
+          one handle per side, so a generous snap radius is what makes chaining
+          feel easy.
         -->
         <VueFlow
           :node-types="nodeTypes"
           :min-zoom="0.2"
           :max-zoom="4"
+          :connection-radius="40"
           :default-edge-options="defaultEdgeOptions"
           @connect="onConnect"
-          @connect-start="onConnectStart"
-          @connect-end="onConnectEnd"
+          @nodes-initialized="onNodesInitialized"
         >
-          <Background />
-          <Controls />
-          <MiniMap />
+          <Background variant="dots" :gap="20" />
+          <!-- Controls' `position` prop is typed as the (deprecated) PanelPosition
+               enum, not the string union MiniMap accepts — hence the enum member
+               rather than the "bottom-right" literal. -->
+          <Controls :position="PanelPosition.BottomRight" />
+          <MiniMap position="bottom-left" :pannable="true" :zoomable="true" />
         </VueFlow>
-        <div v-if="nodes.length === 0" class="we-empty-hint">
-          {{ t('workflow.editor.emptyCanvas') }}
+
+        <div v-if="nodes.length === 0" class="we-empty">
+          <AppIcon name="wf" :size="44" />
+          <p class="we-empty-title">{{ t('workflow.editor.emptyCanvas') }}</p>
+          <p class="we-empty-hint">{{ t('workflow.editor.emptyCanvasHint') }}</p>
         </div>
+
+        <!-- 右栏收起后的召回按钮（不然没地方点回来） -->
+        <button
+          v-if="!inspectorOpen"
+          type="button"
+          class="we-inspector-open"
+          :title="t('workflow.editor.dock.expand')"
+          @click="toggleInspector"
+        >
+          <AppIcon name="chevrons-l" size="sm" />
+        </button>
       </main>
-    </div>
 
-    <!-- Right dock: always visible, 工作流 ｜ 节点 -->
-    <aside class="we-dock">
-      <div class="we-dock-tabs">
-        <button
-          type="button"
-          class="we-dock-tab"
-          :class="{ 'we-dock-tab--active': activeTab === 'workflow' }"
-          @click="activeTab = 'workflow'"
-        >
-          {{ t('workflow.editor.dock.tabs.workflow') }}
-        </button>
-        <button
-          type="button"
-          class="we-dock-tab"
-          :class="{ 'we-dock-tab--active': activeTab === 'node' }"
-          @click="activeTab = 'node'"
-        >
-          {{ t('workflow.editor.dock.tabs.node') }}
-        </button>
-      </div>
+      <!-- 右栏：工作流信息 ⇄ 节点检查器（单栏切换，可整栏收起） -->
+      <div class="ed-right we-inspector" :class="{ 'we-inspector--collapsed': !inspectorOpen }">
+        <div class="cfg-hd">
+          <div class="we-cfg-hd-row">
+            <div class="cn">{{ selectedNode ? selectedToolName : t('workflow.editor.info.title') }}</div>
+            <button
+              v-if="selectedNode"
+              type="button"
+              class="we-cfg-btn"
+              :title="t('workflow.editor.dock.backToWorkflow')"
+              @click="deselectNode"
+            >
+              <AppIcon name="back" size="sm" />
+              <span>{{ t('workflow.editor.dock.backToWorkflow') }}</span>
+            </button>
+            <button
+              type="button"
+              class="we-cfg-btn we-cfg-btn--icon"
+              :title="t('workflow.editor.dock.collapse')"
+              @click="toggleInspector"
+            >
+              <AppIcon name="chevrons-r" size="sm" />
+            </button>
+          </div>
+          <div class="cd">{{ selectedNode ? selectedNodeSubtitle : workflowSubtitle }}</div>
+        </div>
 
-      <div class="we-dock-body">
-        <!-- 工作流: identity + workflow-level inputs/outputs -->
-        <template v-if="activeTab === 'workflow'">
-          <WorkflowInfoPanel
-            :meta="meta"
-            :node-count="nodes.length"
-            :edge-count="edges.length"
-            @update:meta="meta = $event"
-          />
-          <div class="we-dock-divider" />
+        <NodeConfigPanel
+          v-if="selectedNode"
+          :node="selectedNode"
+          :workflow-inputs="meta.inputs ?? []"
+          :upstream-nodes="upstreamNodes"
+          :node-ids="nodeIds"
+          @delete="onDeleteNode"
+          @rename="onRenameNode"
+        />
+        <div v-else class="cfg-bd">
+          <WorkflowInfoPanel :meta="meta" @update:meta="meta = $event" />
+          <div class="we-cfg-divider" />
           <IoAuthoringPanel :meta="meta" @update:meta="meta = $event" />
-        </template>
-
-        <!-- 节点: the selected node's configuration -->
-        <template v-else>
-          <NodeConfigPanel
-            v-if="selectedNode"
-            :node="selectedNode"
-            :workflow-inputs="meta.inputs ?? []"
-            :upstream-nodes="upstreamNodes"
-            :node-ids="nodeIds"
-            @delete="onDeleteNode"
-            @rename="onRenameNode"
-          />
-          <div v-else class="we-dock-empty">{{ t('workflow.editor.config.noSelection') }}</div>
-        </template>
+        </div>
       </div>
-    </aside>
+    </div>
 
     <!-- Run dialog（M1 公共弹层）：工作流列表的「试运行」用同一个组件 -->
     <RunInputsDialog
@@ -199,21 +226,21 @@
         </div>
       </template>
     </n-modal>
-  </div>
+  </section>
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   MarkerType,
+  PanelPosition,
   VueFlow,
   useVueFlow,
   type Connection,
   type Edge,
   type Node,
-  type OnConnectStartParams,
 } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -250,12 +277,6 @@ import {
   type WorkflowMeta,
 } from '@components/workflow/serializer'
 import {
-  CONNECTION_DRAG_KEY,
-  isBaseType,
-  validateConnection,
-  type ConnectionDragInfo,
-} from '@components/workflow/PortConnection'
-import {
   LAYOUT_X_SPACING,
   LAYOUT_X_START,
   LAYOUT_Y,
@@ -264,7 +285,6 @@ import {
   upstreamNodeIds,
 } from '@components/workflow/graphLayout'
 import { renameNodeId } from '@components/workflow/nodeRename'
-import serviceManager from '@services/ServiceManager'
 import unifiedApi from '@/api/unifiedApi'
 import { log } from '@utils/logger'
 
@@ -282,10 +302,18 @@ const nodeTypes = {
 
 /**
  * Edge styling: the linear chain runs left → right and the handles sit on the
- * node sides, so a smoothstep edge with an arrow reads as the pipeline it is.
+ * node sides (one per side).
+ *
+ * `type: 'default'` is vue-flow's **cubic Bézier** edge (the same `C …` path the
+ * design mock draws), not `smoothstep`: smoothstep routes with orthogonal
+ * segments plus rounded corners, so a chain whose nodes sit at different heights
+ * renders as right-angled steps instead of a curve. Note that for two nodes on
+ * the SAME row (what the auto-layout produces) a Bézier between a right anchor
+ * and a left anchor is a straight horizontal line — that is geometry, not a
+ * style choice; the curve only shows up once the nodes are vertically offset.
  */
 const defaultEdgeOptions = {
-  type: 'smoothstep',
+  type: 'default',
   markerEnd: MarkerType.ArrowClosed,
 }
 
@@ -312,57 +340,21 @@ const message = useMessage()
 const dialog = useDialog()
 const { t } = useI18n()
 
-// Live connection-drag state: provided here, injected by ToolNode to highlight
-// compatible handles and dim incompatible ones mid-drag.
-const connectionDrag = ref<ConnectionDragInfo | null>(null)
-provide(CONNECTION_DRAG_KEY, connectionDrag)
-
-/** Resolve a port on a node by handle id (handle id == port name). */
-function findPort(nodeId: string, handleId: string | null | undefined, side: 'inputs' | 'outputs'): ToolPort | undefined {
-  if (!handleId) return undefined
-  const node = findNode(nodeId)
-  if (!node) return undefined
-  const data = node.data as ToolNodeData | undefined
-  return data?.ports?.[side]?.find((p) => p.name === handleId)
-}
-
 /**
- * Connection validation: base types must match (D7 — subtype is advisory and
- * never enforced). Valid drops become edges; incompatible ones are rejected
- * with a toast instead.
+ * Connection validation (09-28). 一个节点每侧只有一个连接点，**边只表达执行
+ * 顺序**——`serializer.ts` 的 `resolveNextMap` 只看 source/target，从不下发
+ * sourceHandle/targetHandle。所以这里只剩唯一一条必须挡住的规则：自环
+ * （self-loop，后端会当成 cycle 拒绝）。以前那套"按端口 base type 校验"在
+ * 单连接点下不成立（没有端口身份可比），已随 ToolNode 的多 handle 一起下线。
  */
 function onConnect(connection: Connection) {
   if (connection.source && connection.source === connection.target) {
     message.error(t('workflow.editor.connection.selfLoop'))
     return
   }
-  const sourcePort = findPort(connection.source, connection.sourceHandle, 'outputs')
-  const targetPort = findPort(connection.target, connection.targetHandle, 'inputs')
-  const result = validateConnection(
-    { nodeId: connection.source, portName: connection.sourceHandle ?? '', portType: sourcePort?.type },
-    { nodeId: connection.target, portName: connection.targetHandle ?? '', portType: targetPort?.type },
-  )
-  if (!result.valid) {
-    message.error(result.reason ?? t('workflow.editor.connection.rejected'))
-    return
-  }
   // addEdges generates the edge id and silently skips duplicate connections
   // (same source/target/handles), so no bookkeeping is needed here.
   addEdges(connection)
-}
-
-function onConnectStart(params: OnConnectStartParams) {
-  connectionDrag.value = null
-  if (!params.nodeId || !params.handleId || !params.handleType) return
-  const side = params.handleType === 'source' ? 'outputs' : 'inputs'
-  const base = findPort(params.nodeId, params.handleId, side)?.type.base
-  if (isBaseType(base)) {
-    connectionDrag.value = { base, fromHandleType: params.handleType }
-  }
-}
-
-function onConnectEnd() {
-  connectionDrag.value = null
 }
 
 // Workflow-level metadata supplied to the serializer.
@@ -426,27 +418,79 @@ function onAppendTool(tool: WorkflowToolInfo) {
 }
 
 // ---------------------------------------------------------------------------
-// Right dock: 工作流 / 节点 tabs
+// Right column: single flow — 工作流信息 ⇄ 节点检查器
 // ---------------------------------------------------------------------------
 
-type DockTab = 'workflow' | 'node'
-const activeTab = ref<DockTab>('workflow')
-
-// Deriving selection from `nodes` means the panel hides automatically on
-// deselect with no extra event wiring (vue-flow sets node.selected on click).
+// Deriving selection from `nodes` means the panel follows the canvas with no
+// extra event wiring (vue-flow sets node.selected on click). Selecting a node
+// swaps the column to the node inspector; clearing the selection swaps it back
+// to the workflow info, so no tab state has to be maintained.
 const selectedNode = computed(() => nodes.value.find((n) => n.selected) ?? null)
 
+/** Current tool name of the selected node (the node card's title line). */
+const selectedToolName = computed(() => String(selectedNode.value?.data?.tool ?? ''))
+
 /**
- * Auto-switch rule: follow the SELECTION, never fight a manual tab click.
- * Selecting a node shows 节点; deselecting returns to 工作流.
+ * `.cd` line for the node inspector: tool description · node「id」.
+ *
+ * The node's identity IS its id — that is what `$nodes.<id>.outputs…` bindings
+ * embed — while `label` is currently always the tool name (the backend schema
+ * has no node label), so repeating it next to `.cn` would carry no information.
  */
-watch(
-  () => selectedNode.value?.id ?? null,
-  (id, previous) => {
-    if (id && !previous) activeTab.value = 'node'
-    if (!id && previous) activeTab.value = 'workflow'
-  },
+const selectedNodeSubtitle = computed(() => {
+  const node = selectedNode.value
+  if (!node) return ''
+  const description = toolsCache.value?.find((tool) => tool?.name === selectedToolName.value)?.description
+  const context = t('workflow.editor.dock.nodeContext', { label: node.id })
+  return description ? `${description} · ${context}` : context
+})
+
+/** `.cd` line for the workflow info: N 个节点 · M 条连线. */
+const workflowSubtitle = computed(() =>
+  t('workflow.editor.dock.workflowSummary', { nodes: nodes.value.length, edges: edges.value.length }),
 )
+
+/** 返回工作流信息：清掉画布选中（ToolNode 的 selected 由 vue-flow 维护）。 */
+function deselectNode() {
+  for (const entry of nodes.value) entry.selected = false
+}
+
+/** 顶栏标题点击：同「返回工作流」——回到工作流信息那半边。 */
+const showWorkflowInfo = deselectNode
+
+// ---------------------------------------------------------------------------
+// 右栏收起 / 展开
+// ---------------------------------------------------------------------------
+// 三列同时占宽（240 + 320 + 画布）在 1280 窗口下会把画布压到 ~700px，所以右栏
+// 允许整栏收起：收起后画布吃满宽度，画布右上角留下一个召回按钮。状态持久化，
+// 选中节点时自动展开（否则点了节点却看不到检查器会很困惑）。
+
+const INSPECTOR_OPEN_KEY = 'bt:wfInspectorOpen'
+const inspectorOpen = ref(readInspectorOpen())
+
+function readInspectorOpen(): boolean {
+  try {
+    return localStorage.getItem(INSPECTOR_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+watch(inspectorOpen, (open) => {
+  try {
+    localStorage.setItem(INSPECTOR_OPEN_KEY, open ? '1' : '0')
+  } catch {
+    /* 忽略持久化失败 */
+  }
+})
+
+function toggleInspector() {
+  inspectorOpen.value = !inspectorOpen.value
+}
+
+watch(selectedNode, (node) => {
+  if (node) inspectorOpen.value = true
+})
 
 const nodeIds = computed(() => nodes.value.map((node) => node.id))
 
@@ -464,10 +508,10 @@ const upstreamNodes = computed<UpstreamNodeRef[]>(() => {
     .map((id) => {
       const node = findNode(id)
       const data = (node?.data ?? {}) as ToolNodeData & { operation?: string; inputs?: Record<string, unknown> }
-      const toolMeta = toolsCache?.find((tool) => tool?.name === data.tool)
+      const toolInfo = toolsCache.value?.find((tool) => tool?.name === data.tool)
       const operation = typeof data.operation === 'string' ? data.operation : ''
       const operationOutputs = operation
-        ? toolMeta?.operations?.find((op) => op?.name === operation)?.outputs
+        ? toolInfo?.operations?.find((op) => op?.name === operation)?.outputs
         : undefined
       const outputs = (operationOutputs && operationOutputs.length > 0
         ? operationOutputs
@@ -530,16 +574,17 @@ function serializeCanvas(): WorkflowDefinitionJSON | null {
 }
 
 // Cached workflow.list_tools payload: tool ports hydrate loaded templates and
-// operation outputs feed the binding picker. Populated lazily; failures are
-// not cached (the next call retries the fetch).
-let toolsCache: WorkflowToolInfo[] | null = null
+// operation outputs feed the binding picker; the right column's `.cd` line also
+// reads the tool description from here, so it is a ref rather than a plain let
+// (a non-reactive cache would leave the header stale until the next render).
+const toolsCache = ref<WorkflowToolInfo[] | null>(null)
 
 async function fetchWorkflowTools(): Promise<WorkflowToolInfo[]> {
-  if (toolsCache) return toolsCache
+  if (toolsCache.value) return toolsCache.value
   try {
     const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('workflow.list_tools', {})
-    toolsCache = Array.isArray(result?.tools) ? result.tools : []
-    return toolsCache
+    toolsCache.value = Array.isArray(result?.tools) ? result.tools : []
+    return toolsCache.value
   } catch (err) {
     log.warn('[WorkflowEditorPage] workflow.list_tools unavailable, loaded nodes render without ports', err)
     return []
@@ -587,7 +632,29 @@ async function onTemplateLoad(payload: TemplateLoadPayload) {
   // Only on an explicit load — NOT on every add (see the `fit-view-on-init`
   // note on <VueFlow>). `maxZoom: 1` keeps a 1–2 node workflow from being
   // blown up to the 4x ceiling, which made a freshly loaded canvas unusable.
-  await fitView({ padding: 0.2, maxZoom: 1 })
+  requestFitView()
+}
+
+// `fitView` needs the nodes' MEASURED size, and vue-flow only learns that from
+// its ResizeObserver — one tick after setNodes they still measure 0×0, so an
+// awaited fitView right here silently no-ops and a long chain stays half
+// outside the canvas (the viewport transform stays `none`). So the fit is
+// deferred to vue-flow's `nodes-initialized` event, with a synchronous
+// fallback for the case where the nodes were already measured.
+let pendingFitView = false
+
+function onNodesInitialized() {
+  if (!pendingFitView) return
+  pendingFitView = false
+  void fitView({ padding: 0.2, maxZoom: 1 })
+}
+
+function requestFitView() {
+  pendingFitView = true
+  const measured =
+    nodes.value.length > 0 &&
+    nodes.value.every((node) => ((node as any).dimensions?.width ?? 0) > 0)
+  if (measured) onNodesInitialized()
 }
 
 /** TemplateManager tells us the name/description it actually persisted. */
@@ -743,7 +810,6 @@ function focusProblem(problem: ProblemFinding) {
   if (!problem.node_id) return
   const node = findNode(problem.node_id)
   if (!node) return
-  activeTab.value = 'node'
   for (const entry of nodes.value) entry.selected = entry.id === problem.node_id
   showProblems.value = false
 }
@@ -778,6 +844,55 @@ const isRunning = ref(false)
 const banner = ref<ExecutionBanner | null>(null)
 const showInputsDialog = ref(false)
 const pendingDefinition = ref<WorkflowDefinitionJSON | null>(null)
+
+// ---- edge status styling ------------------------------------------------------
+// The traversed path lights up while a run walks the chain: the edge leaving a
+// node takes that node's status colour (and animates while it is running).
+// Edges are MUTATED in place rather than pushed back through setEdges — a
+// setEdges round trip emits add/remove changes, which onEdgesChange would read
+// as "the graph changed" and clear every node status right after a run.
+
+const STATUS_EDGE_COLOR: Record<ToolStatus, string | undefined> = {
+  idle: undefined,
+  running: 'var(--app-blue)',
+  success: 'var(--app-green)',
+  error: 'var(--app-red)',
+  skipped: 'var(--app-text-dim)',
+  cancelled: 'var(--app-orange)',
+}
+
+/** Cheap signature of every node's status; the watcher only fires on real changes. */
+const nodeStatusSignature = computed(() =>
+  nodes.value.map((node) => `${node.id}:${(node.data as ToolNodeData)?.status ?? 'idle'}`).join(),
+)
+
+/** source→target keys of the edges serialization would drop (see the guard). */
+const conflictPairs = computed(
+  () => new Set(edgeConflicts.value.map((conflict) => `${conflict.source}\u0000${conflict.target}`)),
+)
+
+function statusOf(nodeId: string | null | undefined): ToolStatus {
+  if (!nodeId) return 'idle'
+  return ((findNode(nodeId)?.data as ToolNodeData | undefined)?.status ?? 'idle') as ToolStatus
+}
+
+function paintEdges() {
+  for (const edge of edges.value) {
+    // Extra out-edges win over status colours: they are the ones the guard
+    // banner is complaining about, so they get the mock's orange dashed mark.
+    if (conflictPairs.value.has(`${edge.source}\u0000${edge.target}`)) {
+      edge.animated = false
+      edge.style = { stroke: 'var(--app-orange)', strokeWidth: 2, strokeDasharray: '5 4' }
+      continue
+    }
+    const status = statusOf(edge.source)
+    const color = STATUS_EDGE_COLOR[status]
+    edge.animated = isRunning.value && status === 'running'
+    edge.style = color ? { stroke: color, strokeWidth: 2 } : undefined
+  }
+}
+
+watch([nodeStatusSignature, isRunning, conflictPairs], paintEdges, { immediate: true })
 
 // Run identity passed to workflow.execute as `task_id`: the backend registers
 // the run under the JSON-RPC request id with this task id as an ALIAS, and
@@ -982,47 +1097,20 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /*
- * Editor root = the one ROW page in the app (palette ｜ canvas ｜ dock). It does
- * NOT reuse `.screen` (that container is a column flex box) — see the note on
- * the template root. `overflow-x: auto` keeps the dock reachable when the
- * window is too narrow for the three columns' min widths.
+ * Only the editor-specific gaps the preview stylesheet does not cover live
+ * here: the top bar's flex distribution (title grows, action group is pinned
+ * right and never clipped) and the inspector header's back affordance.
+ * Everything else (`.screen.editor`, `.ed-top`, `.ed-body`, `.ed-left`,
+ * `.canvas`, `.ed-right`, `.cfg-hd`, `.cfg-bd`, `.warn-bar`) comes from
+ * assets/styles/preview-layout.css. Compound scoped selectors beat the `.pv`
+ * rules regardless of stylesheet injection order.
  */
-.workflow-editor-page {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.we-center {
-  display: flex;
-  flex: 1 1 320px;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 240px;
-}
-
-.we-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 10px;
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
-  border-radius: var(--radius-chip);
-}
-
-.we-title {
-  flex: 1;
+.we-editor .ed-name {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   font: inherit;
-  font-size: 12px;
+  font-size: 14.5px;
   font-weight: 600;
   color: var(--app-text-primary);
   text-align: left;
@@ -1033,16 +1121,25 @@ onBeforeUnmount(() => {
   border: 0;
 }
 
-.we-title:hover {
+.we-editor .ed-name:hover {
   color: var(--app-blue);
 }
 
+/* Tail group: fixed size + margin-left:auto so it is never squeezed/clipped. */
+.we-top-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
 .we-state {
-  flex-shrink: 0;
+  flex: none;
   padding: 1px 6px;
   font-size: 10px;
   border: 1px solid var(--app-card-border);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   color: var(--app-text-secondary);
 }
 
@@ -1056,116 +1153,129 @@ onBeforeUnmount(() => {
   border-color: var(--app-blue);
 }
 
+/* Run-result banner sits between the guard bar and the three columns. */
 .we-banner {
-  flex-shrink: 0;
+  flex: none;
+  margin: 0 16px 10px;
 }
 
-.we-guard-title {
-  font-size: 12px;
-  font-weight: 600;
+/* `<Background variant="dots">` already paints the 20px dot grid and pans with
+   the canvas; `.pv .canvas` also carries a static CSS dot pattern — two grids
+   would double the dots, so the CSS one goes. */
+.we-editor .canvas {
+  background-image: none;
 }
 
-.we-guard-edges {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 4px 0 0;
-}
-
-.we-guard-edges code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-  font-size: 11px;
-}
-
-.we-guard-hint {
-  margin-top: 4px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--app-text-dim);
-}
-
-.we-canvas {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
-  border-radius: var(--radius-chip);
-}
-
-.we-empty-hint {
+.we-empty {
   position: absolute;
   top: 50%;
   left: 50%;
+  display: flex;
   z-index: 1;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
   pointer-events: none;
-  font-size: 13px;
-  color: var(--app-text-muted);
+  text-align: center;
   transform: translate(-50%, -50%);
 }
 
-/* Right dock: always visible so workflow info / ports have a home.
-   Shrinkable down to a usable minimum so it cannot squeeze the canvas to 0. */
-.we-dock {
-  display: flex;
-  flex: 0 1 320px;
-  flex-direction: column;
-  min-width: 240px;
-  min-height: 0;
+.we-empty :deep(svg) {
+  margin-bottom: 6px;
+  color: var(--app-text-dim);
+  opacity: 0.45;
+}
+
+.we-empty-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+
+.we-empty-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+/* 右栏收起后留在画布右上角的召回按钮 */
+.we-inspector-open {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  z-index: 6;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--app-text-secondary);
+  cursor: pointer;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
   border-radius: var(--radius-chip);
 }
 
-.we-dock-tabs {
-  display: flex;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--app-card-border);
+.we-inspector-open:hover {
+  color: var(--app-text-primary);
+  background: var(--app-hover);
 }
 
-.we-dock-tab {
+/* Right column: single flow, and collapsible (3 fixed columns crush the canvas
+   on a 1280px window). 320px / `flex: none` come from `.pv .ed-right`. */
+.we-editor .we-inspector {
+  transition: width 0.16s ease;
+}
+
+.we-editor .we-inspector--collapsed {
+  width: 0;
+  overflow: hidden;
+  border-left: 0;
+}
+
+.we-cfg-hd-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.we-cfg-hd-row .cn {
   flex: 1;
-  padding: 9px 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.we-cfg-btn {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 8px;
   font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--app-text-secondary);
+  font-size: 11px;
+  color: var(--app-text-dim);
   cursor: pointer;
   background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--radius-pill);
 }
 
-.we-dock-tab:hover {
+.we-cfg-btn--icon {
+  padding: 2px 6px;
+}
+
+.we-cfg-btn:hover {
   color: var(--app-text-primary);
+  background: var(--app-hover);
 }
 
-.we-dock-tab--active {
-  color: var(--app-blue);
-  border-bottom-color: var(--app-blue);
-}
-
-.we-dock-body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  padding: 12px;
-  overflow-y: auto;
-}
-
-.we-dock-divider {
+.we-cfg-divider {
   height: 1px;
+  margin: 14px 0;
   background: var(--app-card-border);
-}
-
-.we-dock-empty {
-  padding: 12px;
-  font-size: 12px;
-  color: var(--app-text-muted);
 }
 
 /* Run dialog (rendered via teleport; scoped attrs still apply) */

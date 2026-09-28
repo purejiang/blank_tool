@@ -39,10 +39,6 @@
         />
       </n-form-item>
     </n-form>
-    <div class="wip-stats">
-      <span>{{ t('workflow.editor.info.nodeCount') }}: {{ nodeCount }}</span>
-      <span>{{ t('workflow.editor.info.edgeCount') }}: {{ edgeCount }}</span>
-    </div>
   </div>
 </template>
 
@@ -56,11 +52,12 @@ import type { WorkflowMeta } from './serializer'
 /**
  * Workflow metadata form. Stateless: every keystroke emits a new meta object,
  * so the page owns the single source of truth (and its unsaved-changes flag).
+ *
+ * 节点数 / 连线数不在这里显示 —— 编辑器右栏头部的 `.cd`（preview 的 `.cfg-hd`）
+ * 已经写了「N 个节点 · M 条连线」，同一栏里再来一遍是重复信息。
  */
 const props = defineProps<{
   meta: WorkflowMeta
-  nodeCount?: number
-  edgeCount?: number
 }>()
 
 const emit = defineEmits<{
@@ -89,12 +86,5 @@ function update(patch: Partial<WorkflowMeta>) {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--app-text-secondary);
-}
-
-.wip-stats {
-  display: flex;
-  gap: 12px;
-  font-size: 11px;
-  color: var(--app-text-dim);
 }
 </style>

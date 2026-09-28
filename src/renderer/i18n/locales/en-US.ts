@@ -149,13 +149,17 @@ export default {
       dirty: 'Unsaved changes',
       saved: 'Saved',
       running: 'Running',
-      emptyCanvas: 'Empty workflow — drag a tool from the palette, or click one to append it',
+      emptyCanvas: 'Empty workflow',
+      emptyCanvasHint: 'Drag a tool in from the palette on the left, or click one to append it',
       renameRebound: 'Updated {count} node reference(s)',
+      // Right column is a single flow: no node selected = workflow info,
+      // node selected = node inspector.
       dock: {
-        tabs: {
-          workflow: 'Workflow',
-          node: 'Node',
-        },
+        backToWorkflow: 'Workflow',
+        nodeContext: 'node “{label}”',
+        workflowSummary: '{nodes} nodes · {edges} connections',
+        collapse: 'Collapse inspector',
+        expand: 'Expand inspector',
       },
       info: {
         title: 'Workflow Info',
@@ -171,12 +175,16 @@ export default {
         edgeCount: 'Connections',
       },
       palette: {
-        title: 'Tools',
         search: 'Search tools',
+        // Group keys are tool domains (toolMeta.CATEGORY_ORDER), not provenance.
         groups: {
-          builtin: 'Built-in',
-          plugins: 'Plugins',
+          file: 'Files',
+          net: 'Network',
+          exec: 'Exec',
+          flow: 'Flow',
+          tool: 'Other',
         },
+        pluginTag: 'plugin',
         loading: 'Loading tools…',
         loadFailed: 'Failed to load tools',
         noTools: 'No tools available',

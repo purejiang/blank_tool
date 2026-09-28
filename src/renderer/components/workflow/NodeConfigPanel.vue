@@ -2,12 +2,6 @@
   <div class="node-config-panel">
     <div v-if="!node" class="npc-empty">{{ t('workflow.editor.config.noSelection') }}</div>
     <template v-else>
-      <!-- Tool identity -->
-      <div class="npc-identity">
-        <div class="npc-tool-name">{{ toolName }}</div>
-        <div v-if="description" class="npc-tool-desc">{{ description }}</div>
-      </div>
-
       <div class="npc-body">
         <!-- 基本: node identity (the id is what $nodes.<id> bindings embed) -->
         <div class="npc-section">
@@ -184,11 +178,6 @@ const nodeData = computed<Record<string, any>>(() => (props.node?.data ?? {}) as
 const toolName = computed<string>(() => {
   const d = nodeData.value
   return String(d.tool || d.toolName || d.label || props.node?.id || '')
-})
-
-const description = computed<string>(() => {
-  const desc = nodeData.value.description
-  return typeof desc === 'string' ? desc : ''
 })
 
 function toPorts(raw: unknown): LoosePort[] {
@@ -512,12 +501,13 @@ function requestDelete() {
 </script>
 
 <style scoped>
+/* Fills the editor's `.ed-right` below the page-owned `.cfg-hd`; the panel's own
+   scrolling body + pinned footer mirror the preview's `.cfg-bd` / `.cfg-ft`. */
 .node-config-panel {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  background: var(--config-panel-bg);
 }
 
 .npc-empty {
@@ -526,38 +516,19 @@ function requestDelete() {
   color: var(--app-text-muted);
 }
 
-.npc-identity {
-  padding: 12px;
-  border-bottom: 1px solid var(--node-border);
-}
-
-.npc-tool-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--app-text-primary);
-  word-break: break-all;
-}
-
-.npc-tool-desc {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--app-text-secondary);
-}
-
 .npc-body {
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: 14px;
   min-height: 0;
-  padding: 12px;
+  padding: 14px;
   overflow-y: auto;
 }
 
-/* Section boxes: 功能 / 参数 / 配置 视觉分区 */
+/* Section boxes: 功能 / 参数 / 配置 视觉分区（preview `.section-box` 的观感） */
 .npc-section {
-  padding: 10px 10px 12px;
+  padding: 10px 12px;
   background: var(--app-input-bg, transparent);
   border: 1px solid var(--app-card-border);
   border-radius: var(--radius-control);
@@ -659,12 +630,14 @@ function requestDelete() {
   color: var(--app-text-muted);
 }
 
+/* preview `.cfg-ft`: 固定在面板底部的一条操作栏 */
 .npc-footer {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--node-border);
+  padding: 12px 14px;
+  border-top: 1px solid var(--app-card-border);
 }
 
 .npc-error {

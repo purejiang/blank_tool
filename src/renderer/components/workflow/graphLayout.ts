@@ -26,7 +26,12 @@
 
 /** Canvas-only layout constants. Positions are NEVER serialized. */
 export const LAYOUT_X_START = 80
-export const LAYOUT_X_SPACING = 320
+/**
+ * 260 = 节点卡宽 200 + 60px 间隙。卡片在 09-28 改版后固定 200px 宽（改版前按端口
+ * 行数撑高撑宽，间距 320 是照着那时的宽卡片定的），太松会让加载后的整条链在画布
+ * 里显得又小又空。
+ */
+export const LAYOUT_X_SPACING = 260
 export const LAYOUT_Y = 140
 
 /** One node position on the canvas. */

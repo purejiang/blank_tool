@@ -149,13 +149,16 @@ export default {
       dirty: '未保存改动',
       saved: '已保存',
       running: '运行中',
-      emptyCanvas: '空工作流 —— 从左侧拖入工具，或点击工具追加到链尾',
+      emptyCanvas: '空工作流',
+      emptyCanvasHint: '从左侧工具面板拖入工具，或点一下工具把它追加到链尾',
       renameRebound: '已同步更新 {count} 处节点引用',
+      // 右栏是单栏切换：未选中节点 = 工作流信息，选中节点 = 节点检查器
       dock: {
-        tabs: {
-          workflow: '工作流',
-          node: '节点',
-        },
+        backToWorkflow: '工作流',
+        nodeContext: '节点「{label}」',
+        workflowSummary: '{nodes} 个节点 · {edges} 条连线',
+        collapse: '收起信息栏',
+        expand: '展开信息栏',
       },
       info: {
         title: '工作流信息',
@@ -171,12 +174,16 @@ export default {
         edgeCount: '连线数',
       },
       palette: {
-        title: '工具',
         search: '搜索工具',
+        // 分组键 = 工具域（toolMeta.CATEGORY_ORDER），不再按 内置/插件 分组
         groups: {
-          builtin: '内置',
-          plugins: '插件',
+          file: '文件',
+          net: '网络',
+          exec: '执行',
+          flow: '流程',
+          tool: '其它',
         },
+        pluginTag: '插件',
         loading: '正在加载工具…',
         loadFailed: '工具加载失败',
         noTools: '没有可用工具',

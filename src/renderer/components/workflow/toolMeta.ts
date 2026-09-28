@@ -122,7 +122,10 @@ export function categoryOfToolName(name: string): ToolCategory {
 }
 
 /** Group keys in the workflow node palette (labels are i18n'd by the consumer). */
-export type WorkflowGroupKey = 'builtin' | 'plugins'
+export type WorkflowGroupKey = ToolCategory
+
+/** Fixed group order in the palette (labels are i18n'd by the consumer). */
+export const CATEGORY_ORDER: ToolCategory[] = ['file', 'net', 'exec', 'flow', 'tool']
 
 /** One grouped set of tools in the workflow node palette. */
 export interface WorkflowToolGroup {
@@ -131,24 +134,37 @@ export interface WorkflowToolGroup {
 }
 
 /**
- * Group tools for the node palette (todo 16): `shipped-native` goes to the
- * `builtin` group, `native`/`descriptor` to `plugins`. When `kind` is absent
- * (older backends), fall back to the legacy `builtin` boolean
- * (`builtin === true` → builtin, else plugins). Each group is sorted by
- * tool name; empty groups are dropped. Ordering is stable: builtin first.
- * The group `key` is translated to a display label by the palette via i18n.
+ * 工具来源判定：`shipped-native` = 内置工作流原语；`native`/`descriptor` = 插件。
+ * 老后端不带 `kind`，回落到遗留的 `builtin` 布尔。调色板用它给插件条目标一个
+ * 小标记（不再用「内置 / 插件」两个大分组——那会把 10 个内置原语堆成一坨）。
+ */
+export function isBuiltinTool(tool: WorkflowToolInfo): boolean {
+  return tool.kind ? tool.kind === 'shipped-native' : tool.builtin === true
+}
+
+/**
+ * Group tools for the node palette by DOMAIN (todo 16 + 09-28 改版):
+ * `file.*`/`dir.*`/`text.*`/`archive.*` → file, `net.*` → net, `exec.*` → exec,
+ * `flow.*` → flow, 其余（插件、第三方工具）→ tool。
+ *
+ * 每个组内按工具名排序；空组丢弃；组顺序固定为 CATEGORY_ORDER，所以列表每次
+ * 渲染都是稳定的。插件不再单独成组（那样 `file.read` 和插件 `file.xxx` 会分家），
+ * 而是由条目上的插件标记区分——见 isBuiltinTool。
  */
 export function groupWorkflowTools(tools: WorkflowToolInfo[]): WorkflowToolGroup[] {
   const byName = (a: WorkflowToolInfo, b: WorkflowToolInfo) => a.name.localeCompare(b.name)
-  const isBuiltin = (tool: WorkflowToolInfo) =>
-    tool.kind ? tool.kind === 'shipped-native' : tool.builtin === true
-  const builtin = tools.filter(isBuiltin).sort(byName)
-  const plugins = tools.filter((tool) => !isBuiltin(tool)).sort(byName)
-  const groups: WorkflowToolGroup[] = [
-    { key: 'builtin', tools: builtin },
-    { key: 'plugins', tools: plugins },
-  ]
-  return groups.filter((group) => group.tools.length > 0)
+  const buckets = new Map<ToolCategory, WorkflowToolInfo[]>()
+  for (const tool of tools ?? []) {
+    if (!tool || typeof tool.name !== 'string' || tool.name.length === 0) continue
+    const key = categoryOfToolName(tool.name)
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(tool)
+    else buckets.set(key, [tool])
+  }
+  return CATEGORY_ORDER.filter((key) => (buckets.get(key)?.length ?? 0) > 0).map((key) => ({
+    key,
+    tools: (buckets.get(key) as WorkflowToolInfo[]).slice().sort(byName),
+  }))
 }
 
 /**
@@ -178,22 +194,3 @@ export const STATUS_MARKS: Record<'success' | 'error', string> = {
   error: 'x',
 }
 
-/** Human-readable tooltip for a port label. */
-export function portTitle(port: ToolPort): string {
-  const title = `${port.name}: ${portTypeLabel(port.type)}`
-  return port.description ? `${title} — ${port.description}` : title
-}
-
-/*
- * ToolNode layout constants shared between the template (handle offsets)
- * and the scoped CSS. Handles are positioned absolutely on the node, so the
- * CSS row metrics must stay in sync with these values.
- */
-export const NODE_HEADER_HEIGHT_PX = 34
-export const PORT_ROW_HEIGHT_PX = 18
-export const PORTS_PADDING_Y_PX = 6
-
-/** Vertical center (px from node top) of port row `index`. */
-export function portRowCenterY(index: number): number {
-  return NODE_HEADER_HEIGHT_PX + PORTS_PADDING_Y_PX + index * PORT_ROW_HEIGHT_PX + PORT_ROW_HEIGHT_PX / 2
-}
