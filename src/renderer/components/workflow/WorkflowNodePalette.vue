@@ -148,11 +148,13 @@ onMounted(loadTools)
 </script>
 
 <style scoped>
+/* Shrinkable down to a usable minimum so the palette cannot squeeze the
+   canvas to 0 on a narrow window (it is the first column to give way). */
 .workflow-node-palette {
   display: flex;
+  flex: 0 1 240px;
   flex-direction: column;
-  flex-shrink: 0;
-  width: 240px;
+  min-width: 168px;
   overflow: hidden;
   background: var(--palette-bg);
   border: 1px solid var(--node-border);

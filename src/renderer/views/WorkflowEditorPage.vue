@@ -1,5 +1,12 @@
 <template>
-  <div class="screen editor workflow-editor-page">
+  <!--
+    NOTE: deliberately NOT `.screen`. `.screen` is the shared router container
+    (assets/styles/preview-layout.css) and is a COLUMN flex box; the editor is a
+    ROW (palette ｜ canvas ｜ dock). Reusing it left `flex-direction: column`
+    in place and stacked the three columns vertically, collapsing the canvas to
+    ~2px. The editor declares its own root layout below instead.
+  -->
+  <div class="workflow-editor-page">
     <!-- Left panel: tool palette -->
     <WorkflowNodePalette @append="onAppendTool" />
 
@@ -70,12 +77,18 @@
       </n-alert>
 
       <main class="we-canvas" @dragover="onDragOver" @drop="onDrop">
+        <!--
+          No `fit-view-on-init`: it refires whenever nodes first appear, so the
+          first drop/append made vue-flow fit-to-view a 1-node graph and clamp
+          to ~3.9x — the canvas jumped and the node left the drop point. The
+          canvas now stays at whatever viewport the user has, and fitView is
+          called once, explicitly, when a saved template is loaded.
+        -->
         <VueFlow
           :node-types="nodeTypes"
           :min-zoom="0.2"
           :max-zoom="4"
           :default-edge-options="defaultEdgeOptions"
-          :fit-view-on-init="true"
           @connect="onConnect"
           @connect-start="onConnectStart"
           @connect-end="onConnectEnd"
@@ -572,7 +585,10 @@ async function onTemplateLoad(payload: TemplateLoadPayload) {
   // The snapshot must be taken AFTER vue-flow applied the nodes, otherwise the
   // dirty indicator would light up immediately after a load.
   savedSnapshot.value = canvasSnapshot()
-  await fitView({ padding: 0.2 })
+  // Only on an explicit load — NOT on every add (see the `fit-view-on-init`
+  // note on <VueFlow>). `maxZoom: 1` keeps a 1–2 node workflow from being
+  // blown up to the 4x ceiling, which made a freshly loaded canvas unusable.
+  await fitView({ padding: 0.2, maxZoom: 1 })
 }
 
 /** TemplateManager tells us the name/description it actually persisted. */
@@ -966,18 +982,29 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/*
+ * Editor root = the one ROW page in the app (palette ｜ canvas ｜ dock). It does
+ * NOT reuse `.screen` (that container is a column flex box) — see the note on
+ * the template root. `overflow-x: auto` keeps the dock reachable when the
+ * window is too narrow for the three columns' min widths.
+ */
 .workflow-editor-page {
   display: flex;
+  flex-direction: row;
   gap: 8px;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .we-center {
   display: flex;
-  flex: 1;
+  flex: 1 1 320px;
   flex-direction: column;
   gap: 8px;
-  min-width: 0;
+  min-width: 240px;
 }
 
 .we-toolbar {
@@ -1080,12 +1107,13 @@ onBeforeUnmount(() => {
   transform: translate(-50%, -50%);
 }
 
-/* Right dock: always visible so workflow info / ports have a home */
+/* Right dock: always visible so workflow info / ports have a home.
+   Shrinkable down to a usable minimum so it cannot squeeze the canvas to 0. */
 .we-dock {
   display: flex;
+  flex: 0 1 320px;
   flex-direction: column;
-  flex-shrink: 0;
-  width: 320px;
+  min-width: 240px;
   min-height: 0;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
