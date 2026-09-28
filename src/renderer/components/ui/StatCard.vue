@@ -42,7 +42,7 @@ withDefaults(
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   background: var(--surface-alt);
   color: var(--text-muted);
 }

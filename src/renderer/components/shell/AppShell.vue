@@ -64,6 +64,11 @@ onMounted(() => {
 <style scoped>
 .app-shell {
   display: flex;
+  /* 关键：父级 #app 带 .pv（preview-layout.css）是 display:flex，本节点作为 flex 子项
+   * 默认 flex:0 1 auto = 由内容撑宽。不显式铺满的话，外壳宽度会跟着「当前页内容多宽」
+   * 变化 —— 这正是「每页宽度不一样、右边空一大截」的根因。 */
+  width: 100%;
+  min-width: 0;
   height: 100vh;
   overflow: hidden;
   background: var(--bg);

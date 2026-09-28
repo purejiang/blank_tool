@@ -131,7 +131,7 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
   background: var(--node-bg);
   border: 1px solid var(--node-border);
   border-left: 3px solid var(--tn-accent);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   color: var(--node-text);
   font-size: 11px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -163,7 +163,7 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
   inset: -3px;
   pointer-events: none;
   border: 2px solid var(--app-blue);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   animation: tn-border-pulse 1.2s ease-in-out infinite;
 }
 

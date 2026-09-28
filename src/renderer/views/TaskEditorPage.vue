@@ -529,7 +529,7 @@ watch(nameFromRoute, (name) => {
   text-align: center;
   color: var(--app-text-muted);
   border: 1px dashed var(--app-card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .te-fields {
@@ -552,7 +552,7 @@ watch(nameFromRoute, (name) => {
   padding: 10px 14px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
 }
 

@@ -384,7 +384,7 @@ function formatTime(iso: string): string {
   padding: 8px 10px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .tm-item:hover {

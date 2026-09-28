@@ -19,7 +19,7 @@
           <n-icon size="18" color="var(--success-text)"><Monitor /></n-icon>
           <span class="section-title">{{ t('settings.appearance') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
+        <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
           <n-form-item :label="t('settings.language')">
             <n-select v-model:value="general.language" @update:value="saveGeneral"
               :options="langOptions" style="width: 220px" />
@@ -37,7 +37,7 @@
           <n-icon size="18" color="var(--primary)"><Settings2 /></n-icon>
           <span class="section-title">{{ t('settings.behavior') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
+        <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
           <n-form-item :label="t('settings.notifications')">
             <n-switch v-model:value="general.enableNotifications" @update:value="saveGeneral" />
           </n-form-item>
@@ -61,7 +61,7 @@
           <n-icon size="18" color="var(--success-text)"><FileText /></n-icon>
           <span class="section-title">{{ t('settings.logging') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
+        <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
           <n-form-item :label="t('settings.loggingLevel')">
             <n-select v-model:value="logLevel" @update:value="saveLogLevel"
               :options="logLevelOptions" style="width: 220px" />
@@ -75,10 +75,10 @@
           <n-icon size="18" color="var(--warning-text)"><FolderOpen /></n-icon>
           <span class="section-title">{{ t('settings.environmentPaths') }}</span>
         </div>
-        <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
+        <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
           <n-form-item :label="t('settings.runtime')">
-            <div class="environ-path-input" style="display:flex;align-items:center;gap:8px">
-              <n-input :value="displayPaths.runtime" readonly style="width: 320px" placeholder=".\runtime" />
+            <div class="environ-path-input">
+              <n-input :value="displayPaths.runtime" readonly class="environ-path-field" placeholder=".\runtime" />
               <n-button size="small" @click="handleBrowseDirectory('runtime')">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
                 {{ t('settings.browse') }}
@@ -86,8 +86,8 @@
             </div>
           </n-form-item>
           <n-form-item :label="t('settings.backend')">
-            <div class="environ-path-input" style="display:flex;align-items:center;gap:8px">
-              <n-input :value="displayPaths.server" readonly style="width: 320px" placeholder=".\cli" />
+            <div class="environ-path-input">
+              <n-input :value="displayPaths.server" readonly class="environ-path-field" placeholder=".\cli" />
               <n-button size="small" @click="handleBrowseDirectory('server')">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
                 {{ t('settings.browse') }}
@@ -491,49 +491,47 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.settings-page { max-width: 740px; margin: 0 auto; }
+/* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:740px 会导致页面之间宽窄不一。 */
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
-.settings-content { display: flex; flex-direction: column; gap: 16px; }
-.settings-card { background: var(--app-card-bg); border-radius: 10px; }
+/* 满宽后卡片改栅格（窄屏自动回落单列），避免长条卡片右侧空一大截。
+ * 下限 460px 让 1600 视口下是舒服的两列；太窄的列会让 label-width:100 的表单挤爆。 */
+.settings-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+/* naive 的 .n-form-item-blank 默认不带 min-width:0，列变窄时输入框会把同行按钮挤出去 */
+.settings-card :deep(.n-form-item-blank) { min-width: 0; }
+/* 极简：静止态只留 1px 描边，hover 才升起 */
+.settings-card {
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--radius-card);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.settings-card:hover { box-shadow: var(--shadow-lift); border-color: var(--primary-soft-border); transform: translateY(-1px); }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; justify-content: flex-start; }
 .section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .form-hint { font-size: 11px; color: var(--app-text-dim); margin-top: 4px; }
 .storage-total-text { font-size: 16px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 12px; }
-.storage-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }
+.storage-bar { display: flex; height: 6px; border-radius: var(--radius-chip); overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }
 .storage-bar-seg { height: 100%; transition: width 0.3s ease; }
 .storage-rows { display: flex; flex-direction: column; gap: 2px; }
-.storage-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: 6px; }
+.storage-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: var(--radius-chip); }
 .storage-row:hover { background: var(--app-storage-bg); }
-.storage-row-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--app-storage-bg); flex-shrink: 0; }
+.storage-row-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-chip); background: var(--app-storage-bg); flex-shrink: 0; }
 .storage-row-info { flex: 1; min-width: 0; }
 .storage-row-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
 .storage-row-sub { font-size: 11px; color: var(--app-text-muted); margin-top: 1px; }
-.info-grid { display: flex; flex-direction: column; gap: 10px; }
 .more-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .more-hint { font-size: 11px; color: var(--app-text-dim); }
-.info-row { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(51,65,85,0.3); }
-.info-row:last-child { border-bottom: none; }
-.info-label { font-size: 13px; color: var(--app-text-muted); min-width: 100px; }
-.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
-.info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
-.info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
 
-.sig-list { display: flex; flex-direction: column; gap: 6px; }
-.sig-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--app-storage-bg); border-radius: 8px; gap: 8px; }
-.sig-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
-.sig-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); white-space: nowrap; }
-.sig-detail { font-size: 12px; color: var(--app-text-dim); white-space: nowrap; }
-.sig-path { font-size: 11px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-
-.tool-path-list { display: flex; flex-direction: column; gap: 8px; }
-.tool-path-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-.tool-path-name { font-size: 13px; font-weight: 600; color: var(--app-text-primary); min-width: 90px; font-family: 'Fira Code', monospace; padding-left: 4px; }
-.tool-path-input-wrap { display: flex; align-items: center; gap: 4px; flex: 1; }
-.tool-path-input-wrap :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
+/* 工具路径已收敛到 /tools，这里只剩跳转入口 */
+.environ-path-input { display: flex; align-items: center; gap: 8px; }
+.environ-path-field { flex: 1 1 auto; min-width: 0; max-width: 420px; }
 .environ-path-input :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }
-.spin { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

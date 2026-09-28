@@ -304,7 +304,7 @@ function pickEnv() {
   cursor: pointer;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
 }
 
 .ep-item:hover {

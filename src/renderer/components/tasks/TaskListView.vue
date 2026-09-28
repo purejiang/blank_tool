@@ -279,7 +279,7 @@ defineExpose({ load })
   padding: 40px 20px;
   text-align: center;
   border: 1px dashed var(--app-card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .tl-empty-title {
@@ -313,7 +313,7 @@ defineExpose({ load })
   padding: 10px 12px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .tl-main {

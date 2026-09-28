@@ -470,7 +470,7 @@ defineExpose({ reload })
   align-items: center;
   padding: 40px 20px;
   border: 1px dashed var(--app-card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .rl-empty-title {
@@ -491,7 +491,7 @@ defineExpose({ reload })
   padding: 8px 12px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .rl-row--running {

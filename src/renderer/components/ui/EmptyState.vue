@@ -35,7 +35,7 @@ defineProps<{ title: string; description?: string }>()
   color: var(--text-muted);
   background: var(--surface-alt);
   border: 1.5px dashed var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-card);
 }
 
 .app-empty h3 {

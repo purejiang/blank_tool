@@ -311,13 +311,26 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.diagnostics-page { max-width: 900px; margin: 0 auto; }
+/* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:900px 会导致页面之间宽窄不一。 */
 .page-header { margin-bottom: 20px; text-align: left; display: block; }
 .page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
-.diagnostics-content { display: flex; flex-direction: column; gap: 16px; }
-.diag-card { background: var(--app-card-bg); border-radius: 10px; text-align: left; transition: box-shadow 0.2s ease; }
-.diag-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08); }
+/* 两张「单行状态」卡片并排，表格/日志类卡片整行铺满 —— 满宽之后不再有右侧空白。
+ * DOM 顺序是 健康/任务/日志/路径；用 order 把「路径」提到第 2 位与健康并排，
+ * 否则第 1、4 行都会各留半行空白。 */
+.diagnostics-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.diagnostics-content > .diag-card:nth-child(1) { order: 1; }
+.diagnostics-content > .diag-card:nth-child(4) { order: 2; }
+.diagnostics-content > .diag-card:nth-child(2) { order: 3; grid-column: 1 / -1; }
+.diagnostics-content > .diag-card:nth-child(3) { order: 4; grid-column: 1 / -1; }
+/* 极简：静止态只留 1px 描边（平面），hover 才升起 */
+.diag-card { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-radius: var(--radius-card); text-align: left; transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease; }
+.diag-card:hover { box-shadow: var(--shadow-lift); border-color: var(--primary-soft-border); transform: translateY(-1px); }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: flex-start; }
 .section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .header-action { margin-left: auto; }
@@ -347,7 +360,7 @@ onUnmounted(() => {
   background: var(--app-code-bg);
   border: 1px solid var(--app-card-border);
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
   font-size: 12px;
   line-height: 1.6;

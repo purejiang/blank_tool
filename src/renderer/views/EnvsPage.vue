@@ -407,7 +407,7 @@ function confirmDelete(env: EnvEntry) {
   align-items: center;
   padding: 40px 20px;
   border: 1px dashed var(--app-card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .envs-empty-title {
@@ -428,7 +428,7 @@ function confirmDelete(env: EnvEntry) {
   padding: 10px 14px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .env-main {

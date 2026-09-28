@@ -1015,7 +1015,7 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .we-title {
@@ -1043,7 +1043,7 @@ onBeforeUnmount(() => {
   padding: 1px 6px;
   font-size: 10px;
   border: 1px solid var(--app-card-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--app-text-secondary);
 }
 
@@ -1093,7 +1093,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .we-empty-hint {
@@ -1117,7 +1117,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .we-dock-tabs {
@@ -1207,7 +1207,7 @@ onBeforeUnmount(() => {
   padding: 6px 8px;
   cursor: pointer;
   border: 1px solid var(--app-card-border);
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
 }
 
 .we-problem-row:hover {

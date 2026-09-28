@@ -126,7 +126,7 @@ const visible = computed({
   align-items: baseline;
   padding: 7px 9px;
   border: 1px solid var(--app-card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .irp-row--failed {

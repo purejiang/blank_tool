@@ -191,7 +191,7 @@
     bottom: 0;
     background-color: var(--border-color);
     transition: .4s;
-    border-radius: 20px;
+    border-radius: var(--radius-card);
 }
 
 .toggle-slider:before {

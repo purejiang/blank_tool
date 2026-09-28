@@ -1,7 +1,7 @@
 /* Global Naive UI menu overrides */
 .n-menu .n-menu-item-content {
   margin: 2px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   transition: all 0.15s ease;
 }
 .n-menu .n-menu-item-content--selected {

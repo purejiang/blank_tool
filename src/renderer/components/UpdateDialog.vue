@@ -156,7 +156,7 @@ function handleRetry(): void {
 .ver-new { font-size: 15px; font-weight: 700; color: var(--success-text); font-family: monospace; }
 .release-notes {
   background: var(--app-hover);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 14px;
   margin-bottom: 16px;
 }

@@ -1,6 +1,6 @@
 <template>
-  <!-- 卡片：surface 底 + border 边 + 14px 圆角 + 设计给定阴影。
-       hoverable 时 hover 边框转 primary-soft-border 并轻微上浮（键盘聚焦同样生效）。 -->
+  <!-- 卡片：surface 底 + 1px border 边 + --radius-card 大圆角（极简，静止态无阴影）。
+       hoverable 时 hover 边框转 primary-soft-border 并上浮 + 出阴影（键盘聚焦同样生效）。 -->
   <component
     :is="as"
     class="app-card"
@@ -45,10 +45,12 @@ withDefaults(
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
+  /* 极简：静止态只留 1px 描边（平面），hover 才升起 */
+  box-shadow: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
+/* 保留 flat 入参以免调用点报错；默认即无阴影，故它现在是空操作 */
 .app-card--flat {
   box-shadow: none;
 }

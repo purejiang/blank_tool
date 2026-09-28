@@ -53,7 +53,7 @@ function go(key: SectionKey) {
   gap: 2px;
   padding: 2px;
   background: var(--app-storage-bg);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .tsn-item {
@@ -64,7 +64,7 @@ function go(key: SectionKey) {
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .tsn-item:hover {

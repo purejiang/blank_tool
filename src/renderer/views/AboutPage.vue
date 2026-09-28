@@ -147,12 +147,30 @@ const cpuText = computed(() => {
 </script>
 
 <style scoped>
-.about-page { max-width: 740px; margin: 0 auto; }
+/* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:740px 会导致页面之间宽窄不一。
+ * 满宽后卡片改栅格：构建信息 / 系统信息 并排，「随包工具」因路径长而整行。
+ * DOM 顺序是 构建/工具/系统 → 用 order 把「系统」提到第 2 位。 */
 .page-header { margin-bottom: 20px; text-align: left; display: block; }
 .page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
-.about-content { display: flex; flex-direction: column; gap: 16px; }
-.about-card { background: var(--app-card-bg); border-radius: 10px; text-align: left; }
+.about-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.about-content > .about-card:nth-child(1) { order: 1; }
+.about-content > .about-card:nth-child(3) { order: 2; }
+.about-content > .about-card:nth-child(2) { order: 3; grid-column: 1 / -1; }
+/* 极简：静止态只留 1px 描边，hover 才升起 */
+.about-card {
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--radius-card);
+  text-align: left;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.about-card:hover { box-shadow: var(--shadow-lift); border-color: var(--primary-soft-border); transform: translateY(-1px); }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: flex-start; }
 .section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .info-grid { display: flex; flex-direction: column; gap: 6px; }

@@ -521,7 +521,7 @@ function confirmDelete(row: ToolRow) {
   padding: 40px 20px;
   text-align: center;
   border: 1px dashed var(--app-card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .tools-empty-title {
@@ -555,7 +555,7 @@ function confirmDelete(row: ToolRow) {
   padding: 12px 14px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .tc-head {
@@ -621,7 +621,7 @@ function confirmDelete(row: ToolRow) {
 .tc-dep {
   padding: 1px 7px;
   font-size: 11px;
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
 }
 
 .tc-dep--ok {

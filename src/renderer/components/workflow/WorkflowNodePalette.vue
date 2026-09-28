@@ -158,7 +158,7 @@ onMounted(loadTools)
   overflow: hidden;
   background: var(--palette-bg);
   border: 1px solid var(--node-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   color: var(--palette-text);
 }
 

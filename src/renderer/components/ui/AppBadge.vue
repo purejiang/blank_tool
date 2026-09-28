@@ -20,7 +20,7 @@ withDefaults(defineProps<{ tone?: BadgeTone }>(), { tone: 'neutral' })
   gap: 4px;
   height: 20px;
   padding: 0 7px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   border: 1px solid transparent;
   font-size: 11.5px;
   line-height: 1;

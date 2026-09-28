@@ -207,7 +207,7 @@ defineExpose({
   padding: 16px;
   background: var(--bg-color, var(--surface));
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   pointer-events: auto;
   position: relative;
@@ -322,14 +322,14 @@ defineExpose({
   width: 100%;
   height: 4px;
   background: var(--hover-bg-color, var(--surface-alt));
-  border-radius: 2px;
+  border-radius: var(--radius-chip);
   overflow: hidden;
 }
 
 .notification-progress-fill {
   height: 100%;
   background: var(--primary);
-  border-radius: 2px;
+  border-radius: var(--radius-chip);
   transition: width 0.3s ease;
 }
 
@@ -344,7 +344,7 @@ defineExpose({
 .notification-action-btn {
   padding: 5px 14px;
   font-size: 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-chip);
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -382,7 +382,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-chip);
   color: var(--text-color-secondary, var(--text-muted));
   transition: all 0.2s ease;
 }

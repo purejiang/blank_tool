@@ -356,7 +356,7 @@ async function browsePath() {
   padding: 1px 4px 1px 6px;
   background: var(--app-code-bg, var(--app-card-bg));
   border: 1px solid var(--app-card-border);
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
 }
 
 .pi-chip code {

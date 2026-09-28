@@ -157,7 +157,7 @@
 /* ===== Global Element Styles ===== */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--app-scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--app-scrollbar-thumb); border-radius: var(--radius-chip); }
 ::-webkit-scrollbar-thumb:hover { background: var(--app-scrollbar-hover); }
 
 /* Naive UI dark-mode fixes */

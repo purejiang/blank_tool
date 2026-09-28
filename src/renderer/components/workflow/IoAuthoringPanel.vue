@@ -320,7 +320,7 @@ function removePort(port: PortJSON) {
   padding: 8px 10px;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .io-row:hover {
@@ -354,7 +354,7 @@ function removePort(port: PortJSON) {
   font-size: 10px;
   color: var(--app-text-secondary);
   border: 1px solid var(--app-card-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .io-row-desc {

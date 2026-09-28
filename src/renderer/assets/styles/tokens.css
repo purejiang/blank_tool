@@ -68,9 +68,11 @@
   /* 占位符（画布点阵、禁用态） */
   --placeholder: #CBD5E1;
 
-  /* 圆角：卡片 14（规范 14–16），控件 8，胶囊 999 */
-  --radius-card: 14px;
-  --radius-control: 8px;
+  /* 圆角三档（大圆角极简风格）：卡片 18 / 控件 12 / 徽章 8，胶囊 999。
+   * 组件里禁止再写裸 px 圆角，一律引用这三档 + --radius-pill。 */
+  --radius-card: 18px;
+  --radius-control: 12px;
+  --radius-chip: 8px;
   --radius-pill: 999px;
   /* 卡片阴影与 hover 上浮（规范给定） */
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(37, 99, 235, 0.08);
@@ -125,8 +127,9 @@
   --scrollbar-hover: #475569;
   --placeholder: #334155;
 
-  --radius-card: 14px;
-  --radius-control: 8px;
+  --radius-card: 18px;
+  --radius-control: 12px;
+  --radius-chip: 8px;
   --radius-pill: 999px;
   /* 暗色阴影只允许纯黑，禁止掺主色：深底上 #0B1220 已接近黑，再叠蓝色
    * 会合成出比底色更亮的 #102145，视觉上变成"发光"而不是阴影。 */

@@ -436,7 +436,7 @@ function openRunDir() {
   gap: 4px;
   padding: 8px 10px;
   border: 1px solid var(--app-card-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .rd-node-head {
@@ -503,7 +503,7 @@ function openRunDir() {
   line-height: 1.5;
   white-space: pre-wrap;
   background: var(--app-code-bg, var(--app-storage-bg));
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
 }
 
 .rd-pre--preview {

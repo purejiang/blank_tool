@@ -560,7 +560,7 @@ function requestDelete() {
   padding: 10px 10px 12px;
   background: var(--app-input-bg, transparent);
   border: 1px solid var(--app-card-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
 }
 
 .npc-section-title {
