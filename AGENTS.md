@@ -21,15 +21,16 @@ Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接�
 
 ### 无头 CLI（cli/cli.py）
 
-无头 CLI 入口 `cli/cli.py`（9 子命令：run/list-tools/list-envs/validate/tool/list-templates/import-pack/import-templates/history）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
+无头 CLI 入口 `cli/cli.py`（10 子命令：run/list-tools/list-envs/validate/tool/list-templates/**list-tasks**/import-pack/import-templates/history）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
 
 `run`/`tool` 会把自己注册到 `TaskManager`（`honor_stop_event=True`），因此引擎的取消检查点与子进程 holder 在 CLI 下是**活的**：
 
+- `run --task <名称>`：用**任务定义**（`<output>/task_defs/<name>.json` = 绑定的工作流名 + 保存的入参）执行，`--input k=v` 逐键覆盖保存值；与位置参数 `target` **互斥**，两者都缺是用法错误（退出码 2），未知任务/工作流返回 1。`list-tasks` 每行输出 `名称<TAB>工作流`。
 - `run --timeout SECONDS`：整轮 wall-clock 预算，到期取消并返回 `124`（`0`/省略=不限）。
 - `run|tool --run-id <32-hex>`：run 身份，决定 `$rundir`（`<output>/runs/<id>`）与 history 记录 id；默认随机 `uuid4().hex`（并发 CLI run 不再共用 `runs/cli`）。非 32 位小写 hex 会被拒绝（退出码 1）。
 - `run` 退出码：`0` 成功 / `1` 失败 / `2` 取消（注意 argparse 用法错误也是 2）/ `124` 超时 / `130` 连按两次 Ctrl+C 强退。
 - Ctrl+C（SIGINT）：第一次只调用 per-run `Event.set()`（信号处理器**不取锁**），run 以 `cancelled` 结束；第二次 `os._exit(130)`（可能丢失内存中的 task log 缓冲）。Windows 上 SIGTERM 不可捕获。
-- 每个终态（成功/失败/取消/超时/内部异常）都会写一条 history；`--json` 在同样所有路径下都输出 JSON 文档（含 `run_id` / `timeout` / `cancelled`）。
+- 每个终态（成功/失败/取消/超时/内部异常）都会写一条 history（`task.execute` 路径还会写 `task_name`）；`--json` 在同样所有路径下都输出 JSON 文档（含 `run_id` / `task_name` / `timeout` / `cancelled`）。
 
 ## 测试有五套，分别由不同运行器驱动（最容易踩坑）
 
@@ -152,6 +153,10 @@ Python Backend (cli/main.py)
 ### 外部依赖（`runtime/`）——不随包分发
 
 `runtime/`（gitignored，不随仓库、不经 `extraResources` 打包）是**用户自备**的二进制目录：`adb/`、`aapt/`、`apktool/`、`bundletool/`、`jre/` 等。**Python 也不随包分发**，运行时优先尝试 `runtime/python/python.exe`，缺省回退系统 Python（实际以系统 Python 为准）。主进程通过 `BT_RUNTIME_DIR` 注入路径；工具解析可回退系统 PATH。不要把 `runtime/` 当作应用程序自带资产，新机器上它可能不存在。
+
+`runtime/` 的作用**不止"Python 在哪"**：它同时是后端解析**描述符里相对 `path`**（`examples/tools/android/adb.json` 的 `adb/adb.exe`、`apktool.json` 的 `apktool/apktool.jar`）与**内置环境 `search_paths`**（`cli/registry/environments/java.json` 的 `jre`、`python.json` 的 `python`）的根（`cli/app/utils/paths.py::get_runtime_dir`，回退链 `BT_RUNTIME_DIR` → `cli/runtime` → 项目根 `runtime/`，env 分支不检查存在性）。设置页那一行「工具链与运行时」就是 `appStore.runtime` → `BT_RUNTIME_DIR`，**后端启动时读取一次，改后必须重启后端**；打包后 `runtime/` 不在包内，相对路径的描述符工具全靠这一行指到用户自备的工具链。
+
+**数据目录不经 appStore**：`cache/`、`output/`、`tasks/`、`logs/` 固定为 `%LOCALAPPDATA%\blank_tool\`（macOS `~/Library/Caches/blank_tool/`、Linux `~/.cache/blank_tool/`）下的子目录，由 `src/main/python/service.ts` 注入 `BT_CACHE_DIR` / `BT_OUTPUT_DIR` / `BT_TASKS_DIR` / `BT_LOG_DIR`，**不可配置**。`appStore` 里曾有的 `output.output` 与 `javaPath` 是**死键**（可写但无人读），已随 WP10 删除（`APP_CONFIG_VERSION` 7→8 的 `MIGRATIONS[7]` 清理老库残留）；设置页路径组**只支持 `runtime` / `server` 两个键**（`settings.getViewModel` / `settings.resolvePaths`），加键要同时改 schema、`WRITABLE_CONFIG_KEYS` 与 `getSettingsViewModel`/`resolveSettingsPaths`。
 
 ### 安全边界（Security boundary / trust model）
 

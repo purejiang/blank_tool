@@ -1,0 +1,1545 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Blank · UI 原型（按 docs/ui-prompts 生成）</title>
+<style>
+/* ==========================================================================
+   0. 查看器外壳（不属于应用本身，仅用于切换屏幕 / 变体 / 主题）
+   ========================================================================== */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:#0A0F1A;color:#CBD5E1;
+  font-family:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:13px;
+}
+.viewer-bar{
+  position:sticky;top:0;z-index:50;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:10px 16px;background:#111827;border-bottom:1px solid #1F2937;
+}
+.viewer-bar .grp{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.viewer-bar .lbl{color:#64748B;font-size:11px;letter-spacing:.04em;margin-right:2px}
+.chip{
+  border:1px solid #334155;background:#1E293B;color:#CBD5E1;
+  padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;
+  font-family:inherit;line-height:1.4;
+}
+.chip:hover{background:#273449}
+.chip.on{background:#2563EB;border-color:#2563EB;color:#fff}
+.stage-wrap{max-width:1500px;margin:16px auto 48px;padding:0 16px}
+.stage-holder{position:relative;overflow:hidden;border-radius:10px;border:1px solid #1F2937;background:#0A0F1A}
+
+/* ==========================================================================
+   1. 应用 token（逐字取自 src/renderer/assets/styles/themes.css）
+   ========================================================================== */
+#stage[data-theme="light"]{
+  --app-body-bg:#F1F5F9;
+  --app-sidebar-bg:#E2E8F0;
+  --app-sidebar-border:#CBD5E1;
+  --app-card-bg:#FFFFFF;
+  --app-card-border:#E2E8F0;
+  --app-input-bg:#FFFFFF;
+  --app-input-border:#CBD5E1;
+  --app-text-primary:#0F172A;
+  --app-text-secondary:#334155;
+  --app-text-muted:#475569;
+  --app-text-dim:#64748B;
+  --app-green:#16A34A;
+  --app-green-bg:rgba(22,163,74,.1);
+  --app-blue:#2563EB;
+  --app-blue-bg:rgba(37,99,235,.1);
+  --app-yellow:#B45309;
+  --app-orange:#EA580C;
+  --app-purple:#9333EA;
+  --app-red:#DC2626;
+  --app-hover:rgba(0,0,0,.04);
+  --app-hover-strong:rgba(0,0,0,.08);
+  --app-code-bg:#F1F5F9;
+  --app-placeholder-color:#CBD5E1;
+  --app-storage-bg:rgba(0,0,0,.04);
+  /* 04/06/08 提示词点名「现有 token 缺的色」，这里先定视觉 */
+  --app-muted-fg:#64748B;
+  --app-muted-bg:rgba(100,116,139,.14);
+  --app-red-bg:rgba(220,38,38,.1);
+  --app-orange-bg:rgba(234,88,12,.1);
+  --app-orange-border:rgba(234,88,12,.35);
+  --app-shadow:0 1px 2px rgba(15,23,42,.06);
+  --app-scrim:rgba(15,23,42,.35);
+}
+#stage[data-theme="dark"]{
+  --app-body-bg:#0F172A;
+  --app-sidebar-bg:#0C1322;
+  --app-sidebar-border:#1E293B;
+  --app-card-bg:#1E293B;
+  --app-card-border:#334155;
+  --app-input-bg:#1E293B;
+  --app-input-border:#334155;
+  --app-text-primary:#F8FAFC;
+  --app-text-secondary:#CBD5E1;
+  --app-text-muted:#94A3B8;
+  --app-text-dim:#64748B;
+  --app-green:#22C55E;
+  --app-green-bg:rgba(34,197,94,.1);
+  --app-blue:#3B82F6;
+  --app-blue-bg:rgba(59,130,246,.1);
+  --app-yellow:#F59E0B;
+  --app-orange:#FB923C;
+  --app-purple:#C084FC;
+  --app-red:#EF4444;
+  --app-hover:rgba(148,163,184,.08);
+  --app-hover-strong:rgba(148,163,184,.14);
+  --app-code-bg:#0C1322;
+  --app-placeholder-color:#334155;
+  --app-storage-bg:rgba(15,23,42,.5);
+  --app-muted-fg:#94A3B8;
+  --app-muted-bg:rgba(148,163,184,.14);
+  --app-red-bg:rgba(239,68,68,.12);
+  --app-orange-bg:rgba(251,146,60,.12);
+  --app-orange-border:rgba(251,146,60,.35);
+  --app-shadow:0 1px 2px rgba(0,0,0,.35);
+  --app-scrim:rgba(2,6,23,.6);
+}
+
+/* ==========================================================================
+   2. 通用原子
+   ========================================================================== */
+#stage{
+  position:relative;width:1440px;height:900px;transform-origin:top left;
+  display:flex;background:var(--app-body-bg);color:var(--app-text-primary);
+  overflow:hidden;font-size:13px;line-height:1.5;
+}
+#stage *,#stage *::before,#stage *::after{box-sizing:border-box}
+.mono{font-family:"Fira Code","Cascadia Mono",Consolas,"Courier New",monospace}
+.dim{color:var(--app-text-dim)}
+.muted{color:var(--app-text-muted)}
+.sec{color:var(--app-text-secondary)}
+.ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+svg.i{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+svg.i.lg{width:18px;height:18px}
+svg.i.sm{width:12px;height:12px}
+
+.btn{
+  display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
+  border-radius:6px;border:1px solid var(--app-input-border);background:var(--app-input-bg);
+  color:var(--app-text-secondary);font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap;flex:none;
+}
+.btn:hover{background:var(--app-hover)}
+.btn.primary{background:var(--app-blue);border-color:var(--app-blue);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--app-red);border-color:var(--app-input-border)}
+.btn.danger:hover{background:var(--app-red-bg)}
+.btn.sm{height:24px;padding:0 8px;font-size:12px}
+.btn.disabled,[disabled]{opacity:.45;cursor:not-allowed}
+.btn.disabled:hover{background:var(--app-input-bg)}
+.iconbtn{
+  display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;
+  border-radius:6px;border:1px solid transparent;background:transparent;
+  color:var(--app-text-dim);cursor:pointer;flex:none;
+}
+.iconbtn:hover{background:var(--app-hover);color:var(--app-text-primary)}
+.iconbtn.boxed{border-color:var(--app-input-border);background:var(--app-input-bg)}
+
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:5px;font-size:11.5px;flex:none;white-space:nowrap}
+.badge.ok{color:var(--app-green);background:var(--app-green-bg)}
+.badge.err{color:var(--app-red);background:var(--app-red-bg)}
+.badge.run{color:var(--app-blue);background:var(--app-blue-bg)}
+.badge.cancel{color:var(--app-muted-fg);background:var(--app-muted-bg)}
+.badge.info{color:var(--app-blue);background:var(--app-blue-bg)}
+.badge.src{color:var(--app-text-muted);background:var(--app-storage-bg)}
+.badge.warn{color:var(--app-orange);background:var(--app-orange-bg)}
+.badge.kind{color:var(--app-purple);background:rgba(147,51,234,.14)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.spin{width:11px;height:11px;border-radius:50%;border:1.6px solid currentColor;border-top-color:transparent;animation:sp .7s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:11px;color:var(--app-text-muted);background:var(--app-storage-bg);border-radius:4px;padding:1px 6px}
+.tagcode{
+  font-family:"Fira Code",Consolas,monospace;font-size:11px;color:var(--app-purple);
+  background:rgba(147,51,234,.1);border-radius:4px;padding:2px 6px;
+}
+
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.field > label{font-size:12px;color:var(--app-text-secondary);display:flex;align-items:center;gap:4px}
+.req{color:var(--app-red)}
+.help{font-size:11px;color:var(--app-text-dim)}
+.input,.select{
+  height:30px;width:100%;padding:0 9px;border-radius:6px;border:1px solid var(--app-input-border);
+  background:var(--app-input-bg);color:var(--app-text-primary);font:inherit;font-size:12.5px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+.input.ph{color:var(--app-text-dim)}
+input.input{outline:none}
+input.input:focus{border-color:var(--app-blue)}
+.select:hover{border-color:var(--app-blue)}
+textarea.input{height:auto;padding:7px 9px;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;line-height:1.6;resize:none}
+.row-inline{display:flex;align-items:center;gap:8px}
+.row-inline .input{flex:1 1 auto;min-width:0}
+.switch{width:34px;height:19px;border-radius:10px;background:var(--app-placeholder-color);position:relative;flex:none;cursor:pointer}
+.switch.on{background:var(--app-blue)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.15s}
+.switch.on::after{left:17px}
+.radio,.check{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--app-text-secondary)}
+.rdot{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--app-input-border);flex:none;position:relative}
+.rdot.on{border-color:var(--app-blue)}
+.rdot.on::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--app-blue)}
+.cbox{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--app-input-border);flex:none;position:relative}
+.cbox.on{background:var(--app-blue);border-color:var(--app-blue)}
+.cbox.on::after{content:"";position:absolute;left:3.5px;top:1px;width:4px;height:7px;border:1.6px solid #fff;border-top:0;border-left:0;transform:rotate(42deg)}
+.seg{display:inline-flex;border:1px solid var(--app-input-border);border-radius:6px;overflow:hidden;background:var(--app-input-bg)}
+.seg > span{padding:5px 12px;font-size:12.5px;color:var(--app-text-muted);cursor:pointer;border-right:1px solid var(--app-input-border)}
+.seg > span:last-child{border-right:0}
+.seg > span.on{background:var(--app-blue-bg);color:var(--app-blue);font-weight:600}
+
+.card{background:var(--app-card-bg);border:1px solid var(--app-card-border);border-radius:8px;box-shadow:var(--app-shadow)}
+.card-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--app-card-border);flex:none}
+.card-hd h3{margin:0;font-size:13.5px;font-weight:600}
+.card-bd{padding:16px}
+
+#stage ::-webkit-scrollbar{width:6px;height:6px}
+#stage ::-webkit-scrollbar-track{background:transparent}
+#stage ::-webkit-scrollbar-thumb{background:var(--app-placeholder-color);border-radius:3px}
+
+/* ==========================================================================
+   3. 外壳（00-shell.md）
+   ========================================================================== */
+.sider{
+  width:220px;flex:none;background:var(--app-sidebar-bg);
+  border-right:1px solid var(--app-sidebar-border);
+  display:flex;flex-direction:column;height:100%;
+}
+.sider.collapsed{width:64px}
+.brand{display:flex;align-items:center;gap:10px;padding:20px 18px 16px;border-bottom:1px solid var(--app-sidebar-border);flex:none}
+.logo{
+  width:28px;height:28px;flex:none;border-radius:7px;background:linear-gradient(135deg,var(--app-blue),var(--app-purple));
+  color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;
+}
+.brand-name{font-weight:700;font-size:15.5px;letter-spacing:-.02em;color:var(--app-text-primary);flex:1;min-width:0}
+.sider.collapsed .brand{flex-direction:column;gap:8px;padding:16px 0 12px}
+.sider.collapsed .brand-name{display:none}
+.nav{padding:10px 10px 0;display:flex;flex-direction:column;gap:2px;flex:1;overflow-y:auto}
+.nav-item{
+  display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:6px;
+  color:var(--app-text-secondary);cursor:pointer;font-size:13px;
+}
+.nav-item:hover{background:var(--app-hover)}
+.nav-item.on{background:var(--app-blue-bg);color:var(--app-blue);font-weight:600}
+.sider.collapsed .nav-item{justify-content:center;padding:0}
+.sider.collapsed .nav-item span.txt{display:none}
+.sider-foot{flex:none;padding:10px 10px 0}
+.theme-box{padding:8px 8px 10px;border-top:1px solid var(--app-sidebar-border)}
+.theme-box .seg{width:100%}
+.theme-box .seg > span{flex:1;text-align:center;padding:4px 0}
+.sider.collapsed .theme-box{display:none}
+.statusbar{
+  display:flex;align-items:center;gap:6px;padding:10px 12px;font-size:10px;
+  border-top:1px solid var(--app-sidebar-border);color:var(--app-text-dim);
+}
+.sider.collapsed .statusbar{justify-content:center;padding:10px 4px}
+.main{position:relative;flex:1;min-width:0;height:100%;background:var(--app-body-bg)}
+
+.screen{position:absolute;inset:0;display:none;flex-direction:column;padding:24px;overflow-y:auto}
+.screen.on{display:flex}
+.page-hd{flex:none;margin-bottom:16px}
+.page-hd h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em}
+.page-hd p{margin:4px 0 0;font-size:12.5px;color:var(--app-text-dim)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--app-card-border);margin-bottom:16px;flex:none}
+.tabs > span{padding:8px 12px;font-size:13px;color:var(--app-text-muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs > span.on{color:var(--app-blue);border-bottom-color:var(--app-blue);font-weight:600}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex:none}
+.toolbar .grow{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px}
+.toolbar .btns{flex:none;display:flex;align-items:center;gap:8px;margin-left:auto}
+.search{display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;border-radius:6px;border:1px solid var(--app-input-border);background:var(--app-input-bg);color:var(--app-text-dim);width:260px;flex:none}
+.search input{border:0;outline:0;background:transparent;color:var(--app-text-primary);font:inherit;font-size:12.5px;width:100%}
+.empty{flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--app-text-dim);text-align:center}
+.empty .art{width:88px;height:88px;border-radius:20px;border:1.5px dashed var(--app-input-border);display:flex;align-items:center;justify-content:center;color:var(--app-text-dim);margin-bottom:4px}
+.empty h3{margin:0;font-size:14.5px;color:var(--app-text-secondary);font-weight:600}
+.empty p{margin:0;font-size:12.5px;max-width:380px}
+.empty .acts{display:flex;gap:8px;margin-top:8px}
+
+/* 变体显隐：data-variant=empty 时隐藏 data-only=regular，反之亦然 */
+#stage[data-variant="empty"] [data-only="regular"]{display:none}
+#stage:not([data-variant="empty"]) [data-only="empty"]{display:none}
+#stage[data-variant="empty"] .empty{display:flex}
+#stage[data-variant="empty"] .toolbar{display:none}
+
+/* ==========================================================================
+   4. S1 工作流列表
+   ========================================================================== */
+.wf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.wf-card{position:relative;padding:16px;display:flex;flex-direction:column;gap:10px;cursor:pointer}
+.wf-card:hover{border-color:var(--app-blue)}
+/* No run-status badge on workflow cards (2026-09-28): this page only answers
+   "which workflows exist"; run status lives in the run-records screen. */
+.wf-card h3{margin:0;font-size:14px;font-weight:600;padding-right:44px}
+.wf-card .desc{margin:0;font-size:12.5px;color:var(--app-text-muted);min-height:34px}
+.wf-card .meta{font-size:11.5px;color:var(--app-text-dim);font-family:"Fira Code",Consolas,monospace}
+.wf-card .foot{display:flex;align-items:center;justify-content:space-between;margin-top:2px}
+.wf-more{position:absolute;bottom:12px;right:12px}
+
+/* ==========================================================================
+   5. S2 工作流编辑器
+   ========================================================================== */
+.screen.editor{padding:0;overflow:hidden}
+.ed-top{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--app-card-border);background:var(--app-card-bg);flex:none}
+.ed-name{display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:600;color:var(--app-text-primary)}
+.ed-name .caret{color:var(--app-text-dim);font-size:11px}
+.ed-body{flex:1;min-height:0;display:flex}
+.ed-left{width:240px;flex:none;border-right:1px solid var(--app-card-border);background:var(--app-card-bg);display:flex;flex-direction:column;min-height:0}
+.ed-right{width:320px;flex:none;border-left:1px solid var(--app-card-border);background:var(--app-card-bg);display:flex;flex-direction:column;min-height:0}
+.pal{padding:10px;display:flex;flex-direction:column;gap:6px;flex:none}
+.pal-scroll{flex:1;min-height:0;overflow-y:auto;padding:0 10px 12px}
+.pal-grp{font-size:10.5px;letter-spacing:.08em;color:var(--app-text-dim);margin:10px 0 6px}
+.tool-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:grab;border:1px solid transparent}
+.tool-row:hover{background:var(--app-hover)}
+.tool-row .ti{width:24px;height:24px;border-radius:6px;background:var(--app-storage-bg);display:flex;align-items:center;justify-content:center;color:var(--app-text-muted);flex:none}
+.tool-row .tt{flex:1;min-width:0}
+.tool-row .tn{font-family:"Fira Code",Consolas,monospace;font-size:12px;color:var(--app-text-secondary)}
+.tool-row .td{font-size:11px;color:var(--app-text-dim)}
+.tool-row .grip{color:var(--app-text-dim);opacity:.5;flex:none}
+.tool-row.off{opacity:.42;cursor:not-allowed}
+.tool-row.off:hover{background:transparent}
+.canvas{position:relative;flex:1;min-width:0;background:var(--app-code-bg);overflow:hidden;
+  background-image:radial-gradient(var(--app-placeholder-color) 1px,transparent 1px);background-size:20px 20px}
+.chain{position:absolute;left:50%;top:36px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;width:250px}
+.wnode{width:250px;background:var(--app-card-bg);border:1px solid var(--app-card-border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;position:relative;box-shadow:var(--app-shadow)}
+.wnode.sel{border-color:var(--app-blue);box-shadow:0 0 0 2px var(--app-blue-bg),var(--app-shadow)}
+.wnode .ni{width:28px;height:28px;border-radius:7px;background:var(--app-storage-bg);display:flex;align-items:center;justify-content:center;color:var(--app-text-muted);flex:none}
+.wnode.sel .ni{background:var(--app-blue-bg);color:var(--app-blue)}
+.wnode .nt{flex:1;min-width:0}
+.wnode .ttl{font-size:12.5px;font-weight:600;color:var(--app-text-primary)}
+.wnode .sub{font-family:"Fira Code",Consolas,monospace;font-size:11px;color:var(--app-text-dim)}
+.port{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--app-card-bg);border:1.6px solid var(--app-text-dim)}
+.port.l{left:-5px;top:50%;margin-top:-4.5px}
+.port.r{right:-5px;top:50%;margin-top:-4.5px}
+.port.on{background:var(--app-blue);border-color:var(--app-blue)}
+.wlink{width:2px;height:26px;background:var(--app-text-dim);opacity:.6}
+.zoomctl{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;border:1px solid var(--app-card-border);border-radius:6px;overflow:hidden;background:var(--app-card-bg)}
+.zoomctl span{width:28px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--app-text-secondary);border-bottom:1px solid var(--app-card-border);cursor:pointer}
+.zoomctl span:last-child{border-bottom:0}
+.minimap{position:absolute;left:14px;bottom:14px;width:150px;height:96px;border:1px solid var(--app-card-border);border-radius:6px;background:var(--app-card-bg);padding:8px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.minimap i{display:block;width:64px;height:8px;border-radius:2px;background:var(--app-placeholder-color)}
+.minimap i.on{background:var(--app-blue)}
+.cfg-hd{padding:14px 14px 10px;border-bottom:1px solid var(--app-card-border);flex:none}
+.cfg-hd .cn{font-family:"Fira Code",Consolas,monospace;font-size:13px;font-weight:600;color:var(--app-text-primary)}
+.cfg-hd .cd{font-size:11.5px;color:var(--app-text-dim);margin-top:2px}
+.cfg-bd{flex:1;min-height:0;overflow-y:auto;padding:14px}
+.cfg-ft{flex:none;padding:12px 14px;border-top:1px solid var(--app-card-border);display:flex;gap:8px}
+.err-line{display:flex;align-items:flex-start;gap:6px;color:var(--app-red);font-size:11.5px;margin-bottom:10px;line-height:1.45}
+.section-box{border:1px solid var(--app-card-border);border-radius:7px;padding:10px 12px;margin-bottom:14px;background:var(--app-input-bg)}
+.adv{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--app-text-secondary);cursor:pointer}
+.warn-bar{
+  margin:12px 16px 10px;padding:10px 12px;border-radius:8px;flex:none;
+  border:1px solid var(--app-orange-border);background:var(--app-orange-bg);
+}
+.warn-bar .w1{display:flex;align-items:center;gap:7px;color:var(--app-orange);font-size:12.5px;font-weight:600}
+.warn-bar .w2{margin:6px 0 0 22px;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-orange)}
+.warn-bar .w3{margin:5px 0 0 22px;font-size:11px;color:var(--app-text-dim);line-height:1.5}
+#stage[data-variant="unselected"] .screen.editor .ed-right{display:none}
+.screen.editor .warn-bar{display:none}
+#stage[data-variant="conflict"] .screen.editor .warn-bar{display:block}
+#stage[data-variant="conflict"] .screen.editor .cfg-hd,
+#stage[data-variant="conflict"] .screen.editor .cfg-bd,
+#stage[data-variant="conflict"] .screen.editor .cfg-ft{opacity:.55}
+.screen.editor .extra-edge{display:none}
+#stage[data-variant="conflict"] .screen.editor .extra-edge{display:block}
+#stage[data-variant="conflict"] [data-save]{opacity:.45;cursor:not-allowed}
+#stage[data-variant="conflict"] [data-save]::after{content:"（被阻断）";font-size:11px}
+
+/* ==========================================================================
+   6. S3 任务列表（任务定义）+ S3.2 任务编辑（独立二级页，共用下列表单样式）
+   ========================================================================== */
+/* 任务定义列表：行 = 任务名 / 绑定的工作流 / 描述 / meta / 操作。
+   注意：没有运行状态徽章——状态属于「运行记录」（2026-09-28 口径）。 */
+.tlist{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.trow{display:flex;align-items:center;gap:12px;padding:12px 14px}
+.trow .tn{font-size:13.5px;font-weight:600;flex:none;min-width:132px}
+.trow .tw{font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-muted);flex:none;display:flex;align-items:center;gap:6px}
+.trow .td{font-size:11.5px;color:var(--app-text-dim);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .tm{font-family:"Fira Code",Consolas,monospace;font-size:11px;color:var(--app-text-dim);flex:none}
+.trow .acts{display:flex;align-items:center;gap:6px;flex:none}
+.trow.dangling .tw{color:var(--app-orange)}
+.trow.dangling .td{color:var(--app-text-dim)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+/* 任务编辑：工作流只是一行紧凑选择器（低频元信息），表单才是主体并占满宽度。 */
+.wf-pick{display:flex;align-items:center;gap:10px;flex:none;padding:10px 12px;margin-bottom:12px;
+  border:1px solid var(--app-card-border);border-radius:8px;background:var(--app-card-bg)}
+.wf-pick .lbl2{font-size:11.5px;color:var(--app-text-dim);flex:none}
+.wf-pick .meta3{font-family:"Fira Code",Consolas,monospace;font-size:11px;color:var(--app-text-muted);flex:none}
+.wf-pick .desc2{font-size:12px;color:var(--app-text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-pick.empty-sel .select{border-style:dashed;color:var(--app-text-dim)}
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;align-items:start}
+.fgrid .field{margin-bottom:0}
+.fgrid .span2{grid-column:1 / -1}
+.form-col{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.form-scroll{flex:1;min-height:0;overflow-y:auto;padding-right:4px}
+.form-ft{flex:none;border-top:1px solid var(--app-card-border);padding-top:14px;display:flex;align-items:flex-end;gap:12px}
+.dir-row{display:flex;align-items:center;gap:8px}
+.dir-row .input{flex:1;min-width:0;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-secondary)}
+.task-name-row{display:flex;align-items:flex-end;gap:12px;flex:none;margin-bottom:12px}
+.task-name-row .field{flex:1;min-width:0}
+
+/* ==========================================================================
+   7. S4 运行记录 + S5 抽屉
+   ========================================================================== */
+.hlist{display:flex;flex-direction:column;gap:8px}
+.hrow{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer}
+.hrow:hover{border-color:var(--app-blue)}
+/* .nm 现在是任务名（可能较长），没有任务名的记录显示灰色小字 */
+.hrow .nm{font-size:13.5px;font-weight:600;flex:none;width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrow .src{font-size:11.5px;color:var(--app-text-dim);flex:1;min-width:0}
+.hrow .tm{font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-muted);flex:none;width:140px}
+.hrow .du{font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-muted);flex:none;width:64px;text-align:right}
+.hrow .bs{flex:none;width:78px}
+.hrow.exp{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent}
+.hexp{border:1px solid var(--app-card-border);border-top:0;border-radius:0 0 8px 8px;background:var(--app-card-bg);padding:14px;margin-top:-9px;display:flex;flex-direction:column;gap:12px}
+.steps{display:flex;align-items:flex-start;gap:0;flex-wrap:wrap}
+.step{display:flex;flex-direction:column;align-items:center;gap:6px;width:112px;text-align:center}
+.step .si{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--app-card-border);background:var(--app-card-bg);color:var(--app-text-dim)}
+.step.done .si{border-color:var(--app-green);color:var(--app-green);background:var(--app-green-bg)}
+.step.fail .si{border-color:var(--app-red);color:var(--app-red);background:var(--app-red-bg)}
+.step.run .si{border-color:var(--app-blue);color:var(--app-blue);background:var(--app-blue-bg)}
+.step.skip .si{border-color:var(--app-card-border);color:var(--app-text-dim);background:var(--app-storage-bg)}
+.step .sn{font-size:11.5px;color:var(--app-text-secondary)}
+.step .st{font-size:10.5px;color:var(--app-text-dim);font-family:"Fira Code",Consolas,monospace}
+.step-rail{flex:1;height:1.5px;background:var(--app-card-border);margin-top:13px;min-width:12px}
+.step-rail.f{background:var(--app-green)}
+.console{background:var(--app-code-bg);border:1px solid var(--app-card-border);border-radius:7px;padding:10px 12px;
+  font-family:"Fira Code",Consolas,monospace;font-size:11.5px;line-height:1.75;color:var(--app-text-secondary);
+  max-height:178px;overflow:auto;white-space:pre-wrap}
+.console .lv-i{color:var(--app-text-dim)}
+.console .lv-e{color:var(--app-red)}
+.console .lv-w{color:var(--app-yellow)}
+.console .lv-g{color:var(--app-green)}
+.load-more{display:flex;justify-content:center;padding:14px 0 4px}
+.scrim{position:absolute;inset:0;background:var(--app-scrim);display:none;z-index:20}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:640px;background:var(--app-card-bg);border-left:1px solid var(--app-card-border);z-index:21;
+  display:none;flex-direction:column;box-shadow:-8px 0 24px rgba(2,6,23,.28)}
+#stage[data-variant="drawer"] .scrim{display:block}
+#stage[data-variant="drawer"] .drawer{display:flex}
+.dw-hd{flex:none;padding:14px 16px;border-bottom:1px solid var(--app-card-border)}
+.dw-hd .l1{display:flex;align-items:center;gap:10px}
+.dw-hd .nm{font-size:15px;font-weight:700}
+.dw-hd .r1{display:flex;align-items:center;gap:14px;margin-top:8px;font-size:11.5px;color:var(--app-text-dim);flex-wrap:wrap}
+.dw-bd{flex:1;min-height:0;overflow-y:auto;padding:16px}
+.dw-sec{margin-bottom:20px}
+.dw-sec h4{margin:0 0 8px;font-size:11.5px;letter-spacing:.06em;color:var(--app-text-dim)}
+.kv{display:grid;grid-template-columns:170px 1fr;gap:0;border:1px solid var(--app-card-border);border-radius:7px;overflow:hidden}
+.kv > div{padding:8px 11px;font-size:12.5px;border-bottom:1px solid var(--app-card-border)}
+.kv > div:nth-child(odd){background:var(--app-storage-bg);font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-muted)}
+.kv > div:nth-last-child(-n+2){border-bottom:0}
+.tl{display:flex;flex-direction:column}
+.tl-row{display:flex;flex-direction:column;gap:2px;padding:7px 0 7px 14px;border-left:1.5px solid var(--app-card-border);margin-left:9px;position:relative}
+.tl-row::before{content:"";position:absolute;left:-5.5px;top:14px;width:9px;height:9px;border-radius:50%;background:var(--app-card-bg);border:1.6px solid var(--app-text-dim)}
+.tl-row.ok::before{border-color:var(--app-green);background:var(--app-green)}
+.tl-row.fail::before{border-color:var(--app-red);background:var(--app-red)}
+.tl-row.run::before{border-color:var(--app-blue);background:var(--app-blue)}
+.tl-row.skip::before{border-color:var(--app-card-border);background:var(--app-storage-bg)}
+.tl-row .tn{font-size:12.5px;font-family:"Fira Code",Consolas,monospace;color:var(--app-text-secondary);display:flex;align-items:center;gap:8px}
+.tl-row .tm{font-size:11px;color:var(--app-text-dim);font-family:"Fira Code",Consolas,monospace}
+.tl-row .te{color:var(--app-red);font-size:11.5px;margin-top:3px}
+.tl-row.nested{margin-left:26px}
+.trunc{border:1px solid var(--app-red);border-radius:7px;padding:10px 12px;display:flex;align-items:center;gap:8px;
+  color:var(--app-red);font-size:12px;background:var(--app-red-bg)}
+.dw-ft{flex:none;padding:12px 16px;border-top:1px solid var(--app-card-border);display:flex;gap:8px}
+
+/* ==========================================================================
+   8. S6 工具 / S6b 环境 / S6c 插件（三个页面，共享「工具」导航项）
+   ========================================================================== */
+.tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.toolcard{position:relative;padding:14px;display:flex;gap:12px}
+.toolcard .tci{width:36px;height:36px;border-radius:9px;background:var(--app-storage-bg);display:flex;align-items:center;justify-content:center;color:var(--app-text-muted);flex:none}
+.toolcard .tcb{flex:1;min-width:0}
+.toolcard .tcn{display:flex;align-items:center;gap:8px;font-family:"Fira Code",Consolas,monospace;font-size:13px;font-weight:600}
+.toolcard .tcd{font-size:11.5px;color:var(--app-text-dim);margin-top:3px}
+.toolcard .tcp{font-family:"Fira Code",Consolas,monospace;font-size:11px;color:var(--app-text-dim);margin-top:8px;background:var(--app-code-bg);border-radius:5px;padding:4px 7px}
+/* 环境依赖 chips：把"不可用"的原因写在卡片上（env_deps × env.list） */
+.toolcard .tcdeps{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.depchip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:5px;
+  font-family:"Fira Code",Consolas,monospace;font-size:11px;color:var(--app-text-muted);background:var(--app-storage-bg)}
+.depchip.ok{color:var(--app-green);background:var(--app-green-bg)}
+.depchip.miss{color:var(--app-orange);background:var(--app-orange-bg)}
+/* 三个页面共用的区段切换（放在页面头右侧；点击 = 切到另一个页面） */
+.page-hd.head-row{display:flex;align-items:flex-start;gap:16px}
+.pagenav{margin-left:auto;flex:none}
+.notice{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:7px;margin-bottom:14px;flex:none;
+  background:var(--app-orange-bg);color:var(--app-orange);font-size:12px}
+.notice .grow{flex:1 1 auto;min-width:0}
+.rowlist{display:flex;flex-direction:column}
+.rowitem{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--app-card-border)}
+.rowitem:last-child{border-bottom:0}
+.rowitem.off{opacity:.55}
+.rowitem .ri{width:32px;height:32px;border-radius:8px;background:var(--app-storage-bg);display:flex;align-items:center;justify-content:center;color:var(--app-text-muted);flex:none}
+.rowitem .rn{font-size:13px;font-weight:600;flex:none;width:92px}
+.rowitem .rv{font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-muted);flex:none;width:80px}
+.rowitem .rmono{flex:1;min-width:0;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-dim)}
+.rowitem .rmono.strong{color:var(--app-text-secondary)}
+.rowitem .rdeps{flex:none;width:126px;text-align:right;font-size:11px;color:var(--app-text-dim)}
+.rowitem .rcol{flex:1;min-width:0}
+.rowitem .rline{display:flex;align-items:center;gap:12px}
+.rowitem .rerr{margin-top:3px;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-red)}
+
+/* ==========================================================================
+   9. S7 设置 / S8 诊断
+   ========================================================================== */
+.stack{display:flex;flex-direction:column;gap:16px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.full{grid-column:1 / -1}
+.frow{display:flex;align-items:center;gap:16px;padding:11px 0;border-bottom:1px solid var(--app-card-border)}
+.frow:last-child{border-bottom:0}
+.frow .fl{flex:1;min-width:0}
+.frow .fl .ft{font-size:12.5px;color:var(--app-text-primary)}
+.frow .fl .fh{font-size:11px;color:var(--app-text-dim);margin-top:2px}
+.pathrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--app-card-border)}
+.pathrow:last-child{border-bottom:0}
+.pathrow .pl{font-size:12px;color:var(--app-text-muted);width:150px;flex:none}
+.pathrow .pv{flex:1;min-width:0;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-secondary);background:var(--app-code-bg);border-radius:5px;padding:4px 8px}
+.kvsz{flex:none;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-dim)}
+.danger-note{display:flex;align-items:flex-start;gap:7px;margin-top:10px;color:var(--app-orange);font-size:11.5px;line-height:1.55}
+.kvstat4{display:grid;grid-template-columns:1.3fr 1fr 1.1fr 66px;border:1px solid var(--app-card-border);border-radius:7px;overflow:hidden}
+.kvstat4 > div{padding:9px 11px;font-family:"Fira Code",Consolas,monospace;font-size:11.5px;color:var(--app-text-muted)}
+.kvstat4 > div:nth-child(4n+1){color:var(--app-text-secondary)}
+.kvstat4 > div:nth-child(2){text-align:left}
+.kvstat4 > div:nth-child(4){text-align:right}
+.about-hd{display:flex;align-items:center;gap:14px}
+.bigbadge{display:flex;align-items:center;gap:8px;font-size:20px;font-weight:700;color:var(--app-green)}
+.footlinks{display:flex;gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--app-card-border)}
+.footlinks a{color:var(--app-blue);font-size:12.5px;text-decoration:none;cursor:pointer}
+</style>
+</head>
+<body>
+<!-- 图标 sprite -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-wf" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.4"/><circle cx="6" cy="19" r="2.4"/><circle cx="18" cy="12" r="2.4"/><path d="M6 7.4v9.2M8.4 5H15a3 3 0 0 1 3 3v1.6M8.4 19H15a3 3 0 0 0 3-3v-1.6"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><path d="M4 6h3M4 12h3M4 18h3M10 6h10M10 12h10M10 18h10"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M10 4h4v3.2a2 2 0 0 0 1 1.7l2.7 1.6a2 2 0 0 0 2 0l.3-.2v4l-.3-.2a2 2 0 0 0-2 0L15 15.1a2 2 0 0 0-1 1.7V20h-4v-3.2a2 2 0 0 0-1-1.7l-2.7-1.6a2 2 0 0 0-2 0l-.3.2v-4l.3.2a2 2 0 0 0 2 0L9 8.9a2 2 0 0 0 1-1.7z"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.4a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.5 14H3a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 4.3 7.2l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 3.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 20.5 10H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.3" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h3.5l2 2.5H19a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 2.5 2.5L7 14M13 14h4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24"><path d="M17 2l3 3-3 3"/><path d="M20 5H8a5 5 0 0 0 0 10h8a5 5 0 0 1 0 10H5"/></symbol>
+  <symbol id="i-brace" viewBox="0 0 24 24"><path d="M9 4c-2 0-3 1-3 3v2c0 1.5-.7 2.3-2 3 1.3.7 2 1.5 2 3v2c0 2 1 3 3 3M15 4c2 0 3 1 3 3v2c0 1.5.7 2.3 2 3-1.3.7-2 1.5-2 3v2c0 2-1 3-3 3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 22 20H2z"/><path d="M12 10v4.5M12 17.5h.01"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5 19.5 12 7 19.5z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.5-7 4 14 2.5-7h5"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+  <symbol id="i-pkg" viewBox="0 0 24 24"><path d="M12 2.8 21 7v10l-9 4.2L3 17V7z"/><path d="M3 7l9 4.2 9-4.2M12 21V11.2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.4 2"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h8M8 17h4"/></symbol>
+</svg>
+
+<div class="viewer-bar">
+  <div class="grp"><span class="lbl">屏幕</span>
+    <button class="chip on" data-screen="workflows">① 工作流列表</button>
+    <button class="chip" data-screen="editor">② 工作流编辑器</button>
+    <button class="chip" data-screen="tasks">③ 任务列表</button>
+    <button class="chip" data-screen="taskeditor">④ 任务编辑</button>
+    <button class="chip" data-screen="runs">⑤ 运行记录</button>
+    <button class="chip" data-screen="tools">⑦ 工具</button>
+    <button class="chip" data-screen="envs">⑧ 环境</button>
+    <button class="chip" data-screen="plugins">⑨ 插件</button>
+    <button class="chip" data-screen="settings">⑩ 设置</button>
+    <button class="chip" data-screen="diagnostics">⑪ 诊断</button>
+  </div>
+  <div class="grp" id="variantGrp"></div>
+  <div class="grp" style="margin-left:auto"><span class="lbl">主题</span>
+    <button class="chip on" data-set-theme="dark">深色</button>
+    <button class="chip" data-set-theme="light">浅色</button>
+  </div>
+</div>
+
+<div class="stage-wrap">
+<div class="stage-holder" id="stageWrap">
+<div id="stage" data-theme="dark" data-screen="workflows" data-variant="regular">
+
+  <!-- ===================== 外壳（00-shell） ===================== -->
+  <aside class="sider" id="sider">
+    <div class="brand">
+      <div class="logo">B</div>
+      <span class="brand-name">Blank</span>
+      <span class="iconbtn" id="collapseBtn"><svg class="i sm"><use href="#i-back"/></svg></span>
+    </div>
+    <nav class="nav">
+      <a class="nav-item on" data-nav="workflows"><svg class="i lg"><use href="#i-wf"/></svg><span class="txt">工作流</span></a>
+      <a class="nav-item" data-nav="tasks"><svg class="i lg"><use href="#i-task"/></svg><span class="txt">任务</span></a>
+      <a class="nav-item" data-nav="tools"><svg class="i lg"><use href="#i-tool"/></svg><span class="txt">工具</span></a>
+      <a class="nav-item" data-nav="settings"><svg class="i lg"><use href="#i-set"/></svg><span class="txt">设置</span></a>
+    </nav>
+    <div class="sider-foot">
+      <div class="theme-box">
+        <div class="seg">
+          <span data-quick-theme="light">浅色</span>
+          <span data-quick-theme="dark" class="on">深色</span>
+          <span data-quick-theme="auto">自动</span>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span class="mono">v2.3.0 | backend 1.0.1</span>
+        <i class="dot" style="color:var(--app-green)"></i>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+  <!-- ===================== ① /workflows ===================== -->
+  <section class="screen on" data-s="workflows">
+    <div class="page-hd">
+      <h1>工作流</h1>
+      <p>把工具按线性顺序串成流程，选中即可编辑、试运行或导出。</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary"><svg class="i sm"><use href="#i-plus"/></svg>新建工作流</button>
+      <button class="btn"><svg class="i sm"><use href="#i-down"/></svg>导入</button>
+      <button class="btn"><svg class="i sm"><use href="#i-up"/></svg>导出</button>
+      <div class="grow">
+        <label class="search"><svg class="i sm"><use href="#i-search"/></svg><input placeholder="搜索工作流名称或描述" /></label>
+      </div>
+      <div class="btns"><span class="iconbtn boxed" title="刷新"><svg class="i sm"><use href="#i-refresh"/></svg></span></div>
+    </div>
+
+    <div class="wf-grid" data-only="regular">
+      <div class="card wf-card">
+        <h3>release-check</h3>
+        <p class="desc">发布前静态检查，汇总结果并生成报告文件。</p>
+        <div class="meta">12 个节点 · 2 小时前更新</div>
+        <div class="foot"><div class="chips"><span class="tag">generic</span><span class="tag">report</span></div></div>
+        <span class="iconbtn wf-more"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card wf-card">
+        <h3>asset-sync</h3>
+        <p class="desc">同步素材目录到对象存储，并校验清单一致性。</p>
+        <div class="meta">8 个节点 · 昨天更新</div>
+        <div class="foot"><div class="chips"><span class="tag">sync</span></div></div>
+        <span class="iconbtn wf-more"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card wf-card">
+        <h3>nightly-report</h3>
+        <p class="desc">每晚汇总构建结果并通过 webhook 推送。</p>
+        <div class="meta">15 个节点 · 3 天前更新</div>
+        <div class="foot"><div class="chips"><span class="tag">report</span><span class="tag">notify</span></div></div>
+        <span class="iconbtn wf-more"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card wf-card">
+        <h3>apk-sign</h3>
+        <p class="desc">重签名 APK 并校验签名一致性。</p>
+        <div class="meta">6 个节点 · 5 天前更新</div>
+        <div class="foot"><div class="chips"><span class="tag">android</span></div></div>
+        <span class="iconbtn wf-more"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card wf-card">
+        <h3>log-collect</h3>
+        <p class="desc">拉取设备日志并按日期归档到输出目录。</p>
+        <div class="meta">4 个节点 · 1 周前更新</div>
+        <div class="foot"><div class="chips"><span class="tag">adb</span></div></div>
+        <span class="iconbtn wf-more"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card wf-card">
+        <h3>font-replace</h3>
+        <p class="desc">替换 CJK 字体并回填样式引用。</p>
+        <div class="meta">9 个节点 · 2 周前更新</div>
+        <div class="foot"><div class="chips"><span class="tag">renpy</span><span class="tag">font</span></div></div>
+        <span class="iconbtn wf-more"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+    </div>
+
+    <div class="empty">
+      <div class="art"><svg class="i" style="width:34px;height:34px"><use href="#i-wf"/></svg></div>
+      <h3>还没有工作流</h3>
+      <p>工作流由若干工具按顺序串成。可以从示例开始，也可以从零新建一个。</p>
+      <div class="acts">
+        <button class="btn"><svg class="i sm"><use href="#i-down"/></svg>导入示例工作流</button>
+        <button class="btn primary"><svg class="i sm"><use href="#i-plus"/></svg>新建工作流</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ② /workflows/editor/:name ===================== -->
+  <section class="screen editor" data-s="editor">
+    <div class="ed-top">
+      <span class="iconbtn"><svg class="i"><use href="#i-back"/></svg></span>
+      <span class="ed-name">release-check<span class="caret">▾</span></span>
+      <span class="badge src">已保存</span>
+      <div style="flex:none;display:flex;gap:8px;margin-left:auto">
+        <button class="btn"><svg class="i sm"><use href="#i-alert"/></svg>问题 <span class="dim">2</span></button>
+        <button class="btn" data-save>保存</button>
+        <button class="btn primary"><svg class="i sm"><use href="#i-play"/></svg>试运行</button>
+      </div>
+    </div>
+
+    <div class="warn-bar">
+      <div class="w1"><svg class="i sm"><use href="#i-alert"/></svg>有 1 条连线不会被保存：每个节点只保留第一条出边</div>
+      <div class="w2">tool-exec-shell-2 → tool-file-write-3（多余出边）</div>
+      <div class="w3">本应用的工作流是线性链，节点只有一个 next。需要分支或循环请改用 flow.foreach、flow.compare 等组合工具；多余出边在保存时会被后端拒绝。</div>
+    </div>
+
+    <div class="ed-body">
+      <!-- 左栏：工具面板 240 -->
+      <div class="ed-left">
+        <div class="pal">
+          <label class="search" style="width:100%"><svg class="i sm"><use href="#i-search"/></svg><input placeholder="搜索工具" /></label>
+        </div>
+        <div class="pal-scroll">
+          <div class="pal-grp">内置</div>
+          <div class="tool-row"><span class="ti"><svg class="i sm"><use href="#i-file"/></svg></span><span class="tt"><span class="tn">file.read</span><div class="td">读取文本 / JSON 文件</div></span><span class="grip"><svg class="i sm"><use href="#i-grip"/></svg></span></div>
+          <div class="tool-row"><span class="ti"><svg class="i sm"><use href="#i-file"/></svg></span><span class="tt"><span class="tn">file.write</span><div class="td">写入文件内容</div></span><span class="grip"><svg class="i sm"><use href="#i-grip"/></svg></span></div>
+          <div class="tool-row"><span class="ti"><svg class="i sm"><use href="#i-term"/></svg></span><span class="tt"><span class="tn">shell.exec</span><div class="td">执行命令并捕获输出</div></span><span class="grip"><svg class="i sm"><use href="#i-grip"/></svg></span></div>
+          <div class="tool-row"><span class="ti"><svg class="i sm"><use href="#i-globe"/></svg></span><span class="tt"><span class="tn">net.download</span><div class="td">下载文件到本地</div></span><span class="grip"><svg class="i sm"><use href="#i-grip"/></svg></span></div>
+          <div class="tool-row"><span class="ti"><svg class="i sm"><use href="#i-brace"/></svg></span><span class="tt"><span class="tn">json.parse</span><div class="td">解析 JSON 文本</div></span><span class="grip"><svg class="i sm"><use href="#i-grip"/></svg></span></div>
+          <div class="tool-row"><span class="ti"><svg class="i sm"><use href="#i-loop"/></svg></span><span class="tt"><span class="tn">flow.foreach</span><div class="td">遍历集合（组合工具）</div></span><span class="grip"><svg class="i sm"><use href="#i-grip"/></svg></span></div>
+          <div class="pal-grp">已导入</div>
+          <div class="tool-row"><span class="ti"><svg class="i sm"><use href="#i-device"/></svg></span><span class="tt"><span class="tn">adb.devices</span><div class="td">列出已连接设备</div></span><span class="grip"><svg class="i sm"><use href="#i-grip"/></svg></span></div>
+          <div class="tool-row off"><span class="ti"><svg class="i sm"><use href="#i-pkg"/></svg></span><span class="tt"><span class="tn">apk.sign</span><div class="td">重签名 APK · 缺少 Android SDK</div></span><span class="grip"><svg class="i sm"><use href="#i-x"/></svg></span></div>
+        </div>
+      </div>
+
+      <!-- 画布 -->
+      <div class="canvas">
+        <svg class="extra-edge" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
+          <path d="M456 226 C574 226 574 307 456 307" fill="none" stroke="var(--app-orange)" stroke-width="2" stroke-dasharray="5 4"/>
+        </svg>
+        <div class="chain">
+          <div class="wnode"><span class="port l"></span><span class="ni"><svg class="i sm"><use href="#i-file"/></svg></span><span class="nt"><div class="ttl">读取清单</div><div class="sub">file.read · read_text</div></span><span class="port r on"></span></div>
+          <div class="wlink"></div>
+          <div class="wnode"><span class="port l on"></span><span class="ni"><svg class="i sm"><use href="#i-brace"/></svg></span><span class="nt"><div class="ttl">解析 JSON</div><div class="sub">json.parse · parse</div></span><span class="port r on"></span></div>
+          <div class="wlink"></div>
+          <div class="wnode sel"><span class="port l on"></span><span class="ni"><svg class="i sm"><use href="#i-term"/></svg></span><span class="nt"><div class="ttl">执行校验</div><div class="sub">shell.exec · run</div></span><span class="port r on"></span></div>
+          <div class="wlink"></div>
+          <div class="wnode"><span class="port l on"></span><span class="ni"><svg class="i sm"><use href="#i-file"/></svg></span><span class="nt"><div class="ttl">写出报告</div><div class="sub">file.write · write_text</div></span><span class="port r"></span></div>
+        </div>
+        <div class="zoomctl"><span>＋</span><span>－</span><span>⤢</span></div>
+        <div class="minimap"><i></i><i></i><i class="on"></i><i></i></div>
+      </div>
+
+      <!-- 右栏：节点设置 320 -->
+      <div class="ed-right">
+        <div class="cfg-hd">
+          <div class="cn">shell.exec</div>
+          <div class="cd">执行命令并捕获输出 · 节点「执行校验」</div>
+        </div>
+        <div class="cfg-bd">
+          <div class="field">
+            <label>操作</label>
+            <div class="select"><span>run — 执行并等待退出</span><span class="dim">▾</span></div>
+          </div>
+          <div class="field">
+            <label>命令模板 <span class="req">*</span></label>
+            <input class="input mono" value="python -m compileall -q {{ $inputs.target_dir }}" />
+            <div class="chips"><span class="tagcode">$inputs.target_dir</span><span class="tagcode">$nodes.scan.outputs.count</span></div>
+          </div>
+          <div class="field">
+            <label>工作目录</label>
+            <div class="row-inline"><span class="input mono" style="font-size:11.5px;color:var(--app-text-secondary)">D:\projects\demo</span><button class="btn"><svg class="i sm"><use href="#i-folder"/></svg>浏览</button></div>
+          </div>
+          <div class="section-box">
+            <div class="adv"><span>失败即中断</span><span class="switch on"></span></div>
+          </div>
+          <div class="field">
+            <label>环境变量（JSON）</label>
+            <textarea class="input" rows="4">{
+  "PYTHONIOENCODING": "utf-8",
+  "NO_COLOR": "1"
+}</textarea>
+          </div>
+          <div class="field">
+            <label>表达式绑定</label>
+            <div class="chips"><span class="tagcode">$nodes.scan.outputs.count</span><span class="tagcode">$inputs.min_matches</span></div>
+            <div class="help">在任意输入框内输入 $ 即可引用上游输出。</div>
+          </div>
+          <div class="row-inline" style="gap:10px;align-items:flex-start">
+            <div class="field" style="flex:1"><label>失败策略</label><div class="select"><span>终止整个运行</span><span class="dim">▾</span></div></div>
+            <div class="field" style="width:92px;flex:none"><label>重试次数</label><input class="input" value="3" style="text-align:center" /></div>
+          </div>
+          <div class="err-line"><svg class="i sm" style="margin-top:2px"><use href="#i-alert"/></svg><span>上一轮运行失败：目标目录不可写（EACCES）</span></div>
+        </div>
+        <div class="cfg-ft">
+          <button class="btn primary" data-save style="flex:1;justify-content:center">保存</button>
+          <button class="btn danger" style="flex:none"><svg class="i sm"><use href="#i-trash"/></svg>删除节点</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ③ /tasks（任务定义列表，默认 tab「任务」） ============ -->
+  <section class="screen" data-s="tasks">
+    <div class="page-hd"><h1>任务</h1><p>任务保存了一个工作流和它的参数，可以反复运行。</p></div>
+    <div class="tabs"><span class="on">任务</span><span>运行记录</span></div>
+    <div class="toolbar">
+      <button class="btn primary"><svg class="i sm"><use href="#i-plus"/></svg>新建任务</button>
+      <div class="grow">
+        <label class="search"><svg class="i sm"><use href="#i-search"/></svg><input placeholder="搜索任务名或绑定的工作流" /></label>
+      </div>
+      <div class="btns"><span class="iconbtn boxed" title="刷新"><svg class="i sm"><use href="#i-refresh"/></svg></span></div>
+    </div>
+
+    <div class="tlist" data-only="regular">
+      <div class="card trow">
+        <span class="tn">每晚审计</span>
+        <span class="tw">apk-audit</span>
+        <span class="td">每晚跑一遍审计并汇总报告</span>
+        <span class="tm">入参 3 项 · 2 小时前更新</span>
+        <span class="acts">
+          <button class="btn primary sm"><svg class="i sm"><use href="#i-play"/></svg>运行</button>
+          <button class="btn sm">编辑</button>
+          <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+        </span>
+      </div>
+      <div class="card trow">
+        <span class="tn">发版前检查</span>
+        <span class="tw">release-check</span>
+        <span class="td">发布前静态检查，输出 Markdown 报告</span>
+        <span class="tm">入参 5 项 · 昨天更新</span>
+        <span class="acts">
+          <button class="btn primary sm"><svg class="i sm"><use href="#i-play"/></svg>运行</button>
+          <button class="btn sm">编辑</button>
+          <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+        </span>
+      </div>
+      <div class="card trow">
+        <span class="tn">素材同步（测试环境）</span>
+        <span class="tw">asset-sync</span>
+        <span class="td">同步到测试桶，已指定工作目录</span>
+        <span class="tm">入参 2 项 · 3 天前更新</span>
+        <span class="acts">
+          <button class="btn primary sm"><svg class="i sm"><use href="#i-play"/></svg>运行</button>
+          <button class="btn sm">编辑</button>
+          <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+        </span>
+      </div>
+      <div class="card trow dangling">
+        <span class="tn">归档旧日志</span>
+        <span class="tw"><svg class="i sm"><use href="#i-alert"/></svg>工作流已不存在</span>
+        <span class="td">原绑定 log-collect，需要重新选择工作流</span>
+        <span class="tm">入参 1 项 · 1 周前更新</span>
+        <span class="acts">
+          <button class="btn primary sm" disabled><svg class="i sm"><use href="#i-play"/></svg>运行</button>
+          <button class="btn sm">重新选择工作流</button>
+          <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+        </span>
+      </div>
+    </div>
+
+    <div class="empty">
+      <div class="art"><svg class="i" style="width:34px;height:34px"><use href="#i-task"/></svg></div>
+      <h3>还没有任务</h3>
+      <p>任务 = 一个工作流 + 一套保存好的参数，建好之后可以反复运行，不必每次重填。还没有工作流时先创建一个。</p>
+      <div class="acts">
+        <button class="btn primary"><svg class="i sm"><use href="#i-plus"/></svg>新建任务</button>
+        <button class="btn">去创建工作流</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ④ /tasks/editor/:name? （任务编辑，独立二级页） ============ -->
+  <section class="screen" data-s="taskeditor">
+    <div class="page-hd" style="display:flex;align-items:center;gap:10px">
+      <span class="iconbtn boxed"><svg class="i sm"><use href="#i-back"/></svg></span>
+      <div><h1 style="font-size:16px">任务编辑</h1><p style="margin:2px 0 0">把这套参数存下来，以后反复运行；工作流只是这套入参的来源与运行目标。</p></div>
+      <div style="margin-left:auto"><button class="btn" style="color:var(--app-red)">删除</button></div>
+    </div>
+
+    <!-- 1) 基本信息 -->
+    <div class="task-name-row">
+      <div class="field" style="flex:0 0 240px">
+        <label>任务名 <span class="req">*</span></label>
+        <input class="input" value="每晚审计" />
+      </div>
+      <div class="field">
+        <label>描述</label>
+        <input class="input" value="每晚跑一遍审计并汇总报告" />
+      </div>
+    </div>
+
+    <!-- 2) 工作流：一行紧凑选择器（低频元信息，不占侧栏） -->
+    <div class="wf-pick">
+      <span class="lbl2">工作流</span>
+      <span class="select" style="width:230px;flex:none"><span>apk-audit</span><span class="dim">▾</span></span>
+      <span class="meta3">12 个节点</span>
+      <span class="desc2">· 发布前静态检查与报告生成</span>
+      <button class="btn sm" style="margin-left:auto;flex:none">打开工作流</button>
+    </div>
+
+    <!-- 3) 入参表单：主体，占满宽度，两列网格 -->
+    <div class="form-col">
+      <div class="form-scroll">
+        <div class="fgrid">
+          <div class="field span2">
+            <label>目标目录 <span class="req">*</span></label>
+            <div class="dir-row"><span class="input mono">D:\projects\demo</span><button class="btn"><svg class="i sm"><use href="#i-folder"/></svg>浏览</button></div>
+            <div class="help">待检查的工程根目录，支持变量引用。</div>
+          </div>
+          <div class="field span2">
+            <label>报告标题 <span class="req">*</span></label>
+            <input class="input" value="nightly audit" />
+            <div class="help">写入报告文件的标题行。</div>
+          </div>
+          <div class="field">
+            <label>最少匹配数 <span class="req">*</span></label>
+            <input class="input" value="3" />
+            <div class="help">低于该数量视为检查失败。</div>
+          </div>
+          <div class="field">
+            <label>递归子目录</label>
+            <div class="row-inline"><span class="switch on"></span><span class="sec">包含所有子目录</span></div>
+          </div>
+          <div class="field span2">
+            <label>输出格式 <span class="req">*</span></label>
+            <div class="row-inline" style="gap:20px">
+              <span class="radio"><i class="rdot"></i>纯文本</span>
+              <span class="radio"><i class="rdot on"></i>Markdown</span>
+              <span class="radio"><i class="rdot"></i>JSON</span>
+            </div>
+          </div>
+          <div class="field span2">
+            <label>检查项 <span class="req">*</span></label>
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 20px">
+              <span class="check"><i class="cbox on"></i>空文件</span>
+              <span class="check"><i class="cbox on"></i>超大文件</span>
+              <span class="check"><i class="cbox on"></i>编码异常</span>
+              <span class="check"><i class="cbox"></i>重复文件</span>
+            </div>
+            <div class="help">至少勾选一项；未勾选的检查不会写入报告。</div>
+          </div>
+          <div class="field span2">
+            <label>额外参数（JSON）</label>
+            <textarea class="input" rows="5">{
+  "ignore": ["node_modules", ".git"],
+  "max_file_mb": 20
+}</textarea>
+            <div class="help">透传给 shell 工具的附加参数，留空即不传。</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-ft">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;color:var(--app-text-secondary)">工作目录（可选）</div>
+          <div class="dir-row" style="margin-top:5px"><span class="input mono dim" style="font-size:11.5px">留空则用工作流自己的目录</span><button class="btn"><svg class="i sm"><use href="#i-folder"/></svg>浏览</button></div>
+        </div>
+        <button class="btn">保存</button>
+        <button class="btn primary" style="height:34px"><svg class="i sm"><use href="#i-play"/></svg>保存并运行</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ⑤ /tasks?tab=runs （运行记录） ===================== -->
+  <section class="screen" data-s="runs">
+    <div class="page-hd"><h1>任务</h1><p>运行记录、逐节点进度与流式日志。记录按上限自动裁剪，任务本身不会被删除。</p></div>
+    <div class="tabs"><span>任务</span><span class="on">运行记录</span></div>
+    <div class="toolbar">
+      <label class="search"><svg class="i sm"><use href="#i-search"/></svg><input placeholder="按工作流名或任务名搜索" /></label>
+      <div class="select" style="width:160px"><span>全部任务</span><span class="dim">▾</span></div>
+      <div class="select" style="width:150px"><span>全部状态</span><span class="dim">▾</span></div>
+      <div class="btns"><span class="iconbtn boxed" title="刷新"><svg class="i sm"><use href="#i-refresh"/></svg></span></div>
+    </div>
+
+    <div class="hlist" data-only="regular">
+      <div class="card hrow">
+        <span class="bs badge run"><i class="spin"></i>运行中</span>
+        <span class="nm">每晚审计</span>
+        <span class="src ellip">nightly-report · 09-21 19:48</span>
+        <span class="tm">09-21 19:48</span>
+        <span class="du">12.3 s</span>
+        <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+
+      <div class="card hrow exp">
+        <span class="bs badge err"><i class="dot"></i>失败</span>
+        <span class="nm">发版前检查</span>
+        <span class="src ellip">release-check · 09-21 19:31</span>
+        <span class="tm">09-21 19:31</span>
+        <span class="du">4.2 s</span>
+        <span class="iconbtn"><svg class="i"><use href="#i-back"/></svg></span>
+      </div>
+      <div class="hexp">
+        <div class="steps">
+          <div class="step done"><span class="si"><svg class="i sm"><use href="#i-check"/></svg></span><span class="sn">读取清单</span><span class="st">0.4 s</span></div>
+          <div class="step-rail f"></div>
+          <div class="step done"><span class="si"><svg class="i sm"><use href="#i-check"/></svg></span><span class="sn">解析 JSON</span><span class="st">0.2 s</span></div>
+          <div class="step-rail f"></div>
+          <div class="step done"><span class="si"><svg class="i sm"><use href="#i-check"/></svg></span><span class="sn">执行校验</span><span class="st">1.1 s</span></div>
+          <div class="step-rail" style="background:var(--app-red)"></div>
+          <div class="step fail"><span class="si"><svg class="i sm"><use href="#i-x"/></svg></span><span class="sn">写出报告</span><span class="st">1.9 s</span></div>
+          <div class="step-rail"></div>
+          <div class="step skip"><span class="si">—</span><span class="sn">上传产物</span><span class="st">跳过</span></div>
+        </div>
+        <div class="console"><span class="lv-i">[19:31:04.318]</span> run 4f3a1c9e 开始 · release-check
+<span class="lv-i">[19:31:04.702]</span> <span class="lv-g">✓</span> file.read    读取清单 D:\projects\demo\manifest.json (2.1 KB)
+<span class="lv-i">[19:31:04.910]</span> <span class="lv-g">✓</span> json.parse   items=12 total=48
+<span class="lv-i">[19:31:06.021]</span> <span class="lv-w">!</span> shell.exec   第 1 次尝试失败，重试中
+<span class="lv-i">[19:31:07.146]</span> <span class="lv-g">✓</span> shell.exec   第 2 次尝试成功 exit=0
+<span class="lv-i">[19:31:09.038]</span> <span class="lv-e">✗</span> file.write   目标目录不可写 (EACCES)
+<span class="lv-i">[19:31:09.105]</span> <span class="lv-e">✗</span> run 结束：失败 · 耗时 4.2 s</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" data-open-drawer><svg class="i sm"><use href="#i-info"/></svg>查看运行详情</button>
+          <button class="btn"><svg class="i sm"><use href="#i-play"/></svg>重新运行</button>
+          <button class="btn"><svg class="i sm"><use href="#i-folder"/></svg>打开目录</button>
+        </div>
+      </div>
+
+      <div class="card hrow">
+        <span class="bs badge ok"><i class="dot"></i>成功</span>
+        <span class="nm">素材同步（测试环境）</span>
+        <span class="src ellip">apk-sign · 09-21 18:02</span>
+        <span class="tm">09-21 18:02</span>
+        <span class="du">38.6 s</span>
+        <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card hrow">
+        <span class="bs badge cancel"><i class="dot"></i>已取消</span>
+        <span class="nm dim">（试运行 / 一次性）</span>
+        <span class="src ellip">asset-sync · 09-21 15:47</span>
+        <span class="tm">09-21 15:47</span>
+        <span class="du">2.1 s</span>
+        <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card hrow">
+        <span class="bs badge ok"><i class="dot"></i>成功</span>
+        <span class="nm">归档旧日志</span>
+        <span class="src ellip">log-collect · 09-21 09:12</span>
+        <span class="tm">09-21 09:12</span>
+        <span class="du">6.8 s</span>
+        <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="load-more"><button class="btn">加载更多</button></div>
+    </div>
+
+    <div class="empty">
+      <div class="art"><svg class="i" style="width:34px;height:34px"><use href="#i-clock"/></svg></div>
+      <h3>还没有运行记录</h3>
+      <p>执行一次任务后，这里会显示状态、耗时与逐节点进度。</p>
+      <div class="acts"><button class="btn primary"><svg class="i sm"><use href="#i-play"/></svg>新建任务</button></div>
+    </div>
+  </section>
+
+  <!-- ===================== ⑦ /tools （工具） — 三页中的第一页 ===================== -->
+  <section class="screen" data-s="tools">
+    <div class="page-hd head-row">
+      <div>
+        <h1>工具</h1>
+        <p>已发现的能力单元：来源、可用状态、实际路径，以及它依赖的运行环境。</p>
+      </div>
+      <div class="seg pagenav">
+        <span class="on" data-goto="tools">工具</span>
+        <span data-goto="envs">环境</span>
+        <span data-goto="plugins">插件</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary"><svg class="i sm"><use href="#i-down"/></svg>导入工具包</button>
+      <button class="btn">导入描述符</button>
+      <div class="grow"></div>
+      <div class="btns"><span class="iconbtn boxed"><svg class="i sm"><use href="#i-refresh"/></svg></span></div>
+    </div>
+    <div class="tool-grid" data-only="regular">
+      <div class="card toolcard">
+        <span class="tci"><svg class="i lg"><use href="#i-file"/></svg></span>
+        <div class="tcb">
+          <div class="tcn">file.read <span class="badge src">内置</span><span class="badge ok"><i class="dot"></i>可用</span></div>
+          <div class="tcd">读取文本 / JSON 文件 · v1.0.0 · 3 个操作</div>
+          <div class="tcp">cli/registry/tools/file_read.json</div>
+        </div>
+        <span class="iconbtn" style="align-self:flex-start"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card toolcard">
+        <span class="tci"><svg class="i lg"><use href="#i-term"/></svg></span>
+        <div class="tcb">
+          <div class="tcn">shell.exec <span class="badge src">内置</span><span class="badge ok"><i class="dot"></i>可用</span></div>
+          <div class="tcd">执行命令并捕获输出 · v1.0.0 · 2 个操作</div>
+          <div class="tcp">cli/registry/tools/shell_exec.json</div>
+        </div>
+        <span class="iconbtn" style="align-self:flex-start"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card toolcard">
+        <span class="tci"><svg class="i lg"><use href="#i-clip"/></svg></span>
+        <div class="tcb">
+          <div class="tcn">apk.audit <span class="badge info">已导入</span><span class="badge ok"><i class="dot"></i>可用</span></div>
+          <div class="tcd">静态检查并生成报告 · v0.4.2 · 1 个操作</div>
+          <div class="tcp">output/registry/tools/apk_audit.json</div>
+          <div class="tcdeps">
+            <span class="depchip ok"><svg class="i sm"><use href="#i-check"/></svg>需要 Python · 已检测</span>
+          </div>
+        </div>
+        <span class="iconbtn" style="align-self:flex-start"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="card toolcard">
+        <span class="tci"><svg class="i lg"><use href="#i-pkg"/></svg></span>
+        <div class="tcb">
+          <div class="tcn">apk.sign <span class="badge info">已导入</span><span class="badge warn"><i class="dot"></i>不可用</span></div>
+          <div class="tcd">重签名安装包 · v0.1.0 · 1 个操作</div>
+          <div class="tcp">output/registry/tools/apk_sign.json</div>
+          <div class="tcdeps">
+            <span class="depchip miss"><svg class="i sm"><use href="#i-alert"/></svg>需要 Java · 未配置</span>
+          </div>
+        </div>
+        <span class="iconbtn" style="align-self:flex-start"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+    </div>
+    <div class="empty">
+      <div class="art"><svg class="i" style="width:34px;height:34px"><use href="#i-tool"/></svg></div>
+      <h3>还没有可用的工具</h3>
+      <p>从 examples/ 导入工具描述符，或安装一个包含 tools 目录的工具包。</p>
+      <div class="acts"><button class="btn primary"><svg class="i sm"><use href="#i-down"/></svg>导入工具包</button></div>
+    </div>
+  </section>
+
+  <!-- ===================== ⑧ /tools/env （环境） ===================== -->
+  <section class="screen" data-s="envs">
+    <div class="page-hd head-row">
+      <div>
+        <h1>环境</h1>
+        <p>运行时前置：Java / Python / Node 的解析路径与版本，以及有多少工具依赖它们。</p>
+      </div>
+      <div class="seg pagenav">
+        <span data-goto="tools">工具</span>
+        <span class="on" data-goto="envs">环境</span>
+        <span data-goto="plugins">插件</span>
+      </div>
+    </div>
+    <div class="notice">
+      <svg class="i sm"><use href="#i-alert"/></svg>
+      <span class="grow">Java 未配置：依赖它的 1 个工具当前不可用。</span>
+      <button class="btn sm" data-goto="tools">查看受影响的工具</button>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary"><svg class="i sm"><use href="#i-plus"/></svg>导入自定义环境</button>
+      <div class="grow"></div>
+      <div class="btns"><span class="iconbtn boxed"><svg class="i sm"><use href="#i-refresh"/></svg></span></div>
+    </div>
+    <div class="card"><div class="rowlist">
+      <div class="rowitem off">
+        <span class="ri"><svg class="i"><use href="#i-brace"/></svg></span>
+        <span class="rn">Java</span><span class="rv">—</span>
+        <span class="rmono">未配置</span>
+        <span class="rdeps">1 个工具依赖 · 不可用</span>
+        <span class="badge warn"><i class="dot"></i>未配置</span>
+        <button class="btn sm">更改路径</button>
+        <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="rowitem">
+        <span class="ri"><svg class="i"><use href="#i-term"/></svg></span>
+        <span class="rn">Python</span><span class="rv">3.13.12</span>
+        <span class="rmono">C:\Users\Administrator\.workbuddy\binaries\python\python.exe</span>
+        <span class="rdeps">2 个工具依赖</span>
+        <span class="badge ok"><i class="dot"></i>已检测</span>
+        <button class="btn sm">更改路径</button>
+        <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+      <div class="rowitem off">
+        <span class="ri"><svg class="i"><use href="#i-globe"/></svg></span>
+        <span class="rn">Node</span><span class="rv">—</span>
+        <span class="rmono">未配置</span>
+        <span class="rdeps">0 个工具依赖</span>
+        <span class="badge src"><i class="dot"></i>未配置</span>
+        <button class="btn sm">更改路径</button>
+        <span class="iconbtn"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ===================== ⑨ /tools/plugins （插件） =====================
+       插件不返回环境依赖（后端无该字段，见 docs/08 §7 缺口 #18）——本页不要画环境徽章。 -->
+  <section class="screen" data-s="plugins">
+    <div class="page-hd head-row">
+      <div>
+        <h1>插件</h1>
+        <p>代码加载单元：模块、种类、来源与加载状态；失败的直接给出原因。</p>
+      </div>
+      <div class="seg pagenav">
+        <span data-goto="tools">工具</span>
+        <span data-goto="envs">环境</span>
+        <span class="on" data-goto="plugins">插件</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary"><svg class="i sm"><use href="#i-plus"/></svg>添加插件</button>
+      <button class="btn"><svg class="i sm"><use href="#i-refresh"/></svg>重载</button>
+    </div>
+    <div class="card"><div class="rowlist">
+      <div class="rowitem">
+        <i class="dot" style="color:var(--app-green)"></i>
+        <span class="rmono strong">cli.app.plugins.builtin.core</span>
+        <span class="badge src">内置</span><span class="rv">1.0.1</span><span class="badge ok">已加载</span>
+        <button class="btn sm disabled" disabled><svg class="i sm"><use href="#i-trash"/></svg></button>
+      </div>
+      <div class="rowitem">
+        <i class="dot" style="color:var(--app-green)"></i>
+        <span class="rmono strong">cli.app.plugins.builtin.net</span>
+        <span class="badge src">内置</span><span class="rv">1.0.1</span><span class="badge ok">已加载</span>
+        <button class="btn sm disabled" disabled><svg class="i sm"><use href="#i-trash"/></svg></button>
+      </div>
+      <div class="rowitem">
+        <i class="dot" style="color:var(--app-green)"></i>
+        <span class="rmono strong">my_plugins.renpy</span>
+        <span class="badge kind">原生</span><span class="rv">0.3.0</span><span class="badge ok">已加载</span>
+        <button class="btn sm"><svg class="i sm"><use href="#i-trash"/></svg></button>
+      </div>
+      <div class="rowitem off">
+        <i class="dot" style="color:var(--app-red)"></i>
+        <div class="rcol">
+          <div class="rline">
+            <span class="rmono strong">my_plugins.unity</span>
+            <span class="badge kind">原生</span><span class="rv">0.2.0</span><span class="badge err">加载失败</span>
+          </div>
+          <div class="rerr">ImportError: No module named 'unity_bridge'</div>
+        </div>
+        <button class="btn sm"><svg class="i sm"><use href="#i-trash"/></svg></button>
+      </div>
+      <div class="rowitem off">
+        <i class="dot" style="color:var(--app-text-dim)"></i>
+        <span class="rmono strong">my_plugins.toolshed</span>
+        <span class="badge kind">原生</span><span class="rv">—</span><span class="badge src">未加载</span>
+        <button class="btn sm"><svg class="i sm"><use href="#i-trash"/></svg></button>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ===================== ⑧ /settings ===================== -->
+  <section class="screen" data-s="settings">
+    <div class="page-hd"><h1>设置</h1><p>通用行为、外观与语言、路径与存储。</p></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-set"/></svg><h3>通用</h3></div>
+        <div class="card-bd">
+          <div class="frow">
+            <div class="fl"><div class="ft">请求超时（秒）</div><div class="fh">长任务（反编译、签名）依赖该值，默认 300 秒；修改后需重启应用生效。</div></div>
+            <div class="row-inline" style="width:200px"><span class="input" style="width:120px;justify-content:flex-end"><span class="mono" style="font-size:12px">300</span><span class="dim" style="margin-left:8px">秒</span></span></div>
+          </div>
+          <div class="frow"><div class="fl"><div class="ft">系统通知</div><div class="fh">运行结束或失败时发送系统通知。</div></div><span class="switch"></span></div>
+          <div class="frow"><div class="fl"><div class="ft">删除任务时清理输出文件</div><div class="fh">默认关闭，只删除记录、保留产物。</div></div><span class="switch on"></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-activity"/></svg><h3>外观与语言</h3></div>
+        <div class="card-bd">
+          <div class="frow">
+            <div class="fl"><div class="ft">主题</div><div class="fh">「自动」跟随系统设置。</div></div>
+            <div class="seg"><span data-quick-theme="light">浅色</span><span data-quick-theme="dark" class="on">深色</span><span data-quick-theme="auto">自动</span></div>
+          </div>
+          <div class="frow">
+            <div class="fl"><div class="ft">界面语言</div><div class="fh">切换后立即生效并持久化。</div></div>
+            <div class="select" style="width:180px;flex:none"><span>简体中文</span><span class="dim">▾</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card full">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-folder"/></svg><h3>路径</h3>
+          <span class="dim" style="margin-left:auto;font-size:11.5px">改动需重启后端</span></div>
+        <div class="card-bd" style="padding-top:6px">
+          <div class="pathrow"><span class="pl">工具链与运行时</span><span class="pv ellip">F:\cyanrain\AI\vibecoding\blank_tool\runtime</span><button class="btn sm">浏览</button></div>
+          <div class="pathrow"><span class="pl">后端目录</span><span class="pv ellip">F:\cyanrain\AI\vibecoding\blank_tool\cli</span><button class="btn sm">浏览</button></div>
+          <div class="help" style="margin-top:10px;line-height:1.6">
+            工具链目录是「相对路径的工具描述符」（如 adb/adb.exe、apktool/apktool.jar）与内置环境（Java 的 jre、Python 的 python）的解析根；后端目录默认即安装目录，只在排障时修改。两者都在后端启动时读取一次。
+          </div>
+        </div>
+      </div>
+      <div class="card full">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-clip"/></svg><h3>存储</h3>
+          <span class="mono dim" style="margin-left:auto;font-size:11.5px">合计 138.1 MB</span></div>
+        <div class="card-bd" style="padding-top:6px">
+          <div class="pathrow"><span class="pl">任务目录</span><span class="pv ellip">C:\Users\Administrator\AppData\Local\blank_tool\tasks</span><span class="kvsz">12.4 MB · 36 个文件</span><button class="btn sm danger">清除</button></div>
+          <div class="pathrow"><span class="pl">产物目录</span><span class="pv ellip">C:\Users\Administrator\AppData\Local\blank_tool\output</span><span class="kvsz">116.0 MB · 412 个文件</span><button class="btn sm danger">清除</button></div>
+          <div class="pathrow"><span class="pl">日志目录</span><span class="pv ellip">C:\Users\Administrator\AppData\Local\blank_tool\logs</span><span class="kvsz">9.7 MB · 64 个文件</span><button class="btn sm danger">清除</button></div>
+          <div style="display:flex;justify-content:flex-end;margin-top:14px">
+            <button class="btn danger"><svg class="i sm"><use href="#i-trash"/></svg>一键清除全部</button>
+          </div>
+          <div class="danger-note"><svg class="i sm" style="margin-top:1px"><use href="#i-alert"/></svg><span>输出目录包含已保存的工作流、任务与运行历史，一键清除会一并删除，且不可恢复。</span></div>
+        </div>
+      </div>
+      <div class="card full">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-info"/></svg><h3>关于</h3></div>
+        <div class="card-bd">
+          <div class="about-hd">
+            <div class="logo" style="width:40px;height:40px;font-size:19px;border-radius:10px">B</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:15px;font-weight:700">Blank</div>
+              <div class="dim mono" style="font-size:11.5px;margin-top:3px">应用 2.3.0 · Electron 32.2.5 · Node 22.22.2 · Python 3.13.12</div>
+            </div>
+            <span class="badge ok"><i class="dot"></i>后端正常</span>
+          </div>
+          <div class="footlinks"><a>诊断信息</a><a>关于</a><a>打开日志目录</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ⑨ /diagnostics（二级页，侧边栏无入口） ===================== -->
+  <section class="screen" data-s="diagnostics">
+    <div class="page-hd"><h1>诊断</h1><p>只读系统诊断视图，用于排查后端与环境问题。</p></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-activity"/></svg><h3>后端健康</h3>
+          <div style="margin-left:auto"><button class="btn sm"><svg class="i sm"><use href="#i-refresh"/></svg>刷新</button></div>
+        </div>
+        <div class="card-bd">
+          <div class="bigbadge"><svg class="i" style="width:22px;height:22px"><use href="#i-check"/></svg>健康</div>
+          <div class="dim" style="font-size:12px;margin-top:8px">进程存活时长 <span class="mono" style="color:var(--app-text-secondary)">1 小时 12 分</span>（前端计时）</div>
+          <div class="dim mono" style="font-size:11.5px;margin-top:4px">最后检查：19:52:31 · pid 28104</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-play"/></svg><h3>运行中任务</h3></div>
+        <div class="card-bd">
+          <div class="kvstat4">
+            <div>run_id</div>
+            <div>开始时间</div>
+            <div>子进程</div>
+            <div></div>
+            <div>4f3a1c9e…c7a1</div>
+            <div style="text-align:left">19:48:02</div>
+            <div>有（shell.exec）</div>
+            <div><button class="btn sm danger">取消</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="card full">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-term"/></svg><h3>日志尾部</h3>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+            <span class="badge src">已截断</span><span class="dim mono" style="font-size:11.5px">200 行</span>
+            <button class="btn sm"><svg class="i sm"><use href="#i-refresh"/></svg>刷新</button>
+          </div>
+        </div>
+        <div class="card-bd" style="padding-top:0">
+          <div class="tabs" style="margin:12px 0 10px">
+            <span class="on">后端日志</span><span>Electron 日志</span><span>渲染层日志</span>
+          </div>
+          <div class="console" style="max-height:200px"><span class="lv-i">19:48:02.114</span> [INFO] api_handler: invoke plugin.run run_id=4f3a1c9e…
+<span class="lv-i">19:48:02.377</span> [INFO] engine: node 1/4 file.read 开始
+<span class="lv-i">19:48:02.902</span> [INFO] engine: node 2/4 json.parse 开始
+<span class="lv-i">19:48:04.019</span> <span class="lv-w">[WARN] shell.exec: 第 1 次尝试失败，按策略重试</span>
+<span class="lv-i">19:48:05.551</span> [INFO] engine: node 3/4 shell.exec 成功 exit=0
+<span class="lv-i">19:48:06.004</span> [INFO] task_manager: 子进程 holder 已注册 pid 28140
+<span class="lv-w">… 日志已达 200 行上限，更早内容已截断 …</span></div>
+        </div>
+      </div>
+      <div class="card full">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-folder"/></svg><h3>解析后路径</h3></div>
+        <div class="card-bd" style="padding-top:6px">
+          <div class="pathrow"><span class="pl">运行时</span><span class="pv ellip">F:\cyanrain\AI\vibecoding\blank_tool\runtime\python\python.exe</span></div>
+          <div class="pathrow"><span class="pl">后端</span><span class="pv ellip">F:\cyanrain\AI\vibecoding\blank_tool\cli\main.py</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ⑥ 运行详情抽屉（浮层，挂在运行记录屏上；头部含任务名） ============ -->
+  <div class="scrim" data-close-drawer></div>
+  <aside class="drawer">
+    <div class="dw-hd">
+      <div class="l1">
+        <span class="badge err"><i class="dot"></i>失败</span>
+        <span class="nm">发版前检查</span>
+        <span class="sec" style="font-size:12.5px">release-check</span>
+        <div style="margin-left:auto" class="iconbtn" data-close-drawer><svg class="i"><use href="#i-x"/></svg></div>
+      </div>
+      <div class="r1">
+        <span class="dim">（没有任务名的记录这里显示「（试运行 / 一次性）」+ 一个「存为任务」按钮）</span>
+        <span class="mono">run_id 4f3a1c9e8b2d47f0a6c5e3d1b9f8c7a1</span>
+        <span class="mono">开始 09-21 19:31:04</span>
+        <span class="mono">耗时 4.2 s</span>
+      </div>
+    </div>
+    <div class="dw-bd">
+      <div class="dw-sec">
+        <h4>输入</h4>
+        <div class="kv">
+          <div>target_dir</div>
+          <div style="display:flex;align-items:center;gap:8px"><span class="mono ellip">D:\projects\demo</span><button class="btn sm">打开</button></div>
+          <div>min_matches</div>
+          <div class="mono">3</div>
+          <div>recursive</div>
+          <div class="mono">true</div>
+          <div>output_format</div>
+          <div class="mono">markdown</div>
+        </div>
+      </div>
+
+      <div class="dw-sec">
+        <h4>节点进度</h4>
+        <div class="tl">
+          <div class="tl-row ok">
+            <div class="tn"><svg class="i sm" style="color:var(--app-green)"><use href="#i-check"/></svg>读取清单<span class="tm">· file.read · 0.4 s</span></div>
+          </div>
+          <div class="tl-row ok">
+            <div class="tn"><svg class="i sm" style="color:var(--app-green)"><use href="#i-check"/></svg>解析 JSON<span class="tm">· json.parse · 0.2 s</span></div>
+          </div>
+          <div class="tl-row nested ok">
+            <div class="tn"><svg class="i sm" style="color:var(--app-green)"><use href="#i-check"/></svg>loop/0/step<span class="tm">· shell.exec · 1.1 s · 第 2 次尝试</span></div>
+          </div>
+          <div class="tl-row fail">
+            <div class="tn"><svg class="i sm" style="color:var(--app-red)"><use href="#i-x"/></svg>写出报告<span class="tm">· file.write · 1.9 s</span></div>
+            <div class="te">目标目录不可写 (EACCES)：D:\projects\demo\reports\release-check.md</div>
+          </div>
+          <div class="tl-row skip">
+            <div class="tn"><svg class="i sm"><use href="#i-x"/></svg>上传产物<span class="tm">· net.request · 已跳过</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dw-sec">
+        <h4>输出</h4>
+        <div class="kv" style="grid-template-columns:170px 1fr">
+          <div>items</div><div class="mono">12</div>
+          <div>report_path</div><div class="mono ellip">D:\projects\demo\reports\release-check.md</div>
+          <div>stdout</div>
+          <div>
+            <div class="trunc"><svg class="i sm"><use href="#i-alert"/></svg><span>内容过大已截断 · 原长 128 KB · 点击查看预览</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dw-sec">
+        <h4>日志</h4>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <button class="btn sm"><svg class="i sm"><use href="#i-file"/></svg>打开日志文件</button>
+          <button class="btn sm"><svg class="i sm"><use href="#i-refresh"/></svg>刷新</button>
+        </div>
+        <div class="console" style="max-height:220px"><span class="lv-i">[19:31:04.318]</span> run 4f3a1c9e 开始 · release-check
+<span class="lv-i">[19:31:04.702]</span> <span class="lv-g">✓</span> file.read    读取清单 D:\projects\demo\manifest.json (2.1 KB)
+<span class="lv-i">[19:31:04.910]</span> <span class="lv-g">✓</span> json.parse   items=12 total=48
+<span class="lv-i">[19:31:06.021]</span> <span class="lv-w">!</span> shell.exec   第 1 次尝试失败（退出码 1），按策略重试
+<span class="lv-i">[19:31:07.146]</span> <span class="lv-g">✓</span> shell.exec   第 2 次尝试成功 exit=0
+<span class="lv-i">[19:31:09.038]</span> <span class="lv-e">✗</span> file.write   目标目录不可写 (EACCES)
+<span class="lv-i">[19:31:09.105]</span> <span class="lv-e">✗</span> run 结束：失败 · 耗时 4.2 s</div>
+        <div class="dim" style="font-size:11.5px;margin-top:8px">共 12.4 KB，已完整显示</div>
+      </div>
+    </div>
+    <div class="dw-ft">
+      <button class="btn"><svg class="i sm"><use href="#i-play"/></svg>重新运行</button>
+      <button class="btn"><svg class="i sm"><use href="#i-folder"/></svg>打开运行目录</button>
+      <div style="margin-left:auto"><button class="btn danger"><svg class="i sm"><use href="#i-trash"/></svg>删除记录</button></div>
+    </div>
+  </aside>
+
+  </main>
+</div>
+</div>
+</div>
+
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var wrap = document.getElementById('stageWrap');
+  var sider = document.getElementById('sider');
+  var variantGrp = document.getElementById('variantGrp');
+
+  var VARIANTS = {
+    workflows:   [['regular', '常规（卡片网格）'], ['empty', '空态']],
+    editor:      [['regular', '常规（选中节点）'], ['unselected', '未选中节点'], ['conflict', '出边冲突警告态']],
+    tasks:       [['regular', '常规（任务列表）'], ['empty', '空态（无任务）']],
+    taskeditor:  [['regular', '常规（编辑 / 新建）']],
+    runs:        [['regular', '常规（含展开行）'], ['empty', '空态'], ['drawer', '运行详情抽屉']],
+    tools:       [['regular', '常规（卡片网格）'], ['empty', '空态（无描述符工具）']],
+    envs:        [['regular', '常规（含未配置告警）']],
+    plugins:     [['regular', '常规（含加载失败）']],
+    settings:    [['regular', '常规']],
+    diagnostics: [['regular', '常规']]
+  };
+
+  function renderVariants(screen) {
+    variantGrp.innerHTML = '';
+    var lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = '变体';
+    variantGrp.appendChild(lbl);
+    (VARIANTS[screen] || [['regular', '常规']]).forEach(function (v) {
+      var b = document.createElement('button');
+      b.className = 'chip' + (stage.dataset.variant === v[0] ? ' on' : '');
+      b.textContent = v[1];
+      b.onclick = function () { setVariant(v[0]); };
+      variantGrp.appendChild(b);
+    });
+  }
+
+  function setVariant(v) {
+    stage.dataset.variant = v;
+    renderVariants(stage.dataset.screen);
+  }
+
+  // 二级页/子页面归属的一级导航项（页面高亮用）
+  var NAV_OF = { taskeditor: 'tasks', runs: 'tasks', envs: 'tools', plugins: 'tools' };
+
+  function setScreen(key) {
+    stage.dataset.screen = key;
+    document.querySelectorAll('.screen').forEach(function (s) {
+      s.classList.toggle('on', s.dataset.s === key);
+    });
+    document.querySelectorAll('.viewer-bar [data-screen]').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.screen === key);
+    });
+    document.querySelectorAll('.nav-item').forEach(function (n) {
+      n.classList.toggle('on', n.dataset.nav === (NAV_OF[key] || key));
+    });
+    setVariant('regular');
+    fit();
+  }
+
+  function setTheme(t) {
+    stage.dataset.theme = t;
+    document.querySelectorAll('[data-set-theme]').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.setTheme === t);
+    });
+    var auto = t === 'auto';
+    var actual = auto
+      ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+      : t;
+    stage.dataset.theme = actual;
+    document.querySelectorAll('[data-quick-theme]').forEach(function (s) {
+      s.classList.toggle('on', s.dataset.quickTheme === t);
+    });
+  }
+
+  function fit() {
+    var avail = wrap.clientWidth;
+    var scale = Math.min(1, avail / 1440);
+    stage.style.transform = 'scale(' + scale + ')';
+    wrap.style.height = Math.round(900 * scale) + 'px';
+    // viewer 顶栏高度无关；holder 高度用 scale 后的高度
+  }
+
+  document.querySelectorAll('.viewer-bar [data-screen]').forEach(function (b) {
+    b.onclick = function () { setScreen(b.dataset.screen); };
+  });
+  document.querySelectorAll('[data-set-theme]').forEach(function (b) {
+    b.onclick = function () { setTheme(b.dataset.setTheme); };
+  });
+  document.querySelectorAll('[data-quick-theme]').forEach(function (s) {
+    s.onclick = function () { setTheme(s.dataset.quickTheme); };
+  });
+  document.querySelectorAll('[data-nav]').forEach(function (n) {
+    n.onclick = function () { setScreen(n.dataset.nav); };
+  });
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.onclick = function () { setScreen(b.dataset.goto); };
+  });
+  document.querySelectorAll('[data-open-drawer]').forEach(function (b) {
+    b.onclick = function () { setVariant('drawer'); };
+  });
+  document.querySelectorAll('[data-close-drawer]').forEach(function (b) {
+    b.onclick = function () { setVariant('regular'); };
+  });
+  document.getElementById('collapseBtn').onclick = function () {
+    sider.classList.toggle('collapsed');
+  };
+
+  window.addEventListener('resize', fit);
+  setTheme('dark');
+  setScreen('workflows');
+})();
+</script>
+</body>
+</html>
