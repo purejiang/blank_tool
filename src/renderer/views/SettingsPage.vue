@@ -16,7 +16,7 @@
       <!-- Appearance -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="#22C55E"><Monitor /></n-icon>
+          <n-icon size="18" color="var(--success-text)"><Monitor /></n-icon>
           <span class="section-title">{{ t('settings.appearance') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
@@ -34,7 +34,7 @@
       <!-- Behavior -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="#3B82F6"><Settings2 /></n-icon>
+          <n-icon size="18" color="var(--primary)"><Settings2 /></n-icon>
           <span class="section-title">{{ t('settings.behavior') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
@@ -58,7 +58,7 @@
       <!-- Logging -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="#10B981"><FileText /></n-icon>
+          <n-icon size="18" color="var(--success-text)"><FileText /></n-icon>
           <span class="section-title">{{ t('settings.logging') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
@@ -72,7 +72,7 @@
       <!-- Paths -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="#F59E0B"><FolderOpen /></n-icon>
+          <n-icon size="18" color="var(--warning-text)"><FolderOpen /></n-icon>
           <span class="section-title">{{ t('settings.environmentPaths') }}</span>
         </div>
         <n-form label-placement="left" label-width="100" size="small" style="margin-top:12px;max-width:420px">
@@ -101,7 +101,7 @@
       <!-- 工具路径已收敛到 /tools（docs/07 §2-7 / docs/08 缺口 #19）：这里只留跳转入口 -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="#22C55E"><Wrench /></n-icon>
+          <n-icon size="18" color="var(--success-text)"><Wrench /></n-icon>
           <span class="section-title">{{ t('settings.toolPaths') }}</span>
         </div>
         <div class="more-links">
@@ -117,7 +117,7 @@
       <n-card :bordered="false" class="settings-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="section-header" style="margin-bottom:0">
-            <n-icon size="18" color="#8B5CF6"><HardDrive /></n-icon>
+            <n-icon size="18" color="var(--primary)"><HardDrive /></n-icon>
             <span class="section-title">{{ t('settings.storage') }}</span>
             <span class="storage-total-text">{{ formatFileSize(cacheInfo.total.size) }}</span>
           </div>
@@ -180,7 +180,7 @@
       <!-- 二级页入口（docs/08 §2.1/§3-S7）：诊断与关于不进侧边栏，从这里进入 -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="#64748B"><Archive /></n-icon>
+          <n-icon size="18" color="var(--text-muted)"><Archive /></n-icon>
           <span class="section-title">{{ t('settings.more') }}</span>
         </div>
         <div class="more-links">
@@ -281,9 +281,9 @@ const themeOptions = computed(() => [
 ])
 // Storage categories: key → label, icon, color
 const storageCategories = [
-  { key: 'tasks',   label: 'settings.tasks',   icon: Archive,        color: '#F59E0B' },
-  { key: 'output',  label: 'settings.output',  icon: FolderArchive,  color: '#3B82F6' },
-  { key: 'logs',    label: 'settings.logs',    icon: FileText,       color: '#10B981' },
+  { key: 'tasks',   label: 'settings.tasks',   icon: Archive,        color: 'var(--warning-text)' },
+  { key: 'output',  label: 'settings.output',  icon: FolderArchive,  color: 'var(--primary)' },
+  { key: 'logs',    label: 'settings.logs',    icon: FileText,       color: 'var(--success-text)' },
 ] as const
 
 const getCatSize = (key: string) => (cacheInfo.value as any)[key]?.size || 0

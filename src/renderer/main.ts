@@ -10,14 +10,15 @@ import router from './router';
 // Fonts are loaded via Google Fonts in index.html
 
 // Import app styles
+import './assets/styles/tokens.css';
 import './assets/styles/main.css';
 import './assets/styles/common/components.css';
 import './assets/styles/themes.css';
 import './assets/styles/common/responsive.css';
-import './assets/variables.css';
 import './assets/styles/naive-overrides.css';
 // 版式层：逐字取自 docs/ui-prompts/ui-preview.html（规则作用域挂在 .pv 下）
 import './assets/styles/preview-layout.css';
+import './assets/styles/ui.css';
 
 // Create Vue app
 const app = createApp(App);
@@ -82,7 +83,7 @@ async function launchApp() {
         justify-content: center;
         align-items: center;
         height: 100vh;
-        background: #f5f5f5;
+        background: var(--bg);
         font-family: Arial, sans-serif;
       ">
         <div style="
@@ -92,11 +93,11 @@ async function launchApp() {
           border-radius: 8px;
           box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         ">
-          <h2 style="color: #e74c3c; margin-bottom: 1rem;">App Initialization Failed</h2>
-          <p style="color: #666; margin-bottom: 1rem;">${error.message}</p>
+          <h2 style="color: var(--danger-text); margin-bottom: 1rem;">App Initialization Failed</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1rem;">${error.message}</p>
           <button onclick="location.reload()" style="
             padding: 0.5rem 1rem;
-            background: #3498db;
+            background: var(--primary);
             color: white;
             border: none;
             border-radius: 4px;

@@ -1,7 +1,7 @@
 export default {
   // App / Sidebar
   app: {
-    title: 'Blank Tool',
+    title: 'Blanks',
     subtitle: '本地工作流编排工具',
     loadingInit: '正在初始化...',
     loadingServices: '正在加载服务...',
@@ -13,13 +13,53 @@ export default {
     reload: '重新加载',
     appInitFailed: '应用初始化失败',
     collapseSidebar: '折叠 / 展开侧边栏',
+    primaryNav: '主导航',
   },
   nav: {
+    home: '首页',
     workflows: '工作流',
     tasks: '任务',
     settings: '设置',
     about: '关于',
     tools: '工具',
+  },
+  // 首页（概览 + 快捷入口 + 最近运行 + 系统状态）
+  home: {
+    title: '首页',
+    subtitle: '概览工作流、任务与最近的运行情况',
+    loadFailed: '部分数据加载失败',
+    retry: '重试',
+    refresh: '刷新',
+    stats: {
+      title: '概览',
+      workflows: '工作流',
+      tasks: '任务',
+      runs7d: '近 7 天运行',
+      runs7dHint: '按开始时间统计',
+      failed7d: '近 7 天失败',
+    },
+    quick: {
+      title: '快捷入口',
+      newWorkflow: '新建工作流',
+      newTask: '新建任务',
+      import: '导入工作流',
+      runs: '运行记录',
+    },
+    system: {
+      title: '系统状态',
+      backend: '后端服务',
+      backendOk: '已连接',
+      backendDown: '未连接',
+      backendUnknown: '检测中',
+      tools: '可用工具',
+      envs: '已检测环境',
+    },
+    recent: {
+      title: '最近运行',
+      empty: '还没有运行记录',
+      emptyHint: '新建一个工作流并试运行，运行结果会出现在这里。',
+      goCreate: '新建工作流',
+    },
   },
   // Settings page
   about: {
@@ -567,6 +607,7 @@ export default {
     disconnected: '未连接',
     confirm: '确认',
     cancel: '取消',
+    required: '必填',
   },
   update: {
     title: '更新',

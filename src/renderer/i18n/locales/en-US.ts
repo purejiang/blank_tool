@@ -1,7 +1,7 @@
 export default {
   // App / Sidebar
   app: {
-    title: 'Blank Tool',
+    title: 'Blanks',
     subtitle: 'Local Workflow Orchestration Toolkit',
     loadingInit: 'Initializing...',
     loadingServices: 'Loading services...',
@@ -13,13 +13,53 @@ export default {
     reload: 'Reload',
     appInitFailed: 'Application initialization failed',
     collapseSidebar: 'Collapse / expand the sidebar',
+    primaryNav: 'Primary navigation',
   },
   nav: {
+    home: 'Home',
     workflows: 'Workflows',
     tasks: 'Tasks',
     settings: 'Settings',
     about: 'About',
     tools: 'Tools',
+  },
+  // Home (overview + shortcuts + recent runs + system status)
+  home: {
+    title: 'Home',
+    subtitle: 'An overview of your workflows, tasks and recent runs',
+    loadFailed: 'Some data failed to load',
+    retry: 'Retry',
+    refresh: 'Refresh',
+    stats: {
+      title: 'Overview',
+      workflows: 'Workflows',
+      tasks: 'Tasks',
+      runs7d: 'Runs (7 days)',
+      runs7dHint: 'counted by start time',
+      failed7d: 'Failed (7 days)',
+    },
+    quick: {
+      title: 'Shortcuts',
+      newWorkflow: 'New workflow',
+      newTask: 'New task',
+      import: 'Import workflow',
+      runs: 'Run records',
+    },
+    system: {
+      title: 'System status',
+      backend: 'Backend',
+      backendOk: 'Connected',
+      backendDown: 'Disconnected',
+      backendUnknown: 'Checking',
+      tools: 'Usable tools',
+      envs: 'Detected runtimes',
+    },
+    recent: {
+      title: 'Recent runs',
+      empty: 'No run records yet',
+      emptyHint: 'Create a workflow and do a dry run — results show up here.',
+      goCreate: 'New workflow',
+    },
   },
   // Settings page
   about: {
@@ -567,6 +607,7 @@ export default {
     disconnected: 'Disconnected',
     confirm: 'Confirm',
     cancel: 'Cancel',
+    required: 'required',
   },
   update: {
     title: 'Update',

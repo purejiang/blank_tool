@@ -8,32 +8,32 @@
 /* 根变量定义 */
 :root {
     /* 颜色变量 */
-    --primary-color: #007bff;
-    --primary-hover: #0056b3;
-    --secondary-color: #6c757d;
-    --success-color: #28a745;
-    --danger-color: #dc3545;
-    --warning-color: #ffc107;
-    --info-color: #17a2b8;
-    --light-color: #f8f9fa;
-    --dark-color: #343a40;
+    --primary-color: var(--primary);
+    --primary-hover: var(--primary-active);
+    --secondary-color: var(--text-secondary);
+    --success-color: var(--success-text);
+    --danger-color: var(--danger-text);
+    --warning-color: var(--warning-text);
+    --info-color: var(--info-text);
+    --light-color: var(--bg);
+    --dark-color: var(--text);
     
     /* 背景颜色 */
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8f9fa;
-    --bg-tertiary: #e9ecef;
-    --bg-dark: #343a40;
+    --bg-primary: var(--surface);
+    --bg-secondary: var(--bg);
+    --bg-tertiary: var(--surface-alt);
+    --bg-dark: var(--text);
     
     /* 文本颜色 */
-    --text-primary: #212529;
-    --text-secondary: #6c757d;
-    --text-muted: #868e96;
-    --text-light: #ffffff;
+    --text-primary: var(--text);
+    --text-secondary: var(--text-secondary);
+    --text-muted: var(--text-muted);
+    --text-light: var(--surface);
     
     /* 边框颜色 */
-    --border-color: #dee2e6;
-    --border-light: #e9ecef;
-    --border-dark: #adb5bd;
+    --border-color: var(--border);
+    --border-light: var(--surface-alt);
+    --border-dark: var(--text-muted);
     
     /* 阴影 */
     --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);

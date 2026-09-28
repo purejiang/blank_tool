@@ -205,8 +205,8 @@ defineExpose({
   max-width: 480px;
   margin-top: 12px;
   padding: 16px;
-  background: var(--bg-color, #ffffff);
-  border: 1px solid var(--border-color, #e1e5e9);
+  background: var(--bg-color, var(--surface));
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   pointer-events: auto;
@@ -221,28 +221,28 @@ defineExpose({
   top: 0;
   bottom: 0;
   width: 4px;
-  background: var(--accent-color, #007acc);
+  background: var(--accent-color, var(--primary));
 }
 
 /* 通知类型样式 */
 .notification-success::before {
-  background: #52c41a;
+  background: var(--success-text);
 }
 
 .notification-error::before {
-  background: #ff4d4f;
+  background: var(--danger-text);
 }
 
 .notification-warning::before {
-  background: #faad14;
+  background: var(--warning-text);
 }
 
 .notification-info::before {
-  background: #1890ff;
+  background: var(--primary);
 }
 
 .notification-loading::before {
-  background: #1890ff;
+  background: var(--primary);
 }
 
 /* 图标样式 */
@@ -262,27 +262,27 @@ defineExpose({
 }
 
 .notification-success .notification-icon-symbol {
-  color: #52c41a;
+  color: var(--success-text);
 }
 
 .notification-error .notification-icon-symbol {
-  color: #ff4d4f;
+  color: var(--danger-text);
 }
 
 .notification-warning .notification-icon-symbol {
-  color: #faad14;
+  color: var(--warning-text);
 }
 
 .notification-info .notification-icon-symbol {
-  color: #1890ff;
+  color: var(--primary);
 }
 
 /* 加载动画 */
 .loading-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #1890ff;
+  border: 2px solid var(--surface-alt);
+  border-top: 2px solid var(--primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -301,14 +301,14 @@ defineExpose({
 .notification-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-color, #333333);
+  color: var(--text-color, var(--text));
   margin-bottom: 4px;
   line-height: 1.4;
 }
 
 .notification-message {
   font-size: 13px;
-  color: var(--text-color-secondary, #666666);
+  color: var(--text-color-secondary, var(--text-secondary));
   line-height: 1.4;
   word-wrap: break-word;
 }
@@ -321,14 +321,14 @@ defineExpose({
 .notification-progress-track {
   width: 100%;
   height: 4px;
-  background: var(--hover-bg-color, #f0f0f0);
+  background: var(--hover-bg-color, var(--surface-alt));
   border-radius: 2px;
   overflow: hidden;
 }
 
 .notification-progress-fill {
   height: 100%;
-  background: #1890ff;
+  background: var(--primary);
   border-radius: 2px;
   transition: width 0.3s ease;
 }
@@ -353,21 +353,21 @@ defineExpose({
 
 .notification-action-btn.default {
   background: transparent;
-  border-color: var(--border-color, #e1e5e9);
-  color: var(--text-color, #333);
+  border-color: var(--border-color, var(--border));
+  color: var(--text-color, var(--text));
 }
 
 .notification-action-btn.default:hover {
-  background: var(--hover-bg-color, #f5f5f5);
+  background: var(--hover-bg-color, var(--surface-alt));
 }
 
 .notification-action-btn.primary {
-  background: #1890ff;
-  color: #fff;
+  background: var(--primary);
+  color: var(--surface);
 }
 
 .notification-action-btn.primary:hover {
-  background: #1677cc;
+  background: var(--primary-hover);
 }
 
 /* 关闭按钮 */
@@ -383,13 +383,13 @@ defineExpose({
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  color: var(--text-color-secondary, #999999);
+  color: var(--text-color-secondary, var(--text-muted));
   transition: all 0.2s ease;
 }
 
 .notification-close:hover {
-  background: var(--hover-bg-color, #f5f5f5);
-  color: var(--text-color, #333333);
+  background: var(--hover-bg-color, var(--surface-alt));
+  color: var(--text-color, var(--text));
 }
 
 .close-icon {
@@ -423,36 +423,36 @@ defineExpose({
 /* 深色主题适配 */
 @media (prefers-color-scheme: dark) {
   .notification {
-    background: var(--bg-color-dark, #2d2d2d);
-    border-color: var(--border-color-dark, #404040);
-    color: var(--text-color-dark, #ffffff);
+    background: var(--bg-color-dark, var(--text));
+    border-color: var(--border-color-dark, var(--text-secondary));
+    color: var(--text-color-dark, var(--surface));
   }
   
   .notification-title {
-    color: var(--text-color-dark, #ffffff);
+    color: var(--text-color-dark, var(--surface));
   }
   
   .notification-message {
-    color: var(--text-color-secondary-dark, #cccccc);
+    color: var(--text-color-secondary-dark, var(--text-muted));
   }
   
   .notification-close {
-    color: var(--text-color-secondary-dark, #999999);
+    color: var(--text-color-secondary-dark, var(--text-muted));
   }
   
   .notification-close:hover {
-    background: var(--hover-bg-color-dark, #404040);
-    color: var(--text-color-dark, #ffffff);
+    background: var(--hover-bg-color-dark, var(--text-secondary));
+    color: var(--text-color-dark, var(--surface));
   }
 
   .notification-action-btn.default {
-    color: var(--text-color-dark, #cccccc);
-    border-color: var(--border-color-dark, #555);
+    color: var(--text-color-dark, var(--text-muted));
+    border-color: var(--border-color-dark, var(--text-muted));
   }
 
   .notification-action-btn.default:hover {
-    background: var(--hover-bg-color-dark, #404040);
-    color: var(--text-color-dark, #ffffff);
+    background: var(--hover-bg-color-dark, var(--text-secondary));
+    color: var(--text-color-dark, var(--surface));
   }
 }
 

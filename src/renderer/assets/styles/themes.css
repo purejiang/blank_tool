@@ -1,71 +1,65 @@
-/* ===== App Color Variables ===== */
-:root,
-[data-theme="light"] {
-  --app-body-bg: #F1F5F9;
-  --app-sidebar-bg: #E2E8F0;
-  --app-sidebar-border: #CBD5E1;
-  --app-card-bg: #FFFFFF;
-  --app-card-border: #E2E8F0;
-  --app-input-bg: #FFFFFF;
-  --app-input-border: #CBD5E1;
-  --app-text-primary: #0F172A;
-  --app-text-secondary: #334155;
-  --app-text-muted: #475569;
-  --app-text-dim: #64748B;
-  --app-green: #16A34A;
-  --app-green-hover: #15803D;
-  --app-green-bg: rgba(22, 163, 74, 0.1);
-  --app-green-bg-hover: rgba(22, 163, 74, 0.06);
-  --app-green-bg-active: rgba(22, 163, 74, 0.12);
-  --app-blue: #2563EB;
-  --app-blue-bg: rgba(37, 99, 235, 0.1);
-  --app-yellow: #B45309;
-  --app-orange: #EA580C;
-  --app-purple: #9333EA;
-  --app-red: #DC2626;
-  --app-hover: rgba(0, 0, 0, 0.04);
-  --app-hover-strong: rgba(0, 0, 0, 0.08);
-  --app-code-bg: #F1F5F9;
-  --app-drop-zone-bg: #F8FAFC;
-  --app-drop-zone-border: #94A3B8;
-  --app-scrollbar-thumb: #CBD5E1;
-  --app-scrollbar-hover: #94A3B8;
-  --app-placeholder-color: #CBD5E1;
-  --app-storage-bg: rgba(0, 0, 0, 0.04);
-}
+/* ===== 兼容别名层（deprecated） =====
+ * 唯一的颜色来源是 assets/styles/tokens.css（--bg/--surface/--primary/语义色…）。
+ * 下面这些 --app-* 是历史名字，全部指向新 token —— 所以它们**不需要**按主题写两份：
+ * 被引用的变量本身随 [data-theme] 变化，别名自动跟随。
+ *
+ * 新代码请直接用 tokens.css 的规范名；旧组件继续引用别名也能拿到新配色。
+ * 引用清零后这一层可整体删除。
+ *
+ * 映射取舍（蓝单色体系）：
+ *   --app-blue / --app-blue-bg   → 主色与主色浅底
+ *   --app-green(-bg/-hover)      → 成功语义色（不再兼任主色）
+ *   --app-yellow / --app-orange  → 警告语义色
+ *   --app-red                    → 错误语义色
+ *   --app-purple                 → 收敛到主色（不再有紫色相）
+ *   --app-hover / --app-storage-bg → surface-alt（中性浅底）
+ *   --app-text-dim               → text-muted
+ */
+:root {
+  --app-body-bg: var(--bg);
+  --app-sidebar-bg: var(--surface);
+  --app-sidebar-border: var(--border);
+  --app-card-bg: var(--surface);
+  --app-card-border: var(--border);
+  --app-input-bg: var(--surface);
+  --app-input-border: var(--border);
+  --app-text-primary: var(--text);
+  --app-text-secondary: var(--text-secondary);
+  --app-text-muted: var(--text-muted);
+  --app-text-dim: var(--text-muted);
 
-[data-theme="dark"] {
-  --app-body-bg: #0F172A;
-  --app-sidebar-bg: #0C1322;
-  --app-sidebar-border: #1E293B;
-  --app-card-bg: #1E293B;
-  --app-card-border: #334155;
-  --app-input-bg: #1E293B;
-  --app-input-border: #334155;
-  --app-text-primary: #F8FAFC;
-  --app-text-secondary: #CBD5E1;
-  --app-text-muted: #94A3B8;
-  --app-text-dim: #64748B;
-  --app-green: #22C55E;
-  --app-green-hover: #16A34A;
-  --app-green-bg: rgba(34, 197, 94, 0.1);
-  --app-green-bg-hover: rgba(34, 197, 94, 0.06);
-  --app-green-bg-active: rgba(34, 197, 94, 0.12);
-  --app-blue: #3B82F6;
-  --app-blue-bg: rgba(59, 130, 246, 0.1);
-  --app-yellow: #F59E0B;
-  --app-orange: #FB923C;
-  --app-purple: #C084FC;
-  --app-red: #EF4444;
-  --app-hover: rgba(34, 197, 94, 0.06);
-  --app-hover-strong: rgba(34, 197, 94, 0.12);
-  --app-code-bg: #0C1322;
-  --app-drop-zone-bg: #0C1322;
-  --app-drop-zone-border: #334155;
-  --app-scrollbar-thumb: #334155;
-  --app-scrollbar-hover: #475569;
-  --app-placeholder-color: #334155;
-  --app-storage-bg: rgba(15, 23, 42, 0.5);
+  --app-green: var(--success-text);
+  --app-green-hover: var(--success-text);
+  --app-green-bg: var(--success-bg);
+  --app-green-bg-hover: var(--success-bg);
+  --app-green-bg-active: var(--success-bg);
+
+  --app-blue: var(--primary);
+  --app-blue-bg: var(--primary-soft);
+
+  --app-yellow: var(--warning-text);
+  --app-orange: var(--warning-text);
+  --app-orange-bg: var(--warning-bg);
+  --app-orange-border: var(--warning-border);
+  --app-purple: var(--primary);
+  --app-red: var(--danger-text);
+  --app-red-bg: var(--danger-bg);
+
+  --app-hover: var(--surface-alt);
+  --app-hover-strong: var(--surface-alt);
+  --app-code-bg: var(--code-bg);
+  --app-drop-zone-bg: var(--drop-zone-bg);
+  --app-drop-zone-border: var(--drop-zone-border);
+  --app-scrollbar-thumb: var(--scrollbar-thumb);
+  --app-scrollbar-hover: var(--scrollbar-hover);
+  --app-placeholder-color: var(--placeholder);
+  --app-storage-bg: var(--surface-alt);
+
+  /* 预览稿 CSS 已引用、原 themes.css 缺失的键（值来自 tokens.css） */
+  --app-muted-fg: var(--muted-fg);
+  --app-muted-bg: var(--muted-bg);
+  --app-scrim: var(--scrim);
+  --app-shadow: var(--shadow-card);
 }
 
 /* ===== Workflow Editor (vue-flow) Theme Mapping =====

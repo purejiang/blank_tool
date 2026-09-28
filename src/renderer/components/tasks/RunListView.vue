@@ -53,7 +53,7 @@
 
     <div v-else class="rl-rows">
       <div v-for="item in filtered" :key="item.key" class="rl-row" :class="{ 'rl-row--running': item.running }">
-        <StatusTag :status="item.status" />
+        <StatusBadge :status="item.status" />
         <span class="rl-workflow">{{ item.workflow || '—' }}</span>
         <span class="rl-task">{{ item.taskName || t('tasks.runs.oneShot') }}</span>
         <span class="rl-source">{{ item.source || '—' }}</span>
@@ -115,7 +115,7 @@ import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NIcon, NInput, NSelect, useDialog } from 'naive-ui'
 import { ChevronDown, RefreshCw } from 'lucide-vue-next'
 
-import StatusTag from '@components/common/StatusTag.vue'
+import StatusBadge from '@components/ui/StatusBadge.vue'
 import RunDetailDrawer from './RunDetailDrawer.vue'
 import { formatMs, runStatusOf, type RunStatusKey } from './runFormat'
 import type { RunListItem, RunRecord, RunSummary } from '../../../shared/ipc/protocol'

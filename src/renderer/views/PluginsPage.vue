@@ -58,11 +58,11 @@
           </div>
           <div class="plugin-status">
             <template v-if="plugin.loaded">
-              <n-icon size="14" color="#22C55E"><CheckCircle /></n-icon>
+              <n-icon size="14" color="var(--success-text)"><CheckCircle /></n-icon>
               <span class="plugin-status-ok">{{ t('plugins.status.loaded') }}</span>
             </template>
             <template v-else>
-              <n-icon size="14" color="#EF4444"><AlertCircle /></n-icon>
+              <n-icon size="14" color="var(--danger-text)"><AlertCircle /></n-icon>
               <span class="plugin-status-err">
                 {{ plugin.error === 'not loaded' ? t('plugins.status.notLoaded') : t('plugins.status.failed') }}
                 <template v-if="plugin.error && plugin.error !== 'not loaded'">：{{ plugin.error }}</template>

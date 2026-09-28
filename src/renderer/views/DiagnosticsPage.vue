@@ -30,7 +30,7 @@
       <!-- Card 2: Running Tasks -->
       <n-card :bordered="false" class="diag-card">
         <div class="section-header">
-          <n-icon size="18" color="#64748B"><ListChecks /></n-icon>
+          <n-icon size="18" color="var(--text-muted)"><ListChecks /></n-icon>
           <span class="section-title">{{ t('diagnostics.runningTasks') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshTasks">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
@@ -44,7 +44,7 @@
       <!-- Card 3: Log Tail (3 tabs) -->
       <n-card :bordered="false" class="diag-card">
         <div class="section-header">
-          <n-icon size="18" color="#64748B"><ScrollText /></n-icon>
+          <n-icon size="18" color="var(--text-muted)"><ScrollText /></n-icon>
           <span class="section-title">{{ t('diagnostics.logTail') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshLogTail()">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
@@ -79,7 +79,7 @@
       <!-- Card 4: Resolved Paths -->
       <n-card :bordered="false" class="diag-card">
         <div class="section-header">
-          <n-icon size="18" color="#64748B"><FolderTree /></n-icon>
+          <n-icon size="18" color="var(--text-muted)"><FolderTree /></n-icon>
           <span class="section-title">{{ t('diagnostics.resolvedPaths') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshPaths">
             <template #icon><n-icon><RefreshCw /></n-icon></template>
@@ -130,7 +130,7 @@ const healthClass = computed(() =>
   healthStore.isHealthy ? 'dot-healthy' : 'dot-unhealthy'
 )
 const healthColor = computed(() =>
-  healthStore.isHealthy === null ? '#64748B' :
+  healthStore.isHealthy === null ? 'var(--text-muted)' :
   healthStore.isHealthy ? 'var(--app-green)' : 'var(--app-red)'
 )
 const healthLabel = computed(() =>

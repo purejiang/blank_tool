@@ -11,7 +11,7 @@
       <div v-else-if="run" class="rd-body">
         <!-- 头部：状态 + 工作流 + 任务名 + 身份 + 起止/耗时 -->
         <div class="rd-head">
-          <StatusTag :status="status" />
+          <StatusBadge :status="status" />
           <span class="rd-workflow">{{ run.workflow_name || '—' }}</span>
           <span v-if="taskLabel" class="rd-task">{{ taskLabel }}</span>
           <n-button v-if="!run.task_name" size="tiny" quaternary @click="emit('save-as-task', run)">
@@ -75,7 +75,7 @@
               :style="{ marginLeft: `${entry.depth * 14}px` }"
             >
               <div class="rd-node-head">
-                <StatusTag :status="entry.status" />
+                <StatusBadge :status="entry.status" />
                 <code class="rd-node-path">{{ entry.path }}</code>
                 <span class="rd-node-meta">
                   {{ formatMs(entry.durationMs) }}
@@ -132,7 +132,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NDrawer, NDrawerContent } from 'naive-ui'
 
-import StatusTag from '@components/common/StatusTag.vue'
+import StatusBadge from '@components/ui/StatusBadge.vue'
 import {
   formatMs,
   isPathLike,

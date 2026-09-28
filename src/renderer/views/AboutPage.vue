@@ -12,7 +12,7 @@
       <!-- Build Info -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
-          <n-icon size="18" color="#22C55E"><Layers /></n-icon>
+          <n-icon size="18" color="var(--success-text)"><Layers /></n-icon>
           <span class="section-title">{{ t('settings.buildInfo') }}</span>
         </div>
         <div class="info-grid">
@@ -39,7 +39,7 @@
       <!-- Bundled Tools -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
-          <n-icon size="18" color="#64748B"><Wrench /></n-icon>
+          <n-icon size="18" color="var(--text-muted)"><Wrench /></n-icon>
           <span class="section-title">{{ t('settings.tools') }}</span>
         </div>
         <div class="info-grid">
@@ -55,7 +55,7 @@
       <!-- System Info -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
-          <n-icon size="18" color="#64748B"><Cpu /></n-icon>
+          <n-icon size="18" color="var(--text-muted)"><Cpu /></n-icon>
           <span class="section-title">{{ t('settings.systemInfo') }}</span>
         </div>
         <div class="info-grid">
@@ -162,5 +162,5 @@ const cpuText = computed(() => {
 .info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
 .info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
 .info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
-.update-status-inline { font-size: 12px; color: #22C55E; white-space: nowrap; }
+.update-status-inline { font-size: 12px; color: var(--success-text); white-space: nowrap; }
 </style>

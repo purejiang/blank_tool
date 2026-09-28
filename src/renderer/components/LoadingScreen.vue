@@ -2,7 +2,7 @@
   <div class="loading-screen">
     <div class="loading-container">
       <div class="loading-brand">
-        <img src="@assets/images/logo.svg" class="loading-logo" alt="Blank Tool" />
+        <img src="@assets/images/logo.svg" class="loading-logo" alt="Blanks" />
         <h1 class="loading-title">{{ $t('app.title') }}</h1>
         <p class="loading-subtitle">{{ $t('app.subtitle') }}</p>
       </div>
@@ -11,7 +11,7 @@
         :percentage="progress"
         :height="6"
         :border-radius="3"
-        color="#22C55E"
+        color="var(--success-text)"
         rail-color="rgba(255,255,255,0.1)"
       />
       <div class="loading-info">

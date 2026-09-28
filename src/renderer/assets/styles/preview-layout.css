@@ -92,7 +92,7 @@
 .pv .badge.info { color: var(--app-blue); background: var(--app-blue-bg); }
 .pv .badge.src { color: var(--app-text-muted); background: var(--app-storage-bg); }
 .pv .badge.warn { color: var(--app-orange); background: var(--app-orange-bg); }
-.pv .badge.kind { color: var(--app-purple); background: rgba(147, 51, 234, 0.14); }
+.pv .badge.kind { color: var(--primary); background: var(--primary-soft); }
 
 .pv .dot {
   width: 7px;
@@ -137,8 +137,8 @@
 .pv .tagcode {
   font-family: "Fira Code", Consolas, monospace;
   font-size: 11px;
-  color: var(--app-purple);
-  background: rgba(147, 51, 234, 0.1);
+  color: var(--primary);
+  background: var(--primary-soft);
   border-radius: 4px;
   padding: 2px 6px;
 }
@@ -258,7 +258,7 @@
   flex: none;
   border-radius: 7px;
   background: linear-gradient(135deg, var(--app-blue), var(--app-purple));
-  color: #fff;
+  color: var(--on-brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1014,12 +1014,12 @@
   right: 0;
   bottom: 0;
   width: 640px;
-  background: var(--app-card-bg);
-  border-left: 1px solid var(--app-card-border);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
   z-index: 21;
   display: flex;
   flex-direction: column;
-  box-shadow: -8px 0 24px rgba(2, 6, 23, 0.28);
+  box-shadow: var(--shadow-pop);
 }
 
 .pv .dw-hd { flex: none; padding: 14px 16px; border-bottom: 1px solid var(--app-card-border); }
