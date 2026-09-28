@@ -4,6 +4,7 @@ import {
   LAYOUT_X_SPACING,
   LAYOUT_X_START,
   LAYOUT_Y,
+  appendAnchor,
   chainOrder,
   extraOutgoingEdges,
   horizontalLayout,
@@ -107,6 +108,33 @@ describe('horizontalLayout', () => {
     const positions = horizontalLayout(['a', 'b'], [])
 
     expect(Object.keys(positions).sort()).toEqual(['a', 'b'])
+  })
+})
+
+describe('appendAnchor', () => {
+  it('returns null on an empty canvas (the new node becomes the entry)', () => {
+    expect(appendAnchor([], [])).toBeNull()
+    expect(appendAnchor(null, null)).toBeNull()
+  })
+
+  it('anchors on the only node when there are no edges', () => {
+    expect(appendAnchor(['a'], [])).toBe('a')
+  })
+
+  it('anchors on the tail of the chain', () => {
+    expect(appendAnchor(['a', 'b', 'c'], [edge('a', 'b'), edge('b', 'c')])).toBe('c')
+  })
+
+  it('returns null when the tail already has an outgoing edge', () => {
+    // b -> a would be a second outgoing edge for b (the linear rule keeps the
+    // first one), so appending there must be refused.
+    expect(appendAnchor(['a', 'b'], [edge('a', 'b'), edge('b', 'a')])).toBeNull()
+  })
+
+  it('still anchors on the chain-order tail of a disconnected canvas', () => {
+    // Two entry nodes: appending cannot repair the chain, but it must not make
+    // the new node an extra orphan either — the save guard reports the rest.
+    expect(appendAnchor(['a', 'b'], [])).toBe('b')
   })
 })
 

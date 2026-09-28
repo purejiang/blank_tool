@@ -224,6 +224,7 @@ export default {
         listFailed: 'Failed to load templates: {error}',
         emptyCanvas: 'The canvas is empty — add nodes before saving a template',
         blockedTitle: 'Cannot save',
+        notChained: 'The nodes are not a single linear chain yet ({count} issue(s)). Open Problems, fix them, then save.',
       },
       config: {
         noSelection: 'Select a node to configure',

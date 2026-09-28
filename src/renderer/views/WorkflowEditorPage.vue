@@ -273,6 +273,7 @@ import {
 import {
   deserializeWorkflow,
   serializeWorkflow,
+  validateOnDeserialize,
   type WorkflowDefinitionJSON,
   type WorkflowMeta,
 } from '@components/workflow/serializer'
@@ -280,6 +281,7 @@ import {
   LAYOUT_X_SPACING,
   LAYOUT_X_START,
   LAYOUT_Y,
+  appendAnchor,
   chainOrder,
   extraOutgoingEdges,
   upstreamNodeIds,
@@ -374,14 +376,16 @@ function makeNodeId(toolName: string): string {
   return `tool-${toolName.replace(/[^a-z0-9]+/gi, '-')}-${nodeCounter}`
 }
 
-/** Shared node-creation path for drag-drop and click-to-append. */
-function addToolNode(tool: WorkflowToolInfo, position: { x: number; y: number }) {
+/** Shared node-creation path for drag-drop and click-to-append. Returns the new node id. */
+function addToolNode(tool: WorkflowToolInfo, position: { x: number; y: number }): string {
+  const id = makeNodeId(tool.name)
   const data: ToolNodeData = {
     tool: tool.name,
     status: 'idle',
     ports: tool.ports,
   }
-  addNodes({ id: makeNodeId(tool.name), type: 'tool', position, data })
+  addNodes({ id, type: 'tool', position, data })
+  return id
 }
 
 function onDragOver(event: DragEvent) {
@@ -407,14 +411,25 @@ function onDrop(event: DragEvent) {
   addToolNode(tool, screenToFlowCoordinate({ x: event.clientX, y: event.clientY }))
 }
 
-/** Palette click: append after the last node of the current chain. */
+/**
+ * Palette click: append after the last node of the current chain.
+ *
+ * Placing the node to the RIGHT of the tail is not enough — without the edge
+ * `next` stays null, so a three-click workflow used to end up with three entry
+ * nodes and the backend rejected the save ("must have exactly one entry node").
+ * The edge id follows the serializer's `${source}->${target}` convention so it
+ * cannot collide with a loaded template's edges.
+ */
 function onAppendTool(tool: WorkflowToolInfo) {
-  const order = chainOrder(nodeIds.value, edges.value)
-  const last = order.length > 0 ? findNode(order[order.length - 1]) : null
-  const position = last
-    ? { x: (last.position?.x ?? LAYOUT_X_START) + LAYOUT_X_SPACING, y: last.position?.y ?? LAYOUT_Y }
+  const anchorId = appendAnchor(nodeIds.value, edges.value)
+  const anchor = anchorId ? findNode(anchorId) : null
+  const position = anchor
+    ? { x: (anchor.position?.x ?? LAYOUT_X_START) + LAYOUT_X_SPACING, y: anchor.position?.y ?? LAYOUT_Y }
     : { x: LAYOUT_X_START, y: LAYOUT_Y }
-  addToolNode(tool, position)
+  const newId = addToolNode(tool, position)
+  if (anchorId) {
+    addEdges({ id: `${anchorId}->${newId}`, source: anchorId, target: newId })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -534,10 +549,24 @@ const upstreamNodes = computed<UpstreamNodeRef[]>(() => {
 /** Edges that serialization would drop (docs/08 §S2). */
 const edgeConflicts = computed(() => extraOutgoingEdges(nodeIds.value, edges.value))
 
-/** Reason string handed to TemplateManager; null means saving is allowed. */
+/**
+ * Reason string handed to TemplateManager; null means saving is allowed.
+ *
+ * Two independent blockers, checked in order:
+ *  1. extra outgoing edges — the canvas shows its own banner for that;
+ *  2. a structurally invalid chain (several entry nodes / a cycle / orphans),
+ *     which the backend rejects with a raw English message. Validating here with
+ *     the SAME rules the loader uses (`validateOnDeserialize`) turns it into a
+ *     pointer at the 问题 panel instead of a backend error toast.
+ */
 function saveBlockedReason(): string | null {
-  if (edgeConflicts.value.length === 0) return null
-  return t('workflow.editor.guard.title', { count: edgeConflicts.value.length })
+  if (edgeConflicts.value.length > 0) {
+    return t('workflow.editor.guard.title', { count: edgeConflicts.value.length })
+  }
+  const definition = serializeCanvas()
+  const structural = definition ? validateOnDeserialize(definition) : []
+  if (structural.length === 0) return null
+  return t('workflow.editor.template.notChained', { count: structural.length })
 }
 
 // ---------------------------------------------------------------------------

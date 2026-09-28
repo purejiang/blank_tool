@@ -223,6 +223,7 @@ export default {
         listFailed: '加载模板列表失败：{error}',
         emptyCanvas: '画布为空——先添加节点再保存',
         blockedTitle: '无法保存',
+        notChained: '画布上的节点还没有连成一条线性链（{count} 处问题）。点「问题」查看并修好后再保存。',
       },
       config: {
         noSelection: '选择一个节点进行配置',

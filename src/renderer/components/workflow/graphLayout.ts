@@ -159,6 +159,32 @@ export function chainOrder(
 }
 
 /**
+ * Id of the node a newly appended node should be chained FROM — the tail of the
+ * current chain — or null when there is nothing safe to chain onto.
+ *
+ * Returns null in two cases:
+ *  - the canvas has no nodes (the appended node becomes the entry itself);
+ *  - the chain tail already has an outgoing edge. A second one would be dropped
+ *    by the linear rule (`resolveNextMap` keeps the FIRST outgoing edge) and
+ *    reported as a conflict by `extraOutgoingEdges`, so the caller must not
+ *    create it.
+ *
+ * On an already-disconnected canvas (several entry nodes) this still anchors on
+ * the chain-order tail: appending cannot repair a broken chain, it only avoids
+ * making it worse — the save guard reports the rest.
+ */
+export function appendAnchor(
+  nodeIds: readonly string[] | null | undefined,
+  edges: readonly GraphEdgeLike[] | null | undefined,
+): string | null {
+  const order = chainOrder(nodeIds, edges)
+  if (order.length === 0) return null
+  const tail = order[order.length - 1]
+  const hasOutgoing = (edges ?? []).some((edge) => edge && idOf(edge.source) === tail)
+  return hasOutgoing ? null : tail
+}
+
+/**
  * Auto-layout positions for a loaded definition: one horizontal row, left→right.
  *
  * The node handles are on the left (targets) and right (sources), so a
