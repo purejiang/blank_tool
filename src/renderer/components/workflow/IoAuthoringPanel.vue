@@ -31,7 +31,7 @@
           </div>
           <div class="io-row-actions">
             <n-button size="small" quaternary :title="t('workflow.editor.io.edit')" @click="startEdit(port)">
-              <template #icon><n-icon :size="13"><Pencil /></n-icon></template>
+              <template #icon><AppIcon name="pencil" size="sm" /></template>
             </n-button>
             <n-button
               size="small"
@@ -40,13 +40,13 @@
               :title="t('workflow.editor.io.remove')"
               @click="removePort(port)"
             >
-              <template #icon><n-icon :size="13"><Trash2 /></n-icon></template>
+              <template #icon><AppIcon name="trash" size="sm" /></template>
             </n-button>
           </div>
         </div>
       </div>
       <n-button size="small" class="io-add" @click="startAdd">
-        <template #icon><n-icon :size="13"><Plus /></n-icon></template>
+        <template #icon><AppIcon name="plus" size="sm" /></template>
         {{ t(side === 'inputs' ? 'workflow.editor.io.addInput' : 'workflow.editor.io.addOutput') }}
       </n-button>
     </div>
@@ -102,7 +102,7 @@
                 :title="t('workflow.editor.io.fields.optionMoveUp')"
                 @click="moveOption(index, -1)"
               >
-                <template #icon><n-icon :size="13"><ArrowUp /></n-icon></template>
+                <template #icon><AppIcon name="up" size="sm" /></template>
               </n-button>
               <n-button
                 size="small"
@@ -111,7 +111,7 @@
                 :title="t('workflow.editor.io.fields.optionMoveDown')"
                 @click="moveOption(index, 1)"
               >
-                <template #icon><n-icon :size="13"><ArrowDown /></n-icon></template>
+                <template #icon><AppIcon name="down" size="sm" /></template>
               </n-button>
               <n-button
                 size="small"
@@ -120,11 +120,11 @@
                 :title="t('workflow.editor.io.fields.optionRemove')"
                 @click="removeOption(index)"
               >
-                <template #icon><n-icon :size="13"><Trash2 /></n-icon></template>
+                <template #icon><AppIcon name="trash" size="sm" /></template>
               </n-button>
             </div>
             <n-button size="small" dashed class="io-option-add" @click="addOption">
-              <template #icon><n-icon :size="13"><Plus /></n-icon></template>
+              <template #icon><AppIcon name="plus" size="sm" /></template>
               {{ t('workflow.editor.io.fields.addOption') }}
             </n-button>
           </div>
@@ -150,13 +150,12 @@ import {
   NCheckbox,
   NForm,
   NFormItem,
-  NIcon,
   NInput,
   NSelect,
   NTabPane,
   NTabs,
 } from 'naive-ui'
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-vue-next'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import {
   PORT_TYPE_KEYS,

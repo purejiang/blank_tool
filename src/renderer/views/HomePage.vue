@@ -19,10 +19,10 @@
         :value="loading && !loaded ? '—' : templates.length"
         tone="primary"
       >
-        <template #icon><n-icon size="18"><Workflow /></n-icon></template>
+        <template #icon><AppIcon name="wf" size="lg" /></template>
       </StatCard>
       <StatCard :label="t('home.stats.tasks')" :value="loading && !loaded ? '—' : tasks.length" tone="primary">
-        <template #icon><n-icon size="18"><ListTodo /></n-icon></template>
+        <template #icon><AppIcon name="task" size="lg" /></template>
       </StatCard>
       <StatCard
         :label="t('home.stats.runs7d')"
@@ -30,14 +30,14 @@
         :hint="t('home.stats.runs7dHint')"
         tone="success"
       >
-        <template #icon><n-icon size="18"><Activity /></n-icon></template>
+        <template #icon><AppIcon name="activity" size="lg" /></template>
       </StatCard>
       <StatCard
         :label="t('home.stats.failed7d')"
         :value="loading && !loaded ? '—' : failedRunCount"
         tone="danger"
       >
-        <template #icon><n-icon size="18"><AlertTriangle /></n-icon></template>
+        <template #icon><AppIcon name="alert" size="lg" /></template>
       </StatCard>
     </section>
 
@@ -46,19 +46,19 @@
       <AppCard :title="t('home.quick.title')">
         <div class="home-actions">
           <AppButton variant="primary" @click="go('/workflows/editor')">
-            <template #icon><n-icon size="13"><Plus /></n-icon></template>
+            <template #icon><AppIcon name="plus" size="sm" /></template>
             {{ t('home.quick.newWorkflow') }}
           </AppButton>
           <AppButton variant="secondary" @click="go('/tasks/editor')">
-            <template #icon><n-icon size="13"><Plus /></n-icon></template>
+            <template #icon><AppIcon name="plus" size="sm" /></template>
             {{ t('home.quick.newTask') }}
           </AppButton>
           <AppButton variant="outline" @click="go('/workflows')">
-            <template #icon><n-icon size="13"><FolderInput /></n-icon></template>
+            <template #icon><AppIcon name="folder-in" size="sm" /></template>
             {{ t('home.quick.import') }}
           </AppButton>
           <AppButton variant="ghost" @click="go('/tasks?tab=runs')">
-            <template #icon><n-icon size="13"><History /></n-icon></template>
+            <template #icon><AppIcon name="clock" size="sm" /></template>
             {{ t('home.quick.runs') }}
           </AppButton>
         </div>
@@ -71,7 +71,7 @@
             <span class="home-system-label">{{ t('home.system.backend') }}</span>
             <AppBadge :tone="backendTone">
               <template #icon>
-                <n-icon size="12"><CircleDot /></n-icon>
+                <AppIcon name="dot" size="sm" />
               </template>
               {{ backendLabel }}
             </AppBadge>
@@ -99,7 +99,7 @@
           :loading="loading"
           @click="load"
         >
-          <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
+          <template #icon><AppIcon name="refresh" /></template>
         </AppButton>
       </template>
 
@@ -130,18 +130,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
-import {
-  Activity,
-  AlertTriangle,
-  CircleDot,
-  FolderInput,
-  History,
-  ListTodo,
-  Plus,
-  RefreshCw,
-  Workflow,
-} from 'lucide-vue-next'
+
+import AppIcon from '@components/ui/AppIcon.vue'
 import { storeToRefs } from 'pinia'
 
 import AppBadge from '@components/ui/AppBadge.vue'

@@ -8,7 +8,12 @@
  *   4) 圆角/阴影/滚动条等非颜色维度
  *
  * 主题切换：html[data-theme="light"|"dark"]（由 ThemeService 写在 documentElement 上）。
- * 暗色模式不使用 #000 大面积底色（--bg 为 #0B1220）。
+ * 暗色模式不使用 #000 大面积底色（--bg 为 #0F172A）。
+ *
+ * 色板口径对齐 docs/ui-prompts/ui-preview.html §1 —— 预览稿是设计契约，色值以它为准。
+ * 本地此前漂移过一轮（暗面整体偏深、紫相被收敛、文字阶梯少一档），已回正。
+ * 但**圆角与阴影是本地刻意的强化**（大圆角 18/12/8 + 静止态无阴影），预览稿没有，
+ * 不要按预览稿回退成小圆角。
  *
  * 说明：语义色一套来自设计规范（浅色）；暗色模式按同色相派生（放大幅度、
  * 降低饱和），因为规范只给了浅底那一组，而浅底配色直接放到暗底上对比度不足。
@@ -22,8 +27,15 @@
   --surface-alt: #F1F5F9;
   --border: #E2E8F0;
   --text: #0F172A;
-  --text-secondary: #475569;
-  --text-muted: #94A3B8;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  /* 文字阶梯第 4 档：最弱的一级（时间戳、单位、占位说明）。对应预览稿 --app-text-dim，
+   * 之前被并进 --text-muted，导致本地弱化文字比设计浅一档。 */
+  --text-dim: #64748B;
+  /* 侧栏是比 body 更深一档的凹陷面（预览稿口径：浅底 #E2E8F0 / 暗底 #0C1322）。
+   * 不要复用 --surface，否则浅色下侧栏会变成纯白、和内容区糊在一起。 */
+  --sidebar-bg: #E2E8F0;
+  --sidebar-border: #CBD5E1;
 
   /* ---- 2. 主色族 ---- */
   --primary: #2563EB;
@@ -33,6 +45,9 @@
   --primary-soft-border: #BFDBFE;
   --on-primary: #FFFFFF;
   --ring: rgba(37, 99, 235, 0.18);
+  /* 紫色只做点缀（品牌 logo 渐变、kind 徽章、tagcode），不参与主色体系 */
+  --purple: #9333EA;
+  --purple-soft: rgba(147, 51, 234, 0.14);
 
   /* ---- 3. 语义色 ---- */
   --success-bg: #ECFDF5;
@@ -69,7 +84,8 @@
   --placeholder: #CBD5E1;
 
   /* 圆角三档（大圆角极简风格）：卡片 18 / 控件 12 / 徽章 8，胶囊 999。
-   * 组件里禁止再写裸 px 圆角，一律引用这三档 + --radius-pill。 */
+   * 组件里禁止再写裸 px 圆角，一律引用这三档 + --radius-pill。
+   * ⚠️ 预览稿用的是 3–9px 小圆角，这里是刻意的偏离，不要"对齐"回去。 */
   --radius-card: 18px;
   --radius-control: 12px;
   --radius-chip: 8px;
@@ -82,13 +98,18 @@
 
 [data-theme="dark"] {
   /* ---- 1. 基础面 / 文字 / 描边 ---- */
-  --bg: #0B1220;
-  --surface: #111827;
-  --surface-alt: #1E293B;
+  --bg: #0F172A;
+  --surface: #1E293B;
+  /* 卡片已经抬到 #1E293B，hover / 浅底不能再复用同一个值（会撞色、hover 看不见），
+   * 改成半透明提亮层 —— 与预览稿的 --app-hover 同口径。 */
+  --surface-alt: rgba(148, 163, 184, 0.1);
   --border: #334155;
-  --text: #F1F5F9;
+  --text: #F8FAFC;
   --text-secondary: #CBD5E1;
   --text-muted: #94A3B8;
+  --text-dim: #64748B;
+  --sidebar-bg: #0C1322;
+  --sidebar-border: #1E293B;
 
   /* ---- 2. 主色族 ---- */
   --primary: #60A5FA;
@@ -98,6 +119,8 @@
   --primary-soft-border: #1E3A8A;
   --on-primary: #0B1220;
   --ring: rgba(96, 165, 250, 0.25);
+  --purple: #C084FC;
+  --purple-soft: rgba(192, 132, 252, 0.14);
 
   /* ---- 3. 语义色（同色相派生；浅底那组在暗底上对比不足） ---- */
   --success-bg: rgba(16, 185, 129, 0.12);
@@ -117,10 +140,12 @@
   --info-text: #93C5FD;
 
   /* ---- 4. 其余维度 ---- */
-  --muted-bg: #1E293B;
+  /* 中性徽章底不能再是 #1E293B —— 那已经是卡片色，徽章会"消失"在卡片上 */
+  --muted-bg: rgba(148, 163, 184, 0.14);
   --muted-fg: #CBD5E1;
-  --code-bg: #0B1220;
-  --drop-zone-bg: #0B1220;
+  /* 代码块 / 画布底 = 侧栏那档凹陷面（预览稿同口径） */
+  --code-bg: #0C1322;
+  --drop-zone-bg: #0F172A;
   --drop-zone-border: #334155;
   --scrim: rgba(2, 6, 23, 0.6);
   --scrollbar-thumb: #334155;
@@ -131,7 +156,7 @@
   --radius-control: 12px;
   --radius-chip: 8px;
   --radius-pill: 999px;
-  /* 暗色阴影只允许纯黑，禁止掺主色：深底上 #0B1220 已接近黑，再叠蓝色
+  /* 暗色阴影只允许纯黑，禁止掺主色：深底上 #0F172A 已接近黑，再叠蓝色
    * 会合成出比底色更亮的 #102145，视觉上变成"发光"而不是阴影。 */
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.55), 0 12px 32px rgba(0, 0, 0, 0.45);

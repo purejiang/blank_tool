@@ -23,11 +23,11 @@
 
     <div class="envs-toolbar">
       <n-button size="small" quaternary :loading="loading" @click="load(true)">
-        <template #icon><n-icon size="15"><RefreshCw /></n-icon></template>
+        <template #icon><AppIcon name="refresh" /></template>
         {{ t('tools.refresh') }}
       </n-button>
       <n-button size="small" :loading="adding" @click="openAddDialog">
-        <template #icon><n-icon size="15"><Plus /></n-icon></template>
+        <template #icon><AppIcon name="plus" /></template>
         {{ t('envs.add') }}
       </n-button>
       <span class="envs-grow" />
@@ -150,8 +150,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NAlert, NButton, NForm, NFormItem, NIcon, NInput, NModal, NTag, useDialog } from 'naive-ui'
-import { Plus, RefreshCw } from 'lucide-vue-next'
+import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NTag, useDialog } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import ToolsSectionNav from '@components/tools/ToolsSectionNav.vue'
 import { envDependents, envLabel } from '@components/tools/toolEnvDeps'

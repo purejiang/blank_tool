@@ -12,7 +12,7 @@
       <!-- Build Info -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--success-text)"><Layers /></n-icon>
+          <AppIcon name="layers" size="lg" style="color: var(--success-text)" />
           <span class="section-title">{{ t('settings.buildInfo') }}</span>
         </div>
         <div class="info-grid">
@@ -39,7 +39,7 @@
       <!-- Bundled Tools -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--text-muted)"><Wrench /></n-icon>
+          <AppIcon name="tool" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('settings.tools') }}</span>
         </div>
         <div class="info-grid">
@@ -55,7 +55,7 @@
       <!-- System Info -->
       <n-card :bordered="false" class="about-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--text-muted)"><Cpu /></n-icon>
+          <AppIcon name="cpu" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('settings.systemInfo') }}</span>
         </div>
         <div class="info-grid">
@@ -73,8 +73,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, useMessage } from 'naive-ui'
-import { Wrench, Cpu, Layers } from 'lucide-vue-next'
+import { useMessage } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { useUpdateStore } from '@stores/updateStore'
 import serviceManager from '@services/ServiceManager'

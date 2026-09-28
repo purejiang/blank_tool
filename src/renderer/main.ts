@@ -6,6 +6,7 @@ import i18n from './i18n';
 import { log } from '@utils/logger';
 import App from './App.vue';
 import router from './router';
+import { installIconSprite } from './assets/icons/sprite';
 
 // Fonts are loaded via Google Fonts in index.html
 
@@ -71,7 +72,8 @@ async function launchApp() {
   try {
     // 挂载Vue应用（App.vue会处理服务初始化和错误处理器设置）
     log.debug('Vue 应用准备挂载')
-    app.mount('#app');
+    installIconSprite();
+app.mount('#app');
     log.debug('Vue 应用挂载完成')
   } catch (error) {
     log.error('应用启动失败:', error);

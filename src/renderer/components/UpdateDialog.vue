@@ -18,7 +18,7 @@
     <div v-if="store.status === 'available'" class="update-body">
       <div class="version-compare">
         <span class="ver-old">{{ store.currentVersion || $t('common.unknown') }}</span>
-        <n-icon size="16"><ArrowRight /></n-icon>
+        <AppIcon name="arrow-r" />
         <span class="ver-new">{{ store.latestVersion }}</span>
         <n-tag type="success" size="small" round>Latest</n-tag>
       </div>
@@ -79,8 +79,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NModal, NButton, NProgress, NTag, NIcon, NAlert, NSpin } from 'naive-ui'
-import { ArrowRight } from 'lucide-vue-next'
+import { NModal, NButton, NProgress, NTag, NAlert, NSpin } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 import { useUpdateStore } from '@stores/updateStore'
 
 const { t } = useI18n()

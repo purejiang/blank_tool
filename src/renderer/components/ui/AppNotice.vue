@@ -6,7 +6,7 @@
     :class="`app-notice--${tone}`"
     :role="tone === 'danger' ? 'alert' : 'status'"
   >
-    <n-icon size="15" class="app-notice-icon"><component :is="icon" /></n-icon>
+    <AppIcon :name="icon" class="app-notice-icon" />
     <div class="app-notice-body">
       <div v-if="title" class="app-notice-title">{{ title }}</div>
       <div class="app-notice-text"><slot /></div>
@@ -17,8 +17,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NIcon } from 'naive-ui'
-import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-vue-next'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 export type NoticeTone = 'success' | 'warning' | 'danger' | 'info'
 
@@ -27,13 +26,13 @@ const props = withDefaults(defineProps<{ tone?: NoticeTone; title?: string }>(),
 const icon = computed(() => {
   switch (props.tone) {
     case 'success':
-      return CheckCircle2
+      return 'check'
     case 'warning':
-      return AlertTriangle
+      return 'alert'
     case 'danger':
-      return XCircle
+      return 'x-circle'
     default:
-      return Info
+      return 'info'
   }
 })
 </script>

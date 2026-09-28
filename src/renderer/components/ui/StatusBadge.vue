@@ -2,7 +2,7 @@
   <!-- 运行/节点状态徽章：**图标 + 文字 + 颜色**三通道表达，不只靠颜色区分。 -->
   <AppBadge :tone="tone">
     <template #icon>
-      <n-icon size="12" :class="{ 'sb-spin': status === 'running' }"><component :is="icon" /></n-icon>
+      <AppIcon :name="icon" size="sm" :class="{ 'sb-spin': status === 'running' }" />
     </template>
     {{ t(statusI18nKey(status)) }}
   </AppBadge>
@@ -11,8 +11,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
-import { Ban, CheckCircle2, HelpCircle, Loader2, MinusCircle, XCircle } from 'lucide-vue-next'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import AppBadge, { type BadgeTone } from './AppBadge.vue'
 import { statusI18nKey, type RunStatusKey } from '@components/tasks/runFormat'
@@ -40,17 +39,17 @@ const tone = computed<BadgeTone>(() => {
 const icon = computed(() => {
   switch (props.status) {
     case 'running':
-      return Loader2
+      return 'spinner'
     case 'succeeded':
-      return CheckCircle2
+      return 'check'
     case 'failed':
-      return XCircle
+      return 'x-circle'
     case 'skipped':
-      return MinusCircle
+      return 'minus-circle'
     case 'cancelled':
-      return Ban
+      return 'ban'
     default:
-      return HelpCircle
+      return 'help'
   }
 })
 </script>

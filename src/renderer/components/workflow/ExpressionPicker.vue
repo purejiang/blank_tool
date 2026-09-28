@@ -18,7 +18,7 @@
         :title="t('workflow.editor.binding.insert')"
         data-test="binding-insert"
       >
-        <template #icon><n-icon :size="13"><Brackets /></n-icon></template>
+        <template #icon><AppIcon name="brace" size="sm" /></template>
       </n-button>
     </template>
 
@@ -90,8 +90,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NPopover, NSelect } from 'naive-ui'
-import { Brackets } from 'lucide-vue-next'
+import { NButton, NInput, NPopover, NSelect } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import {
   BINDING_GROUPS,

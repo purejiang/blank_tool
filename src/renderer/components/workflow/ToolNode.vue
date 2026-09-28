@@ -28,13 +28,13 @@
     />
 
     <div class="tn-header">
-      <span class="tn-icon" v-html="iconSvg" />
+      <span class="tn-icon"><AppIcon :name="iconName" /></span>
       <span class="tn-title" :title="`${toolName} · ${subtitle}`">
         <span class="tn-name">{{ displayName }}</span>
         <span class="tn-sub">{{ subtitle }}</span>
       </span>
       <span class="tn-status" :class="`tn-status-${status}`" :title="`status: ${status}`" />
-      <span v-if="statusMark" class="tn-mark" v-html="statusMark" />
+      <span v-if="statusMark" class="tn-mark"><AppIcon :name="statusMark" /></span>
     </div>
 
     <div v-if="inputs.length > 0 || outputs.length > 0" class="tn-body" :style="{ height: `${bodyHeightPx}px` }">
@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
 import { Handle, Position, type NodeProps } from '@vue-flow/core'
+import AppIcon from '@components/ui/AppIcon.vue'
 import {
   CONNECTION_DRAG_KEY,
   isPortCompatible,
@@ -93,7 +94,7 @@ const statusMark = computed(() =>
 )
 const inputs = computed(() => props.data.ports?.inputs ?? [])
 const outputs = computed(() => props.data.ports?.outputs ?? [])
-const iconSvg = computed(() => CATEGORY_ICONS[category.value])
+const iconName = computed(() => CATEGORY_ICONS[category.value])
 const bodyHeightPx = computed(
   () => PORTS_PADDING_Y_PX * 2 + Math.max(inputs.value.length, outputs.value.length) * PORT_ROW_HEIGHT_PX,
 )

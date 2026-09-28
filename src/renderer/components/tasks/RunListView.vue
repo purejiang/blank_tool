@@ -27,7 +27,7 @@
       />
       <span class="rl-grow" />
       <n-button size="small" quaternary :loading="loading" @click="reload">
-        <template #icon><n-icon size="15"><RefreshCw /></n-icon></template>
+        <template #icon><AppIcon name="refresh" /></template>
         {{ t('workflows.refresh') }}
       </n-button>
       <n-button size="small" quaternary type="error" :disabled="rows.length === 0" @click="clearAll">
@@ -85,7 +85,7 @@
             :title="t('tasks.runs.detailHint')"
             @click="openDetail(item)"
           >
-            <template #icon><n-icon size="14"><ChevronDown /></n-icon></template>
+            <template #icon><AppIcon name="down" /></template>
           </n-button>
         </span>
       </div>
@@ -112,8 +112,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NAlert, NButton, NIcon, NInput, NSelect, useDialog } from 'naive-ui'
-import { ChevronDown, RefreshCw } from 'lucide-vue-next'
+import { NAlert, NButton, NInput, NSelect, useDialog } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import StatusBadge from '@components/ui/StatusBadge.vue'
 import RunDetailDrawer from './RunDetailDrawer.vue'

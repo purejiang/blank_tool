@@ -6,7 +6,7 @@
         <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
       </div>
       <n-tag v-if="showSaved" type="success" size="small" :bordered="false" class="saved-tag">
-        <template #icon><n-icon><CheckCircle /></n-icon></template>
+        <template #icon><AppIcon name="check" /></template>
         {{ t('settings.savedIndicator') }}
       </n-tag>
     </div>
@@ -16,7 +16,7 @@
       <!-- Appearance -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--success-text)"><Monitor /></n-icon>
+          <AppIcon name="monitor" size="lg" style="color: var(--success-text)" />
           <span class="section-title">{{ t('settings.appearance') }}</span>
         </div>
         <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
@@ -34,7 +34,7 @@
       <!-- Behavior -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--primary)"><Settings2 /></n-icon>
+          <AppIcon name="set" size="lg" style="color: var(--primary)" />
           <span class="section-title">{{ t('settings.behavior') }}</span>
         </div>
         <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
@@ -58,7 +58,7 @@
       <!-- Logging -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--success-text)"><FileText /></n-icon>
+          <AppIcon name="file" size="lg" style="color: var(--success-text)" />
           <span class="section-title">{{ t('settings.logging') }}</span>
         </div>
         <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
@@ -72,7 +72,7 @@
       <!-- Paths -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--warning-text)"><FolderOpen /></n-icon>
+          <AppIcon name="folder" size="lg" style="color: var(--warning-text)" />
           <span class="section-title">{{ t('settings.environmentPaths') }}</span>
         </div>
         <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
@@ -80,7 +80,7 @@
             <div class="environ-path-input">
               <n-input :value="displayPaths.runtime" readonly class="environ-path-field" placeholder=".\runtime" />
               <n-button size="small" @click="handleBrowseDirectory('runtime')">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
+                <template #icon><AppIcon name="folder" /></template>
                 {{ t('settings.browse') }}
               </n-button>
             </div>
@@ -89,7 +89,7 @@
             <div class="environ-path-input">
               <n-input :value="displayPaths.server" readonly class="environ-path-field" placeholder=".\cli" />
               <n-button size="small" @click="handleBrowseDirectory('server')">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
+                <template #icon><AppIcon name="folder" /></template>
                 {{ t('settings.browse') }}
               </n-button>
             </div>
@@ -101,12 +101,12 @@
       <!-- 工具路径已收敛到 /tools（docs/07 §2-7 / docs/08 缺口 #19）：这里只留跳转入口 -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--success-text)"><Wrench /></n-icon>
+          <AppIcon name="tool" size="lg" style="color: var(--success-text)" />
           <span class="section-title">{{ t('settings.toolPaths') }}</span>
         </div>
         <div class="more-links">
           <n-button size="small" @click="router.push('/tools')">
-            <template #icon><n-icon size="15"><Wrench /></n-icon></template>
+            <template #icon><AppIcon name="tool" /></template>
             {{ t('settings.toolPathsGo') }}
           </n-button>
           <span class="more-hint">{{ t('settings.toolPathsMoved') }}</span>
@@ -117,12 +117,12 @@
       <n-card :bordered="false" class="settings-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="section-header" style="margin-bottom:0">
-            <n-icon size="18" color="var(--primary)"><HardDrive /></n-icon>
+            <AppIcon name="drive" size="lg" style="color: var(--primary)" />
             <span class="section-title">{{ t('settings.storage') }}</span>
             <span class="storage-total-text">{{ formatFileSize(cacheInfo.total.size) }}</span>
           </div>
           <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
+            <template #icon><AppIcon name="refresh" /></template>
           </n-button>
         </div>
 
@@ -141,7 +141,7 @@
         <div class="storage-rows">
           <div v-for="cat in storageCategories" :key="cat.key" class="storage-row">
             <div class="storage-row-icon" :style="{ color: cat.color }">
-              <n-icon size="16"><component :is="cat.icon" /></n-icon>
+              <AppIcon :name="cat.icon" />
             </div>
             <div class="storage-row-info">
               <div class="storage-row-label">{{ t(cat.label) }}</div>
@@ -155,7 +155,7 @@
               :disabled="getCatSize(cat.key) === 0"
               @click="confirmClear(cat.key)"
             >
-              <template #icon><n-icon size="13"><Trash2 /></n-icon></template>
+              <template #icon><AppIcon name="trash" size="sm" /></template>
             </n-button>
           </div>
         </div>
@@ -171,7 +171,7 @@
             :disabled="cacheInfo.total.size === 0"
             @click="confirmClear('all')"
           >
-            <template #icon><n-icon><Trash2 /></n-icon></template>
+            <template #icon><AppIcon name="trash" /></template>
             {{ t('settings.clearAllStorage') }}
           </n-button>
         </div>
@@ -180,16 +180,16 @@
       <!-- 二级页入口（docs/08 §2.1/§3-S7）：诊断与关于不进侧边栏，从这里进入 -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--text-muted)"><Archive /></n-icon>
+          <AppIcon name="archive" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('settings.more') }}</span>
         </div>
         <div class="more-links">
           <n-button size="small" @click="router.push('/diagnostics')">
-            <template #icon><n-icon size="15"><Activity /></n-icon></template>
+            <template #icon><AppIcon name="activity" /></template>
             {{ t('diagnostics.title') }}
           </n-button>
           <n-button size="small" @click="router.push('/about')">
-            <template #icon><n-icon size="15"><Info /></n-icon></template>
+            <template #icon><AppIcon name="info" /></template>
             {{ t('nav.about') }}
           </n-button>
           <span class="more-hint">{{ t('settings.moreHint') }}</span>
@@ -205,8 +205,8 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, AlertCircle, Archive, FileText, FolderArchive, Activity, Info } from 'lucide-vue-next'
+import { NButton, useDialog } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
@@ -281,9 +281,9 @@ const themeOptions = computed(() => [
 ])
 // Storage categories: key → label, icon, color
 const storageCategories = [
-  { key: 'tasks',   label: 'settings.tasks',   icon: Archive,        color: 'var(--warning-text)' },
-  { key: 'output',  label: 'settings.output',  icon: FolderArchive,  color: 'var(--primary)' },
-  { key: 'logs',    label: 'settings.logs',    icon: FileText,       color: 'var(--success-text)' },
+  { key: 'tasks',   label: 'settings.tasks',   icon: 'archive',      color: 'var(--warning-text)' },
+  { key: 'output',  label: 'settings.output',  icon: 'archive',      color: 'var(--primary)' },
+  { key: 'logs',    label: 'settings.logs',    icon: 'file',         color: 'var(--success-text)' },
 ] as const
 
 const getCatSize = (key: string) => (cacheInfo.value as any)[key]?.size || 0

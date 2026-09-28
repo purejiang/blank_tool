@@ -12,10 +12,10 @@
       <!-- Card 1: Backend Health -->
       <n-card :bordered="false" class="diag-card">
         <div class="section-header">
-          <n-icon size="18" :color="healthColor"><HeartPulse /></n-icon>
+          <AppIcon name="activity" size="lg" :style="{ color: healthColor }" />
           <span class="section-title">{{ t('diagnostics.backendHealth') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshHealth">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
+            <template #icon><AppIcon name="refresh" /></template>
             {{ t('diagnostics.refresh') }}
           </n-button>
         </div>
@@ -30,10 +30,10 @@
       <!-- Card 2: Running Tasks -->
       <n-card :bordered="false" class="diag-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--text-muted)"><ListChecks /></n-icon>
+          <AppIcon name="task" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('diagnostics.runningTasks') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshTasks">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
+            <template #icon><AppIcon name="refresh" /></template>
             {{ t('diagnostics.refresh') }}
           </n-button>
         </div>
@@ -44,10 +44,10 @@
       <!-- Card 3: Log Tail (3 tabs) -->
       <n-card :bordered="false" class="diag-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--text-muted)"><ScrollText /></n-icon>
+          <AppIcon name="file" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('diagnostics.logTail') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshLogTail()">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
+            <template #icon><AppIcon name="refresh" /></template>
             {{ t('diagnostics.refresh') }}
           </n-button>
         </div>
@@ -79,10 +79,10 @@
       <!-- Card 4: Resolved Paths -->
       <n-card :bordered="false" class="diag-card">
         <div class="section-header">
-          <n-icon size="18" color="var(--text-muted)"><FolderTree /></n-icon>
+          <AppIcon name="folder" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('diagnostics.resolvedPaths') }}</span>
           <n-button size="tiny" quaternary class="header-action" @click="refreshPaths">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
+            <template #icon><AppIcon name="refresh" /></template>
             {{ t('diagnostics.refresh') }}
           </n-button>
         </div>
@@ -106,7 +106,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NTag, useDialog, useMessage } from 'naive-ui'
-import { HeartPulse, ListChecks, ScrollText, FolderTree, RefreshCw } from 'lucide-vue-next'
+import AppIcon from '@components/ui/AppIcon.vue'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { useRendererLogStore } from '@stores/rendererLogStore'
 import unifiedApi from '../api/unifiedApi'

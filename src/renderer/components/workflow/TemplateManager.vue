@@ -2,13 +2,13 @@
   <div class="template-manager">
     <n-button size="small" data-test="template-save" @click="openSave">
       <template #icon>
-        <n-icon :size="14"><Save /></n-icon>
+        <AppIcon name="save" />
       </template>
       {{ t('workflow.editor.template.saveAs') }}
     </n-button>
     <n-button size="small" @click="openLoad">
       <template #icon>
-        <n-icon :size="14"><FolderOpen /></n-icon>
+        <AppIcon name="folder" />
       </template>
       {{ t('workflow.editor.template.load') }}
     </n-button>
@@ -106,7 +106,7 @@
               @click="confirmDelete(tpl)"
             >
               <template #icon>
-                <n-icon :size="13"><Trash2 /></n-icon>
+                <AppIcon name="trash" size="sm" />
               </template>
             </n-button>
           </div>
@@ -124,8 +124,8 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NForm, NFormItem, NIcon, NInput, NModal, useDialog, useMessage } from 'naive-ui'
-import { FolderOpen, Save, Trash2 } from 'lucide-vue-next'
+import { NButton, NForm, NFormItem, NInput, NModal, useDialog, useMessage } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 import unifiedApi from '@/api/unifiedApi'
 import { log } from '@utils/logger'
 import {

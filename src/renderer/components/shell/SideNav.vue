@@ -12,7 +12,7 @@
         :aria-expanded="!collapsed"
         @click="emit('toggle')"
       >
-        <n-icon size="14"><ChevronsLeft v-if="!collapsed" /><ChevronsRight v-else /></n-icon>
+        <AppIcon :name="collapsed ? 'chevrons-r' : 'chevrons-l'" />
       </button>
     </div>
 
@@ -27,7 +27,7 @@
         :title="collapsed ? t(item.labelKey) : undefined"
         @click="go(item.key)"
       >
-        <n-icon size="18"><component :is="item.icon" /></n-icon>
+        <AppIcon :name="item.icon" size="lg" />
         <span v-if="!collapsed" class="txt">{{ t(item.labelKey) }}</span>
       </button>
     </nav>
@@ -45,8 +45,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
-import { ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import ThemeToggle from '@components/ui/ThemeToggle.vue'
 import { NAV_ITEMS, activeNavKey } from './navItems'
@@ -72,8 +71,8 @@ function go(key: string) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
 }
 
 .side-nav.collapsed {
@@ -85,7 +84,7 @@ function go(key: string) {
   align-items: center;
   gap: 10px;
   padding: 16px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--sidebar-border);
   flex: none;
 }
 
@@ -179,7 +178,7 @@ function go(key: string) {
 
 .side-theme {
   padding: 8px 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--sidebar-border);
 }
 
 /* 手机：整条侧栏隐藏（导航交给底部 Tab） */

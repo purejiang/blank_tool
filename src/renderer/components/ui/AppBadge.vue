@@ -8,7 +8,15 @@
 </template>
 
 <script setup lang="ts">
-export type BadgeTone = 'primary' | 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+export type BadgeTone =
+  | 'primary'
+  | 'neutral'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'info'
+  /* 点缀紫：只用于「种类」这类标记，不参与语义四色 */
+  | 'purple'
 
 withDefaults(defineProps<{ tone?: BadgeTone }>(), { tone: 'neutral' })
 </script>
@@ -62,5 +70,11 @@ withDefaults(defineProps<{ tone?: BadgeTone }>(), { tone: 'neutral' })
   color: var(--info-text);
   background: var(--info-bg);
   border-color: var(--info-border);
+}
+
+.app-badge--purple {
+  color: var(--purple);
+  background: var(--purple-soft);
+  border-color: transparent;
 }
 </style>

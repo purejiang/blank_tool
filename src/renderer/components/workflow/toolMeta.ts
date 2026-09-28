@@ -152,15 +152,16 @@ export function groupWorkflowTools(tools: WorkflowToolInfo[]): WorkflowToolGroup
 }
 
 /**
- * Static inline SVG icons per category (16x16, stroke uses currentColor).
- * Rendered via v-html — these strings are static, never user-supplied.
+ * 工具类别 → 图标名（对应 assets/icons/sprite.ts 的 symbol）。
+ * 渲染方一律用 <AppIcon :name="..." />；这里只放名字，不再内联 SVG 串
+ * —— 内联串是历史遗留的第三套图标，描边/端点跟设计契约对不上。
  */
 export const CATEGORY_ICONS: Record<ToolCategory, string> = {
-  file: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 1.5h5L13 5v9.5H4.5z"/><path d="M9.5 1.5V5H13"/><path d="M6.5 8.5h4M6.5 11h4"/></svg>',
-  net: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4"/><path d="M8 1.8c2.3 2 2.3 10.4 0 12.4M8 1.8c-2.3 2-2.3 10.4 0 12.4"/></svg>',
-  exec: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4l3.5 4L3 12"/><path d="M8.5 12H13"/></svg>',
-  flow: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.5" r="2"/><circle cx="4.5" cy="12.5" r="2"/><circle cx="11.5" cy="12.5" r="2"/><path d="M4.5 5.5v5"/><path d="M11.5 10.5V10a3.5 3.5 0 0 0-3.5-3.5H6.5"/></svg>',
-  tool: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.5l5.63 3.25v6.5L8 14.5l-5.63-3.25v-6.5z"/></svg>',
+  file: 'file',
+  net: 'globe',
+  exec: 'term',
+  flow: 'wf',
+  tool: 'tool',
 }
 
 /** Human-readable label for a type annotation: "file", or "file/apk" with a subtype. */
@@ -169,15 +170,12 @@ export function portTypeLabel(type: PortTypeRef): string {
 }
 
 /**
- * Inline SVG status marks shown in the ToolNode header during execution
- * (todo 38): a checkmark for success, an X for error.  Static strings,
- * rendered via v-html — never user-supplied.
+ * ToolNode 头部在运行期显示的终态标记 (todo 38)：成功打勾 / 失败打叉。
+ * 只放 sprite 名，渲染方用 <AppIcon :name="..." />。
  */
 export const STATUS_MARKS: Record<'success' | 'error', string> = {
-  success:
-    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>',
-  error:
-    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  success: 'check',
+  error: 'x',
 }
 
 /** Human-readable tooltip for a port label. */

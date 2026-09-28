@@ -11,14 +11,14 @@
  *   --app-green(-bg/-hover)      → 成功语义色（不再兼任主色）
  *   --app-yellow / --app-orange  → 警告语义色
  *   --app-red                    → 错误语义色
- *   --app-purple                 → 收敛到主色（不再有紫色相）
+ *   --app-purple                 → 点缀紫（品牌 logo 渐变、kind 徽章、tagcode）
  *   --app-hover / --app-storage-bg → surface-alt（中性浅底）
- *   --app-text-dim               → text-muted
+ *   --app-text-dim               → text-dim（第 4 档弱化文字）
  */
 :root {
   --app-body-bg: var(--bg);
-  --app-sidebar-bg: var(--surface);
-  --app-sidebar-border: var(--border);
+  --app-sidebar-bg: var(--sidebar-bg);
+  --app-sidebar-border: var(--sidebar-border);
   --app-card-bg: var(--surface);
   --app-card-border: var(--border);
   --app-input-bg: var(--surface);
@@ -26,7 +26,7 @@
   --app-text-primary: var(--text);
   --app-text-secondary: var(--text-secondary);
   --app-text-muted: var(--text-muted);
-  --app-text-dim: var(--text-muted);
+  --app-text-dim: var(--text-dim);
 
   --app-green: var(--success-text);
   --app-green-hover: var(--success-text);
@@ -41,7 +41,8 @@
   --app-orange: var(--warning-text);
   --app-orange-bg: var(--warning-bg);
   --app-orange-border: var(--warning-border);
-  --app-purple: var(--primary);
+  --app-purple: var(--purple);
+  --app-purple-bg: var(--purple-soft);
   --app-red: var(--danger-text);
   --app-red-bg: var(--danger-bg);
 

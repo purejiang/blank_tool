@@ -14,7 +14,7 @@
     <div class="we-center">
       <div class="we-toolbar">
         <n-button size="small" quaternary :title="t('workflow.editor.back')" @click="goBack">
-          <template #icon><n-icon size="15"><ArrowLeft /></n-icon></template>
+          <template #icon><AppIcon name="back" /></template>
         </n-button>
         <button type="button" class="we-title" :title="meta.name" @click="activeTab = 'workflow'">
           {{ meta.name || t('workflow.editor.title') }}
@@ -221,12 +221,11 @@ import { MiniMap } from '@vue-flow/minimap'
 import {
   NAlert,
   NButton,
-  NIcon,
   NModal,
   useDialog,
   useMessage,
 } from 'naive-ui'
-import { ArrowLeft } from 'lucide-vue-next'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import ToolNode from '@components/workflow/ToolNode.vue'
 import WorkflowNodePalette from '@components/workflow/WorkflowNodePalette.vue'

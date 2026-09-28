@@ -92,7 +92,7 @@
 .pv .badge.info { color: var(--app-blue); background: var(--app-blue-bg); }
 .pv .badge.src { color: var(--app-text-muted); background: var(--app-storage-bg); }
 .pv .badge.warn { color: var(--app-orange); background: var(--app-orange-bg); }
-.pv .badge.kind { color: var(--primary); background: var(--primary-soft); }
+.pv .badge.kind { color: var(--app-purple); background: var(--app-purple-bg); }
 
 .pv .dot {
   width: 7px;
@@ -137,8 +137,9 @@
 .pv .tagcode {
   font-family: "Fira Code", Consolas, monospace;
   font-size: 11px;
-  color: var(--primary);
-  background: var(--primary-soft);
+  /* 表达式/变量码：设计契约里是紫点缀，不是主色 */
+  color: var(--app-purple);
+  background: var(--app-purple-bg);
   border-radius: var(--radius-chip);
   padding: 2px 6px;
 }

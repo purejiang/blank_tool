@@ -5,20 +5,19 @@
  * 工具 `/tools`、设置 `/settings`。二级页（`/workflows/editor/x` 等）按
  * **路径前缀**点亮所属模块。
  */
-import { Home, ListTodo, Puzzle, Settings, Workflow } from 'lucide-vue-next'
 
 export interface NavItem {
   key: string
   labelKey: string
-  icon: unknown
+  icon: string
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { key: '/', labelKey: 'nav.home', icon: Home },
-  { key: '/workflows', labelKey: 'nav.workflows', icon: Workflow },
-  { key: '/tasks', labelKey: 'nav.tasks', icon: ListTodo },
-  { key: '/tools', labelKey: 'nav.tools', icon: Puzzle },
-  { key: '/settings', labelKey: 'nav.settings', icon: Settings },
+  { key: '/', labelKey: 'nav.home', icon: 'home' },
+  { key: '/workflows', labelKey: 'nav.workflows', icon: 'wf' },
+  { key: '/tasks', labelKey: 'nav.tasks', icon: 'task' },
+  { key: '/tools', labelKey: 'nav.tools', icon: 'tool' },
+  { key: '/settings', labelKey: 'nav.settings', icon: 'set' },
 ]
 
 /** 当前路径属于哪个一级模块（用于 aria-current 与高亮）。 */

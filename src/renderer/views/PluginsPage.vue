@@ -15,16 +15,16 @@
 
     <div class="plugins-toolbar">
       <n-button size="small" type="primary" @click="openAddDialog">
-        <template #icon><n-icon size="15"><PackagePlus /></n-icon></template>
+        <template #icon><AppIcon name="pkg" /></template>
         {{ t('plugins.add') }}
       </n-button>
       <n-button size="small" :loading="reloading" @click="reload">
-        <template #icon><n-icon size="15"><RotateCw /></n-icon></template>
+        <template #icon><AppIcon name="refresh" /></template>
         {{ t('plugins.reload') }}
       </n-button>
       <span class="plugins-grow" />
       <n-button size="small" quaternary :loading="loading" @click="fetchPlugins">
-        <template #icon><n-icon size="15"><RefreshCw /></n-icon></template>
+        <template #icon><AppIcon name="refresh" /></template>
         {{ t('tools.refresh') }}
       </n-button>
     </div>
@@ -48,7 +48,7 @@
         <div class="plugin-main">
           <div class="plugin-head">
             <span class="plugin-name" :title="plugin.module">{{ plugin.module }}</span>
-            <n-tag size="tiny" :bordered="false" :type="kindTagType(plugin.kind)">
+            <n-tag size="tiny" :bordered="false" :color="kindTagColor(plugin.kind)">
               {{ kindLabel(plugin.kind) }}
             </n-tag>
             <n-tag v-if="plugin.source === 'user'" size="tiny" :bordered="false">
@@ -58,11 +58,11 @@
           </div>
           <div class="plugin-status">
             <template v-if="plugin.loaded">
-              <n-icon size="14" color="var(--success-text)"><CheckCircle /></n-icon>
+              <AppIcon name="check" style="color: var(--success-text)" />
               <span class="plugin-status-ok">{{ t('plugins.status.loaded') }}</span>
             </template>
             <template v-else>
-              <n-icon size="14" color="var(--danger-text)"><AlertCircle /></n-icon>
+              <AppIcon name="alert-circle" style="color: var(--danger-text)" />
               <span class="plugin-status-err">
                 {{ plugin.error === 'not loaded' ? t('plugins.status.notLoaded') : t('plugins.status.failed') }}
                 <template v-if="plugin.error && plugin.error !== 'not loaded'">：{{ plugin.error }}</template>
@@ -121,8 +121,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NAlert, NButton, NForm, NFormItem, NIcon, NInput, NModal, NTag, useDialog } from 'naive-ui'
-import { AlertCircle, CheckCircle, PackagePlus, RefreshCw, RotateCw } from 'lucide-vue-next'
+import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NTag, useDialog } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 import { storeToRefs } from 'pinia'
 
 import ToolsSectionNav from '@components/tools/ToolsSectionNav.vue'
@@ -153,10 +153,15 @@ function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function kindTagType(kind: string) {
-  if (kind === 'shipped-native') return 'info' as const
-  if (kind === 'native') return 'success' as const
-  return 'default' as const
+/**
+ * 插件种类徽章：设计契约里 `.badge kind` 是紫点缀（本地此前用主色，已回正）。
+ * 内置用紫、第三方插件保持中性 —— 两个徽章别抢同一档视觉权重。
+ */
+function kindTagColor(kind: string) {
+  if (kind === 'shipped-native') {
+    return { color: 'var(--purple-soft)', textColor: 'var(--purple)', borderColor: 'transparent' }
+  }
+  return undefined
 }
 
 /** 清单加载器只允许 `shipped-native` / `native`（描述符工具走 tool.*）。 */

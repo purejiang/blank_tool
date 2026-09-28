@@ -4,7 +4,7 @@
   <div class="screen task-editor">
     <div class="page-header">
       <n-button size="small" quaternary :title="t('workflow.editor.back')" @click="goBack">
-        <template #icon><n-icon size="15"><ArrowLeft /></n-icon></template>
+        <template #icon><AppIcon name="back" /></template>
       </n-button>
       <h1 class="page-title">{{ isNew ? t('tasks.editor.createTitle') : t('tasks.editor.editTitle') }}</h1>
       <span class="page-grow" />
@@ -132,8 +132,8 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NAlert, NButton, NIcon, NInput, NSelect, useDialog } from 'naive-ui'
-import { ArrowLeft } from 'lucide-vue-next'
+import { NAlert, NButton, NInput, NSelect, useDialog } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import PortInput from '@components/workflow/PortInput.vue'
 import type { PortJSON, WorkflowDefinitionJSON } from '@components/workflow/serializer'

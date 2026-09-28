@@ -4,7 +4,7 @@
   <div class="task-list">
     <div class="tl-toolbar">
       <n-button size="small" type="primary" @click="emit('new-task')">
-        <template #icon><n-icon size="15"><Plus /></n-icon></template>
+        <template #icon><AppIcon name="plus" /></template>
         {{ t('tasks.new') }}
       </n-button>
       <n-input
@@ -16,7 +16,7 @@
       />
       <span class="tl-grow" />
       <n-button size="small" quaternary :loading="loading" @click="load">
-        <template #icon><n-icon size="15"><RefreshCw /></n-icon></template>
+        <template #icon><AppIcon name="refresh" /></template>
         {{ t('workflows.refresh') }}
       </n-button>
     </div>
@@ -103,8 +103,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NAlert, NButton, NIcon, NInput, NTag, useDialog } from 'naive-ui'
-import { Plus, RefreshCw } from 'lucide-vue-next'
+import { NAlert, NButton, NInput, NTag, useDialog } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import type { TaskDefinitionSummary } from '../../../shared/ipc/protocol'
 import unifiedApi from '@/api/unifiedApi'

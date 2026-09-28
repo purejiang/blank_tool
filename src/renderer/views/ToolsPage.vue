@@ -15,22 +15,22 @@
 
     <div class="tools-toolbar">
       <n-button size="small" :loading="importing === 'pack'" @click="importPack">
-        <template #icon><n-icon size="15"><FolderInput /></n-icon></template>
+        <template #icon><AppIcon name="folder-in" /></template>
         {{ t('tools.importPack') }}
       </n-button>
       <n-button size="small" :loading="importing === 'file'" @click="importDescriptor">
-        <template #icon><n-icon size="15"><FileJson /></n-icon></template>
+        <template #icon><AppIcon name="file" /></template>
         {{ t('tools.importDescriptor') }}
       </n-button>
       <n-dropdown trigger="click" :options="searchModeOptions" @select="setSearchMode">
         <n-button size="small" quaternary>
-          <template #icon><n-icon size="15"><Search /></n-icon></template>
+          <template #icon><AppIcon name="search" /></template>
           {{ t('tools.systemSearch') }}
         </n-button>
       </n-dropdown>
       <span class="tools-grow" />
       <n-button size="small" quaternary :loading="loading" @click="load(true)">
-        <template #icon><n-icon size="15"><RefreshCw /></n-icon></template>
+        <template #icon><AppIcon name="refresh" /></template>
         {{ t('tools.refresh') }}
       </n-button>
     </div>
@@ -60,7 +60,7 @@
     <div v-else class="tools-grid">
       <div v-for="row in filtered" :key="row.name" class="tool-card">
         <div class="tc-head">
-          <span class="tc-icon" :class="`tc-icon--${row.sourceKey}`" v-html="iconFor(row)" />
+          <span class="tc-icon" :class="`tc-icon--${row.sourceKey}`"><AppIcon :name="iconFor(row)" /></span>
           <span class="tc-name" :title="row.name">{{ row.name }}</span>
           <n-tag size="tiny" :bordered="false" :type="row.sourceKey === 'descriptor' ? 'warning' : 'default'">
             {{ t(`tools.source.${row.sourceKey}`) }}
@@ -169,8 +169,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NAlert, NButton, NDropdown, NIcon, NTag, useDialog } from 'naive-ui'
-import { FileJson, FolderInput, RefreshCw, Search } from 'lucide-vue-next'
+import { NAlert, NButton, NDropdown, NTag, useDialog } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import ToolsSectionNav from '@components/tools/ToolsSectionNav.vue'
 import ImportReportDialog, {

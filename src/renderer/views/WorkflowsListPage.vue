@@ -10,11 +10,11 @@
 
     <div class="toolbar">
       <n-button type="primary" size="small" @click="openEditor()">
-        <template #icon><n-icon size="13"><Plus /></n-icon></template>
+        <template #icon><AppIcon name="plus" size="sm" /></template>
         {{ t('workflows.new') }}
       </n-button>
       <n-button size="small" :loading="importing" @click="handleImport">
-        <template #icon><n-icon size="13"><FolderInput /></n-icon></template>
+        <template #icon><AppIcon name="folder-in" size="sm" /></template>
         {{ t('workflows.importLabel') }}
       </n-button>
       <!-- 设计稿的工具栏导出是普通按钮、卡片上没有勾选框：这里用名称下拉选定目标，
@@ -26,29 +26,29 @@
         @select="(name: string) => exportTemplate(name)"
       >
         <n-button size="small" :disabled="templates.length === 0" :title="t('workflows.export.empty')">
-          <template #icon><n-icon size="13"><Download /></n-icon></template>
+          <template #icon><AppIcon name="download" size="sm" /></template>
           {{ t('workflows.exportLabel') }}
         </n-button>
       </n-dropdown>
       <div class="grow">
         <label class="search">
-          <n-icon size="12"><Search /></n-icon>
+          <AppIcon name="search" size="sm" />
           <n-input v-model:value="query" size="small" :placeholder="t('workflows.search')" />
         </label>
       </div>
       <div class="btns">
         <button type="button" class="iconbtn boxed" :title="t('workflows.refresh')" @click="load()">
-          <n-icon size="14"><RefreshCw /></n-icon>
+          <AppIcon name="refresh" />
         </button>
       </div>
     </div>
 
     <div v-if="backendDown" class="notice">
-      <n-icon size="15"><AlertTriangle /></n-icon>
+      <AppIcon name="alert" />
       <span class="grow">{{ t('workflows.backendUnavailable') }}</span>
     </div>
     <div v-if="loadError" class="notice err">
-      <n-icon size="15"><AlertTriangle /></n-icon>
+      <AppIcon name="alert" />
       <span class="grow">{{ t('workflows.loadFailed', { error: loadError }) }}</span>
       <button type="button" class="btn" @click="load()">{{ t('workflows.retry') }}</button>
     </div>
@@ -62,16 +62,16 @@
 
     <!-- 空态：无工作流 -->
     <div v-else-if="templates.length === 0" class="empty">
-      <div class="art"><n-icon size="34"><Workflow /></n-icon></div>
+      <div class="art"><AppIcon name="wf" :size="34" /></div>
       <h3>{{ t('workflows.empty.title') }}</h3>
       <p>{{ t('workflows.empty.hint') }}</p>
       <div class="acts">
         <n-button size="small" :loading="importing" @click="handleImport">
-          <template #icon><n-icon size="13"><FolderInput /></n-icon></template>
+          <template #icon><AppIcon name="folder-in" size="sm" /></template>
           {{ t('workflows.empty.importSamples') }}
         </n-button>
         <n-button size="small" type="primary" @click="openEditor()">
-          <template #icon><n-icon size="13"><Plus /></n-icon></template>
+          <template #icon><AppIcon name="plus" size="sm" /></template>
           {{ t('workflows.empty.create') }}
         </n-button>
       </div>
@@ -106,7 +106,7 @@
             :options="cardMenu(template)"
             @select="(key: string) => onCardAction(key, template)"
           >
-            <n-icon size="15"><MoreHorizontal /></n-icon>
+            <AppIcon name="more" />
           </n-dropdown>
         </span>
       </div>
@@ -166,17 +166,8 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'naive-ui'
-import { NDropdown, NForm, NFormItem, NIcon, NInput, NModal, NSkeleton, NButton } from 'naive-ui'
-import {
-  AlertTriangle,
-  Download,
-  FolderInput,
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-  Search,
-  Workflow,
-} from 'lucide-vue-next'
+import { NDropdown, NForm, NFormItem, NInput, NModal, NSkeleton, NButton } from 'naive-ui'
+import AppIcon from '@components/ui/AppIcon.vue'
 
 import RunInputsDialog from '@components/workflow/RunInputsDialog.vue'
 import ImportReportDialog, {

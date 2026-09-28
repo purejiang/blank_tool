@@ -11,7 +11,7 @@
       :aria-current="item.key === activeKey ? 'page' : undefined"
       @click="go(item.key)"
     >
-      <n-icon size="18"><component :is="item.icon" /></n-icon>
+      <AppIcon :name="item.icon" size="lg" />
       <span class="bottom-tab-label">{{ t(item.labelKey) }}</span>
     </button>
   </nav>
@@ -21,8 +21,8 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
 
+import AppIcon from '@components/ui/AppIcon.vue'
 import { NAV_ITEMS, activeNavKey } from './navItems'
 
 const { t } = useI18n()

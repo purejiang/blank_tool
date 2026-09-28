@@ -16,7 +16,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NIcon } from 'naive-ui'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
 import serviceManager from '@services/ServiceManager'
 
