@@ -113,8 +113,8 @@ describe('appStore config migrations', () => {
     expect(appStore.get('app').autoStart).toBe(false)
     expect(appStore.get('app').minimizeToTray).toBe(false)
 
-    // Version bumped 1 → 7.
-    expect(appStore.get('configVersion')).toBe(7)
+    // Version bumped 1 → 8.
+    expect(appStore.get('configVersion')).toBe(8)
   })
 
   it('empty store gets canonical top-level defaults without throwing', async () => {
@@ -124,7 +124,7 @@ describe('appStore config migrations', () => {
 
     expect(appStore.get('theme')).toBe('auto')
     expect(appStore.get('language')).toBe('zh-CN')
-    expect(appStore.get('configVersion')).toBe(7)
+    expect(appStore.get('configVersion')).toBe(8)
     expect(appStore.get('app')).toEqual({ autoStart: false, minimizeToTray: false })
   })
 
@@ -140,7 +140,7 @@ describe('appStore config migrations', () => {
     const { default: appStore } = await import('../../../src/main/stores/appStore')
 
     expect(appStore.get('enableNotifications')).toBe(false)
-    expect(appStore.get('configVersion')).toBe(7)
+    expect(appStore.get('configVersion')).toBe(8)
   })
 
   it('MIGRATIONS[6] leaves an explicit enableNotifications: false alone', async () => {
@@ -152,6 +152,25 @@ describe('appStore config migrations', () => {
     const { default: appStore } = await import('../../../src/main/stores/appStore')
 
     expect(appStore.get('enableNotifications')).toBe(false)
-    expect(appStore.get('configVersion')).toBe(7)
+    expect(appStore.get('configVersion')).toBe(8)
+  })
+
+  it('MIGRATIONS[7] deletes the dead output/javaPath keys from an existing store', async () => {
+    // WP10 (#19): both keys were declared writable but read nowhere, so a value
+    // left in a user's config file would look like it does something.
+    mocks.setSeed({
+      configVersion: 7,
+      output: { output: 'D:/my-output' },
+      javaPath: 'C:/Program Files/Java/jdk-17/bin/java.exe',
+      theme: 'dark',
+    })
+
+    const { default: appStore } = await import('../../../src/main/stores/appStore')
+
+    expect(appStore.get('output')).toBeUndefined()
+    expect(appStore.get('javaPath')).toBeUndefined()
+    // Unrelated keys survive, and the version advances.
+    expect(appStore.get('theme')).toBe('dark')
+    expect(appStore.get('configVersion')).toBe(8)
   })
 })

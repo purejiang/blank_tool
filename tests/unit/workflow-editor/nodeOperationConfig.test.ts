@@ -298,12 +298,15 @@ function labels(wrapper: ReturnType<typeof mountPanel>): string[] {
   return wrapper.findAll('.form-item-stub').map((fi) => fi.attributes('data-label') ?? '')
 }
 
+/** Selects owned by the panel (excludes the binding picker's pipe selector). */
+function panelSelects(wrapper: ReturnType<typeof mountPanel>) {
+  return wrapper.findAll('.n-select-stub:not(.ep-pipe-select)')
+}
+
 async function clickSave(wrapper: ReturnType<typeof mountPanel>) {
-  // Browse buttons (path ports) are also n-buttons — pick the Save button.
-  const buttons = wrapper.findAll('.n-button-stub')
-  const save = buttons.find((b) => b.text().includes('Save'))
-  expect(save, 'Save button must be rendered').toBeTruthy()
-  await save!.trigger('click')
+  const save = wrapper.find('[data-test="npc-save"]')
+  expect(save.exists(), 'Save button must be rendered').toBe(true)
+  await save.trigger('click')
   await nextTick()
 }
 
@@ -321,8 +324,8 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(makeNode({ tool: 'apktool' }))
     await settled()
 
-    const selects = wrapper.findAll('.n-select-stub')
-    expect(selects.length).toBe(1) // the operation selector only
+    const selects = panelSelects(wrapper)
+    expect(selects.length).toBe(2) // operation selector + failure strategy
     const optionLabels = selects[0].findAll('option').map((o) => o.text())
     expect(optionLabels).toEqual(['decode', 'build'])
     // No operation selected yet → no parameter form rendered.
@@ -421,11 +424,11 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    // No operation selector for builtin/legacy tools.
-    expect(wrapper.findAll('.n-select-stub').length).toBe(0)
+    // No operation selector for builtin/legacy tools — only the failure strategy.
+    expect(panelSelects(wrapper).length).toBe(1)
     expect(labels(wrapper)).toEqual(['path'])
 
-    await wrapper.find('.n-input-stub').setValue('/tmp/x.txt')
+    await wrapper.find('.form-item-stub .n-input-stub').setValue('/tmp/x.txt')
     await clickSave(wrapper)
 
     const data = node.data as Record<string, any>
@@ -475,8 +478,8 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     await wrapper.find('.n-select-stub').setValue('configure')
     await nextTick()
 
-    const selects = wrapper.findAll('.n-select-stub')
-    expect(selects.length).toBe(3) // operation selector + mode + tags
+    const selects = panelSelects(wrapper)
+    expect(selects.length).toBe(4) // operation selector + mode + tags + failure strategy
     expect(selects[1].findAll('option').map((o) => o.text())).toEqual(['alpha', 'beta', 'gamma'])
     expect(selects[2].findAll('option').map((o) => o.text())).toEqual(['x', 'y'])
 
@@ -500,7 +503,7 @@ describe('NodeConfigPanel operation mode (T7)', () => {
 
     await wrapper.find('.n-select-stub').setValue('configure')
     await nextTick()
-    const selects = wrapper.findAll('.n-select-stub')
+    const selects = panelSelects(wrapper)
     await selects[1].setValue('alpha') // required single-select filled
     await clickSave(wrapper)
 
@@ -518,10 +521,10 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    expect(wrapper.findAll('.n-select-stub').length).toBe(0) // no operation selector
+    expect(panelSelects(wrapper).length).toBe(1) // no operation selector, only failure strategy
     expect(labels(wrapper)).toEqual(['input_text', 'count'])
 
-    await wrapper.find('.n-input-stub').setValue('hello')
+    await wrapper.find('.form-item-stub .n-input-stub').setValue('hello')
     await clickSave(wrapper)
 
     const data = node.data as Record<string, any>
@@ -538,8 +541,8 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    const selects = wrapper.findAll('.n-select-stub')
-    expect(selects.length).toBe(1) // operation selector only
+    const selects = panelSelects(wrapper)
+    expect(selects.length).toBe(2) // operation selector + failure strategy
     expect(selects[0].findAll('option').map((o) => o.text())).toEqual(['transform'])
     expect(wrapper.findAll('.form-item-stub').length).toBe(0) // no op selected yet
 
@@ -547,7 +550,7 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     await nextTick()
     expect(labels(wrapper)).toEqual(['value'])
 
-    await wrapper.find('.n-input-stub').setValue('abc')
+    await wrapper.find('.form-item-stub .n-input-stub').setValue('abc')
     await clickSave(wrapper)
 
     const data = node.data as Record<string, any>

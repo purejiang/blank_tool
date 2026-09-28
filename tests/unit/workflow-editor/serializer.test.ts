@@ -7,15 +7,20 @@ import {
   type WorkflowDefinitionJSON,
   type WorkflowMeta,
 } from '@/renderer/components/workflow/serializer'
+import {
+  LAYOUT_X_SPACING,
+  LAYOUT_X_START,
+  LAYOUT_Y,
+} from '@/renderer/components/workflow/graphLayout'
 
 /**
  * Workflow serializer unit tests (todo 40).
  *
  * Wire contract under test: canvas nodes/edges ⇄ WorkflowDefinition JSON.
- * `next` is the sole source of truth for linear control flow; `edges` must
- * always serialize to [] and is only warned about (never fatal) when found
- * non-empty on deserialize. Positions are canvas-only and recomputed on load
- * (x = 400, y = index * 150).
+ * `next` is the sole source of truth for linear control flow. Positions are
+ * canvas-only and recomputed on load (one horizontal row, left→right — see
+ * graphLayout). The retired DAG fields (`edges` / `condition` / `on_success`)
+ * are neither emitted nor carried through a load/save round trip.
  */
 
 /** Minimal canvas node factory (vue-flow Node with workflow data payload). */
@@ -48,7 +53,6 @@ function validChainJSON(): WorkflowDefinitionJSON {
       { id: 'b', type: 'step', tool: 'apk.analyze', params: {}, next: 'c', on_failure: 'fail', retry: 0 },
       { id: 'c', type: 'step', tool: 'file.write', params: {}, next: null, on_failure: 'fail', retry: 0 },
     ],
-    edges: [],
   }
 }
 
@@ -57,7 +61,7 @@ afterEach(() => {
 })
 
 describe('serializeWorkflow', () => {
-  it('serializes 2 nodes + 1 edge into next pointers with edges=[]', () => {
+  it('serializes 2 nodes + 1 edge into next pointers', () => {
     const nodes = [makeNode('a'), makeNode('b')]
     const edges = [makeEdge('a', 'b')]
 
@@ -66,8 +70,11 @@ describe('serializeWorkflow', () => {
     expect(result.nodes).toHaveLength(2)
     expect(result.nodes[0].next).toBe('b')
     expect(result.nodes[1].next).toBeNull() // chain end
-    expect(result.edges).toEqual([]) // ALWAYS empty in linear mode
     expect(result.name).toBe('wf-test')
+    // Retired DAG fields never appear on the wire.
+    expect(result).not.toHaveProperty('edges')
+    expect(result.nodes[0]).not.toHaveProperty('condition')
+    expect(result.nodes[0]).not.toHaveProperty('on_success')
   })
 
   it('serializes a 3-node linear chain with the correct next chain', () => {
@@ -77,13 +84,11 @@ describe('serializeWorkflow', () => {
     const result = serializeWorkflow(nodes, edges, META)
 
     expect(result.nodes.map((n) => n.next)).toEqual(['b', 'c', null])
-    expect(result.edges).toEqual([])
   })
 
   it('serializes an empty canvas as an empty nodes array', () => {
     const result = serializeWorkflow([], [], META)
     expect(result.nodes).toEqual([])
-    expect(result.edges).toEqual([])
     expect(result.name).toBe('wf-test')
   })
 
@@ -134,27 +139,41 @@ describe('deserializeWorkflow', () => {
     expect(restored.meta.version).toBe('1.0')
   })
 
-  it('warns when the JSON has a non-empty edges list but still loads (edges rebuilt from next)', () => {
+  it('warns about retired DAG fields but still loads (edges rebuilt from next)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const json = validChainJSON()
+    const json = validChainJSON() as any
     json.edges = [{ source: 'a', target: 'b' }]
+    json.nodes[0].condition = 'inputs.skip != true'
+    json.nodes[1].on_success = 'c'
 
     const result = deserializeWorkflow(json)
 
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(String(warn.mock.calls[0][0])).toContain('linear mode expects edges: []')
+    const message = String(warn.mock.calls[0][0])
+    expect(message).toContain('retired DAG fields')
+    expect(message).toContain("'condition' on node 'a'")
+    expect(message).toContain("'on_success' on node 'b'")
     // Edges come from next, not the stale edges array.
     expect(result.edges).toHaveLength(2)
     expect(result.edges.map((e) => e.id)).toEqual(['a->b', 'b->c'])
+    // Retired per-node fields are not hydrated onto the canvas either.
+    expect(result.nodes[0].data).not.toHaveProperty('condition')
+    expect(result.nodes[1].data).not.toHaveProperty('on_success')
   })
 
-  it('auto-layout assigns positions x=400, y=index*150', () => {
+  it('does not warn for a document without retired fields', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    deserializeWorkflow(validChainJSON())
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('auto-layout places the chain on one horizontal row (left → right)', () => {
     const result = deserializeWorkflow(validChainJSON())
 
     expect(result.nodes.map((n) => n.position)).toEqual([
-      { x: 400, y: 0 },
-      { x: 400, y: 150 },
-      { x: 400, y: 300 },
+      { x: LAYOUT_X_START, y: LAYOUT_Y },
+      { x: LAYOUT_X_START + LAYOUT_X_SPACING, y: LAYOUT_Y },
+      { x: LAYOUT_X_START + 2 * LAYOUT_X_SPACING, y: LAYOUT_Y },
     ])
   })
 
@@ -166,7 +185,7 @@ describe('deserializeWorkflow', () => {
     expect(() => deserializeWorkflow(json)).toThrowError(/duplicate node id: 'a'/)
   })
 
-  it('preserves non-default advanced node fields for roundtrip fidelity', () => {
+  it('preserves node behavior fields and drops retired node fields', () => {
     const nodes = [
       makeNode('a', 'exec.shell', {
         on_failure: 'skip',
@@ -182,9 +201,12 @@ describe('deserializeWorkflow', () => {
 
     expect(restored.nodes[0].data.on_failure).toBe('skip')
     expect(restored.nodes[0].data.retry).toBe(2)
-    expect(restored.nodes[0].data.condition).toBe('inputs.skip != true')
-    expect(restored.nodes[0].data.on_success).toBe('b')
-    expect(restored.nodes[0].data.type).toBe('branch')
+    // Retired fields are gone from the wire and never come back on the canvas.
+    expect(json.nodes[0]).not.toHaveProperty('condition')
+    expect(json.nodes[0]).not.toHaveProperty('on_success')
+    expect(restored.nodes[0].data).not.toHaveProperty('condition')
+    expect(restored.nodes[0].data).not.toHaveProperty('on_success')
+    expect(restored.nodes[0].data).not.toHaveProperty('type')
     // Defaults are NOT re-stored on canvas data.
     expect(restored.nodes[1].data.on_failure).toBeUndefined()
     expect(restored.nodes[1].data.retry).toBeUndefined()
@@ -197,7 +219,7 @@ describe('validateOnDeserialize', () => {
   })
 
   it('accepts an empty workflow (nodes: []) as valid', () => {
-    expect(validateOnDeserialize({ name: 'empty', nodes: [], edges: [] })).toEqual([])
+    expect(validateOnDeserialize({ name: 'empty', nodes: [] })).toEqual([])
   })
 
   it('reports duplicate node ids', () => {
@@ -216,12 +238,11 @@ describe('validateOnDeserialize', () => {
     expect(errors.some((e) => e.includes("unknown next node 'ghost'"))).toBe(true)
   })
 
-  it('reports a non-empty edges list as an error (linear mode)', () => {
-    const json = validChainJSON()
+  it('ignores a legacy non-empty edges list (it is not part of the schema any more)', () => {
+    const json = validChainJSON() as any
     json.edges = [{ source: 'a', target: 'b' }]
 
-    const errors = validateOnDeserialize(json)
-    expect(errors.some((e) => e.includes("'edges' must be empty in linear mode"))).toBe(true)
+    expect(validateOnDeserialize(json)).toEqual([])
   })
 
   it('reports a missing workflow name', () => {
@@ -288,7 +309,6 @@ describe('select/multi port fields (options + multi) — T2', () => {
       inputs: [{ name: 'path', type: { base: 'file', subtype: null }, required: true }],
       outputs: [],
       nodes: [],
-      edges: [],
     }
 
     const restored = deserializeWorkflow(json)

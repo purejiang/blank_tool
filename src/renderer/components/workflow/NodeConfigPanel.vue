@@ -9,10 +9,27 @@
       </div>
 
       <div class="npc-body">
-        <!-- Operation mode (T7): descriptor tools exposing operations -->
-        <template v-if="isOperationMode">
-          <div class="npc-section">
-            <div class="npc-section-title">{{ t('workflow.editor.config.operation') }}</div>
+        <!-- 基本: node identity (the id is what $nodes.<id> bindings embed) -->
+        <div class="npc-section">
+          <div class="npc-section-title">{{ t('workflow.editor.config.sections.basic') }}</div>
+          <div class="npc-field">
+            <label class="npc-field-label" :title="t('workflow.editor.config.fields.idHint')">
+              {{ t('workflow.editor.config.fields.id') }}
+            </label>
+            <n-input
+              v-model:value="draftId"
+              size="small"
+              data-test="npc-id"
+              @update:value="saveError = null"
+            />
+          </div>
+        </div>
+
+        <!-- 功能: what the node does (tool + operation) -->
+        <div class="npc-section">
+          <div class="npc-section-title">{{ t('workflow.editor.config.sections.capability') }}</div>
+          <div v-if="isOperationMode" class="npc-field">
+            <label class="npc-field-label">{{ t('workflow.editor.config.operation') }}</label>
             <n-select
               v-model:value="selectedOperation"
               size="small"
@@ -25,177 +42,89 @@
               {{ currentOperation.description }}
             </div>
           </div>
+          <div v-else class="npc-empty-inline">{{ toolName }}</div>
+        </div>
 
-          <div class="npc-section">
-            <div class="npc-section-title">{{ t('workflow.editor.config.parameters') }}</div>
-            <div v-if="!selectedOperation" class="npc-empty-inline">
-              {{ t('workflow.editor.config.operationPlaceholder') }}
-            </div>
-            <div v-else-if="operationInputPorts.length === 0" class="npc-empty-inline">
-              {{ t('workflow.editor.config.noParameters') }}
-            </div>
-            <n-form v-else :model="draft" label-placement="top" size="small">
-              <n-form-item
-                v-for="port in operationInputPorts"
-                :key="port.name"
-                :label="port.name"
-                :required="isRequired(port)"
-              >
-                <!-- file / directory: text input + native picker button -->
-                <div v-if="isPathPort(port)" class="npc-path-row">
-                  <n-input
-                    v-model:value="draft[port.name]"
-                    class="npc-path-input"
-                    size="small"
-                    :placeholder="
-                      portTypeOf(port) === 'directory'
-                        ? t('workflow.editor.config.placeholders.directory')
-                        : t('workflow.editor.config.placeholders.file')
-                    "
-                  />
-                  <n-button size="small" @click="browsePath(port)">Browse</n-button>
-                </div>
-                <!-- boolean -->
-                <n-switch
-                  v-else-if="portKindOf(port) === 'boolean'"
-                  v-model:value="draft[port.name]"
-                />
-                <!-- number -->
-                <n-input-number
-                  v-else-if="portKindOf(port) === 'number'"
-                  v-model:value="draft[port.name]"
-                  class="npc-full"
-                  size="small"
-                  :show-button="false"
-                  placeholder="0"
-                />
-                <!-- json: monospace textarea -->
-                <n-input
-                  v-else-if="portKindOf(port) === 'json'"
-                  v-model:value="draft[port.name]"
-                  class="npc-mono"
-                  size="small"
-                  type="textarea"
-                  :autosize="{ minRows: 3, maxRows: 8 }"
-                  :placeholder="t('workflow.editor.config.placeholders.json')"
-                />
-                <!-- single-select (options on a text base, T2 select kinds) -->
-                <n-select
-                  v-else-if="portKindOf(port) === 'single_select'"
-                  v-model:value="draft[port.name]"
-                  size="small"
-                  :options="selectOptions(port)"
-                />
-                <!-- multi-select (options + multi) -->
-                <n-select
-                  v-else-if="portKindOf(port) === 'multi_select'"
-                  v-model:value="draft[port.name]"
-                  size="small"
-                  multiple
-                  :options="selectOptions(port)"
-                />
-                <!-- text / unknown: textarea for longer values -->
-                <n-input
-                  v-else
-                  v-model:value="draft[port.name]"
-                  size="small"
-                  type="textarea"
-                  :autosize="{ minRows: 2, maxRows: 6 }"
-                  :placeholder="t('workflow.editor.config.placeholders.text')"
-                />
-                <template v-if="port.description" #feedback>
-                  <span class="npc-port-desc">{{ port.description }}</span>
-                </template>
-              </n-form-item>
-            </n-form>
+        <!-- 参数: typed bindings for the effective input ports -->
+        <div class="npc-section">
+          <div class="npc-section-title">{{ t('workflow.editor.config.parameters') }}</div>
+          <div v-if="isOperationMode && !selectedOperation" class="npc-empty-inline">
+            {{ t('workflow.editor.config.operationPlaceholder') }}
           </div>
-        </template>
-
-        <!-- Legacy free-form mode: builtin tools + descriptors without operations -->
-        <template v-else>
-          <div class="npc-section">
-            <div class="npc-section-title">Parameters</div>
-            <div v-if="inputPorts.length === 0" class="npc-empty-inline">No parameters</div>
-            <n-form v-else :model="draft" label-placement="top" size="small">
-              <n-form-item
-                v-for="port in inputPorts"
-                :key="port.name"
-                :label="port.name"
-                :required="isRequired(port)"
-              >
-                <!-- file / directory: text input + native picker button -->
-                <div v-if="isPathPort(port)" class="npc-path-row">
-                  <n-input
-                    v-model:value="draft[port.name]"
-                    class="npc-path-input"
-                    size="small"
-                    :placeholder="portTypeOf(port) === 'directory' ? '/path/to/folder' : '/path/to/file'"
-                  />
-                  <n-button size="small" @click="browsePath(port)">Browse</n-button>
-                </div>
-                <!-- boolean -->
-                <n-switch
-                  v-else-if="portTypeOf(port) === 'boolean'"
-                  v-model:value="draft[port.name]"
-                />
-                <!-- number -->
-                <n-input-number
-                  v-else-if="portTypeOf(port) === 'number'"
-                  v-model:value="draft[port.name]"
-                  class="npc-full"
-                  size="small"
-                  :show-button="false"
-                  placeholder="0"
-                />
-                <!-- json: monospace textarea -->
-                <n-input
-                  v-else-if="portTypeOf(port) === 'json'"
-                  v-model:value="draft[port.name]"
-                  class="npc-mono"
-                  size="small"
-                  type="textarea"
-                  :autosize="{ minRows: 3, maxRows: 8 }"
-                  placeholder='{ "key": "value" }'
-                />
-                <!-- text / unknown: textarea for longer values -->
-                <n-input
-                  v-else
-                  v-model:value="draft[port.name]"
-                  size="small"
-                  type="textarea"
-                  :autosize="{ minRows: 2, maxRows: 6 }"
-                  placeholder="Text value (expressions are typed as plain text)"
-                />
-                <template v-if="port.description" #feedback>
-                  <span class="npc-port-desc">{{ port.description }}</span>
-                </template>
-              </n-form-item>
-            </n-form>
+          <div v-else-if="effectiveInputs.length === 0" class="npc-empty-inline">
+            {{ t('workflow.editor.config.noParameters') }}
           </div>
+          <n-form v-else :model="draft" label-placement="top" size="small">
+            <n-form-item
+              v-for="port in effectiveInputs"
+              :key="port.name"
+              :label="port.name"
+              :required="isRequired(port)"
+            >
+              <PortInput
+                :value="draft[port.name]"
+                :port="port"
+                :inputs="workflowInputs"
+                :upstream-nodes="upstreamNodes"
+                @update:value="(value: any) => (draft[port.name] = value)"
+              />
+              <template v-if="port.description" #feedback>
+                <span class="npc-port-desc">{{ port.description }}</span>
+              </template>
+            </n-form-item>
+          </n-form>
+        </div>
 
-          <!-- Output ports: read-only -->
-          <div v-if="outputPorts.length > 0" class="npc-section">
-            <div class="npc-section-title">Outputs</div>
-            <div class="npc-outputs">
-              <div
-                v-for="port in outputPorts"
-                :key="port.name"
-                class="npc-output-row"
-                :title="port.description || ''"
-              >
-                <span class="npc-dot" :class="`npc-dot--${portTypeOf(port)}`" />
-                <span class="npc-output-name">{{ port.name }}</span>
-                <span class="npc-output-type">{{ typeLabel(port) }}</span>
-              </div>
+        <!-- 输出: read-only, so authors can reference them downstream -->
+        <div class="npc-section">
+          <div class="npc-section-title">{{ t('workflow.editor.config.sections.outputs') }}</div>
+          <div v-if="effectiveOutputs.length === 0" class="npc-empty-inline">
+            {{ t('workflow.editor.config.noOutputs') }}
+          </div>
+          <div v-else class="npc-outputs">
+            <div
+              v-for="port in effectiveOutputs"
+              :key="port.name"
+              class="npc-output-row"
+              :title="port.description || ''"
+            >
+              <span class="npc-dot" :class="`npc-dot--${portTypeOf(port)}`" />
+              <span class="npc-output-name">{{ port.name }}</span>
+              <span class="npc-output-type">{{ typeLabel(port) }}</span>
             </div>
           </div>
-        </template>
+        </div>
+
+        <!-- 行为: failure handling (配置, distinct from 功能/参数) -->
+        <div class="npc-section">
+          <div class="npc-section-title">{{ t('workflow.editor.config.sections.behavior') }}</div>
+          <div class="npc-field">
+            <label class="npc-field-label">{{ t('workflow.editor.config.fields.onFailure') }}</label>
+            <n-select v-model:value="draftOnFailure" size="small" :options="failureOptions" />
+          </div>
+          <div class="npc-field" :title="t('workflow.editor.config.fields.retryHint')">
+            <label class="npc-field-label">{{ t('workflow.editor.config.fields.retry') }}</label>
+            <n-input-number
+              v-model:value="draftRetry"
+              class="npc-full"
+              size="small"
+              :min="0"
+              :show-button="false"
+            />
+          </div>
+          <div class="npc-hint">{{ t('workflow.editor.config.fields.retryHint') }}</div>
+        </div>
       </div>
 
       <!-- Commit draft values to node.data (params or operation/inputs) -->
       <div class="npc-footer">
         <div v-if="saveError" class="npc-error">{{ saveError }}</div>
-        <n-button size="small" type="primary" :disabled="!dirty" @click="save">Save</n-button>
+        <n-button size="small" type="error" quaternary data-test="npc-delete" @click="requestDelete">
+          {{ t('workflow.editor.config.delete') }}
+        </n-button>
+        <n-button size="small" type="primary" :disabled="!dirty" data-test="npc-save" @click="save">
+          {{ t('workflow.editor.config.save') }}
+        </n-button>
       </div>
     </template>
   </div>
@@ -204,22 +133,21 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NForm, NFormItem, NInput, NInputNumber, NSwitch, NButton, NSelect } from 'naive-ui'
+import { NForm, NFormItem, NInput, NInputNumber, NButton, NSelect } from 'naive-ui'
 import type { Node } from '@vue-flow/core'
-import serviceManager from '@services/ServiceManager'
 import unifiedApi from '../../api/unifiedApi'
 import { log } from '@utils/logger'
+import PortInput from './PortInput.vue'
 import { portJsonToTypeKey, type PortTypeKey } from './ioAuthoring'
-import type { ToolNodeData, ToolOperation, ToolPorts, WorkflowToolInfo } from './toolMeta'
+import type { ToolNodeData, ToolOperation, ToolPorts, UpstreamNodeRef, WorkflowToolInfo } from './toolMeta'
+import type { PortJSON } from './serializer'
 
 const { t } = useI18n()
 
 /**
- * Loose port shape accepted by this panel. Todo 34's `ToolPort` (toolMeta.ts,
- * mirroring backend `Port.to_dict()`) is structurally assignable to it; the
- * looser form also tolerates bare base-name type strings or missing fields
- * (e.g. nodes rebuilt by the todo 37 deserializer) without crashing.
- * options/multi arrive on operation input ports (T2/T7).
+ * Loose port shape accepted by this panel. `ToolPort` (toolMeta.ts) is
+ * structurally assignable; the looser form also tolerates bare base-name type
+ * strings or missing fields (e.g. nodes rebuilt by the deserializer).
  */
 interface LoosePort {
   name: string
@@ -233,18 +161,29 @@ interface LoosePort {
 const props = defineProps<{
   /** Selected vue-flow node; null/undefined when nothing is selected. */
   node?: Node | null
+  /** Workflow-level inputs, offered as `$inputs.<key>` binding candidates. */
+  workflowInputs?: PortJSON[]
+  /** Nodes that run before this one, offered as `$nodes.<id>.*` candidates. */
+  upstreamNodes?: UpstreamNodeRef[]
+  /** Every node id on the canvas (node-id uniqueness validation). */
+  nodeIds?: string[]
+}>()
+
+const emit = defineEmits<{
+  (e: 'delete', nodeId: string): void
+  (e: 'rename', payload: { oldId: string; newId: string }): void
 }>()
 
 // ---- node data accessors ---------------------------------------------
 // Node payload contract is toolMeta.ts `ToolNodeData`:
 //   { tool, status?, ports?: { inputs, outputs }, params? (legacy mode),
-//     operation?, inputs? (operation mode, T7) }
+//     operation?, inputs? (operation mode, T7), on_failure?, retry? }
 
 const nodeData = computed<Record<string, any>>(() => (props.node?.data ?? {}) as Record<string, any>)
 
 const toolName = computed<string>(() => {
   const d = nodeData.value
-  return String(d.tool || d.toolName || d.label || props.node?.id || 'Unknown tool')
+  return String(d.tool || d.toolName || d.label || props.node?.id || '')
 })
 
 const description = computed<string>(() => {
@@ -259,7 +198,7 @@ function toPorts(raw: unknown): LoosePort[] {
   )
 }
 
-/** Prefer todo 34's nested data.ports; tolerate flat data.inputs/outputs. */
+/** Prefer nested data.ports; tolerate flat data.inputs/outputs. */
 const ports = computed<ToolPorts | null>(() => {
   const d = nodeData.value
   if (d.ports && typeof d.ports === 'object') return d.ports as ToolPorts
@@ -273,10 +212,9 @@ const inputPorts = computed<LoosePort[]>(() => toPorts(ports.value?.inputs))
 const outputPorts = computed<LoosePort[]>(() => toPorts(ports.value?.outputs))
 
 // ---- tool metadata (operation mode, T7) --------------------------------
-// The editor page/palette fetch workflow.list_tools for their own needs; the
-// panel fetches it independently so it stays self-contained (no parent prop).
-// On failure the panel degrades to the legacy free-form params UI — exactly
-// the pre-T7 behavior.
+// The panel fetches workflow.list_tools independently so it stays
+// self-contained (no parent prop). On failure it degrades to the legacy
+// free-form params UI.
 
 const toolList = ref<WorkflowToolInfo[]>([])
 let toolsFetched = false
@@ -322,6 +260,17 @@ const currentOperation = computed<ToolOperation | null>(() => {
 })
 
 const operationInputPorts = computed<LoosePort[]>(() => toPorts(currentOperation.value?.inputs))
+const operationOutputPorts = computed<LoosePort[]>(() => toPorts(currentOperation.value?.outputs))
+
+/** Inputs the parameters section edits: operation inputs, else tool inputs. */
+const effectiveInputs = computed<LoosePort[]>(() =>
+  isOperationMode.value ? operationInputPorts.value : inputPorts.value,
+)
+
+/** Outputs shown read-only: operation outputs when one is selected. */
+const effectiveOutputs = computed<LoosePort[]>(() =>
+  isOperationMode.value && currentOperation.value ? operationOutputPorts.value : outputPorts.value,
+)
 
 function selectOptions(port: LoosePort) {
   const options = Array.isArray(port.options) ? port.options : []
@@ -333,25 +282,24 @@ function selectOptions(port: LoosePort) {
 const KNOWN_BASE_TYPES = ['file', 'directory', 'text', 'number', 'boolean', 'json']
 
 function portTypeOf(port: LoosePort): string {
-  const t = port.type
+  const raw = port.type
   let base = ''
-  if (typeof t === 'string') base = t
-  else if (t && typeof t === 'object' && typeof t.base === 'string') base = t.base
+  if (typeof raw === 'string') base = raw
+  else if (raw && typeof raw === 'object' && typeof raw.base === 'string') base = raw.base
   base = base.toLowerCase()
   // Unknown/missing types degrade to a plain text field (advisory typing, D7).
   return KNOWN_BASE_TYPES.includes(base) ? base : 'text'
 }
 
 /**
- * Widget kind for an operation input port — reuses the T6 reverse mapping:
+ * Widget kind for an input port — reuses the T6 reverse mapping:
  * text base + options (+multi) → single_select / multi_select; bare bases
  * map 1:1; unknown degrades to text.
  */
 function portKindOf(port: LoosePort): PortTypeKey {
-  const base = portTypeOf(port)
   return portJsonToTypeKey({
     name: port.name,
-    type: { base },
+    type: { base: portTypeOf(port) },
     options: Array.isArray(port.options) ? (port.options as string[]) : [],
     multi: port.multi === true,
   })
@@ -359,9 +307,9 @@ function portKindOf(port: LoosePort): PortTypeKey {
 
 function typeLabel(port: LoosePort): string {
   const base = portTypeOf(port)
-  const t = port.type
-  if (t && typeof t === 'object' && typeof t.subtype === 'string' && t.subtype) {
-    return `${base}/${t.subtype}`
+  const raw = port.type
+  if (raw && typeof raw === 'object' && typeof raw.subtype === 'string' && raw.subtype) {
+    return `${base}/${raw.subtype}`
   }
   return base
 }
@@ -371,16 +319,19 @@ function isRequired(port: LoosePort): boolean {
   return port.required !== false
 }
 
-function isPathPort(port: LoosePort): boolean {
-  const t = portTypeOf(port)
-  return t === 'file' || t === 'directory'
-}
-
 // ---- draft editing + save ----------------------------------------------
 
 const draft = reactive<Record<string, any>>({})
+const draftId = ref('')
+const draftOnFailure = ref<'fail' | 'skip'>('fail')
+const draftRetry = ref<number>(0)
 const snapshot = ref('')
 const saveError = ref<string | null>(null)
+
+const failureOptions = computed(() => [
+  { label: t('workflow.editor.config.onFailure.fail'), value: 'fail' },
+  { label: t('workflow.editor.config.onFailure.skip'), value: 'skip' },
+])
 
 function emptyValueFor(kind: string): unknown {
   if (kind === 'boolean') return false
@@ -412,9 +363,15 @@ function fillDraftFrom(
   }
 }
 
-/** Snapshot shape includes the operation selection so op changes flip dirty. */
+/** Snapshot shape includes every editable field so any change flips dirty. */
 function snapshotShape(): string {
-  return JSON.stringify({ op: isOperationMode.value ? selectedOperation.value : null, draft })
+  return JSON.stringify({
+    id: draftId.value,
+    op: isOperationMode.value ? selectedOperation.value : null,
+    onFailure: draftOnFailure.value,
+    retry: draftRetry.value,
+    draft,
+  })
 }
 
 /** Reload the draft whenever another node is selected. */
@@ -422,6 +379,9 @@ function resetDraft() {
   for (const key of Object.keys(draft)) delete draft[key]
   saveError.value = null
   const data = nodeData.value
+  draftId.value = String(props.node?.id ?? '')
+  draftOnFailure.value = data.on_failure === 'skip' ? 'skip' : 'fail'
+  draftRetry.value = typeof data.retry === 'number' && data.retry > 0 ? data.retry : 0
   const storedOp = typeof data.operation === 'string' && data.operation ? data.operation : null
   selectedOperation.value = isOperationMode.value ? storedOp : null
   if (isOperationMode.value && currentOperation.value) {
@@ -434,6 +394,8 @@ function resetDraft() {
 }
 
 watch(() => props.node?.id, resetDraft, { immediate: true })
+// The tool list arrives asynchronously and can flip operation mode.
+watch(operations, resetDraft)
 
 const dirty = computed(() => snapshotShape() !== snapshot.value)
 
@@ -450,19 +412,47 @@ function onOperationChange(name: string | null) {
   }
 }
 
+/** Node-id validation (empty / duplicate / contains the reference separator). */
+function validateId(): string | null {
+  const id = draftId.value.trim()
+  if (!id) return t('workflow.editor.config.errors.idRequired')
+  if (id.includes('.')) return t('workflow.editor.config.errors.idDot')
+  const siblings = props.nodeIds ?? []
+  if (id !== props.node?.id && siblings.includes(id)) {
+    return t('workflow.editor.config.errors.idDuplicate', { id })
+  }
+  return null
+}
+
 /** Commit the draft into node.data (operation mode or legacy params). */
 function save() {
   const node = props.node
   if (!node || !dirty.value) return
+
+  const idError = validateId()
+  if (idError) {
+    saveError.value = idError
+    return
+  }
+
   const data = node.data as ToolNodeData
   if (isOperationMode.value) {
-    saveOperation(data)
+    if (!saveOperation(data)) return
   } else {
     saveLegacy(data)
   }
+
+  data.on_failure = draftOnFailure.value
+  data.retry = draftRetry.value > 0 ? draftRetry.value : 0
+  saveError.value = null
+  snapshot.value = snapshotShape()
+
+  const newId = draftId.value.trim()
+  if (newId && newId !== node.id) emit('rename', { oldId: node.id, newId })
 }
 
-function saveLegacy(data: ToolNodeData) {
+/** @returns false when the draft could not be committed (error already set). */
+function saveLegacy(data: ToolNodeData): boolean {
   const params: Record<string, unknown> = {}
   for (const port of inputPorts.value) {
     const value = draft[port.name]
@@ -475,15 +465,15 @@ function saveLegacy(data: ToolNodeData) {
   // (e.g. a transient metadata-fetch failure fell back to the legacy UI).
   delete data.operation
   delete data.inputs
-  saveError.value = null
-  snapshot.value = snapshotShape()
+  return true
 }
 
-function saveOperation(data: ToolNodeData) {
+/** @returns false when the draft could not be committed (error already set). */
+function saveOperation(data: ToolNodeData): boolean {
   const op = selectedOperation.value
   if (!op) {
     saveError.value = t('workflow.editor.config.errors.noOperation')
-    return
+    return false
   }
   const missing: string[] = []
   for (const port of operationInputPorts.value) {
@@ -491,7 +481,7 @@ function saveOperation(data: ToolNodeData) {
     const isSelect = kind === 'single_select' || kind === 'multi_select'
     if (isSelect && isRequired(port) && selectOptions(port).length === 0) {
       saveError.value = t('workflow.editor.config.errors.noOptions', { name: port.name })
-      return
+      return false
     }
     if (!isRequired(port)) continue
     // boolean is always satisfiable (false is a valid bound value).
@@ -500,7 +490,7 @@ function saveOperation(data: ToolNodeData) {
   }
   if (missing.length > 0) {
     saveError.value = t('workflow.editor.config.errors.missingRequired', { names: missing.join(', ') })
-    return
+    return false
   }
   const inputs: Record<string, unknown> = {}
   for (const port of operationInputPorts.value) {
@@ -512,26 +502,12 @@ function saveOperation(data: ToolNodeData) {
   data.operation = op
   data.inputs = inputs
   delete data.params
-  saveError.value = null
-  snapshot.value = snapshotShape()
+  return true
 }
 
-// ---- native path pickers -------------------------------------------------
-
-async function browsePath(port: LoosePort) {
-  const isDir = portTypeOf(port) === 'directory'
-  try {
-    const svc = (await serviceManager.getService('system')) as any
-    const res = isDir
-      ? await svc.selectDirectory({ title: `Select ${port.name}` })
-      : await svc.selectFile({ title: `Select ${port.name}` })
-    if (res && !res.canceled) {
-      const p = (res.filePath || (res.filePaths && res.filePaths[0]) || '').trim()
-      if (p) draft[port.name] = p
-    }
-  } catch (error) {
-    log.error('NodeConfigPanel: path picker failed', error)
-  }
+/** Deletion goes through the page, which owns the confirmation dialog. */
+function requestDelete() {
+  if (props.node) emit('delete', props.node.id)
 }
 </script>
 
@@ -573,10 +549,18 @@ async function browsePath(port: LoosePort) {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   min-height: 0;
   padding: 12px;
   overflow-y: auto;
+}
+
+/* Section boxes: 功能 / 参数 / 配置 视觉分区 */
+.npc-section {
+  padding: 10px 10px 12px;
+  background: var(--app-input-bg, transparent);
+  border: 1px solid var(--app-card-border);
+  border-radius: 7px;
 }
 
 .npc-section-title {
@@ -586,6 +570,24 @@ async function browsePath(port: LoosePort) {
   letter-spacing: 0.05em;
   color: var(--app-text-secondary);
   text-transform: uppercase;
+}
+
+.npc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.npc-field-label {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+.npc-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--app-text-dim);
 }
 
 .npc-empty-inline {
@@ -600,24 +602,8 @@ async function browsePath(port: LoosePort) {
   color: var(--app-text-dim);
 }
 
-.npc-path-row {
-  display: flex;
-  gap: 6px;
-  width: 100%;
-}
-
-.npc-path-input {
-  flex: 1;
-  min-width: 0;
-}
-
 .npc-full {
   width: 100%;
-}
-
-.npc-mono :deep(.n-input__textarea-el) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-  font-size: 12px;
 }
 
 .npc-port-desc {
@@ -654,18 +640,16 @@ async function browsePath(port: LoosePort) {
 }
 
 .npc-dot--json {
-  /* --app-orange added alongside todo 34's port palette; yellow fallback */
   background: var(--app-orange, var(--app-yellow));
 }
 
 .npc-dot--number {
-  /* --app-purple added alongside todo 34's port palette; muted fallback */
   background: var(--app-purple, var(--app-text-muted));
 }
 
 .npc-output-name {
-  font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
   color: var(--app-text-primary);
 }
 
@@ -678,7 +662,6 @@ async function browsePath(port: LoosePort) {
 .npc-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
   padding: 10px 12px;
   border-top: 1px solid var(--node-border);

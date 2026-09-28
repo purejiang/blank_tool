@@ -81,12 +81,20 @@ describe('appStore config defaults', () => {
   })
 
   it('empty store falls back to canonical schema defaults for legacy settings keys', async () => {
-    const { default: appStore } = await import('../../../src/main/stores/appStore')
+    const { default: appStore, isWritableConfigKey } = await import('../../../src/main/stores/appStore')
 
     expect(appStore.get('language')).toBe('zh-CN')
     expect(appStore.get('theme')).toBe('auto')
     expect(appStore.get('enableNotifications')).toBe(false)
     expect(appStore.get('autoDeleteOutputOnTaskRemove')).toBe(false)
-    expect(appStore.get('javaPath')).toBe('')
+
+    // WP10 (#19): `output.output` / `javaPath` were writable but read nowhere
+    // (data dirs are fixed subdirectories of getAppLocalDataPath()). They must
+    // not come back as schema defaults, and must no longer be writable.
+    expect(appStore.get('output')).toBeUndefined()
+    expect(appStore.get('javaPath')).toBeUndefined()
+    expect(isWritableConfigKey('output')).toBe(false)
+    expect(isWritableConfigKey('output.output')).toBe(false)
+    expect(isWritableConfigKey('javaPath')).toBe(false)
   })
 })

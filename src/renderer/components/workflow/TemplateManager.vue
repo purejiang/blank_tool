@@ -1,56 +1,60 @@
 <template>
   <div class="template-manager">
-    <n-button size="small" @click="openSave">
+    <n-button size="small" data-test="template-save" @click="openSave">
       <template #icon>
         <n-icon :size="14"><Save /></n-icon>
       </template>
-      Save as Template
+      {{ t('workflow.editor.template.saveAs') }}
     </n-button>
     <n-button size="small" @click="openLoad">
       <template #icon>
         <n-icon :size="14"><FolderOpen /></n-icon>
       </template>
-      Load Template
+      {{ t('workflow.editor.template.load') }}
     </n-button>
 
-    <!-- Save as Template: name + description dialog (todo 39) -->
+    <!-- Save as Template: name + description dialog -->
     <n-modal
       v-model:show="saveVisible"
       preset="card"
-      title="Save as Template"
+      :title="t('workflow.editor.template.saveTitle')"
       style="width: 420px"
       :mask-closable="!saving"
     >
       <n-form :model="saveForm" label-placement="top" size="small">
         <n-form-item
-          label="Name"
+          :label="t('workflow.editor.template.name')"
           required
           :validation-status="nameInvalid ? 'error' : undefined"
           :feedback="nameInvalid
-            ? 'Template name is required'
-            : 'Stored as a JSON file — avoid path characters (\\, /, :)'"
+            ? t('workflow.editor.template.nameRequired')
+            : t('workflow.editor.template.nameHint')"
         >
           <n-input
             v-model:value="saveForm.name"
-            placeholder="my-workflow"
+            :placeholder="t('workflow.editor.info.namePlaceholder')"
             :disabled="saving"
             @input="nameInvalid = false"
           />
         </n-form-item>
-        <n-form-item label="Description">
+        <n-form-item :label="t('workflow.editor.template.description')">
           <n-input
             v-model:value="saveForm.description"
             type="textarea"
             :autosize="{ minRows: 2, maxRows: 5 }"
-            placeholder="What this workflow does (optional)"
+            :placeholder="t('workflow.editor.template.descriptionPlaceholder')"
             :disabled="saving"
           />
         </n-form-item>
       </n-form>
       <template #footer>
         <div class="tm-actions">
-          <n-button :disabled="saving" @click="saveVisible = false">Cancel</n-button>
-          <n-button type="primary" :loading="saving" @click="submitSave">Save</n-button>
+          <n-button :disabled="saving" @click="saveVisible = false">
+            {{ t('workflow.editor.template.cancel') }}
+          </n-button>
+          <n-button type="primary" :loading="saving" @click="submitSave">
+            {{ t('workflow.editor.template.save') }}
+          </n-button>
         </div>
       </template>
     </n-modal>
@@ -59,15 +63,15 @@
     <n-modal
       v-model:show="loadVisible"
       preset="card"
-      title="Load Template"
+      :title="t('workflow.editor.template.loadTitle')"
       style="width: 560px"
     >
-      <div v-if="listLoading" class="tm-status">Loading templates…</div>
+      <div v-if="listLoading" class="tm-status">{{ t('workflow.editor.template.loading') }}</div>
       <div v-else-if="listError" class="tm-status tm-status-error" :title="listError">
         {{ listError }}
       </div>
       <div v-else-if="templates.length === 0" class="tm-status">
-        No saved templates yet — use “Save as Template” to create one.
+        {{ t('workflow.editor.template.empty') }}
       </div>
       <div v-else class="tm-list">
         <div v-for="tpl in templates" :key="tpl.name" class="tm-item">
@@ -75,7 +79,8 @@
             <div class="tm-item-head">
               <span class="tm-item-name" :title="tpl.name">{{ tpl.name }}</span>
               <span class="tm-item-meta">
-                {{ tpl.node_count }} node(s) · updated {{ formatTime(tpl.updated_at) }}
+                {{ t('workflow.editor.template.nodeCount', { count: tpl.node_count }) }} ·
+                {{ t('workflow.editor.template.updated', { time: formatTime(tpl.updated_at) }) }}
               </span>
             </div>
             <div v-if="tpl.description" class="tm-item-desc" :title="tpl.description">
@@ -90,13 +95,13 @@
               :disabled="busyName !== null && busyName !== tpl.name"
               @click="loadTemplate(tpl)"
             >
-              Load
+              {{ t('workflow.editor.template.loadAction') }}
             </n-button>
             <n-button
               size="small"
               type="error"
               quaternary
-              title="Delete template"
+              :title="t('workflow.editor.template.delete')"
               :disabled="busyName !== null"
               @click="confirmDelete(tpl)"
             >
@@ -109,7 +114,7 @@
       </div>
       <template #footer>
         <div class="tm-actions">
-          <n-button @click="loadVisible = false">Close</n-button>
+          <n-button @click="loadVisible = false">{{ t('workflow.editor.template.close') }}</n-button>
         </div>
       </template>
     </n-modal>
@@ -118,6 +123,7 @@
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NButton, NForm, NFormItem, NIcon, NInput, NModal, useDialog, useMessage } from 'naive-ui'
 import { FolderOpen, Save, Trash2 } from 'lucide-vue-next'
 import unifiedApi from '@/api/unifiedApi'
@@ -129,8 +135,8 @@ import {
 
 /**
  * Canvas state emitted on template load — the exact shape returned by
- * the serializer's deserializeWorkflow (todo 37). The parent page applies
- * it to the vue-flow canvas (with ToolNode hydration, see the page).
+ * the serializer's deserializeWorkflow. The parent page applies it to the
+ * vue-flow canvas (with ToolNode hydration, see the page).
  */
 export type TemplateLoadPayload = ReturnType<typeof deserializeWorkflow>
 
@@ -152,14 +158,27 @@ const props = defineProps<{
    * tags are stored empty (tags UI is deliberately out of MVP scope).
    */
   getDefinition: () => WorkflowDefinitionJSON | null
+  /**
+   * Non-null when the canvas cannot be persisted (extra outgoing edges, see
+   * the linear-model guard). Checked on open AND on submit, so the guard is
+   * enforced at both ends; the dialog is closed on a block so the canvas —
+   * hidden behind the mask — becomes reachable again.
+   */
+  blockedReason?: () => string | null
+  /** Initial dialog values: the workflow's own name/description. */
+  defaultName?: string
+  defaultDescription?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'load', payload: TemplateLoadPayload): void
+  /** The template that was actually persisted (name may differ from meta). */
+  (e: 'saved', info: { name: string; description: string }): void
 }>()
 
 const message = useMessage()
 const dialog = useDialog()
+const { t } = useI18n()
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -174,18 +193,29 @@ const saving = ref(false)
 const nameInvalid = ref(false)
 const saveForm = reactive({ name: '', description: '' })
 
+/** Guard check shared by openSave and submitSave. */
+function blocked(): boolean {
+  const reason = props.blockedReason?.() ?? null
+  if (!reason) return false
+  saveVisible.value = false
+  message.error(`${t('workflow.editor.template.blockedTitle')}: ${reason}`)
+  return true
+}
+
 function openSave() {
+  if (blocked()) return
   if (!props.getDefinition()) {
-    message.warning('The canvas is empty — add nodes before saving a template')
+    message.warning(t('workflow.editor.template.emptyCanvas'))
     return
   }
-  saveForm.name = ''
-  saveForm.description = ''
+  saveForm.name = props.defaultName ?? ''
+  saveForm.description = props.defaultDescription ?? ''
   nameInvalid.value = false
   saveVisible.value = true
 }
 
 async function submitSave() {
+  if (blocked()) return
   const name = saveForm.name.trim()
   if (!name) {
     nameInvalid.value = true
@@ -195,7 +225,7 @@ async function submitSave() {
   if (!definition) {
     // Canvas was emptied while the dialog was open.
     saveVisible.value = false
-    message.warning('The canvas is empty — nothing to save')
+    message.warning(t('workflow.editor.template.emptyCanvas'))
     return
   }
   saving.value = true
@@ -210,11 +240,12 @@ async function submitSave() {
       description,
       tags: [],
     })
-    message.success(`Template “${name}” saved`)
+    emit('saved', { name, description })
+    message.success(t('workflow.editor.template.saved', { name }))
     saveVisible.value = false
   } catch (err) {
     log.error(`Failed to save template “${name}”:`, err)
-    message.error(`Failed to save template: ${errMsg(err)}`)
+    message.error(t('workflow.editor.template.saveFailed', { error: errMsg(err) }))
   } finally {
     saving.value = false
   }
@@ -244,7 +275,7 @@ async function loadTemplates() {
     templates.value = Array.isArray(result?.templates) ? result.templates : []
   } catch (err) {
     log.error('Failed to list templates:', err)
-    listError.value = `Failed to load templates: ${errMsg(err)}`
+    listError.value = t('workflow.editor.template.listFailed', { error: errMsg(err) })
     templates.value = []
   } finally {
     listLoading.value = false
@@ -261,15 +292,15 @@ async function loadTemplate(tpl: TemplateInfo) {
     if (!result?.definition || typeof result.definition !== 'object') {
       throw new Error(`template “${tpl.name}” returned no definition`)
     }
-    // Throws on a structurally invalid definition (serializer validation,
-    // todo 37) — surfaced as an error toast below.
+    // Throws on a structurally invalid definition (serializer validation) —
+    // surfaced as an error toast below.
     const payload = deserializeWorkflow(result.definition)
     emit('load', payload)
-    message.success(`Template “${tpl.name}” loaded`)
+    message.success(t('workflow.editor.template.loaded', { name: tpl.name }))
     loadVisible.value = false
   } catch (err) {
     log.error(`Failed to load template “${tpl.name}”:`, err)
-    message.error(`Failed to load template: ${errMsg(err)}`)
+    message.error(t('workflow.editor.template.loadFailed', { error: errMsg(err) }))
   } finally {
     busyName.value = null
   }
@@ -277,10 +308,10 @@ async function loadTemplate(tpl: TemplateInfo) {
 
 function confirmDelete(tpl: TemplateInfo) {
   dialog.warning({
-    title: 'Delete Template',
-    content: `Delete template “${tpl.name}”? This cannot be undone.`,
-    positiveText: 'Delete',
-    negativeText: 'Cancel',
+    title: t('workflow.editor.template.deleteTitle'),
+    content: t('workflow.editor.template.deleteContent', { name: tpl.name }),
+    positiveText: t('workflow.editor.template.confirmDelete'),
+    negativeText: t('workflow.editor.template.cancel'),
     onPositiveClick: () => {
       void deleteTemplate(tpl)
     },
@@ -291,12 +322,12 @@ async function deleteTemplate(tpl: TemplateInfo) {
   busyName.value = tpl.name
   try {
     await unifiedApi.call('template.delete', { name: tpl.name })
-    message.success(`Template “${tpl.name}” deleted`)
+    message.success(t('workflow.editor.template.deleted', { name: tpl.name }))
     // Refresh the list from the store (source of truth).
     await loadTemplates()
   } catch (err) {
     log.error(`Failed to delete template “${tpl.name}”:`, err)
-    message.error(`Failed to delete template: ${errMsg(err)}`)
+    message.error(t('workflow.editor.template.deleteFailed', { error: errMsg(err) }))
   } finally {
     busyName.value = null
   }
@@ -314,8 +345,7 @@ function formatTime(iso: string): string {
 /*
  * Toolbar row fragment: mounted in the page's .we-toolbar. Colors are the app
  * theme tokens (themes.css); modal content inherits the Naive UI theme from
- * App.vue's n-config-provider. List rows mirror the palette item styling
- * (WorkflowNodePalette) for a consistent monochrome MVP surface.
+ * App.vue's n-config-provider.
  */
 .template-manager {
   display: flex;

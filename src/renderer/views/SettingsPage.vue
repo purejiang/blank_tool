@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-page">
+  <div class="screen settings-page">
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('settings.title') }}</h1>
@@ -45,9 +45,12 @@
             <n-switch v-model:value="general.autoDeleteOutputOnTaskRemove" @update:value="saveGeneral" />
           </n-form-item>
           <n-form-item :label="t('settings.timeout')">
-            <n-input-number v-model:value="general.timeout" :min="10" :max="600" :step="10" @update:value="saveGeneral" style="width: 120px">
-              <template #suffix>{{ t('settings.seconds') }}</template>
-            </n-input-number>
+            <div>
+              <n-input-number v-model:value="timeoutSeconds" :min="30" :max="3600" :step="10" @update:value="saveTimeout" style="width: 140px">
+                <template #suffix>{{ t('settings.seconds') }}</template>
+              </n-input-number>
+              <div class="form-hint">{{ t('settings.timeoutHint') }}</div>
+            </div>
           </n-form-item>
         </n-form>
       </n-card>
@@ -84,52 +87,29 @@
           </n-form-item>
           <n-form-item :label="t('settings.backend')">
             <div class="environ-path-input" style="display:flex;align-items:center;gap:8px">
-              <n-input :value="displayPaths.server" readonly style="width: 320px" placeholder=".\backend" />
+              <n-input :value="displayPaths.server" readonly style="width: 320px" placeholder=".\cli" />
               <n-button size="small" @click="handleBrowseDirectory('server')">
                 <template #icon><n-icon><FolderOpen /></n-icon></template>
                 {{ t('settings.browse') }}
               </n-button>
             </div>
           </n-form-item>
+          <div class="form-hint" style="margin-bottom:8px">{{ t('settings.pathsRestartHint') }}</div>
         </n-form>
       </n-card>
 
-      <!-- Tool Paths -->
+      <!-- 工具路径已收敛到 /tools（docs/07 §2-7 / docs/08 缺口 #19）：这里只留跳转入口 -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
           <n-icon size="18" color="#22C55E"><Wrench /></n-icon>
           <span class="section-title">{{ t('settings.toolPaths') }}</span>
         </div>
-        <div class="tool-path-list">
-          <div v-for="tool in toolList" :key="tool.name" class="tool-path-row">
-            <span class="tool-path-name">{{ tool.name }}</span>
-            <div class="tool-path-input-wrap">
-              <n-input
-                size="small"
-                :value="toolPaths[tool.name] || tool.defaultPath"
-                readonly
-                :placeholder="tool.defaultPath || ''"
-                style="width: 320px"
-              />
-              <n-button size="small" @click="handleBrowseToolPath(tool.name)">
-                <template #icon><n-icon><FolderOpen /></n-icon></template>
-                {{ t('settings.browse') }}
-              </n-button>
-            </div>
-            <n-button
-              v-if="customPathOverrides[tool.name]"
-              size="tiny"
-              quaternary
-              type="warning"
-              @click="handleResetToolPath(tool.name)"
-              :loading="resettingTool === tool.name"
-            >
-              {{ t('settings.reset') }}
-            </n-button>
-            <n-icon v-if="validatingTool === tool.name" size="16"><Loader2 class="spin" /></n-icon>
-            <n-icon v-else-if="tool.status === 'available'" size="16" color="#22C55E"><CheckCircle /></n-icon>
-            <n-icon v-else size="16" color="#F59E0B"><AlertCircle /></n-icon>
-          </div>
+        <div class="more-links">
+          <n-button size="small" @click="router.push('/tools')">
+            <template #icon><n-icon size="15"><Wrench /></n-icon></template>
+            {{ t('settings.toolPathsGo') }}
+          </n-button>
+          <span class="more-hint">{{ t('settings.toolPathsMoved') }}</span>
         </div>
       </n-card>
 
@@ -197,6 +177,25 @@
         </div>
       </n-card>
 
+      <!-- 二级页入口（docs/08 §2.1/§3-S7）：诊断与关于不进侧边栏，从这里进入 -->
+      <n-card :bordered="false" class="settings-card">
+        <div class="section-header">
+          <n-icon size="18" color="#64748B"><Archive /></n-icon>
+          <span class="section-title">{{ t('settings.more') }}</span>
+        </div>
+        <div class="more-links">
+          <n-button size="small" @click="router.push('/diagnostics')">
+            <template #icon><n-icon size="15"><Activity /></n-icon></template>
+            {{ t('diagnostics.title') }}
+          </n-button>
+          <n-button size="small" @click="router.push('/about')">
+            <template #icon><n-icon size="15"><Info /></n-icon></template>
+            {{ t('nav.about') }}
+          </n-button>
+          <span class="more-hint">{{ t('settings.moreHint') }}</span>
+        </div>
+      </n-card>
+
     </div>
 
   </div>
@@ -204,9 +203,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, inject } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useDialog } from 'naive-ui'
-import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, AlertCircle, Archive, FileText, FolderArchive } from 'lucide-vue-next'
+import { FolderOpen, Trash2, RefreshCw, Cpu, Monitor, Layers, Settings2, HardDrive, CheckCircle, Wrench, AlertCircle, Archive, FileText, FolderArchive, Activity, Info } from 'lucide-vue-next'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
@@ -214,6 +214,7 @@ import { useSystemStore, useToolStore } from '@stores/index'
 import { storeToRefs } from 'pinia'
 
 const { t } = useI18n()
+const router = useRouter()
 const { showSuccess, showError } = useNotification()
 const dialog = useDialog()
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
@@ -245,7 +246,10 @@ const triggerSaved = () => {
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: false, autoDeleteOutputOnTaskRemove: false, timeout: 300 })
+const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: false, autoDeleteOutputOnTaskRemove: false })
+// 请求超时存的是 `commands.timeout`（毫秒），主进程在启动时读一次 → 需要重启应用生效。
+// 界面上用秒（更易读），保存时换算成毫秒；下限 30s 与 src/main/ipc/index.ts 的 >= 30000 判定对齐。
+const timeoutSeconds = ref(300)
 const logLevel = ref('info')
 const logLevelOptions = [
   { label: 'Debug', value: 'debug' },
@@ -253,7 +257,7 @@ const logLevelOptions = [
   { label: 'Warn', value: 'warn' },
   { label: 'Error', value: 'error' },
 ]
-const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\backend' })
+const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\cli' })
 const displayPaths = reactive({ runtime: '', server: '' })
 const cacheInfo = ref({
   tasks: { size: 0, files: 0 },
@@ -327,6 +331,16 @@ const loadSettings = async () => {
         }
       }
     } catch {}
+    // Load the request timeout from appConfig (commands.timeout, milliseconds)
+    try {
+      const commandsConfig = await window.electronAPI.appConfig.get('commands')
+      const storedMs = commandsConfig && typeof commandsConfig === 'object'
+        ? (commandsConfig as Record<string, unknown>).timeout
+        : undefined
+      if (typeof storedMs === 'number' && storedMs >= 30000) {
+        timeoutSeconds.value = Math.round(storedMs / 1000)
+      }
+    } catch {}
   } catch (e) { log.error('Failed to load settings:', e) }
 }
 
@@ -346,6 +360,20 @@ const saveLogLevel = async (value: string) => {
     await window.electronAPI.appConfig.set('logs.level', value)
     triggerSaved()
   } catch (e) { log.error('Failed to save log level:', e) }
+}
+
+// 写 `commands.timeout`（毫秒），不是顶层 `timeout`：后者不在 appStore schema 里，
+// `setMany` 会判为非法键（旧实现因此静默丢失该设置）。下限 30s 与 src/main/ipc/index.ts
+// 的 `>= 30000` 判定一致，所以 UI 接受的值一定生效。见 docs/08 §7 缺口 #19。
+const saveTimeout = async (seconds: number | null) => {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 30) {
+    timeoutSeconds.value = 300
+    return
+  }
+  try {
+    await window.electronAPI.appConfig.set('commands.timeout', Math.round(seconds * 1000))
+    triggerSaved()
+  } catch (e) { showError(t('settings.saveFailed'), (e as Error).message) }
 }
 
 const savePaths = async () => {
@@ -472,6 +500,7 @@ onMounted(() => {
 .settings-card { background: var(--app-card-bg); border-radius: 10px; }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; justify-content: flex-start; }
 .section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
+.form-hint { font-size: 11px; color: var(--app-text-dim); margin-top: 4px; }
 .storage-total-text { font-size: 16px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 12px; }
 .storage-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }
 .storage-bar-seg { height: 100%; transition: width 0.3s ease; }
@@ -483,6 +512,8 @@ onMounted(() => {
 .storage-row-label { font-size: 13px; font-weight: 600; color: var(--app-text-primary); }
 .storage-row-sub { font-size: 11px; color: var(--app-text-muted); margin-top: 1px; }
 .info-grid { display: flex; flex-direction: column; gap: 10px; }
+.more-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.more-hint { font-size: 11px; color: var(--app-text-dim); }
 .info-row { display: flex; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(51,65,85,0.3); }
 .info-row:last-child { border-bottom: none; }
 .info-label { font-size: 13px; color: var(--app-text-muted); min-width: 100px; }

@@ -1,30 +1,64 @@
 <template>
-  <div class="workflow-editor-page">
-    <!-- Left panel: tool palette (todo 34) -->
-    <WorkflowNodePalette />
+  <div class="screen editor workflow-editor-page">
+    <!-- Left panel: tool palette -->
+    <WorkflowNodePalette @append="onAppendTool" />
 
-    <!-- Center: toolbar + execution banner + vue-flow canvas -->
+    <!-- Center: toolbar + banners + vue-flow canvas -->
     <div class="we-center">
       <div class="we-toolbar">
-        <span class="we-title" :title="meta.name">{{ meta.name }}</span>
-        <!-- Template save/load/delete (todo 39) -->
-        <TemplateManager :get-definition="serializeCanvas" @load="onTemplateLoad" />
-        <!-- Workflow-level inputs/outputs authoring (T6) -->
-        <n-button size="small" @click="showIoPanel = true">
-          {{ t('workflow.editor.io.title') }}
+        <n-button size="small" quaternary :title="t('workflow.editor.back')" @click="goBack">
+          <template #icon><n-icon size="15"><ArrowLeft /></n-icon></template>
+        </n-button>
+        <button type="button" class="we-title" :title="meta.name" @click="activeTab = 'workflow'">
+          {{ meta.name || t('workflow.editor.title') }}
+        </button>
+        <span class="we-state" :class="`we-state--${runState}`">{{ stateLabel }}</span>
+        <TemplateManager
+          :get-definition="serializeCanvas"
+          :blocked-reason="saveBlockedReason"
+          :default-name="meta.name"
+          :default-description="meta.description ?? ''"
+          @load="onTemplateLoad"
+          @saved="onTemplateSaved"
+        />
+        <n-button size="small" @click="openProblems">
+          {{ t('workflow.editor.problems.button') }}
+          <template v-if="problemCount >= 0">&nbsp;{{ problemCount }}</template>
         </n-button>
         <n-button
+          v-if="!isRunning"
           size="small"
           type="primary"
-          :loading="isRunning"
-          :disabled="isRunning || nodes.length === 0"
+          :disabled="nodes.length === 0"
           @click="onRunClick"
         >
-          Run
+          {{ t('workflow.editor.run') }}
+        </n-button>
+        <n-button v-else size="small" type="warning" @click="onCancelClick">
+          {{ t('workflow.editor.cancel') }}
         </n-button>
       </div>
 
-      <!-- Terminal execution result banner (todo 38); closable, persists until next Run -->
+      <!-- Linear-model guard: extra outgoing edges cannot be saved -->
+      <n-alert
+        v-if="edgeConflicts.length > 0"
+        class="we-banner"
+        type="warning"
+        :show-icon="true"
+        data-test="edge-guard"
+      >
+        <div class="we-guard-title">
+          {{ t('workflow.editor.guard.title', { count: edgeConflicts.length }) }}
+        </div>
+        <div class="we-guard-edges">
+          <code v-for="conflict in edgeConflicts" :key="`${conflict.source}->${conflict.target}`">
+            {{ conflict.source }} → {{ conflict.target }}
+          </code>
+        </div>
+        <div class="we-guard-hint">{{ t('workflow.editor.guard.hint') }}</div>
+      </n-alert>
+
+      <!-- Terminal execution result banner; closable, persists until next Run -->
       <n-alert
         v-if="banner"
         class="we-banner"
@@ -40,6 +74,8 @@
           :node-types="nodeTypes"
           :min-zoom="0.2"
           :max-zoom="4"
+          :default-edge-options="defaultEdgeOptions"
+          :fit-view-on-init="true"
           @connect="onConnect"
           @connect-start="onConnectStart"
           @connect-end="onConnectEnd"
@@ -49,104 +85,116 @@
           <MiniMap />
         </VueFlow>
         <div v-if="nodes.length === 0" class="we-empty-hint">
-          Empty workflow — drag a tool from the palette to get started
+          {{ t('workflow.editor.emptyCanvas') }}
         </div>
       </main>
     </div>
 
-    <!-- Right panel: node config (todo 36), shown while a node is selected -->
-    <aside v-if="selectedNode" class="we-panel we-config">
-      <div class="we-panel-header">Node Config</div>
-      <NodeConfigPanel :node="selectedNode" />
+    <!-- Right dock: always visible, 工作流 ｜ 节点 -->
+    <aside class="we-dock">
+      <div class="we-dock-tabs">
+        <button
+          type="button"
+          class="we-dock-tab"
+          :class="{ 'we-dock-tab--active': activeTab === 'workflow' }"
+          @click="activeTab = 'workflow'"
+        >
+          {{ t('workflow.editor.dock.tabs.workflow') }}
+        </button>
+        <button
+          type="button"
+          class="we-dock-tab"
+          :class="{ 'we-dock-tab--active': activeTab === 'node' }"
+          @click="activeTab = 'node'"
+        >
+          {{ t('workflow.editor.dock.tabs.node') }}
+        </button>
+      </div>
+
+      <div class="we-dock-body">
+        <!-- 工作流: identity + workflow-level inputs/outputs -->
+        <template v-if="activeTab === 'workflow'">
+          <WorkflowInfoPanel
+            :meta="meta"
+            :node-count="nodes.length"
+            :edge-count="edges.length"
+            @update:meta="meta = $event"
+          />
+          <div class="we-dock-divider" />
+          <IoAuthoringPanel :meta="meta" @update:meta="meta = $event" />
+        </template>
+
+        <!-- 节点: the selected node's configuration -->
+        <template v-else>
+          <NodeConfigPanel
+            v-if="selectedNode"
+            :node="selectedNode"
+            :workflow-inputs="meta.inputs ?? []"
+            :upstream-nodes="upstreamNodes"
+            :node-ids="nodeIds"
+            @delete="onDeleteNode"
+            @rename="onRenameNode"
+          />
+          <div v-else class="we-dock-empty">{{ t('workflow.editor.config.noSelection') }}</div>
+        </template>
+      </div>
     </aside>
 
-    <!-- Inputs dialog (todo 38): one field per declared workflow-level input -->
-    <n-modal
+    <!-- Run dialog（M1 公共弹层）：工作流列表的「试运行」用同一个组件 -->
+    <RunInputsDialog
       v-model:show="showInputsDialog"
+      :definition="pendingDefinition"
+      :loading="isRunning"
+      @submit="onRunSubmit"
+    />
+
+    <!-- Static validation findings (workflow.validate) -->
+    <n-modal
+      v-model:show="showProblems"
       preset="card"
-      title="Workflow inputs"
-      :style="{ width: '440px' }"
-      :mask-closable="false"
+      :title="t('workflow.editor.problems.title')"
+      :style="{ width: '520px' }"
     >
-      <n-form
-        v-if="declaredInputs.length > 0"
-        :model="inputDraft"
-        label-placement="top"
-        size="small"
-      >
-        <n-form-item
-          v-for="port in declaredInputs"
-          :key="port.name"
-          :label="port.name"
-          :required="port.required !== false"
+      <div v-if="problemsLoading" class="we-problems-status">…</div>
+      <div v-else-if="problems.length === 0" class="we-problems-status">
+        {{ t('workflow.editor.problems.empty') }}
+      </div>
+      <div v-else class="we-problems">
+        <div
+          v-for="(problem, index) in problems"
+          :key="index"
+          class="we-problem-row"
+          :class="`we-problem-row--${problem.severity}`"
+          @click="focusProblem(problem)"
         >
-          <!-- file / directory: text input + native picker button -->
-          <div v-if="isPathInput(port)" class="we-path-row">
-            <n-input
-              v-model:value="inputDraft[port.name]"
-              class="we-path-input"
-              size="small"
-              :placeholder="portBase(port) === 'directory' ? '/path/to/folder' : '/path/to/file'"
-            />
-            <n-button size="small" @click="browseInput(port)">Browse</n-button>
-          </div>
-          <!-- boolean -->
-          <n-switch
-            v-else-if="portBase(port) === 'boolean'"
-            v-model:value="inputDraft[port.name]"
-          />
-          <!-- number -->
-          <n-input-number
-            v-else-if="portBase(port) === 'number'"
-            v-model:value="inputDraft[port.name]"
-            class="we-full"
-            size="small"
-            :show-button="false"
-            placeholder="0"
-          />
-          <!-- json: monospace textarea -->
-          <n-input
-            v-else-if="portBase(port) === 'json'"
-            v-model:value="inputDraft[port.name]"
-            class="we-mono"
-            size="small"
-            type="textarea"
-            :autosize="{ minRows: 3, maxRows: 8 }"
-            placeholder='{ "key": "value" }'
-          />
-          <!-- text / unknown: plain textarea -->
-          <n-input
-            v-else
-            v-model:value="inputDraft[port.name]"
-            size="small"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 6 }"
-          />
-          <template v-if="port.description" #feedback>
-            <span class="we-port-desc">{{ port.description }}</span>
-          </template>
-        </n-form-item>
-      </n-form>
-      <div v-else class="we-no-inputs">This workflow declares no inputs — run it as-is.</div>
+          <span class="we-problem-severity">
+            {{
+              problem.severity === 'error'
+                ? t('workflow.editor.problems.error')
+                : t('workflow.editor.problems.warning')
+            }}
+          </span>
+          <span class="we-problem-node">{{ problem.node_id || '—' }}</span>
+          <span class="we-problem-message">{{ problem.message }}</span>
+        </div>
+      </div>
       <template #footer>
         <div class="we-modal-footer">
-          <n-button size="small" @click="showInputsDialog = false">Cancel</n-button>
-          <n-button size="small" type="primary" @click="onInputsSubmit">Run</n-button>
+          <n-button size="small" @click="openProblems">
+            {{ t('workflow.editor.problems.refresh') }}
+          </n-button>
         </div>
       </template>
     </n-modal>
-
-    <!-- Workflow-level inputs/outputs authoring modal (T6): edits
-         meta.inputs / meta.outputs so serializeCanvas carries them to
-         template.save. Pure authoring rules live in ioAuthoring.ts. -->
-    <IoAuthoringPanel v-model:show="showIoPanel" v-model:meta="meta" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
+  MarkerType,
   VueFlow,
   useVueFlow,
   type Connection,
@@ -160,19 +208,19 @@ import { MiniMap } from '@vue-flow/minimap'
 import {
   NAlert,
   NButton,
-  NForm,
-  NFormItem,
-  NInput,
-  NInputNumber,
+  NIcon,
   NModal,
-  NSwitch,
+  useDialog,
   useMessage,
 } from 'naive-ui'
+import { ArrowLeft } from 'lucide-vue-next'
 
 import ToolNode from '@components/workflow/ToolNode.vue'
 import WorkflowNodePalette from '@components/workflow/WorkflowNodePalette.vue'
 import NodeConfigPanel from '@components/workflow/NodeConfigPanel.vue'
 import IoAuthoringPanel from '@components/workflow/IoAuthoringPanel.vue'
+import WorkflowInfoPanel from '@components/workflow/WorkflowInfoPanel.vue'
+import RunInputsDialog from '@components/workflow/RunInputsDialog.vue'
 import TemplateManager, { type TemplateLoadPayload } from '@components/workflow/TemplateManager.vue'
 import {
   TOOL_DRAG_MIME,
@@ -180,11 +228,12 @@ import {
   type ToolPort,
   type ToolPorts,
   type ToolStatus,
+  type UpstreamNodeRef,
   type WorkflowToolInfo,
 } from '@components/workflow/toolMeta'
 import {
+  deserializeWorkflow,
   serializeWorkflow,
-  type PortJSON,
   type WorkflowDefinitionJSON,
   type WorkflowMeta,
 } from '@components/workflow/serializer'
@@ -194,6 +243,15 @@ import {
   validateConnection,
   type ConnectionDragInfo,
 } from '@components/workflow/PortConnection'
+import {
+  LAYOUT_X_SPACING,
+  LAYOUT_X_START,
+  LAYOUT_Y,
+  chainOrder,
+  extraOutgoingEdges,
+  upstreamNodeIds,
+} from '@components/workflow/graphLayout'
+import { renameNodeId } from '@components/workflow/nodeRename'
 import serviceManager from '@services/ServiceManager'
 import unifiedApi from '@/api/unifiedApi'
 import { log } from '@utils/logger'
@@ -210,10 +268,16 @@ const nodeTypes = {
   tool: markRaw(ToolNode),
 }
 
+/**
+ * Edge styling: the linear chain runs left → right and the handles sit on the
+ * node sides, so a smoothstep edge with an arrow reads as the pipeline it is.
+ */
+const defaultEdgeOptions = {
+  type: 'smoothstep',
+  markerEnd: MarkerType.ArrowClosed,
+}
+
 // Shared store: created here, injected by the <VueFlow> child component.
-// screenToFlowCoordinate/addNodes come from the store's viewport actions
-// and are used by the palette drop handler below; setNodes/setEdges/fitView
-// by the template-load handler (todo 39).
 const {
   nodes,
   edges,
@@ -233,14 +297,15 @@ const {
 })
 
 const message = useMessage()
+const dialog = useDialog()
 const { t } = useI18n()
 
-// Live connection-drag state (todo 35): provided here, injected by ToolNode
-// to highlight compatible handles and dim incompatible ones mid-drag.
+// Live connection-drag state: provided here, injected by ToolNode to highlight
+// compatible handles and dim incompatible ones mid-drag.
 const connectionDrag = ref<ConnectionDragInfo | null>(null)
 provide(CONNECTION_DRAG_KEY, connectionDrag)
 
-/** Resolve a port on a node by handle id (handle id == port name, todo 34). */
+/** Resolve a port on a node by handle id (handle id == port name). */
 function findPort(nodeId: string, handleId: string | null | undefined, side: 'inputs' | 'outputs'): ToolPort | undefined {
   if (!handleId) return undefined
   const node = findNode(nodeId)
@@ -250,11 +315,15 @@ function findPort(nodeId: string, handleId: string | null | undefined, side: 'in
 }
 
 /**
- * Connection validation (todo 35): base types must match (D7 — subtype is
- * advisory and never enforced). Valid drops become edges; incompatible ones
- * are rejected with a toast instead.
+ * Connection validation: base types must match (D7 — subtype is advisory and
+ * never enforced). Valid drops become edges; incompatible ones are rejected
+ * with a toast instead.
  */
 function onConnect(connection: Connection) {
+  if (connection.source && connection.source === connection.target) {
+    message.error(t('workflow.editor.connection.selfLoop'))
+    return
+  }
   const sourcePort = findPort(connection.source, connection.sourceHandle, 'outputs')
   const targetPort = findPort(connection.target, connection.targetHandle, 'inputs')
   const result = validateConnection(
@@ -262,7 +331,7 @@ function onConnect(connection: Connection) {
     { nodeId: connection.target, portName: connection.targetHandle ?? '', portType: targetPort?.type },
   )
   if (!result.valid) {
-    message.error(result.reason ?? 'Connection rejected')
+    message.error(result.reason ?? t('workflow.editor.connection.rejected'))
     return
   }
   // addEdges generates the edge id and silently skips duplicate connections
@@ -284,9 +353,7 @@ function onConnectEnd() {
   connectionDrag.value = null
 }
 
-// Workflow-level metadata supplied to the serializer. Updated from loaded
-// templates (todo 39 onTemplateLoad); the inputs dialog below reads
-// `meta.inputs`.
+// Workflow-level metadata supplied to the serializer.
 const meta = ref<WorkflowMeta>({
   name: 'Untitled workflow',
   version: '1.0',
@@ -295,15 +362,22 @@ const meta = ref<WorkflowMeta>({
   outputs: [],
 })
 
-// Open/close state of the workflow-level inputs/outputs authoring modal (T6).
-const showIoPanel = ref(false)
-
 // Monotonic counter keeps dropped node ids unique within the session.
 let nodeCounter = 0
 
 function makeNodeId(toolName: string): string {
   nodeCounter += 1
   return `tool-${toolName.replace(/[^a-z0-9]+/gi, '-')}-${nodeCounter}`
+}
+
+/** Shared node-creation path for drag-drop and click-to-append. */
+function addToolNode(tool: WorkflowToolInfo, position: { x: number; y: number }) {
+  const data: ToolNodeData = {
+    tool: tool.name,
+    status: 'idle',
+    ports: tool.ports,
+  }
+  addNodes({ id: makeNodeId(tool.name), type: 'tool', position, data })
 }
 
 function onDragOver(event: DragEvent) {
@@ -326,70 +400,155 @@ function onDrop(event: DragEvent) {
   }
   if (!tool || typeof tool.name !== 'string' || tool.name.length === 0) return
 
-  const position = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  const data: ToolNodeData = {
-    tool: tool.name,
-    status: 'idle',
-    ports: tool.ports,
-  }
-  addNodes({
-    id: makeNodeId(tool.name),
-    type: 'tool',
-    position,
-    data,
-  })
+  addToolNode(tool, screenToFlowCoordinate({ x: event.clientX, y: event.clientY }))
 }
 
-// Right panel shows the config form for the selected node (todo 36).
-// vue-flow's built-in selection sets node.selected on click (elementsSelectable
-// defaults true); pane-click / Escape clear it — deriving from `nodes` means the
-// panel hides automatically on deselect with no extra event wiring.
-const selectedNode = computed(() => nodes.value.find((n) => n.selected) ?? null)
+/** Palette click: append after the last node of the current chain. */
+function onAppendTool(tool: WorkflowToolInfo) {
+  const order = chainOrder(nodeIds.value, edges.value)
+  const last = order.length > 0 ? findNode(order[order.length - 1]) : null
+  const position = last
+    ? { x: (last.position?.x ?? LAYOUT_X_START) + LAYOUT_X_SPACING, y: last.position?.y ?? LAYOUT_Y }
+    : { x: LAYOUT_X_START, y: LAYOUT_Y }
+  addToolNode(tool, position)
+}
 
 // ---------------------------------------------------------------------------
-// Template management (todo 39) — TemplateManager owns the dialogs + IPC;
-// the page supplies the serialized canvas and applies loaded definitions.
+// Right dock: 工作流 / 节点 tabs
 // ---------------------------------------------------------------------------
+
+type DockTab = 'workflow' | 'node'
+const activeTab = ref<DockTab>('workflow')
+
+// Deriving selection from `nodes` means the panel hides automatically on
+// deselect with no extra event wiring (vue-flow sets node.selected on click).
+const selectedNode = computed(() => nodes.value.find((n) => n.selected) ?? null)
+
+/**
+ * Auto-switch rule: follow the SELECTION, never fight a manual tab click.
+ * Selecting a node shows 节点; deselecting returns to 工作流.
+ */
+watch(
+  () => selectedNode.value?.id ?? null,
+  (id, previous) => {
+    if (id && !previous) activeTab.value = 'node'
+    if (!id && previous) activeTab.value = 'workflow'
+  },
+)
+
+const nodeIds = computed(() => nodes.value.map((node) => node.id))
+
+/**
+ * Upstream nodes of the selected node, in chain order: only these have results
+ * in the engine's `$nodes.<id>` context when the node resolves its params.
+ */
+const upstreamNodes = computed<UpstreamNodeRef[]>(() => {
+  const selected = selectedNode.value
+  if (!selected) return []
+  const upstream = upstreamNodeIds(selected.id, edges.value)
+  if (upstream.size === 0) return []
+  return chainOrder(nodeIds.value, edges.value)
+    .filter((id) => upstream.has(id))
+    .map((id) => {
+      const node = findNode(id)
+      const data = (node?.data ?? {}) as ToolNodeData & { operation?: string; inputs?: Record<string, unknown> }
+      const toolMeta = toolsCache?.find((tool) => tool?.name === data.tool)
+      const operation = typeof data.operation === 'string' ? data.operation : ''
+      const operationOutputs = operation
+        ? toolMeta?.operations?.find((op) => op?.name === operation)?.outputs
+        : undefined
+      const outputs = (operationOutputs && operationOutputs.length > 0
+        ? operationOutputs
+        : data.ports?.outputs) as ToolPort[] | undefined
+      const stored = (data.inputs ?? (data as any).params ?? {}) as Record<string, unknown>
+      return {
+        id,
+        label: String((data as any).label || data.tool || id),
+        tool: String(data.tool ?? ''),
+        outputs: outputs ?? [],
+        paramKeys: Object.keys(stored),
+      }
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Linear-model guard: extra outgoing edges cannot be serialized
+// ---------------------------------------------------------------------------
+
+/** Edges that serialization would drop (docs/08 §S2). */
+const edgeConflicts = computed(() => extraOutgoingEdges(nodeIds.value, edges.value))
+
+/** Reason string handed to TemplateManager; null means saving is allowed. */
+function saveBlockedReason(): string | null {
+  if (edgeConflicts.value.length === 0) return null
+  return t('workflow.editor.guard.title', { count: edgeConflicts.value.length })
+}
+
+// ---------------------------------------------------------------------------
+// Template management — TemplateManager owns the dialogs + IPC; the page
+// supplies the serialized canvas, applies loaded definitions and tracks the
+// unsaved-changes state.
+// ---------------------------------------------------------------------------
+
+/** Canvas snapshot as of the last load/save, for the dirty indicator. */
+const savedSnapshot = ref('')
+
+function canvasSnapshot(): string {
+  const definition = serializeCanvas()
+  return definition ? JSON.stringify(definition) : ''
+}
+
+const dirty = computed(() => canvasSnapshot() !== savedSnapshot.value)
+const runState = computed(() => (isRunning.value ? 'running' : dirty.value ? 'dirty' : 'saved'))
+const stateLabel = computed(() =>
+  isRunning.value
+    ? t('workflow.editor.running')
+    : dirty.value
+      ? t('workflow.editor.dirty')
+      : t('workflow.editor.saved'),
+)
 
 /**
  * Snapshot of the canvas for TemplateManager's save flow. Null = empty canvas
- * (TemplateManager shows a "nothing to save" toast). TemplateManager overrides
- * the definition's name/description with its dialog values before template.save.
+ * (TemplateManager shows a "nothing to save" toast).
  */
 function serializeCanvas(): WorkflowDefinitionJSON | null {
   if (nodes.value.length === 0) return null
   return serializeWorkflow(nodes.value, edges.value, meta.value)
 }
 
-// Cached tool-name → ports map, used to hydrate loaded templates into
-// ToolNode shape (see onTemplateLoad). Populated lazily on first load;
-// successes are cached, failures are not (the next load retries the fetch).
-let toolPortsCache: Record<string, ToolPorts> | null = null
+// Cached workflow.list_tools payload: tool ports hydrate loaded templates and
+// operation outputs feed the binding picker. Populated lazily; failures are
+// not cached (the next call retries the fetch).
+let toolsCache: WorkflowToolInfo[] | null = null
 
-async function fetchToolPorts(): Promise<Record<string, ToolPorts>> {
-  if (toolPortsCache) return toolPortsCache
+async function fetchWorkflowTools(): Promise<WorkflowToolInfo[]> {
+  if (toolsCache) return toolsCache
   try {
     const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('workflow.list_tools', {})
-    const map: Record<string, ToolPorts> = {}
-    for (const tool of result?.tools ?? []) {
-      if (tool?.name && tool.ports) map[tool.name] = tool.ports
-    }
-    toolPortsCache = map
-    return map
+    toolsCache = Array.isArray(result?.tools) ? result.tools : []
+    return toolsCache
   } catch (err) {
-    // Degrade gracefully: nodes still load, rendered header-only (no ports).
-    log.warn('[WorkflowEditorPage] workflow.list_tools unavailable, loaded nodes will render without ports', err)
-    return {}
+    log.warn('[WorkflowEditorPage] workflow.list_tools unavailable, loaded nodes render without ports', err)
+    return []
   }
 }
 
+async function fetchToolPorts(): Promise<Record<string, ToolPorts>> {
+  const tools = await fetchWorkflowTools()
+  const map: Record<string, ToolPorts> = {}
+  for (const tool of tools) {
+    if (tool?.name && tool.ports) map[tool.name] = tool.ports
+  }
+  return map
+}
+
 /**
- * Apply a loaded template to the canvas. The serializer (todo 37) emits
- * generic `type: 'default'` nodes with `{tool, params, label}` data; that is
- * hydrated into ToolNode shape here (type 'tool', status 'idle', ports from
- * workflow.list_tools — the known-limitation hydration todo 36 deferred to
- * the template-load flow) before replacing the whole canvas state. The loaded
- * meta becomes the page meta (title + Run-dialog inputs, todo 38).
+ * Apply a loaded template to the canvas. The serializer emits generic nodes
+ * with `{tool, params, label}` data; that is hydrated into ToolNode shape here
+ * (type 'tool', status 'idle', ports from workflow.list_tools) before replacing
+ * the whole canvas state. Positions come from the serializer's horizontal
+ * auto-layout, so a loaded chain renders as one straight row.
  */
 async function onTemplateLoad(payload: TemplateLoadPayload) {
   const portsByTool = await fetchToolPorts()
@@ -400,31 +559,200 @@ async function onTemplateLoad(payload: TemplateLoadPayload) {
       ...node.data,
       status: 'idle',
       ports: portsByTool[node.data.tool],
+      label: (node.data as any).label ?? node.data.tool,
     },
   }))
   setNodes(hydrated)
   setEdges(payload.edges)
   meta.value = { ...payload.meta }
   banner.value = null // stale run feedback belongs to the previous canvas
+  problems.value = []
+  problemCount.value = -1
   await nextTick()
+  // The snapshot must be taken AFTER vue-flow applied the nodes, otherwise the
+  // dirty indicator would light up immediately after a load.
+  savedSnapshot.value = canvasSnapshot()
   await fitView({ padding: 0.2 })
 }
 
+/** TemplateManager tells us the name/description it actually persisted. */
+function onTemplateSaved(info: { name: string; description: string }) {
+  meta.value = { ...meta.value, name: info.name, description: info.description }
+  savedSnapshot.value = canvasSnapshot()
+}
+
 // ---------------------------------------------------------------------------
-// Execution (todo 38): Run button → inputs dialog → workflow.execute → stream
-// events drive node status colors and the terminal banner.
+// 二级页路由（docs/08 §2.1）：`/workflows/editor/:name?`
+// —— 带 name 时进页面即加载该模板；不带 name 是新建空定义。
 // ---------------------------------------------------------------------------
 
-/** Event types emitted by the workflow engine (cli/app/workflow/streaming.py). */
+const route = useRoute()
+const router = useRouter()
+
+async function loadByName(name: string) {
+  try {
+    const result = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('template.load', {
+      name,
+    })
+    if (!result?.definition || typeof result.definition !== 'object') {
+      throw new Error(`template “${name}” returned no definition`)
+    }
+    await onTemplateLoad(deserializeWorkflow(result.definition))
+  } catch (error) {
+    log.error(`[WorkflowEditorPage] failed to load template “${name}”:`, error)
+    message.error(
+      t('workflows.loadFailed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    )
+  }
+}
+
+watch(
+  () => route.params.name,
+  (name) => {
+    const target = typeof name === 'string' && name ? decodeURIComponent(name) : ''
+    if (target) void loadByName(target)
+  },
+  { immediate: true },
+)
+
+/** 返回列表；有未保存改动先确认（docs/08 §3-S2 顶栏「返回」）。 */
+function goBack() {
+  const leave = () => void router.push('/workflows')
+  if (!dirty.value) {
+    leave()
+    return
+  }
+  dialog.warning({
+    title: t('workflow.editor.discardTitle'),
+    content: t('workflow.editor.discardContent'),
+    positiveText: t('workflow.editor.discard'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: leave,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Node operations (delete / rename) — the canvas owns the graph, the panel
+// only asks for them.
+// ---------------------------------------------------------------------------
+
+function onDeleteNode(nodeId: string) {
+  const node = findNode(nodeId)
+  if (!node) return
+  dialog.warning({
+    title: t('workflow.editor.config.deleteTitle'),
+    content: t('workflow.editor.config.deleteContent', { id: nodeId }),
+    positiveText: t('workflow.editor.config.delete'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => {
+      // Drop the node and every edge touching it (vue-flow also prunes edges
+      // created through its own store, but loaded/renamed ones are explicit).
+      setNodes(nodes.value.filter((entry) => entry.id !== nodeId))
+      setEdges(edges.value.filter((edge) => edge.source !== nodeId && edge.target !== nodeId))
+    },
+  })
+}
+
+/**
+ * Rename a node id: rewrites the node, its edges and every `$nodes.<oldId>.*`
+ * binding in one pass (see nodeRename.ts), then re-selects the node.
+ */
+function onRenameNode(payload: { oldId: string; newId: string }) {
+  const result = renameNodeId(nodes.value, edges.value, payload.oldId, payload.newId)
+  if (!result.ok) {
+    const key =
+      result.error === 'duplicate'
+        ? 'workflow.editor.config.errors.idDuplicate'
+        : result.error === 'dot'
+          ? 'workflow.editor.config.errors.idDot'
+          : 'workflow.editor.config.errors.idRequired'
+    message.error(t(key, { id: payload.newId }))
+    return
+  }
+  const nextNodes = result.nodes.map((node) =>
+    node.id === payload.newId ? { ...node, selected: true } : node,
+  )
+  setNodes(nextNodes)
+  setEdges(result.edges)
+  if (result.bindingsChanged > 0) {
+    message.info(t('workflow.editor.renameRebound', { count: result.bindingsChanged }))
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Static validation (workflow.validate) — "问题" panel
+// ---------------------------------------------------------------------------
+
+interface ProblemFinding {
+  node_id: string | null
+  field: string
+  message: string
+  severity: string
+}
+
+const showProblems = ref(false)
+const problemsLoading = ref(false)
+const problems = ref<ProblemFinding[]>([])
+/** -1 = not validated yet (the toolbar count is hidden). */
+const problemCount = ref(-1)
+
+async function openProblems() {
+  const definition = serializeCanvas()
+  showProblems.value = true
+  if (!definition) {
+    problems.value = []
+    problemCount.value = 0
+    return
+  }
+  problemsLoading.value = true
+  try {
+    const result = await unifiedApi.call<{ errors?: ProblemFinding[] }>('workflow.validate', {
+      definition,
+    })
+    problems.value = Array.isArray(result?.errors) ? result.errors : []
+    problemCount.value = problems.value.length
+  } catch (err) {
+    log.error('[WorkflowEditorPage] workflow.validate failed:', err)
+    problems.value = []
+    problemCount.value = -1
+    message.error(t('workflow.editor.problems.failed', { error: err instanceof Error ? err.message : String(err) }))
+  } finally {
+    problemsLoading.value = false
+  }
+}
+
+/** Clicking a finding selects its node so the config panel follows along. */
+function focusProblem(problem: ProblemFinding) {
+  if (!problem.node_id) return
+  const node = findNode(problem.node_id)
+  if (!node) return
+  activeTab.value = 'node'
+  for (const entry of nodes.value) entry.selected = entry.id === problem.node_id
+  showProblems.value = false
+}
+
+// ---------------------------------------------------------------------------
+// Execution: Run button → inputs dialog → workflow.execute → stream events
+// ---------------------------------------------------------------------------
+
+/** Real event types emitted by cli/app/workflow/streaming.py. */
 const WORKFLOW_EVENT_TYPES = new Set([
   'node_started',
-  'node_output',
   'node_completed',
-  'node_failed',
   'workflow_completed',
   'workflow_failed',
   'workflow_cancelled',
 ])
+
+/** Engine node status (streaming.py) → canvas status. */
+const NODE_STATUS_MAP: Record<string, ToolStatus> = {
+  ok: 'success',
+  failed: 'error',
+  skipped: 'skipped',
+  cancelled: 'cancelled',
+}
 
 interface ExecutionBanner {
   type: 'success' | 'error' | 'warning' | 'info'
@@ -435,88 +763,36 @@ const isRunning = ref(false)
 const banner = ref<ExecutionBanner | null>(null)
 const showInputsDialog = ref(false)
 const pendingDefinition = ref<WorkflowDefinitionJSON | null>(null)
-const inputDraft = reactive<Record<string, any>>({})
 
-// Workflow id (task_id) of the currently/last started run; stream events are
-// correlated back to this page via their `workflow_id` field.
+// Run identity passed to workflow.execute as `task_id`: the backend registers
+// the run under the JSON-RPC request id with this task id as an ALIAS, and
+// api_handler stamps `task_id` onto every streamed event — so this is the
+// correlation key the page can actually know in advance.
 let activeWorkflowId: string | null = null
+/** `run_id` of the first matching event; tightens filtering from then on. */
+let activeRunId: string | null = null
 let unsubscribeStream: (() => void) | null = null
 
 function makeWorkflowRunId(): string {
   return `wf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-/** Declared workflow-level inputs of the serialized definition (for the dialog). */
-const declaredInputs = computed<PortJSON[]>(() => {
-  const raw = pendingDefinition.value?.inputs
-  if (!Array.isArray(raw)) return []
-  return raw.filter(
-    (p): p is PortJSON => !!p && typeof p === 'object' && typeof p.name === 'string',
-  )
-})
-
-// ---- port type helpers (mirror NodeConfigPanel, todo 36) -------------------
-
-const KNOWN_INPUT_BASES = ['file', 'directory', 'text', 'number', 'boolean', 'json']
-
-function portBase(port: PortJSON): string {
-  const base = String(port.type?.base ?? '').toLowerCase()
-  // Unknown/missing types degrade to a plain text field (advisory typing).
-  return KNOWN_INPUT_BASES.includes(base) ? base : 'text'
-}
-
-function isPathInput(port: PortJSON): boolean {
-  const base = portBase(port)
-  return base === 'file' || base === 'directory'
-}
-
 // ---- Run flow ---------------------------------------------------------------
 
-/** Run click: serialize the canvas, then open the inputs dialog. */
+/** Run click: serialize the canvas, then open the shared M1 inputs dialog. */
 function onRunClick() {
   if (isRunning.value || nodes.value.length === 0) return
   banner.value = null
   pendingDefinition.value = serializeWorkflow(nodes.value, edges.value, meta.value)
-  initInputDraft()
   showInputsDialog.value = true
 }
 
-function initInputDraft() {
-  for (const key of Object.keys(inputDraft)) delete inputDraft[key]
-  for (const port of declaredInputs.value) {
-    const base = portBase(port)
-    inputDraft[port.name] = base === 'boolean' ? false : base === 'number' ? null : ''
-  }
-}
-
-/** Dialog submit: collect values, validate required inputs, start execution. */
-function onInputsSubmit() {
+/** M1 submit: the dialog validated the form, so go straight to execution. */
+function onRunSubmit(inputs: Record<string, unknown>) {
   const definition = pendingDefinition.value
   if (!definition) return
-
-  const inputs: Record<string, unknown> = {}
-  for (const port of declaredInputs.value) {
-    let value = inputDraft[port.name]
-    if (value === undefined || value === null || value === '') {
-      if (port.required !== false) {
-        message.error(`Missing required input: ${port.name}`)
-        return
-      }
-      continue // empty optional inputs stay absent, like NodeConfigPanel params
-    }
-    if (portBase(port) === 'json' && typeof value === 'string') {
-      try {
-        value = JSON.parse(value)
-      } catch {
-        message.error(`Input '${port.name}' is not valid JSON`)
-        return
-      }
-    }
-    inputs[port.name] = value
-  }
-
   showInputsDialog.value = false
-  startExecution(definition, inputs)
+  void startExecution(definition, inputs)
 }
 
 async function startExecution(
@@ -524,16 +800,16 @@ async function startExecution(
   inputs: Record<string, unknown>,
 ) {
   activeWorkflowId = makeWorkflowRunId()
+  activeRunId = null
   isRunning.value = true
   banner.value = null
   resetAllNodeStatuses()
 
   try {
     // workflow.execute is @streaming: the main process resolves this invoke on
-    // the FIRST streamed event (src/main/ipc/commandHandlers.ts), so awaiting
-    // here only surfaces startup failures (malformed definition, backend down).
-    // The terminal state arrives over the stream-event channel instead
-    // (workflow_completed / workflow_failed), handled in handleStreamRaw.
+    // the FIRST streamed event, so awaiting here only surfaces startup failures
+    // (malformed definition, backend down). The terminal state arrives over the
+    // stream-event channel instead, handled in handleStreamRaw.
     await window.electronAPI.callBackendAPI('workflow.execute', {
       definition,
       inputs,
@@ -542,8 +818,19 @@ async function startExecution(
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)
     isRunning.value = false
-    banner.value = { type: 'error', text: `Execution failed to start: ${text}` }
+    banner.value = { type: 'error', text: t('workflow.editor.execution.startFailed', { error: text }) }
     log.error('[WorkflowEditorPage] workflow.execute rejected:', error)
+  }
+}
+
+/** Cancel the in-flight run (registered under the task_id alias). */
+async function onCancelClick() {
+  const taskId = activeWorkflowId
+  if (!taskId) return
+  try {
+    await unifiedApi.call('request.cancel', { task_id: taskId })
+  } catch (error) {
+    log.error('[WorkflowEditorPage] request.cancel failed:', error)
   }
 }
 
@@ -551,7 +838,7 @@ async function startExecution(
 
 function setNodeStatus(nodeId: unknown, status: ToolStatus) {
   if (typeof nodeId !== 'string' || nodeId.length === 0) return
-  if (!findNode(nodeId)) return // events may reference nodes deleted mid-run
+  if (!findNode(nodeId)) return // nested paths / deleted nodes
   updateNodeData(nodeId, { status })
 }
 
@@ -560,6 +847,16 @@ function resetAllNodeStatuses() {
     const data = (node.data ?? {}) as ToolNodeData
     if (data.status && data.status !== 'idle') {
       updateNodeData(node.id, { status: 'idle' })
+    }
+  }
+}
+
+/** The engine does not emit node_completed on cancellation: mark in-flight nodes. */
+function markRunningAsCancelled() {
+  for (const node of nodes.value) {
+    const data = (node.data ?? {}) as ToolNodeData
+    if (data.status === 'running') {
+      updateNodeData(node.id, { status: 'cancelled' })
     }
   }
 }
@@ -591,39 +888,51 @@ function handleStreamRaw(raw: unknown) {
 
     const type = typeof event.type === 'string' ? event.type : ''
     if (!WORKFLOW_EVENT_TYPES.has(type)) return // logcat/download/etc. noise
-    if (event.workflow_id !== activeWorkflowId) return // another run's events
+    if (!activeWorkflowId) return // nothing started from this page
+
+    // Correlation: api_handler injects the caller's task_id on every streamed
+    // event (the event's own `workflow_id` is the DEFINITION name, not a run
+    // id). Once a matching event revealed its run_id, match on that.
+    if (typeof event.task_id === 'string' && event.task_id && event.task_id !== activeWorkflowId) return
+    if (activeRunId && typeof event.run_id === 'string' && event.run_id !== activeRunId) return
+    if (!activeRunId && typeof event.run_id === 'string' && event.run_id) activeRunId = event.run_id
 
     switch (type) {
       case 'node_started':
         setNodeStatus(event.node_id, 'running')
         break
-      case 'node_completed':
-        setNodeStatus(event.node_id, 'success')
+      case 'node_completed': {
+        const status = NODE_STATUS_MAP[String(event.status ?? '')]
+        if (status) setNodeStatus(event.node_id, status)
+        if (String(event.status) === 'failed') {
+          message.error(
+            t('workflow.editor.execution.nodeFailed', {
+              error: typeof event.error === 'string' ? event.error : 'unknown error',
+            }),
+          )
+        }
         break
-      case 'node_failed':
-        setNodeStatus(event.node_id, 'error')
-        message.error(
-          `Node failed: ${typeof event.error === 'string' ? event.error : 'unknown error'}`,
-        )
-        break
+      }
       case 'workflow_completed':
         isRunning.value = false
-        banner.value = { type: 'success', text: 'Workflow completed successfully' }
+        banner.value = { type: 'success', text: t('workflow.editor.execution.success') }
         break
       case 'workflow_failed':
         isRunning.value = false
         banner.value = {
           type: 'error',
-          text: `Workflow failed: ${typeof event.error === 'string' ? event.error : 'unknown error'}`,
+          text: t('workflow.editor.execution.failed', {
+            error: typeof event.error === 'string' ? event.error : 'unknown error',
+          }),
         }
         break
       case 'workflow_cancelled':
         isRunning.value = false
-        resetAllNodeStatuses()
-        banner.value = { type: 'warning', text: 'Workflow cancelled' }
+        markRunningAsCancelled()
+        banner.value = { type: 'warning', text: t('workflow.editor.execution.cancelled') }
         break
       default:
-        break // node_output: nothing to visualize in the MVP
+        break
     }
   } catch (err) {
     // Handler errors must never break event routing.
@@ -634,6 +943,10 @@ function handleStreamRaw(raw: unknown) {
 // Subscribe to the shared stream-event channel (same pattern as
 // TaskStreamService.initialize); unsubscribe on page teardown.
 onMounted(() => {
+  // Warm the tool cache so the binding picker can offer operation-level output
+  // ports before any template has been loaded.
+  void fetchWorkflowTools()
+
   const api = window.electronAPI
   if (api && typeof api.onStreamEvent === 'function') {
     unsubscribeStream = api.onStreamEvent((raw: any) => handleStreamRaw(raw))
@@ -650,24 +963,6 @@ onBeforeUnmount(() => {
     unsubscribeStream = null
   }
 })
-
-// ---- native path pickers for file/directory inputs ---------------------------
-
-async function browseInput(port: PortJSON) {
-  const isDir = portBase(port) === 'directory'
-  try {
-    const svc = (await serviceManager.getService('system')) as any
-    const res = isDir
-      ? await svc.selectDirectory({ title: `Select ${port.name}` })
-      : await svc.selectFile({ title: `Select ${port.name}` })
-    if (res && !res.canceled) {
-      const p = (res.filePath || (res.filePaths && res.filePaths[0]) || '').trim()
-      if (p) inputDraft[port.name] = p
-    }
-  } catch (error) {
-    log.error('[WorkflowEditorPage] path picker failed', error)
-  }
-}
 </script>
 
 <style scoped>
@@ -675,36 +970,6 @@ async function browseInput(port: PortJSON) {
   display: flex;
   gap: 8px;
   height: 100%;
-}
-
-.we-panel {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  width: 220px;
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
-  border-radius: 6px;
-}
-
-.we-panel-header {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--app-card-border);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--app-text-secondary);
-}
-
-.we-placeholder {
-  padding: 12px;
-  font-size: 12px;
-  color: var(--app-text-muted);
-}
-
-.we-config {
-  width: 300px;
 }
 
 .we-center {
@@ -730,15 +995,67 @@ async function browseInput(port: PortJSON) {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
+  color: var(--app-text-primary);
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--app-text-primary);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.we-title:hover {
+  color: var(--app-blue);
+}
+
+.we-state {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 10px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  color: var(--app-text-secondary);
+}
+
+.we-state--dirty {
+  color: var(--app-orange, var(--app-yellow));
+  border-color: var(--app-orange, var(--app-yellow));
+}
+
+.we-state--running {
+  color: var(--app-blue);
+  border-color: var(--app-blue);
 }
 
 .we-banner {
   flex-shrink: 0;
+}
+
+.we-guard-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.we-guard-edges {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 0;
+}
+
+.we-guard-edges code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 11px;
+}
+
+.we-guard-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--app-text-dim);
 }
 
 .we-canvas {
@@ -757,33 +1074,74 @@ async function browseInput(port: PortJSON) {
   top: 50%;
   left: 50%;
   z-index: 1;
-  transform: translate(-50%, -50%);
   pointer-events: none;
   font-size: 13px;
   color: var(--app-text-muted);
+  transform: translate(-50%, -50%);
 }
 
-/* Inputs dialog (rendered via teleport; scoped attrs still apply) */
-.we-full {
-  width: 100%;
-}
-
-.we-path-row {
+/* Right dock: always visible so workflow info / ports have a home */
+.we-dock {
   display: flex;
-  gap: 6px;
-  width: 100%;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 320px;
+  min-height: 0;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 6px;
 }
 
-.we-path-input {
+.we-dock-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--app-card-border);
+}
+
+.we-dock-tab {
   flex: 1;
-  min-width: 0;
-}
-
-.we-mono :deep(.n-input__textarea-el) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  padding: 9px 8px;
+  font: inherit;
   font-size: 12px;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
 }
 
+.we-dock-tab:hover {
+  color: var(--app-text-primary);
+}
+
+.we-dock-tab--active {
+  color: var(--app-blue);
+  border-bottom-color: var(--app-blue);
+}
+
+.we-dock-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.we-dock-divider {
+  height: 1px;
+  background: var(--app-card-border);
+}
+
+.we-dock-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+/* Run dialog (rendered via teleport; scoped attrs still apply) */
 .we-port-desc {
   font-size: 11px;
   color: var(--app-text-dim);
@@ -799,5 +1157,59 @@ async function browseInput(port: PortJSON) {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.we-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.we-problems-status {
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.we-problem-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  cursor: pointer;
+  border: 1px solid var(--app-card-border);
+  border-radius: 5px;
+}
+
+.we-problem-row:hover {
+  background: var(--app-hover);
+}
+
+.we-problem-severity {
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.we-problem-row--error .we-problem-severity {
+  color: var(--app-red);
+}
+
+.we-problem-row--warning .we-problem-severity {
+  color: var(--app-orange, var(--app-yellow));
+}
+
+.we-problem-node {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 11px;
+  color: var(--app-text-secondary);
+}
+
+.we-problem-message {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--app-text-primary);
 }
 </style>

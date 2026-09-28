@@ -4,7 +4,7 @@ E2E 测试**推迟到新 UI 模块落地之后**编写。
 
 ## 为什么推迟
 
-- 目标页面 `/workflows`（工作流列表页）与 `/tasks`（任务页）尚在规划中（开发计划的 Phase 2-3），目前只有 `/settings`、`/about`、`/diagnostics`、`/workflow-editor` 四个页面。
+- 目标页面 `/workflows`（工作流列表页）与 `/tasks`（任务页 + `/tasks/editor/:name?`）尚在规划中（开发计划的 Phase 2-3），目前只有 `/settings`、`/about`、`/diagnostics`、`/workflow-editor` 四个页面。**后端接口已就位**（WP7：任务定义 `task.*`、运行记录 `history.*`/`run.list`），缺的只是页面。
 - 之前的 e2e 套件（`critical-flows.spec.ts`）是**占位测试（placebo）**：
   - 测试的是已被删除的 DevicePage（T22，commit 79fa03d 删除），全部用例引用不存在的页面。
   - 每个用例用 `try/catch` 包裹，任何错误一律 `test.skip(true, 'Dev server not running')` —— 测试要么被跳过、要么断言的是恒真条件。
@@ -17,7 +17,8 @@ E2E 测试**推迟到新 UI 模块落地之后**编写。
 当 `/workflows` 与 `/tasks` 页面实现后，编写真实 e2e 覆盖：
 
 - 工作流列表：新建 / 编辑 / 删除 / 导入 / 导出
-- 任务页：选模板 → 动态表单 → 执行 → 节点进度与日志
+- 任务页：新建任务（选工作流 → 动态表单 → 保存）→ 任务列表出现该任务 → 运行 → 运行记录里的节点进度与日志
+- 口径断言：工作流列表**不出现运行状态徽章**；任务列表展示的是任务定义（首次运行前就存在）
 
 在无测试文件的情况下，`npm run check:full` 中的 Playwright 步骤会报告 "no tests found"，但以 exit 0 通过（`playwright.config.ts` 已设 `passWithNoTests: true`）；写入真实 e2e 用例后该选项自动失效。
 

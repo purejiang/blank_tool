@@ -20,5 +20,7 @@ export const initializeStores = async () => {
 }
 
 export { useAppConfigStore, useToolStore, useSystemStore }
-export { useTaskStore } from './taskStore'
+// 遗留的 `taskStore`（PackagePage 时代的运行跟踪状态）已随退役方法清理删除：
+// 它曾是"不暴露"方法 `task.append_log` / `task.delete_task_dir` 的唯一调用方，
+// 而任务模块现在直接用 `task.*` 任务定义接口（docs/08 §3-S3）。
 export { useUpdateStore } from './updateStore'

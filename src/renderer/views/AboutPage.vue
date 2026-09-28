@@ -1,5 +1,5 @@
 <template>
-  <div class="about-page">
+  <div class="screen about-page">
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('about.title') }}</h1>

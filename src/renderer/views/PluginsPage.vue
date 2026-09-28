@@ -1,0 +1,408 @@
+<template>
+  <!-- S6.3 插件页（docs/08 §3-S6.3）：清单加载器里的插件与加载状态。
+       ⚠️ 本页**不显示环境依赖徽章、也不显示"该插件注册了哪些工具"**——后端没有
+       这两个字段（缺口 #18），画上去就是编数据。 -->
+  <div class="screen plugins-page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">{{ t('plugins.title') }}</h1>
+        <p class="page-subtitle">{{ t('plugins.subtitle') }}</p>
+      </div>
+      <div class="page-header-right">
+        <ToolsSectionNav active="plugins" />
+      </div>
+    </div>
+
+    <div class="plugins-toolbar">
+      <n-button size="small" type="primary" @click="openAddDialog">
+        <template #icon><n-icon size="15"><PackagePlus /></n-icon></template>
+        {{ t('plugins.add') }}
+      </n-button>
+      <n-button size="small" :loading="reloading" @click="reload">
+        <template #icon><n-icon size="15"><RotateCw /></n-icon></template>
+        {{ t('plugins.reload') }}
+      </n-button>
+      <span class="plugins-grow" />
+      <n-button size="small" quaternary :loading="loading" @click="fetchPlugins">
+        <template #icon><n-icon size="15"><RefreshCw /></n-icon></template>
+        {{ t('tools.refresh') }}
+      </n-button>
+    </div>
+
+    <div class="plugins-hint">{{ t('plugins.reloadHint') }}</div>
+
+    <div v-if="loading && plugins.length === 0" class="plugins-status">{{ t('plugins.loading') }}</div>
+    <n-alert v-else-if="loadError" type="error" :show-icon="true">
+      <div class="plugins-status-row">
+        <span>{{ t('plugins.loadFailed', { error: loadError }) }}</span>
+        <n-button size="tiny" @click="fetchPlugins">{{ t('workflows.retry') }}</n-button>
+      </div>
+    </n-alert>
+    <div v-else-if="plugins.length === 0" class="plugins-empty">
+      <div class="plugins-empty-title">{{ t('plugins.empty') }}</div>
+      <n-button size="small" type="primary" @click="openAddDialog">{{ t('plugins.add') }}</n-button>
+    </div>
+
+    <div v-else class="plugins-rows">
+      <div v-for="plugin in plugins" :key="plugin.module" class="plugin-row">
+        <div class="plugin-main">
+          <div class="plugin-head">
+            <span class="plugin-name" :title="plugin.module">{{ plugin.module }}</span>
+            <n-tag size="tiny" :bordered="false" :type="kindTagType(plugin.kind)">
+              {{ kindLabel(plugin.kind) }}
+            </n-tag>
+            <n-tag v-if="plugin.source === 'user'" size="tiny" :bordered="false">
+              {{ t('plugins.source.user') }}
+            </n-tag>
+            <span v-if="plugin.version" class="plugin-version">v{{ plugin.version }}</span>
+          </div>
+          <div class="plugin-status">
+            <template v-if="plugin.loaded">
+              <n-icon size="14" color="#22C55E"><CheckCircle /></n-icon>
+              <span class="plugin-status-ok">{{ t('plugins.status.loaded') }}</span>
+            </template>
+            <template v-else>
+              <n-icon size="14" color="#EF4444"><AlertCircle /></n-icon>
+              <span class="plugin-status-err">
+                {{ plugin.error === 'not loaded' ? t('plugins.status.notLoaded') : t('plugins.status.failed') }}
+                <template v-if="plugin.error && plugin.error !== 'not loaded'">：{{ plugin.error }}</template>
+              </span>
+            </template>
+          </div>
+        </div>
+        <n-button
+          size="tiny"
+          quaternary
+          type="error"
+          :disabled="plugin.kind === 'shipped-native'"
+          :title="plugin.kind === 'shipped-native' ? t('plugins.deleteProtected') : ''"
+          :loading="deletingModule === plugin.module"
+          @click="confirmDelete(plugin)"
+        >
+          {{ t('tasks.actions.delete') }}
+        </n-button>
+      </div>
+    </div>
+
+    <!-- 添加插件：module / path / config -->
+    <n-modal v-model:show="addDialog.show" preset="card" :title="t('plugins.add')" :style="{ width: '520px' }" :mask-closable="!adding">
+      <n-form label-placement="top" size="small">
+        <n-form-item :label="t('plugins.module')" required>
+          <n-input v-model:value="addDialog.module" :placeholder="t('plugins.modulePlaceholder')" />
+        </n-form-item>
+        <n-form-item :label="t('plugins.path')">
+          <n-input v-model:value="addDialog.path" :placeholder="t('plugins.pathPlaceholder')" />
+        </n-form-item>
+        <n-form-item :label="t('plugins.config')" :feedback="t('plugins.configHint')">
+          <n-input
+            v-model:value="addDialog.config"
+            type="textarea"
+            :autosize="{ minRows: 4, maxRows: 10 }"
+            class="plugins-json"
+            placeholder='{ "key": "value" }'
+          />
+        </n-form-item>
+      </n-form>
+      <n-alert v-if="addDialog.error" type="error" :show-icon="false">{{ addDialog.error }}</n-alert>
+      <template #footer>
+        <div class="plugins-dialog-footer">
+          <n-button size="small" :disabled="adding" @click="addDialog.show = false">
+            {{ t('workflow.editor.template.cancel') }}
+          </n-button>
+          <n-button size="small" type="primary" :disabled="!addDialog.module.trim()" :loading="adding" @click="submitAdd">
+            {{ t('plugins.add') }}
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { NAlert, NButton, NForm, NFormItem, NIcon, NInput, NModal, NTag, useDialog } from 'naive-ui'
+import { AlertCircle, CheckCircle, PackagePlus, RefreshCw, RotateCw } from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
+
+import ToolsSectionNav from '@components/tools/ToolsSectionNav.vue'
+import { usePluginStore } from '@stores/pluginStore'
+import { useNotification } from '@composables/useNotification'
+import type { PluginEntry } from '../../shared/ipc/protocol'
+import unifiedApi from '@/api/unifiedApi'
+import { log } from '@utils/logger'
+
+/**
+ * S6.3 — 插件清单与加载状态（原 `ToolsPage` 的插件部分迁移到这里）。
+ */
+const { t } = useI18n()
+const dialog = useDialog()
+const { showSuccess, showError } = useNotification()
+
+const pluginStore = usePluginStore()
+const { plugins } = storeToRefs(pluginStore)
+
+const loading = ref(false)
+const loadError = ref('')
+const reloading = ref(false)
+const adding = ref(false)
+const deletingModule = ref<string | null>(null)
+const addDialog = reactive({ show: false, module: '', path: '', config: '', error: null as string | null })
+
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function kindTagType(kind: string) {
+  if (kind === 'shipped-native') return 'info' as const
+  if (kind === 'native') return 'success' as const
+  return 'default' as const
+}
+
+/** 清单加载器只允许 `shipped-native` / `native`（描述符工具走 tool.*）。 */
+function kindLabel(kind: string) {
+  if (kind === 'shipped-native') return t('plugins.kind.shippedNative')
+  return t('plugins.kind.native')
+}
+
+async function fetchPlugins() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    await pluginStore.fetchPlugins()
+    if (pluginStore.error) throw new Error(pluginStore.error)
+  } catch (error) {
+    log.error('[PluginsPage] plugin.list failed:', error)
+    loadError.value = errMsg(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  void fetchPlugins()
+})
+
+/**
+ * 重载：插件注册的工具会随之增减，所以重载后**必须重拉工具列表**——
+ * 否则工具页会与插件页互相矛盾（docs/08 §3-S6.3）。
+ */
+async function reload() {
+  reloading.value = true
+  try {
+    await pluginStore.reloadPlugins()
+    if (pluginStore.error) throw new Error(pluginStore.error)
+    await unifiedApi.call('workflow.list_tools', {})
+    showSuccess(t('plugins.reloaded'))
+    await fetchPlugins()
+  } catch (error) {
+    showError(t('plugins.reloadFailed', { error: errMsg(error) }))
+  } finally {
+    reloading.value = false
+  }
+}
+
+function openAddDialog() {
+  addDialog.module = ''
+  addDialog.path = ''
+  addDialog.config = ''
+  addDialog.error = null
+  addDialog.show = true
+}
+
+async function submitAdd() {
+  addDialog.error = null
+  const module = addDialog.module.trim()
+  if (!module) return
+  let config: Record<string, unknown> | undefined
+  const text = addDialog.config.trim()
+  if (text) {
+    try {
+      config = JSON.parse(text)
+    } catch {
+      addDialog.error = t('tools.invalidJson')
+      return
+    }
+  }
+  adding.value = true
+  try {
+    await pluginStore.addPlugin(module, addDialog.path.trim() || undefined, config)
+    if (pluginStore.error) throw new Error(pluginStore.error)
+    showSuccess(t('plugins.added', { module }))
+    addDialog.show = false
+    await fetchPlugins()
+  } catch (error) {
+    addDialog.error = errMsg(error)
+  } finally {
+    adding.value = false
+  }
+}
+
+function confirmDelete(plugin: PluginEntry) {
+  dialog.warning({
+    title: t('plugins.deleteTitle'),
+    content: t('plugins.deleteContent', { module: plugin.module }),
+    positiveText: t('tasks.actions.delete'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      deletingModule.value = plugin.module
+      try {
+        await pluginStore.deletePlugin(plugin.module)
+        if (pluginStore.error) throw new Error(pluginStore.error)
+        showSuccess(t('plugins.deleted', { module: plugin.module }))
+        await fetchPlugins()
+      } catch (error) {
+        showError(t('plugins.deleteFailed', { error: errMsg(error) }))
+      } finally {
+        deletingModule.value = null
+      }
+    },
+  })
+}
+</script>
+
+<style scoped>
+.plugins-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.page-title {
+  margin: 0;
+  font-family: Inter, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--app-text-primary);
+}
+
+.page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.plugins-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.plugins-grow {
+  flex: 1;
+}
+
+.plugins-hint {
+  font-size: 11px;
+  color: var(--app-text-dim);
+}
+
+.plugins-status {
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.plugins-status-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.plugins-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  padding: 40px 20px;
+  border: 1px dashed var(--app-card-border);
+  border-radius: 10px;
+}
+
+.plugins-empty-title {
+  font-size: 14px;
+  color: var(--app-text-secondary);
+}
+
+.plugins-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugin-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+}
+
+.plugin-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.plugin-name {
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-version {
+  font-size: 11px;
+  color: var(--app-text-dim);
+}
+
+.plugin-status {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 3px;
+}
+
+.plugin-status-ok {
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.plugin-status-err {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--app-red);
+  text-overflow: ellipsis;
+}
+
+.plugins-json :deep(.n-input__textarea-el) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+}
+
+.plugins-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+</style>

@@ -9,7 +9,7 @@
  * is derived from the dotted tool-name prefix.
  */
 
-export type ToolStatus = 'idle' | 'running' | 'success' | 'error'
+export type ToolStatus = 'idle' | 'running' | 'success' | 'error' | 'skipped' | 'cancelled'
 
 export type ToolCategory = 'file' | 'net' | 'exec' | 'flow' | 'tool'
 
@@ -65,6 +65,22 @@ export interface ToolNodeData {
   status?: ToolStatus
   ports?: ToolPorts
   [key: string]: unknown
+}
+
+/**
+ * One upstream node offered by the parameter-binding picker: only nodes that
+ * execute BEFORE the edited node can be referenced with `$nodes.<id>.*`
+ * (the engine accumulates results as it walks the chain).
+ */
+export interface UpstreamNodeRef {
+  id: string
+  /** Display name — the node label, falling back to the tool name. */
+  label: string
+  tool: string
+  /** Output ports of the node's effective operation (or of the tool). */
+  outputs: ToolPort[]
+  /** Keys of the node's already-bound params (for `.params.<key>` refs). */
+  paramKeys: string[]
 }
 
 /** One entry of the `workflow.list_tools` response `tools` array. */
@@ -175,7 +191,7 @@ export function portTitle(port: ToolPort): string {
  * and the scoped CSS. Handles are positioned absolutely on the node, so the
  * CSS row metrics must stay in sync with these values.
  */
-export const NODE_HEADER_HEIGHT_PX = 28
+export const NODE_HEADER_HEIGHT_PX = 34
 export const PORT_ROW_HEIGHT_PX = 18
 export const PORTS_PADDING_Y_PX = 6
 

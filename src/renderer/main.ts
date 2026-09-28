@@ -16,6 +16,8 @@ import './assets/styles/themes.css';
 import './assets/styles/common/responsive.css';
 import './assets/variables.css';
 import './assets/styles/naive-overrides.css';
+// 版式层：逐字取自 docs/ui-prompts/ui-preview.html（规则作用域挂在 .pv 下）
+import './assets/styles/preview-layout.css';
 
 // Create Vue app
 const app = createApp(App);

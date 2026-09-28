@@ -10,21 +10,27 @@
  *     name, version, description,
  *     inputs:  [Port.to_dict()],   // {name, type:{base, subtype}, required, description, options, multi}
  *     outputs: [Port.to_dict()],
- *     nodes:   [WorkflowNode.to_dict()],  // {id, type, tool, params, next, on_success, on_failure, condition, retry}
- *     edges:   []                  // linear mode: ALWAYS empty
+ *     nodes:   [WorkflowNode.to_dict()]   // {id, type, tool, params, next, on_failure, retry}
  *   }
  *
- * Linear-mode rule: `node.next` is the SOLE source of truth for control flow.
- * `edges` is reserved for a future DAG mode and must be empty; connectivity
- * is derived from canvas edges on serialize and rebuilt from `next` on
- * deserialize.
+ * Retired DAG fields (`edges`, `node.condition`, `node.on_success`) no longer
+ * exist in the backend schema; this serializer neither emits them nor carries
+ * them through a load/save round trip (see the legacy warning in
+ * deserializeWorkflow). Connectivity is fully described by `next`.
+ *
+ * Linear-mode rule: `node.next` is the SOLE source of truth for control flow;
+ * connectivity is derived from canvas edges on serialize and rebuilt from
+ * `next` on deserialize. The "first outgoing edge wins" rule lives in
+ * graphLayout.ts (`resolveNextMap`) and is shared with the canvas guard.
  *
  * Node positions are a canvas-only concern and are NEVER serialized. On
- * deserialize a simple vertical stack layout is recomputed
- * (x = 400, y = index * 150).
+ * deserialize a horizontal chain layout is recomputed (one row, left→right,
+ * matching the left/right port handles) by graphLayout.ts.
  */
 
 import type { Edge, Node } from '@vue-flow/core'
+
+import { LAYOUT_X_START, LAYOUT_Y, horizontalLayout, resolveNextMap } from './graphLayout'
 
 // ---------------------------------------------------------------------------
 // Wire-format types (mirror the backend Python dataclasses)
@@ -53,18 +59,15 @@ export interface PortJSON {
 /** One workflow step (mirrors WorkflowNode.to_dict; optional keys use backend defaults when absent). */
 export interface WorkflowNodeJSON {
   id: string
-  /** Node type, reserved for future DAG mode; "step" is the only meaningful value today. */
+  /** Node type ("step"); informational, kept because the backend field exists. */
   type?: string
   tool: string
   params: Record<string, any>
   /** Id of the next node in the linear chain; null/absent means last node. */
   next?: string | null
-  /** Reserved for future DAG mode (stored, unused by the linear executor). */
-  on_success?: string | null
-  /** "fail" (default), "skip", or "retry:N". */
+  /** "fail" (default) or "skip". */
   on_failure?: string
-  /** Reserved for future branching (stored, not evaluated). */
-  condition?: string | null
+  /** Extra attempts on failure (0 = no retry). */
   retry?: number
 }
 
@@ -76,8 +79,6 @@ export interface WorkflowDefinitionJSON {
   inputs?: PortJSON[]
   outputs?: PortJSON[]
   nodes: WorkflowNodeJSON[]
-  /** Reserved for future DAG mode; MUST be empty in linear mode. */
-  edges?: any[]
 }
 
 /** Workflow-level metadata edited outside the canvas (name/version/ports form). */
@@ -110,12 +111,9 @@ export interface WorkflowNodeData {
    */
   operation?: string
   inputs?: Record<string, any>
-  // Advanced fields — carried through for roundtrip fidelity. Absent while
-  // they equal their defaults ("step" / null / "fail" / null / 0).
-  type?: string
-  on_success?: string | null
+  // Node behavior — carried through the canvas for roundtrip fidelity. Absent
+  // while they equal their defaults ("fail" / 0).
   on_failure?: string
-  condition?: string | null
   retry?: number
 }
 
@@ -125,10 +123,6 @@ export type WorkflowFlowNode = Node<WorkflowNodeData>
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Auto-layout for deserialized workflows: vertical stack. Canvas-only, never serialized. */
-const LAYOUT_X = 400
-const LAYOUT_Y_SPACING = 150
 
 /** Defaults shared with the backend (WorkflowNode dataclass defaults). */
 const NODE_DEFAULTS = {
@@ -148,23 +142,49 @@ function cloneJson<T>(value: T): T {
 }
 
 /**
+ * Warn once when a loaded document still carries the retired DAG fields
+ * (`edges` / `node.condition` / `node.on_success`).
+ *
+ * They are ignored on load and dropped on the next save: the backend removed
+ * them from the schema (`WorkflowNode.from_dict` no longer reads them), so the
+ * only alternative to this warning is losing data silently.
+ */
+function warnAboutRetiredFields(json: any): void {
+  if (!json || typeof json !== 'object') return
+
+  const findings: string[] = []
+  if (Array.isArray(json.edges) && json.edges.length > 0) {
+    findings.push(`${json.edges.length} entry(ies) in 'edges'`)
+  }
+  for (const node of Array.isArray(json.nodes) ? json.nodes : []) {
+    if (!node || typeof node !== 'object') continue
+    if (node.condition != null) findings.push(`'condition' on node '${node.id}'`)
+    if (node.on_success != null) findings.push(`'on_success' on node '${node.id}'`)
+  }
+  if (findings.length === 0) return
+
+  console.warn(
+    `[workflow serializer] workflow '${json.name}' carries retired DAG fields (${findings.join(', ')}) — ` +
+      'ignored on load and dropped on save; connectivity lives in node.next',
+  )
+}
+
+/**
  * Structural validation shared by validateOnDeserialize and deserializeWorkflow.
  *
  * Mirrors the backend checks (WorkflowDefinition.__post_init__ plus the
- * connectivity pass of validate_workflow): name present, edges empty, node
- * ids unique, next references valid, exactly one entry node, no cycles, no
- * orphan nodes. An empty `nodes` list is valid (matches the backend).
+ * connectivity pass of validate_workflow): name present, node ids unique,
+ * next references valid, exactly one entry node, no cycles, no orphan nodes.
+ * An empty `nodes` list is valid (matches the backend).
  *
  * Input is `any` because callers hand us untrusted JSON (files, IPC payloads);
- * every field is checked at runtime regardless of the static type.
+ * every field is checked at runtime regardless of the static type. Unknown
+ * keys — including the retired DAG fields `edges` / `condition` /
+ * `on_success` — are ignored, exactly like the backend's `from_dict`.
  *
- * @param checkEdges when false, a non-empty edges list is NOT reported —
- *   deserializeWorkflow treats that case as a warning (edges are ignored and
- *   connectivity is rebuilt from `next`), while validateOnDeserialize reports
- *   it as a hard error.
  * @returns all findings as human-readable error strings; empty means valid.
  */
-function collectStructuralErrors(json: any, checkEdges: boolean): string[] {
+function collectStructuralErrors(json: any): string[] {
   const errors: string[] = []
   if (json === null || json === undefined || typeof json !== 'object' || Array.isArray(json)) {
     return ['workflow definition must be an object']
@@ -172,14 +192,6 @@ function collectStructuralErrors(json: any, checkEdges: boolean): string[] {
 
   if (typeof json.name !== 'string' || json.name.length === 0) {
     errors.push("missing required field: 'name'")
-  }
-
-  if (checkEdges) {
-    if (!Array.isArray(json.edges)) {
-      errors.push("'edges' must be an array (empty in linear mode)")
-    } else if (json.edges.length > 0) {
-      errors.push("'edges' must be empty in linear mode")
-    }
   }
 
   if (!Array.isArray(json.nodes)) {
@@ -293,15 +305,16 @@ function nodeParamsToWire(data: WorkflowNodeData): Record<string, any> {
  * Validate a workflow definition JSON before loading it into the canvas.
  *
  * Basic structural checks: name present, `nodes` is an array, node ids are
- * unique and non-empty, `next` references point at existing nodes, `edges`
- * is empty (linear mode), plus the linear-chain connectivity checks
- * (one entry node, no cycles, no orphans).
+ * unique and non-empty, `next` references point at existing nodes, plus the
+ * linear-chain connectivity checks (one entry node, no cycles, no orphans).
+ * Unknown keys (retired DAG fields included) are ignored, matching the
+ * backend's `from_dict`.
  *
  * @param json untrusted workflow definition JSON (e.g. from a file or IPC).
  * @returns list of error strings; an empty list means the JSON is valid.
  */
 export function validateOnDeserialize(json: WorkflowDefinitionJSON): string[] {
-  return collectStructuralErrors(json, true)
+  return collectStructuralErrors(json)
 }
 
 /**
@@ -311,44 +324,39 @@ export function validateOnDeserialize(json: WorkflowDefinitionJSON): string[] {
  *  - node id/tool come from `node.data`; params go through nodeParamsToWire
  *    (operation-mode nodes map data.{operation, inputs} to the engine shape
  *    `{operation, <binding>}`; legacy nodes pass data.params through);
- *    advanced node fields — type/on_success/on_failure/condition/retry — are
- *    carried through when present, otherwise backend defaults are emitted;
+ *    node behavior fields — on_failure/retry — are carried through when
+ *    present, otherwise backend defaults are emitted;
  *  - `next` is derived from the edges: the FIRST outgoing edge of a node
  *    becomes its next pointer (linear mode — extra outgoing edges are
- *    ignored); a node with no outgoing edge gets next = null (chain end);
- *  - `edges` is always [] in the output — connectivity lives in `next`;
+ *    ignored and reported by graphLayout.extraOutgoingEdges, see the canvas
+ *    guard); a node with no outgoing edge gets next = null (chain end);
  *  - meta supplies the workflow-level name/version/description/inputs/outputs.
  *
- * The output key set matches Python WorkflowDefinition.to_dict exactly, so
- * the backend accepts it via WorkflowDefinition.from_dict unchanged.
- * Positions are intentionally NOT serialized (layout is recomputed on load).
+ * The output key set matches Python WorkflowDefinition.to_dict exactly (no
+ * `edges`, no `condition`/`on_success` — those were removed from the backend
+ * schema), so the backend accepts it via WorkflowDefinition.from_dict
+ * unchanged. Positions are intentionally NOT serialized (layout is recomputed
+ * on load).
  */
 export function serializeWorkflow(
   nodes: Node[],
   edges: Edge[],
   meta: WorkflowMeta,
 ): WorkflowDefinitionJSON {
-  const nextBySource = new Map<string, string>()
-  for (const edge of edges ?? []) {
-    if (!edge) continue
-    if (typeof edge.source !== 'string' || typeof edge.target !== 'string') continue
-    if (!nextBySource.has(edge.source)) nextBySource.set(edge.source, edge.target)
-  }
+  const nextBySource = resolveNextMap(edges)
 
   const serializedNodes: WorkflowNodeJSON[] = (nodes ?? []).map((node) => {
     const data = (node.data ?? {}) as WorkflowNodeData
     return {
       id: node.id,
-      type: typeof data.type === 'string' && data.type.length > 0 ? data.type : NODE_DEFAULTS.type,
+      type: NODE_DEFAULTS.type,
       tool: typeof data.tool === 'string' ? data.tool : '',
       params: nodeParamsToWire(data),
       next: nextBySource.get(node.id) ?? null,
-      on_success: data.on_success ?? null,
       on_failure:
         typeof data.on_failure === 'string' && data.on_failure.length > 0
           ? data.on_failure
           : NODE_DEFAULTS.on_failure,
-      condition: data.condition ?? null,
       retry: typeof data.retry === 'number' ? data.retry : NODE_DEFAULTS.retry,
     }
   })
@@ -360,7 +368,6 @@ export function serializeWorkflow(
     inputs: cloneJson(meta?.inputs ?? []),
     outputs: cloneJson(meta?.outputs ?? []),
     nodes: serializedNodes,
-    edges: [],
   }
 }
 
@@ -369,19 +376,19 @@ export function serializeWorkflow(
  *
  * Mapping:
  *  - each WorkflowNodeJSON becomes a Node at an auto-layout position
- *    (vertical stack: x = 400, y = index * 150) with
- *    data = { tool, params, label } plus any advanced fields preserved for
- *    roundtrip fidelity; params carrying an `operation` string additionally
- *    hydrate data.operation/data.inputs for the operation-mode config UI;
+ *    (horizontal chain: one row, left→right — see graphLayout.horizontalLayout)
+ *    with data = { tool, params, label, on_failure?, retry? }; params carrying
+ *    an `operation` string additionally hydrate data.operation/data.inputs for
+ *    the operation-mode config UI;
  *  - each non-null `next` becomes an Edge { id: `${id}->${next}`, source, target };
  *  - meta carries name/version/description/inputs/outputs (backend defaults
  *    applied for absent optional fields).
  *
- * Structural validation runs first: a structurally invalid document throws
- * an Error listing every finding (see validateOnDeserialize). A non-empty
- * `edges` list is the exception — linear mode should have edges: [], but the
- * list is only warned about and ignored, since connectivity can be rebuilt
- * from `next` regardless.
+ * Structural validation runs first: a structurally invalid document throws an
+ * Error listing every finding (see validateOnDeserialize). Retired DAG fields
+ * (`edges` / `node.condition` / `node.on_success`) are NOT part of the schema
+ * any more — a document still carrying them loads fine (the backend ignores
+ * unknown keys too), warns once, and is re-saved without them.
  *
  * @throws Error naming every structural problem found in the JSON.
  */
@@ -390,20 +397,25 @@ export function deserializeWorkflow(json: WorkflowDefinitionJSON): {
   edges: Edge[]
   meta: WorkflowMeta
 } {
-  if (json && Array.isArray(json.edges) && json.edges.length > 0) {
-    console.warn(
-      `[workflow serializer] workflow '${json.name}' has ${json.edges.length} edge(s) in ` +
-        'its edges list — linear mode expects edges: []; edges are ignored and ' +
-        'connectivity is rebuilt from node.next',
-    )
-  }
+  warnAboutRetiredFields(json)
 
-  const errors = collectStructuralErrors(json, false)
+  const errors = collectStructuralErrors(json)
   if (errors.length > 0) {
     throw new Error(`Invalid workflow definition: ${errors.join('; ')}`)
   }
 
-  const flowNodes: WorkflowFlowNode[] = json.nodes.map((nodeJson, index) => {
+  // Auto-layout input: the `next` pointers ARE the chain, so feed them to the
+  // layout helper as edges. Nodes unreachable from the entry (only possible in
+  // a hand-edited document — we validated above) are appended in order.
+  const nextEdges = json.nodes
+    .map((nodeJson) => ({ source: nodeJson.id, target: nodeJson.next }))
+    .filter((edge): edge is { source: string; target: string } => typeof edge.target === 'string' && edge.target.length > 0)
+  const positions = horizontalLayout(
+    json.nodes.map((nodeJson) => nodeJson.id),
+    nextEdges,
+  )
+
+  const flowNodes: WorkflowFlowNode[] = json.nodes.map((nodeJson) => {
     const params = cloneJson(nodeJson.params ?? {})
     const data: WorkflowNodeData = {
       tool: nodeJson.tool,
@@ -424,16 +436,10 @@ export function deserializeWorkflow(json: WorkflowDefinitionJSON): {
       }
       data.inputs = inputs
     }
-    // Preserve advanced fields for the serialize roundtrip, but only store
-    // them when they differ from their defaults.
-    if (typeof nodeJson.type === 'string' && nodeJson.type !== NODE_DEFAULTS.type) {
-      data.type = nodeJson.type
-    }
-    if (nodeJson.on_success != null) data.on_success = nodeJson.on_success
+    // Behavior fields, stored only when they differ from their defaults.
     if (typeof nodeJson.on_failure === 'string' && nodeJson.on_failure !== NODE_DEFAULTS.on_failure) {
       data.on_failure = nodeJson.on_failure
     }
-    if (nodeJson.condition != null) data.condition = nodeJson.condition
     if (typeof nodeJson.retry === 'number' && nodeJson.retry !== NODE_DEFAULTS.retry) {
       data.retry = nodeJson.retry
     }
@@ -441,7 +447,7 @@ export function deserializeWorkflow(json: WorkflowDefinitionJSON): {
     return {
       id: nodeJson.id,
       type: 'default',
-      position: { x: LAYOUT_X, y: index * LAYOUT_Y_SPACING },
+      position: positions[nodeJson.id] ?? { x: LAYOUT_X_START, y: LAYOUT_Y },
       data,
     }
   })

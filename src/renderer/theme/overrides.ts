@@ -7,7 +7,7 @@ export const themeOverridesDark = {
     modalColor: '#1E293B',
     popoverColor: '#1E293B',
     borderColor: '#334155',
-    borderRadius: '8px',
+    borderRadius: '6px',
     primaryColor: '#22C55E',
     primaryColorHover: '#16A34A',
     primaryColorPressed: '#15803D',
@@ -27,13 +27,17 @@ export const themeOverridesDark = {
     border: '1px solid #475569',
     borderHover: '1px solid #22C55E',
     borderFocus: '1px solid #22C55E',
-    borderRadius: '8px',
+    borderRadius: '6px',
+    heightSmall: '30px',
+    fontSizeSmall: '12.5px',
   },
   InternalSelection: {
     border: '1px solid #475569',
     borderHover: '1px solid #22C55E',
     borderFocus: '1px solid #22C55E',
-    borderRadius: '8px',
+    borderRadius: '6px',
+    heightSmall: '30px',
+    fontSizeSmall: '12.5px',
   },
 }
 
@@ -64,13 +68,26 @@ export const themeOverridesLight = {
     border: '1px solid #CBD5E1',
     borderHover: '1px solid #16A34A',
     borderFocus: '1px solid #16A34A',
-    borderRadius: '8px',
+    borderRadius: '6px',
+    heightSmall: '30px',
+    fontSizeSmall: '12.5px',
   },
   InternalSelection: {
     border: '1px solid #CBD5E1',
     borderHover: '1px solid #16A34A',
     borderFocus: '1px solid #16A34A',
-    borderRadius: '8px',
+    borderRadius: '6px',
+    heightSmall: '30px',
+    fontSizeSmall: '12.5px',
+  },
+  Button: {
+    // 设计稿 .btn 高 30 / .btn.sm 高 24，字号 12.5 / 12
+    heightSmall: '30px',
+    heightTiny: '24px',
+    fontSizeSmall: '12.5px',
+    fontSizeTiny: '12px',
+    borderRadiusSmall: '6px',
+    borderRadiusTiny: '6px',
   },
 }
 

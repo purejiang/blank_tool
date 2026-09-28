@@ -1,5 +1,5 @@
 <template>
-  <div class="diagnostics-page">
+  <div class="screen diagnostics-page">
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('diagnostics.title') }}</h1>
@@ -111,7 +111,7 @@ import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { useRendererLogStore } from '@stores/rendererLogStore'
 import unifiedApi from '../api/unifiedApi'
 import { log } from '@utils/logger'
-import type { TaskListItem, TaskListResult, CancelRequestResult, LogTailResult } from '../../shared/ipc/protocol'
+import type { RunListItem, RunListResult, CancelRequestResult, LogTailResult, HealthResult } from '../../shared/ipc/protocol'
 
 const { t } = useI18n()
 const dialog = useDialog()
@@ -154,25 +154,35 @@ const formattedUptime = computed(() => {
 async function refreshHealth(): Promise<void> {
   healthStore.check()
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await window.electronAPI?.getBackendHealth?.()
+    // 主进程探针 `get-backend-health` 只回答"进程还活着"（`uptime_s` 恒为 null，
+    // 见 docs/08 §7-#16）。后端**自己**的 `health` 方法才带真实 uptime —— 它由
+    // `cli/main.py` 运行时注入，不在任何 handler 的 API_MAP 里，所以用裸方法名调用。
+    const result = await unifiedApi.call<HealthResult>('health')
     uptimeS.value = typeof result?.uptime_s === 'number' ? result.uptime_s : null
   } catch {
-    uptimeS.value = null
+    // 后端不可用时退化为"—"：不猜运行时长。
+    try {
+      const probe = await window.electronAPI?.getBackendHealth?.()
+      uptimeS.value = typeof probe?.uptime_s === 'number' ? probe.uptime_s : null
+    } catch {
+      uptimeS.value = null
+    }
   }
 }
 
 // ---- Card 2: Running tasks --------------------------------------------------
-const tasks = ref<TaskListItem[]>([])
+// `run.list` reports IN-FLIGHT runs (keyed by a run identity); saved task
+// definitions are a separate entity (`task.*`).
+const tasks = ref<RunListItem[]>([])
 let taskPoll: ReturnType<typeof setInterval> | null = null
-const taskRowKey = (row: TaskListItem) => row.task_id
+const taskRowKey = (row: RunListItem) => row.task_id
 
 async function refreshTasks(): Promise<void> {
   try {
-    const result = await unifiedApi.call<TaskListResult>('task.list')
-    tasks.value = result?.tasks || []
+    const result = await unifiedApi.call<RunListResult>('run.list')
+    tasks.value = result?.runs || []
   } catch (e) {
-    log.error('Diagnostics: failed to fetch task list', e)
+    log.error('Diagnostics: failed to fetch running run list', e)
   }
 }
 
@@ -201,13 +211,13 @@ const taskColumns = computed(() => [
     title: t('diagnostics.startedAt'),
     key: 'started_at',
     width: 120,
-    render: (row: TaskListItem) => row.started_at ? new Date(row.started_at * 1000).toLocaleTimeString() : '—',
+    render: (row: RunListItem) => row.started_at ? new Date(row.started_at * 1000).toLocaleTimeString() : '—',
   },
   {
     title: t('diagnostics.cancelled'),
     key: 'cancelled',
     width: 100,
-    render: (row: TaskListItem) => row.cancelled
+    render: (row: RunListItem) => row.cancelled
       ? h(NTag, { size: 'tiny', bordered: false, type: 'warning' }, { default: () => t('diagnostics.cancelled') })
       : '—',
   },
@@ -215,7 +225,7 @@ const taskColumns = computed(() => [
     title: '',
     key: 'actions',
     width: 90,
-    render: (row: TaskListItem) => !row.cancelled
+    render: (row: RunListItem) => !row.cancelled
       ? h(
           NButton,
           { size: 'tiny', type: 'error', ghost: true, onClick: () => cancelTask(row.task_id) },

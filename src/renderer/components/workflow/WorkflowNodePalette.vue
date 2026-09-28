@@ -1,23 +1,41 @@
 <template>
   <aside class="workflow-node-palette">
     <div class="wnp-header">{{ t('workflow.editor.palette.title') }}</div>
+    <div class="wnp-search">
+      <n-input
+        v-model:value="query"
+        size="tiny"
+        clearable
+        :placeholder="t('workflow.editor.palette.search')"
+      />
+    </div>
     <div class="wnp-body">
-      <div v-if="loading" class="wnp-status-text">Loading tools…</div>
+      <div v-if="loading" class="wnp-status-text">{{ t('workflow.editor.palette.loading') }}</div>
       <div v-else-if="error" class="wnp-status-text wnp-status-error" :title="error">
-        Failed to load tools
+        {{ t('workflow.editor.palette.loadFailed') }}
       </div>
-      <div v-else-if="tools.length === 0" class="wnp-status-text">No tools available</div>
+      <div v-else-if="tools.length === 0" class="wnp-status-text">
+        {{ t('workflow.editor.palette.noTools') }}
+      </div>
+      <div v-else-if="filteredGroups.length === 0" class="wnp-status-text">
+        {{ t('workflow.editor.palette.noMatch') }}
+      </div>
       <template v-else>
-        <div v-for="group in groups" :key="group.key" class="wnp-group">
+        <div v-for="group in filteredGroups" :key="group.key" class="wnp-group">
           <div class="wnp-group-label">{{ t('workflow.editor.palette.groups.' + group.key) }}</div>
           <div
             v-for="tool in group.tools"
             :key="tool.name"
             class="wnp-item"
             :class="{ 'wnp-item-invalid': !tool.is_valid }"
-            draggable="true"
-            :title="tool.is_valid ? 'Drag onto the canvas to add a node' : 'Tool unavailable (environment or binary missing)'"
+            :draggable="tool.is_valid ? 'true' : 'false'"
+            :title="
+              tool.is_valid
+                ? t('workflow.editor.palette.dragHint')
+                : t('workflow.editor.palette.dragHintInvalid')
+            "
             @dragstart="onDragStart($event, tool)"
+            @click="onAppend(tool)"
           >
             <div class="wnp-item-head">
               <span class="wnp-item-name">{{ tool.name }}</span>
@@ -37,15 +55,27 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { NInput } from 'naive-ui'
 import unifiedApi from '@/api/unifiedApi'
 import { log } from '@utils/logger'
 import { TOOL_DRAG_MIME, groupWorkflowTools, type WorkflowToolInfo } from './toolMeta'
+
+/**
+ * Tool palette. Drag-and-drop onto the canvas (original MVP) plus
+ * click-to-append (the page decides where "the end of the chain" is) and a
+ * name filter. Invalid tools are not draggable — the environment/binary they
+ * need is missing, so a node would only fail at run time.
+ */
+const emit = defineEmits<{
+  (e: 'append', tool: WorkflowToolInfo): void
+}>()
 
 const { t } = useI18n()
 
 const tools = ref<WorkflowToolInfo[]>([])
 const loading = ref(false)
 const error = ref('')
+const query = ref('')
 
 async function loadTools() {
   loading.value = true
@@ -70,6 +100,22 @@ async function loadTools() {
 // Group labels are rendered via i18n (workflow.editor.palette.groups.*).
 const groups = computed(() => groupWorkflowTools(tools.value))
 
+/** Case-insensitive name/description filter; empty groups drop out. */
+const filteredGroups = computed(() => {
+  const needle = query.value.trim().toLowerCase()
+  if (!needle) return groups.value
+  return groups.value
+    .map((group) => ({
+      ...group,
+      tools: group.tools.filter(
+        (tool) =>
+          tool.name.toLowerCase().includes(needle) ||
+          (tool.description ?? '').toLowerCase().includes(needle),
+      ),
+    }))
+    .filter((group) => group.tools.length > 0)
+})
+
 /**
  * One-line description for the palette entry. The backend payload has no
  * description field yet, so fall back to a port summary (builtins) or the
@@ -80,13 +126,22 @@ function describe(tool: WorkflowToolInfo): string {
   if (tool.ports) return `${tool.ports.inputs.length} in / ${tool.ports.outputs.length} out`
   if (tool.tool_path) return tool.tool_path.split(/[\\/]/).pop() || tool.tool_path
   if (tool.version) return `v${tool.version}`
-  return 'workflow tool'
+  return t('workflow.editor.palette.genericTool')
 }
 
 function onDragStart(event: DragEvent, tool: WorkflowToolInfo) {
+  if (!tool.is_valid) {
+    event.preventDefault()
+    return
+  }
   if (!event.dataTransfer) return
   event.dataTransfer.setData(TOOL_DRAG_MIME, JSON.stringify(tool))
   event.dataTransfer.effectAllowed = 'move'
+}
+
+function onAppend(tool: WorkflowToolInfo) {
+  if (!tool.is_valid) return
+  emit('append', tool)
 }
 
 onMounted(loadTools)
@@ -97,7 +152,7 @@ onMounted(loadTools)
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  width: 220px;
+  width: 240px;
   overflow: hidden;
   background: var(--palette-bg);
   border: 1px solid var(--node-border);
@@ -113,6 +168,10 @@ onMounted(loadTools)
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--app-text-secondary);
+}
+
+.wnp-search {
+  padding: 8px 10px 2px;
 }
 
 .wnp-body {
@@ -162,7 +221,13 @@ onMounted(loadTools)
 }
 
 .wnp-item-invalid {
+  cursor: not-allowed;
   opacity: 0.6;
+}
+
+.wnp-item-invalid:hover {
+  background: transparent;
+  border-left-color: transparent;
 }
 
 .wnp-item-head {

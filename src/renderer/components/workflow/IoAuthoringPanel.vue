@@ -1,15 +1,10 @@
 <template>
-  <!-- Workflow-level inputs/outputs authoring modal (T6). List mode shows the
-       declared ports of the active side; edit mode is a draft form committed
-       via the pure ioAuthoring helpers into meta.inputs / meta.outputs. -->
-  <n-modal
-    :show="show"
-    preset="card"
-    :title="t('workflow.editor.io.title')"
-    :style="{ width: '640px' }"
-    :mask-closable="!editing"
-    @update:show="(value: boolean) => emit('update:show', value)"
-  >
+  <!-- Workflow-level inputs/outputs authoring (T6), inline in the right dock's
+       工作流 tab (it used to be hidden behind a toolbar modal). List mode shows
+       the declared ports of the active side; edit mode is a draft form
+       committed via the pure ioAuthoring helpers into meta.inputs /
+       meta.outputs. -->
+  <div class="io-panel">
     <n-tabs :value="side" type="line" size="small" @update:value="onSideChange">
       <n-tab-pane name="inputs" :tab="t('workflow.editor.io.inputs')" />
       <n-tab-pane name="outputs" :tab="t('workflow.editor.io.outputs')" />
@@ -143,11 +138,11 @@
         </div>
       </n-form>
     </div>
-  </n-modal>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   NAlert,
@@ -157,7 +152,6 @@ import {
   NFormItem,
   NIcon,
   NInput,
-  NModal,
   NSelect,
   NTabPane,
   NTabs,
@@ -179,16 +173,14 @@ import type { PortJSON, WorkflowMeta } from './serializer'
 /**
  * Authoring UI for workflow-level input/output ports (T6). All persistence
  * rules (type mapping, name validation, duplicate checks) live in the pure
- * ioAuthoring module; this component only manages modal/edit state and emits
- * an updated WorkflowMeta — it never mutates the prop.
+ * ioAuthoring module; this component only manages edit state and emits an
+ * updated WorkflowMeta — it never mutates the prop.
  */
 const props = defineProps<{
-  show: boolean
   meta: WorkflowMeta
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:show', value: boolean): void
   (e: 'update:meta', value: WorkflowMeta): void
 }>()
 
@@ -213,19 +205,10 @@ const typeOptions = computed(() =>
   })),
 )
 
-// Opening the modal always starts in list mode on the inputs tab.
-watch(
-  () => props.show,
-  (open) => {
-    if (!open) return
-    side.value = 'inputs'
-    exitEdit()
-  },
-)
-
+// A draft belongs to one side only; switching sides abandons it.
 function onSideChange(value: Side) {
   side.value = value
-  exitEdit() // a draft belongs to one side only
+  exitEdit()
 }
 
 function exitEdit() {
@@ -302,6 +285,13 @@ function removePort(port: PortJSON) {
  * Visual language mirrors the TemplateManager list rows and the page's modal
  * styles: app theme CSS variables (themes.css) only, 6px radii, 8/6/4px gaps.
  */
+.io-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
 .io-body {
   display: flex;
   flex-direction: column;

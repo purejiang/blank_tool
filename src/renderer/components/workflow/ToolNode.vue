@@ -29,7 +29,10 @@
 
     <div class="tn-header">
       <span class="tn-icon" v-html="iconSvg" />
-      <span class="tn-name" :title="toolName">{{ toolName }}</span>
+      <span class="tn-title" :title="`${toolName} · ${subtitle}`">
+        <span class="tn-name">{{ displayName }}</span>
+        <span class="tn-sub">{{ subtitle }}</span>
+      </span>
       <span class="tn-status" :class="`tn-status-${status}`" :title="`status: ${status}`" />
       <span v-if="statusMark" class="tn-mark" v-html="statusMark" />
     </div>
@@ -74,6 +77,14 @@ import {
 const props = defineProps<NodeProps<ToolNodeData>>()
 
 const toolName = computed(() => props.data.tool)
+// Node display name: the tool name (the backend schema has no node label yet,
+// so the tool name IS the name — see docs/08 §3-S2 boundaries).
+const displayName = computed(() => String((props.data as any).label || props.data.tool || ''))
+// Secondary line: tool · operation, matching the design's node card.
+const subtitle = computed(() => {
+  const operation = (props.data as any).operation
+  return typeof operation === 'string' && operation ? `${props.data.tool} · ${operation}` : props.data.tool
+})
 const category = computed(() => categoryOfToolName(props.data.tool))
 const status = computed(() => props.data.status ?? 'idle')
 // Header check/X mark (todo 38): only success and error states carry one.
@@ -164,6 +175,15 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
   border-color: var(--app-red);
 }
 
+/* Skipped / cancelled: terminal but not a failure of the run itself. */
+.tool-node.tool-node--skipped {
+  border-color: var(--app-text-dim);
+}
+
+.tool-node.tool-node--cancelled {
+  border-color: var(--app-orange, var(--app-yellow));
+}
+
 @keyframes tn-border-pulse {
   0%,
   100% {
@@ -195,7 +215,7 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
   display: flex;
   gap: 6px;
   align-items: center;
-  height: 28px;
+  height: 34px;
   padding: 0 8px;
 }
 
@@ -210,11 +230,25 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
   height: 12px;
 }
 
-.tn-name {
+.tn-title {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
+  line-height: 1.2;
+}
+
+.tn-name {
   overflow: hidden;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tn-sub {
+  overflow: hidden;
+  font-size: 10px;
+  color: var(--app-text-dim);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -238,6 +272,14 @@ function handleDragClass(port: ToolPort, side: 'in' | 'out'): string | undefined
 
 .tn-status-error {
   background: var(--app-red);
+}
+
+.tn-status-skipped {
+  background: var(--app-text-dim);
+}
+
+.tn-status-cancelled {
+  background: var(--app-orange, var(--app-yellow));
 }
 
 /* Check/X header mark (todo 38) */

@@ -1,0 +1,1269 @@
+/*
+ * 版式层：逐字来自 docs/ui-prompts/ui-preview.html 的 CSS（第 2–9 节）。
+ *
+ * 为什么单独一份：这份文件是**设计稿的版式契约**（尺寸/间距/字号/列宽/结构），
+ * 与 Naive UI 组件库无关。交互控件（输入框、下拉、开关、弹层）继续用 Naive UI，
+ * 由 naive-overrides.css 把它们的高度/圆角/字号对齐到这里的数值；展示型部件
+ * （卡片、行、徽章、键值表、时间轴、步骤轨道、依赖 chips）直接用这里的类。
+ *
+ * 作用域：所有规则挂在 `.pv` 下（应用外壳根 + 需要跨 teleport 的弹层根各加一次），
+ * 否则会与 main.css / components.css 里已有的 `.card` / `.btn` / `.input` 撞名。
+ */
+
+/* ===== 2. 通用原子 ===== */
+.pv {
+  position: relative;
+  display: flex;
+  background: var(--app-body-bg);
+  color: var(--app-text-primary);
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pv *,
+.pv *::before,
+.pv *::after {
+  box-sizing: border-box;
+}
+
+.pv .mono {
+  font-family: "Fira Code", "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+
+.pv .dim {
+  color: var(--app-text-dim);
+}
+
+.pv .muted {
+  color: var(--app-text-muted);
+}
+
+.pv .sec {
+  color: var(--app-text-secondary);
+}
+
+.pv .ellip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv .iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--app-text-dim);
+  cursor: pointer;
+  flex: none;
+}
+
+.pv .iconbtn:hover {
+  background: var(--app-hover);
+  color: var(--app-text-primary);
+}
+
+.pv .iconbtn.boxed {
+  border-color: var(--app-input-border);
+  background: var(--app-input-bg);
+}
+
+.pv .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  flex: none;
+  white-space: nowrap;
+}
+
+.pv .badge.ok { color: var(--app-green); background: var(--app-green-bg); }
+.pv .badge.err { color: var(--app-red); background: var(--app-red-bg); }
+.pv .badge.run { color: var(--app-blue); background: var(--app-blue-bg); }
+.pv .badge.cancel { color: var(--app-muted-fg); background: var(--app-muted-bg); }
+.pv .badge.info { color: var(--app-blue); background: var(--app-blue-bg); }
+.pv .badge.src { color: var(--app-text-muted); background: var(--app-storage-bg); }
+.pv .badge.warn { color: var(--app-orange); background: var(--app-orange-bg); }
+.pv .badge.kind { color: var(--app-purple); background: rgba(147, 51, 234, 0.14); }
+
+.pv .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.pv .spin {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.6px solid currentColor;
+  border-top-color: transparent;
+  animation: pv-sp 0.7s linear infinite;
+  flex: none;
+}
+
+@keyframes pv-sp {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv .spin { animation: none; }
+}
+
+.pv .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pv .tag {
+  font-size: 11px;
+  color: var(--app-text-muted);
+  background: var(--app-storage-bg);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.pv .tagcode {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  color: var(--app-purple);
+  background: rgba(147, 51, 234, 0.1);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.pv .field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.pv .field > label {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pv .req { color: var(--app-red); }
+.pv .help { font-size: 11px; color: var(--app-text-dim); }
+
+.pv .row-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 分段控件（主题切换、工具三页区段切换）。设计稿里是 span，这里同时对 button
+   生效——按钮更符合交互语义（带 aria-pressed），样式与稿一致。 */
+.pv .seg {
+  display: inline-flex;
+  border: 1px solid var(--app-input-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--app-input-bg);
+}
+
+.pv .seg > span,
+.pv .seg > button {
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--app-input-border);
+}
+
+.pv .seg > span:last-child,
+.pv .seg > button:last-child {
+  border-right: 0;
+}
+
+.pv .seg > span.on,
+.pv .seg > button.on {
+  background: var(--app-blue-bg);
+  color: var(--app-blue);
+  font-weight: 600;
+}
+
+.pv .row-inline .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pv .card {
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  box-shadow: var(--app-shadow);
+}
+
+.pv .card-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--app-card-border);
+  flex: none;
+}
+
+.pv .card-hd h3 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.pv .card-bd { padding: 16px; }
+
+/* ===== 3. 外壳 ===== */
+.pv .sider {
+  width: 220px;
+  flex: none;
+  background: var(--app-sidebar-bg);
+  border-right: 1px solid var(--app-sidebar-border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pv .sider.collapsed { width: 64px; }
+
+.pv .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--app-sidebar-border);
+  flex: none;
+}
+
+.pv .logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--app-blue), var(--app-purple));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.pv .brand-name {
+  font-weight: 700;
+  font-size: 15.5px;
+  letter-spacing: -0.02em;
+  color: var(--app-text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.pv .sider.collapsed .brand {
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0 12px;
+}
+
+.pv .sider.collapsed .brand-name { display: none; }
+
+.pv .nav {
+  padding: 10px 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.pv .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.pv .nav-item:hover { background: var(--app-hover); }
+
+.pv .nav-item.on {
+  background: var(--app-blue-bg);
+  color: var(--app-blue);
+  font-weight: 600;
+}
+
+.pv .sider.collapsed .nav-item { justify-content: center; padding: 0; }
+.pv .sider.collapsed .nav-item span.txt { display: none; }
+
+.pv .sider-foot {
+  flex: none;
+  padding: 10px 10px 0;
+}
+
+.pv .theme-box {
+  padding: 8px 8px 10px;
+  border-top: 1px solid var(--app-sidebar-border);
+}
+
+.pv .theme-box .seg { width: 100%; }
+.pv .theme-box .seg > span { flex: 1; text-align: center; padding: 4px 0; }
+.pv .sider.collapsed .theme-box { display: none; }
+
+.pv .statusbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 10px;
+  border-top: 1px solid var(--app-sidebar-border);
+  color: var(--app-text-dim);
+}
+
+.pv .sider.collapsed .statusbar { justify-content: center; padding: 10px 4px; }
+
+/* Naive 分段控件对齐设计稿 .seg（激活态 = 蓝底蓝字，而非实心蓝） */
+.pv .theme-box .n-button-group { width: 100%; }
+
+.pv .main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: var(--app-body-bg);
+}
+
+/* ===== 页面级（.screen 由路由容器使用；mock 的变体规则不搬） ===== */
+.pv .screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.pv .page-hd { flex: none; margin-bottom: 16px; }
+
+.pv .page-hd h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.pv .page-hd p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--app-text-dim);
+}
+
+.pv .tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--app-card-border);
+  margin-bottom: 16px;
+  flex: none;
+}
+
+.pv .tabs > span,
+.pv .tabs > button {
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.pv .tabs > span.on,
+.pv .tabs > button.on {
+  color: var(--app-blue);
+  border-bottom-color: var(--app-blue);
+  font-weight: 600;
+}
+
+.pv .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex: none;
+}
+
+.pv .toolbar .grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pv .toolbar .btns {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.pv .search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid var(--app-input-border);
+  background: var(--app-input-bg);
+  color: var(--app-text-dim);
+  width: 260px;
+  flex: none;
+}
+
+.pv .search input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--app-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  width: 100%;
+}
+
+/* Naive 输入框放进 .search 容器时铺满 */
+.pv .search .n-input { flex: 1; min-width: 0; }
+.pv .search .n-input .n-input-wrapper { padding: 0; }
+
+.pv .empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--app-text-dim);
+  text-align: center;
+}
+
+.pv .empty .art {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  border: 1.5px dashed var(--app-input-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-dim);
+  margin-bottom: 4px;
+}
+
+.pv .empty h3 {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--app-text-secondary);
+  font-weight: 600;
+}
+
+.pv .empty p {
+  margin: 0;
+  font-size: 12.5px;
+  max-width: 380px;
+}
+
+.pv .empty .acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ===== 4. S1 工作流列表 ===== */
+.pv .wf-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pv .wf-card {
+  position: relative;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.pv .wf-card:hover { border-color: var(--app-blue); }
+
+.pv .wf-card h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  padding-right: 44px;
+}
+
+.pv .wf-card .desc {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--app-text-muted);
+  min-height: 34px;
+}
+
+.pv .wf-card .meta {
+  font-size: 11.5px;
+  color: var(--app-text-dim);
+  font-family: "Fira Code", Consolas, monospace;
+}
+
+.pv .wf-card .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.pv .wf-card .wf-check {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+}
+
+.pv .wf-more {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+}
+
+/* ===== 5. S2 工作流编辑器 ===== */
+.pv .screen.editor { padding: 0; overflow: hidden; }
+
+.pv .ed-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--app-card-border);
+  background: var(--app-card-bg);
+  flex: none;
+}
+
+.pv .ed-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+
+.pv .ed-body { flex: 1; min-height: 0; display: flex; }
+
+.pv .ed-left {
+  width: 240px;
+  flex: none;
+  border-right: 1px solid var(--app-card-border);
+  background: var(--app-card-bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pv .ed-right {
+  width: 320px;
+  flex: none;
+  border-left: 1px solid var(--app-card-border);
+  background: var(--app-card-bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pv .pal { padding: 10px; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.pv .pal-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 12px; }
+
+.pv .pal-grp {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--app-text-dim);
+  margin: 10px 0 6px;
+}
+
+.pv .tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: grab;
+  border: 1px solid transparent;
+}
+
+.pv .tool-row:hover { background: var(--app-hover); }
+
+.pv .tool-row .ti {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--app-storage-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-muted);
+  flex: none;
+}
+
+.pv .tool-row .tt { flex: 1; min-width: 0; }
+
+.pv .tool-row .tn {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+.pv .tool-row .td { font-size: 11px; color: var(--app-text-dim); }
+.pv .tool-row .grip { color: var(--app-text-dim); opacity: 0.5; flex: none; }
+.pv .tool-row.off { opacity: 0.42; cursor: not-allowed; }
+.pv .tool-row.off:hover { background: transparent; }
+
+.pv .canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: var(--app-code-bg);
+  overflow: hidden;
+  background-image: radial-gradient(var(--app-placeholder-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.pv .zoomctl {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--app-card-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--app-card-bg);
+}
+
+.pv .minimap {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  width: 150px;
+  height: 96px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 6px;
+  background: var(--app-card-bg);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.pv .cfg-hd {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--app-card-border);
+  flex: none;
+}
+
+.pv .cfg-hd .cn {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+
+.pv .cfg-hd .cd { font-size: 11.5px; color: var(--app-text-dim); margin-top: 2px; }
+.pv .cfg-bd { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+.pv .cfg-ft { flex: none; padding: 12px 14px; border-top: 1px solid var(--app-card-border); display: flex; gap: 8px; }
+
+.pv .err-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--app-red);
+  font-size: 11.5px;
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
+.pv .section-box {
+  border: 1px solid var(--app-card-border);
+  border-radius: 7px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: var(--app-input-bg);
+}
+
+.pv .adv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+}
+
+.pv .warn-bar {
+  margin: 12px 16px 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  flex: none;
+  border: 1px solid var(--app-orange-border);
+  background: var(--app-orange-bg);
+}
+
+.pv .warn-bar .w1 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--app-orange);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.pv .warn-bar .w2 {
+  margin: 6px 0 0 22px;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-orange);
+}
+
+.pv .warn-bar .w3 {
+  margin: 5px 0 0 22px;
+  font-size: 11px;
+  color: var(--app-text-dim);
+  line-height: 1.5;
+}
+
+/* ===== 6. S3 任务列表 + S3.2 任务编辑 ===== */
+.pv .tlist {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pv .trow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.pv .trow .tn { font-size: 13.5px; font-weight: 600; flex: none; min-width: 132px; }
+
+.pv .trow .tw {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-text-muted);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pv .trow .td {
+  font-size: 11.5px;
+  color: var(--app-text-dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv .trow .tm {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  color: var(--app-text-dim);
+  flex: none;
+}
+
+.pv .trow .acts { display: flex; align-items: center; gap: 6px; flex: none; }
+.pv .trow.dangling .tw { color: var(--app-orange); }
+.pv .trow.dangling .td { color: var(--app-text-dim); }
+
+.pv .wf-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  background: var(--app-card-bg);
+}
+
+.pv .wf-pick .lbl2 { font-size: 11.5px; color: var(--app-text-dim); flex: none; }
+
+.pv .wf-pick .meta3 {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  color: var(--app-text-muted);
+  flex: none;
+}
+
+.pv .wf-pick .desc2 {
+  font-size: 12px;
+  color: var(--app-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv .fgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  align-items: start;
+}
+
+.pv .fgrid .field { margin-bottom: 0; }
+.pv .fgrid .span2 { grid-column: 1 / -1; }
+
+.pv .form-col { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.pv .form-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+
+.pv .form-ft {
+  flex: none;
+  border-top: 1px solid var(--app-card-border);
+  padding-top: 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.pv .dir-row { display: flex; align-items: center; gap: 8px; }
+
+.pv .dir-row .input {
+  flex: 1;
+  min-width: 0;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-text-secondary);
+}
+
+.pv .task-name-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex: none;
+  margin-bottom: 12px;
+}
+
+.pv .task-name-row .field { flex: 1; min-width: 0; }
+
+/* ===== 7. S4 运行记录 + S5 抽屉 ===== */
+.pv .hlist { display: flex; flex-direction: column; gap: 8px; }
+
+.pv .hrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+
+.pv .hrow:hover { border-color: var(--app-blue); }
+
+.pv .hrow .nm {
+  font-size: 13.5px;
+  font-weight: 600;
+  flex: none;
+  width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv .hrow .src { font-size: 11.5px; color: var(--app-text-dim); flex: 1; min-width: 0; }
+
+.pv .hrow .tm {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-text-muted);
+  flex: none;
+  width: 140px;
+}
+
+.pv .hrow .du {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-text-muted);
+  flex: none;
+  width: 64px;
+  text-align: right;
+}
+
+.pv .hrow .bs { flex: none; width: 78px; }
+
+.pv .hrow.exp {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.pv .hexp {
+  border: 1px solid var(--app-card-border);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: var(--app-card-bg);
+  padding: 14px;
+  margin-top: -9px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pv .steps { display: flex; align-items: flex-start; gap: 0; flex-wrap: wrap; }
+
+.pv .step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 112px;
+  text-align: center;
+}
+
+.pv .step .si {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--app-card-border);
+  background: var(--app-card-bg);
+  color: var(--app-text-dim);
+}
+
+.pv .step.done .si { border-color: var(--app-green); color: var(--app-green); background: var(--app-green-bg); }
+.pv .step.fail .si { border-color: var(--app-red); color: var(--app-red); background: var(--app-red-bg); }
+.pv .step.run .si { border-color: var(--app-blue); color: var(--app-blue); background: var(--app-blue-bg); }
+.pv .step.skip .si { border-color: var(--app-card-border); color: var(--app-text-dim); background: var(--app-storage-bg); }
+
+.pv .step .sn { font-size: 11.5px; color: var(--app-text-secondary); }
+
+.pv .step .st {
+  font-size: 10.5px;
+  color: var(--app-text-dim);
+  font-family: "Fira Code", Consolas, monospace;
+}
+
+.pv .step-rail { flex: 1; height: 1.5px; background: var(--app-card-border); margin-top: 13px; min-width: 12px; }
+.pv .step-rail.f { background: var(--app-green); }
+
+.pv .console {
+  background: var(--app-code-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.75;
+  color: var(--app-text-secondary);
+  max-height: 178px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.pv .console .lv-i { color: var(--app-text-dim); }
+.pv .console .lv-e { color: var(--app-red); }
+.pv .console .lv-w { color: var(--app-yellow); }
+.pv .console .lv-g { color: var(--app-green); }
+
+.pv .load-more { display: flex; justify-content: center; padding: 14px 0 4px; }
+.pv .scrim { position: absolute; inset: 0; background: var(--app-scrim); z-index: 20; }
+
+.pv .drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 640px;
+  background: var(--app-card-bg);
+  border-left: 1px solid var(--app-card-border);
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 24px rgba(2, 6, 23, 0.28);
+}
+
+.pv .dw-hd { flex: none; padding: 14px 16px; border-bottom: 1px solid var(--app-card-border); }
+.pv .dw-hd .l1 { display: flex; align-items: center; gap: 10px; }
+.pv .dw-hd .nm { font-size: 15px; font-weight: 700; }
+
+.pv .dw-hd .r1 {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--app-text-dim);
+  flex-wrap: wrap;
+}
+
+.pv .dw-bd { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+.pv .dw-sec { margin-bottom: 20px; }
+
+.pv .dw-sec h4 {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--app-text-dim);
+}
+
+.pv .kv {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 0;
+  border: 1px solid var(--app-card-border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.pv .kv > div {
+  padding: 8px 11px;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--app-card-border);
+}
+
+.pv .kv > div:nth-child(odd) {
+  background: var(--app-storage-bg);
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-text-muted);
+}
+
+.pv .kv > div:nth-last-child(-n + 2) { border-bottom: 0; }
+
+.pv .tl { display: flex; flex-direction: column; }
+
+.pv .tl-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 0 7px 14px;
+  border-left: 1.5px solid var(--app-card-border);
+  margin-left: 9px;
+  position: relative;
+}
+
+.pv .tl-row::before {
+  content: "";
+  position: absolute;
+  left: -5.5px;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--app-card-bg);
+  border: 1.6px solid var(--app-text-dim);
+}
+
+.pv .tl-row.ok::before { border-color: var(--app-green); background: var(--app-green); }
+.pv .tl-row.fail::before { border-color: var(--app-red); background: var(--app-red); }
+.pv .tl-row.run::before { border-color: var(--app-blue); background: var(--app-blue); }
+.pv .tl-row.skip::before { border-color: var(--app-card-border); background: var(--app-storage-bg); }
+
+.pv .tl-row .tn {
+  font-size: 12.5px;
+  font-family: "Fira Code", Consolas, monospace;
+  color: var(--app-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pv .tl-row .tm {
+  font-size: 11px;
+  color: var(--app-text-dim);
+  font-family: "Fira Code", Consolas, monospace;
+}
+
+.pv .tl-row .te { color: var(--app-red); font-size: 11.5px; margin-top: 3px; }
+.pv .tl-row.nested { margin-left: 26px; }
+
+.pv .trunc {
+  border: 1px solid var(--app-red);
+  border-radius: 7px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--app-red);
+  font-size: 12px;
+  background: var(--app-red-bg);
+}
+
+.pv .dw-ft { flex: none; padding: 12px 16px; border-top: 1px solid var(--app-card-border); display: flex; gap: 8px; }
+
+/* ===== 8. S6 工具 / S6b 环境 / S6c 插件 ===== */
+.pv .tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+.pv .toolcard { position: relative; padding: 14px; display: flex; gap: 12px; }
+
+.pv .toolcard .tci {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--app-storage-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-muted);
+  flex: none;
+}
+
+.pv .toolcard .tcb { flex: 1; min-width: 0; }
+
+.pv .toolcard .tcn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pv .toolcard .tcd { font-size: 11.5px; color: var(--app-text-dim); margin-top: 3px; }
+
+.pv .toolcard .tcp {
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  color: var(--app-text-dim);
+  margin-top: 8px;
+  background: var(--app-code-bg);
+  border-radius: 5px;
+  padding: 4px 7px;
+}
+
+.pv .toolcard .tcdeps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.pv .depchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  color: var(--app-text-muted);
+  background: var(--app-storage-bg);
+}
+
+.pv .depchip.ok { color: var(--app-green); background: var(--app-green-bg); }
+.pv .depchip.miss { color: var(--app-orange); background: var(--app-orange-bg); }
+
+.pv .page-hd.head-row { display: flex; align-items: flex-start; gap: 16px; }
+.pv .pagenav { margin-left: auto; flex: none; }
+
+.pv .notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  margin-bottom: 14px;
+  flex: none;
+  background: var(--app-orange-bg);
+  color: var(--app-orange);
+  font-size: 12px;
+}
+
+.pv .notice .grow { flex: 1 1 auto; min-width: 0; }
+/* 失败提示是同一版式的错误态（设计稿只画了橙色告警） */
+.pv .notice.err { background: var(--app-red-bg); color: var(--app-red); }
+
+.pv .rowlist { display: flex; flex-direction: column; }
+
+.pv .rowitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--app-card-border);
+}
+
+.pv .rowitem:last-child { border-bottom: 0; }
+.pv .rowitem.off { opacity: 0.55; }
+
+.pv .rowitem .ri {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--app-storage-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-muted);
+  flex: none;
+}
+
+.pv .rowitem .rn { font-size: 13px; font-weight: 600; flex: none; width: 92px; }
+.pv .rowitem .rv { font-family: "Fira Code", Consolas, monospace; font-size: 11.5px; color: var(--app-text-muted); flex: none; width: 80px; }
+
+.pv .rowitem .rmono {
+  flex: 1;
+  min-width: 0;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-text-dim);
+}
+
+.pv .rowitem .rmono.strong { color: var(--app-text-secondary); }
+
+.pv .rowitem .rdeps {
+  flex: none;
+  width: 126px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--app-text-dim);
+}
+
+.pv .rowitem .rcol { flex: 1; min-width: 0; }
+.pv .rowitem .rline { display: flex; align-items: center; gap: 12px; }
+
+.pv .rowitem .rerr {
+  margin-top: 3px;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--app-red);
+}
+
+/* 行内操作簇（预览稿用 .acts，环境/插件行复用） */
+.pv .acts { display: flex; align-items: center; gap: 6px; flex: none; }
