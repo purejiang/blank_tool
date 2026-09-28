@@ -8,13 +8,15 @@ Three top-level directories, each with independent lifecycle:
   - output/  standalone exports
   - logs/    backend diagnostic logs (3-day rotation)
 
-``output/`` also hosts four *managed* subdirectories whose contents are user
-data, not cache: ``templates/`` (saved workflows), ``history/`` (run records),
-``runs/`` (per-run artifacts) and ``registry/`` (user tool/env overrides), plus
-the ``plugins.json`` user plugin manifest.  Bulk clears (``output.clear``,
-``storage.clear {target:"all"|"output"}``) skip them by default;
-``include_managed: true`` restores the old wipe-everything behaviour, and
-``target:"templates"|"history"|"runs"`` clears exactly one of them on purpose.
+``output/`` also hosts five *managed* subdirectories whose contents are user
+data, not cache: ``templates/`` (saved workflows), ``task_defs/`` (saved task
+definitions — a workflow plus the inputs to run it with), ``history/`` (run
+records), ``runs/`` (per-run artifacts) and ``registry/`` (user tool/env
+overrides), plus the ``plugins.json`` user plugin manifest.  Bulk clears
+(``output.clear``, ``storage.clear {target:"all"|"output"}``) skip them by
+default; ``include_managed: true`` restores the old wipe-everything behaviour,
+and ``target:"templates"|"task_defs"|"history"|"runs"|"registry"`` clears
+exactly one of them on purpose.
 """
 
 import os
@@ -28,7 +30,9 @@ from app.common.decorators import logs_errors
 logger = Logger.get_logger("StorageHandler")
 
 #: ``output/`` subdirectories holding user data — never wiped implicitly.
-_MANAGED_SUBDIRS = ("templates", "history", "runs", "registry")
+#: ``task_defs`` holds saved task definitions (see ``app.task.store``); wiping
+#: it would silently drop every reusable execution configuration.
+_MANAGED_SUBDIRS = ("templates", "task_defs", "history", "runs", "registry")
 
 #: ``output/`` plain files holding user data — the user plugin manifest lives
 #: there (see ``app.plugins.manifest``); wiping it would silently drop the user
@@ -36,9 +40,12 @@ _MANAGED_SUBDIRS = ("templates", "history", "runs", "registry")
 _PROTECTED_FILES = ("plugins.json",)
 
 #: ``storage.clear`` targets that address exactly one managed subdirectory
-#: (``registry`` is included so the block ``cache.info.managed`` advertises can
-#: actually be cleared on purpose — it stays excluded from bulk clears).
-_MANAGED_TARGETS = ("templates", "history", "runs", "registry")
+#: (``registry`` and ``task_defs`` are included so the blocks
+#: ``cache.info.managed`` advertises can actually be cleared on purpose — they
+#: stay excluded from bulk clears).  Both are high-risk: ``registry`` drops
+#: custom tool/env paths and imported descriptors, ``task_defs`` drops every
+#: saved task definition.
+_MANAGED_TARGETS = ("templates", "task_defs", "history", "runs", "registry")
 
 
 def _tasks_root():

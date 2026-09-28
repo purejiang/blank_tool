@@ -2,9 +2,10 @@
 
 Covers: a top-level run lands in the history store with the full record
 shape; the ``source`` field reflects template name vs file path vs inline;
-the per-run artifact directory (``run_dir``) is on both the wire payload and
-the record and is linked to the execution identity via ``exec_run_id``; and a
-recording failure NEVER changes the run's result.
+``task_name`` carries the saved task definition for ``task.execute`` runs and
+stays ``null`` otherwise; the per-run artifact directory (``run_dir``) is on
+both the wire payload and the record and is linked to the execution identity
+via ``exec_run_id``; and a recording failure NEVER changes the run's result.
 """
 
 import json
@@ -99,8 +100,22 @@ def test_list_summary_is_light_but_carries_status_cancelled_run_dir(output_dir):
     assert summary["run_dir"] == os.path.join(
         get_output_dir(), "runs", safe_slug("task-1")
     )
+    # A plain run has no task definition behind it.
+    assert summary["task_name"] is None
     assert "node_results" not in summary
     assert "inputs" not in summary
+
+
+def test_task_name_is_recorded_for_task_runs(output_dir):
+    """`task.execute` passes task_name; plain runs leave it null."""
+    run_workflow(
+        _definition(), {"inputs": {}}, None, "task-1", task_name="nightly-audit"
+    )
+
+    runs = history_store.list_runs()
+    assert runs[0]["task_name"] == "nightly-audit"
+    full = history_store.get_run(runs[0]["run_id"])
+    assert full["task_name"] == "nightly-audit"
 
 
 def test_source_falls_back_to_inline(output_dir):

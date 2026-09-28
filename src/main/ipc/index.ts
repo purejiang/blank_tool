@@ -13,7 +13,9 @@ export function setupAllHandlers(
     setupElectronHandlers();
     setupUpdateHandlers();
 
+    // Sanity gate on the stored value; the settings UI uses the same floor
+    // (>= 30s → 30000ms) so a value the UI accepts is never silently ignored.
     const stored = appStore.get('commands.timeout') as number | undefined
-    const timeout = (stored && stored > 30000 ? stored : 300000)
+    const timeout = (stored && stored >= 30000 ? stored : 300000)
     setupCommandHandlers(getPythonProcess, ensurePythonProcess, timeout);
 }

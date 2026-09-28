@@ -1,5 +1,10 @@
 """
-Contract tests for ``task.list`` and ``request.cancel`` handlers.
+Contract tests for ``run.list`` and ``request.cancel`` handlers.
+
+``run.list`` reports the IN-FLIGHT runs.  It used to be published as
+``task.list``; that key now belongs to the task-definition entity (see
+``tests/contracts/test_task_def_handler.py``), so this file asserts the
+``runs`` envelope and the runner-named handler.
 
 The TaskManager singleton keys registrations by **run_id** (the JSON-RPC
 request id) and keeps a secondary index by ``task_id``, so a cancel by either
@@ -203,18 +208,18 @@ def test_cancel_by_task_id_cancels_every_run_under_it():
 # ──────────────────────────────────────────────────────────────────────
 
 
-def test_handle_list_tasks():
+def test_handle_list_runs():
     """Call the handler function directly to verify API_MAP dispatch path."""
-    from app.handlers.task_handler import handle_list_tasks
+    from app.handlers.task_handler import handle_list_runs
 
     tm = TaskManager()
     tm.register("run-handler", "handler-test-1", threading.Event())
 
-    response = handle_list_tasks({}, None)
-    assert "tasks" in response
-    assert len(response["tasks"]) == 1
-    assert response["tasks"][0]["run_id"] == "run-handler"
-    assert response["tasks"][0]["task_id"] == "handler-test-1"
+    response = handle_list_runs({}, None)
+    assert "runs" in response
+    assert len(response["runs"]) == 1
+    assert response["runs"][0]["run_id"] == "run-handler"
+    assert response["runs"][0]["task_id"] == "handler-test-1"
 
 
 def test_handle_cancel_request_missing_id():

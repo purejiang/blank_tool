@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { PATH_CONFIG_DEFAULTS, type WritableAppConfigKey } from '../../shared/config/pathConfig';
 
-export const APP_CONFIG_VERSION = 7;
+export const APP_CONFIG_VERSION = 8;
 export { PATH_CONFIG_DEFAULTS };
 
 const schema = {
@@ -119,18 +119,6 @@ const schema = {
             enableFile: true
         }
     },
-    output: {
-        type: 'object',
-        properties: {
-            output: {
-                type: 'string',
-                default: ''
-            }
-        },
-        default: {
-            output: ''
-        }
-    },
     language: {
         type: 'string',
         default: 'zh-CN'
@@ -147,10 +135,6 @@ const schema = {
     autoDeleteOutputOnTaskRemove: {
         type: 'boolean',
         default: false
-    },
-    javaPath: {
-        type: 'string',
-        default: ''
     }
 };
 
@@ -237,6 +221,15 @@ const MIGRATIONS: Record<number, () => void> = {
         if (appStore.get('enableNotifications') === true) {
             appStore.set('enableNotifications', false);
         }
+    },
+    // 7: drop the two dead keys (WP10, #19). `output.output` and `javaPath` were
+    // declared writable but read nowhere: the data directories (cache/output/
+    // tasks/logs) are fixed subdirectories of getAppLocalDataPath(), injected as
+    // BT_*_DIR by src/main/python/service.ts. A stale value left behind would
+    // look like it does something, so remove it from existing config files.
+    7: () => {
+        appStore.delete('output');
+        appStore.delete('javaPath');
     }
 };
 

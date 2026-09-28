@@ -56,10 +56,13 @@ _DEFAULT_MAX_BYTES = 200 * 1024 * 1024
 _TMP_MAX_AGE_SECONDS = 300
 
 #: Keys projected into ``list_runs`` summaries.  Deliberately excludes the
-#: heavy ``node_results`` / ``inputs`` values.
+#: heavy ``node_results`` / ``inputs`` values.  ``task_name`` (the saved task
+#: definition a ``task.execute`` run belongs to — ``None`` for template /
+#: inline / CLI runs) was added with the task-definition entity.
 _SUMMARY_KEYS = (
     "run_id",
     "task_id",
+    "task_name",
     "workflow_name",
     "source",
     "started_at",

@@ -37,12 +37,10 @@ export const WRITABLE_CONFIG_KEYS = {
   preloadCandidates: 'preloadCandidates',
   commands: 'commands',
   logs: 'logs',
-  output: 'output',
   language: 'language',
   theme: 'theme',
   enableNotifications: 'enableNotifications',
-  autoDeleteOutputOnTaskRemove: 'autoDeleteOutputOnTaskRemove',
-  javaPath: 'javaPath'
+  autoDeleteOutputOnTaskRemove: 'autoDeleteOutputOnTaskRemove'
 } as const
 
 export type WritableAppConfigKey = keyof typeof WRITABLE_CONFIG_KEYS

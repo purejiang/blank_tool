@@ -101,12 +101,13 @@ def _write_read_workflow(output_path: Path) -> dict:
 # --help / list subcommands
 # ---------------------------------------------------------------------------
 
-def test_help_exits_zero_and_lists_all_nine_subcommands():
+def test_help_exits_zero_and_lists_all_ten_subcommands():
     result = run_cli("--help")
     assert result.returncode == 0
     for subcommand in (
         "run", "list-tools", "list-envs", "validate", "tool",
-        "list-templates", "import-pack", "import-templates", "history",
+        "list-templates", "list-tasks", "import-pack", "import-templates",
+        "history",
     ):
         assert subcommand in result.stdout
 
@@ -133,6 +134,12 @@ def test_list_templates_exits_zero_with_no_saved_templates():
     # No templates saved in the default writable dir -> empty listing, exit 0.
     result = run_cli("list-templates")
     assert result.returncode == 0
+
+
+def test_list_tasks_exits_zero_with_no_saved_tasks():
+    result = run_cli("list-tasks")
+    assert result.returncode == 0
+    assert result.stdout.strip() == ""
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +261,135 @@ def test_run_help_documents_the_new_flags():
     assert result.returncode == 0
     assert "--run-id" in result.stdout
     assert "--timeout" in result.stdout
+    assert "--task" in result.stdout
     assert "124" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# run --task / list-tasks (saved task definitions)
+# ---------------------------------------------------------------------------
+
+def _task_env(tmp_path) -> dict:
+    """Isolated task/template/output dirs for a ``run --task`` invocation."""
+    return {
+        "BT_OUTPUT_DIR": str(tmp_path / "out"),
+        "BT_TEMPLATES_DIR": str(tmp_path / "templates"),
+        "BT_TASK_DEFS_DIR": str(tmp_path / "task_defs"),
+    }
+
+
+def _seed_task(tmp_path, task_name="nightly", workflow="cli-task-wf",
+               inputs=None, work_dir=""):
+    """Write a raw workflow template file + a task definition file.
+
+    Raw (no ``definition`` wrapper) is the documented import format the
+    template store accepts, so no helper process is needed to seed it.
+    """
+    templates = tmp_path / "templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    workflow_doc = _write_read_workflow(tmp_path / "task-out.txt")
+    workflow_doc["name"] = workflow
+    (templates / f"{workflow}.json").write_text(
+        json.dumps(workflow_doc), encoding="utf-8"
+    )
+
+    task_defs = tmp_path / "task_defs"
+    task_defs.mkdir(parents=True, exist_ok=True)
+    (task_defs / f"{task_name}.json").write_text(
+        json.dumps(
+            {
+                "name": task_name,
+                "workflow": workflow,
+                "inputs": inputs if inputs is not None else {"message": "saved"},
+                "work_dir": work_dir,
+                "description": "seeded task",
+                "created_at": None,
+                "updated_at": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_list_tasks_prints_name_and_workflow(tmp_path):
+    _seed_task(tmp_path, task_name="nightly", workflow="cli-task-wf")
+
+    result = run_cli("list-tasks", env=_task_env(tmp_path))
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "nightly\tcli-task-wf"
+
+
+def test_run_task_uses_the_saved_inputs(tmp_path):
+    _seed_task(tmp_path)
+    env = _task_env(tmp_path)
+
+    result = run_cli("run", "--task", "nightly", "--json", env=env)
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["task_name"] == "nightly"
+    assert (tmp_path / "task-out.txt").read_text(encoding="utf-8") == "saved"
+
+
+def test_run_task_input_overrides_the_saved_value(tmp_path):
+    _seed_task(tmp_path)
+    env = _task_env(tmp_path)
+
+    result = run_cli(
+        "run", "--task", "nightly", "--input", "message=override", "--json", env=env
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    assert (tmp_path / "task-out.txt").read_text(encoding="utf-8") == "override"
+
+
+def test_run_task_history_carries_the_task_name(tmp_path):
+    _seed_task(tmp_path)
+    env = _task_env(tmp_path)
+    assert run_cli("run", "--task", "nightly", "--json", env=env).returncode == 0
+
+    result = run_cli("history", env=env)
+
+    assert result.returncode == 0
+    assert "cli-task-wf" in result.stdout
+
+
+def test_run_task_unknown_task_exits_one(tmp_path):
+    result = run_cli("run", "--task", "ghost", "--json", env=_task_env(tmp_path))
+
+    assert result.returncode == 1
+    assert "task 'ghost'" in result.stderr
+
+
+def test_run_task_with_a_missing_workflow_exits_one(tmp_path):
+    _seed_task(tmp_path, task_name="dangling", workflow="cli-task-wf")
+    (tmp_path / "templates" / "cli-task-wf.json").unlink()
+
+    result = run_cli("run", "--task", "dangling", "--json", env=_task_env(tmp_path))
+
+    assert result.returncode == 1
+    assert "cli-task-wf" in result.stderr
+
+
+def test_run_without_a_target_or_task_is_a_usage_error(tmp_path):
+    result = run_cli("run", env=_task_env(tmp_path))
+
+    assert result.returncode == 2
+    assert "target or --task" in result.stderr
+
+
+def test_run_rejects_a_target_together_with_task(tmp_path):
+    _seed_task(tmp_path)
+
+    result = run_cli(
+        "run", "--task", "nightly", str(tmp_path / "wf.json"),
+        env=_task_env(tmp_path),
+    )
+
+    assert result.returncode == 2
+    assert "not allowed with" in result.stderr
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal delivery only")

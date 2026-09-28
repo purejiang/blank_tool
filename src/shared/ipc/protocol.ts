@@ -79,6 +79,8 @@ export interface CacheInfoResult {
   /** Managed subdirectories of output/ — excluded from output.clear by default (WP4). */
   managed: {
     templates: DirInfo
+    /** Saved task definitions (workflow + inputs), added with the task entity. */
+    task_defs: DirInfo
     history: DirInfo
     runs: DirInfo
     registry: DirInfo
@@ -155,10 +157,14 @@ export interface DeleteTaskDirResult {
 }
 
 /**
- * Single entry in the task.list response — an IN-FLIGHT run registered with
+ * Single entry in the `run.list` response — an IN-FLIGHT run registered with
  * the backend TaskManager (history only stores terminal runs).
+ *
+ * Renamed from `TaskListItem` when `task.*` was given to the task-definition
+ * entity (`task.list` / `get` / `save` / `delete` / `execute`); this listing
+ * is keyed by a RUN identity, not by a task definition name.
  */
-export interface TaskListItem {
+export interface RunListItem {
   run_id: string
   task_id: string
   cancelled: boolean
@@ -166,9 +172,62 @@ export interface TaskListItem {
   has_process: boolean
 }
 
+/** Return type of run.list */
+export interface RunListResult {
+  runs: RunListItem[]
+}
+
+/**
+ * A saved task definition — a workflow name plus the input values to run it
+ * with (backend `app.task.store`).  What the task pages and the headless
+ * `run --task <name>` both operate on.
+ */
+export interface TaskDefinition {
+  name: string
+  /** Name of the saved template this task runs (never an embedded definition). */
+  workflow: string
+  /** Stored input values, exactly as submitted (validated at run time). */
+  inputs: Record<string, unknown>
+  /** Optional working directory; `''` means "the workflow's own directory". */
+  work_dir: string
+  description: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+/**
+ * One row of the `task.list` response.
+ *
+ * `workflow_exists: false` marks a task whose bound workflow was renamed or
+ * deleted: the task is kept, cannot run, and must be re-pointed.
+ */
+export interface TaskDefinitionSummary extends TaskDefinition {
+  workflow_exists: boolean
+  input_count: number
+  has_work_dir: boolean
+}
+
 /** Return type of task.list */
-export interface TaskListResult {
-  tasks: TaskListItem[]
+export interface TaskDefinitionListResult {
+  tasks: TaskDefinitionSummary[]
+}
+
+/** Return type of task.get */
+export interface TaskGetResult {
+  task: TaskDefinition
+  workflow_exists: boolean
+}
+
+/** Return type of task.save */
+export interface TaskSaveResult {
+  saved: boolean
+  name: string
+}
+
+/** Return type of task.delete */
+export interface TaskDeleteResult {
+  deleted: boolean
+  name: string
 }
 
 /** Return type of request.cancel */
@@ -364,6 +423,12 @@ export type RunStatus = 'succeeded' | 'failed' | 'cancelled'
 export interface RunSummary {
   run_id: string
   task_id: string
+  /**
+   * Saved task definition this run belongs to (`task.execute`); `null` for
+   * template / inline / CLI runs. Records written before the task entity was
+   * added project it as `null` rather than absent.
+   */
+  task_name?: string | null
   workflow_name: string
   source: string
   started_at: string | null
@@ -470,7 +535,7 @@ export interface ApiMethodMap {
   'output.clear': { params: Record<string, never>; result: ClearResult }
   'tasks.clear': { params: Record<string, never>; result: ClearResult }
   'logs.clear': { params: Record<string, never>; result: ClearResult }
-  'storage.clear': { params: { target?: 'all' | 'tasks' | 'output' | 'logs' | 'templates' | 'history' | 'runs'; include_managed?: boolean }; result: ClearResult }
+  'storage.clear': { params: { target?: 'all' | 'tasks' | 'output' | 'logs' | 'templates' | 'task_defs' | 'history' | 'runs' | 'registry'; include_managed?: boolean }; result: ClearResult }
 
   // --- tool_handler.py ---
   'tool.version': { params: { tool_name: string }; result: { version: string } }
@@ -483,13 +548,20 @@ export interface ApiMethodMap {
   'tool.delete': { params: { name: string }; result: Record<string, unknown> }
   'tool.import_pack': { params: { path: string }; result: ToolImportReport }
 
-  // --- task_handler.py ---
+  // --- task_handler.py (RUN-scoped: task_id is a run identity) ---
   'task.delete_output': { params: { paths: string[] }; result: DeleteOutputResult }
   'task.read_log': { params: { task_id: string; tail_bytes?: number }; result: TaskLogResult }
   'task.append_log': { params: { task_id: string; line: string }; result: { written: boolean } }
   'task.delete_task_dir': { params: { task_id: string }; result: DeleteTaskDirResult }
-  'task.list': { params: Record<string, never>; result: TaskListResult }
+  'run.list': { params: Record<string, never>; result: RunListResult }
   'request.cancel': { params: { request_id?: string; task_id?: string }; result: CancelRequestResult }
+
+  // --- task_def_handler.py (task DEFINITIONS: workflow + saved inputs) ---
+  'task.list': { params: Record<string, never>; result: TaskDefinitionListResult }
+  'task.get': { params: { name: string }; result: TaskGetResult }
+  'task.save': { params: { name: string; workflow: string; inputs?: Record<string, unknown>; work_dir?: string; description?: string }; result: TaskSaveResult }
+  'task.delete': { params: { name: string }; result: TaskDeleteResult }
+  'task.execute': { params: { name: string; inputs?: Record<string, unknown>; task_id?: string; work_dir?: string }; result: WorkflowRunResult }
 
   // --- log_handler.py ---
   'logs.tail': { params: { lines?: number }; result: LogTailResult }

@@ -13,7 +13,8 @@ import pytest
 from app.handlers import cache_handler
 
 #: Managed output/ subdirs — user data that bulk clears must never touch.
-MANAGED = ("templates", "history", "runs", "registry")
+#: ``task_defs`` holds saved task definitions (workflow + inputs).
+MANAGED = ("templates", "task_defs", "history", "runs", "registry")
 
 #: Managed output/ plain file — the user plugin manifest (also user data).
 PROTECTED_FILE = "plugins.json"
@@ -90,7 +91,7 @@ class TestCacheInfo:
         assert "logs" in payload
         assert "total" in payload
 
-    def test_managed_blocks_report_the_four_subdirs(self, api_handler, storage_roots):
+    def test_managed_blocks_report_the_managed_subdirs(self, api_handler, storage_roots):
         _seed_managed(storage_roots, payload=b"0123456789")
 
         payload = _call(api_handler, "cache.info")
@@ -210,7 +211,9 @@ class TestStorageClear:
         for name in MANAGED:
             assert (storage_roots["output"] / name / "keep.txt").exists()
 
-    @pytest.mark.parametrize("target", ["templates", "history", "runs", "registry"])
+    @pytest.mark.parametrize(
+        "target", ["templates", "task_defs", "history", "runs", "registry"]
+    )
     def test_single_managed_target_clears_exactly_that_dir(
         self, api_handler, storage_roots, target
     ):

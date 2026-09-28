@@ -25,6 +25,7 @@ and are visible in the parent's ``node_results``.
 """
 
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -37,7 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 def run_workflow(
-    definition, params, stream_handler, task_id, run_id=None, source_dir=None
+    definition, params, stream_handler, task_id, run_id=None, source_dir=None,
+    task_name="",
 ):
     """Run a workflow definition, returning the standard result dict.
 
@@ -54,6 +56,10 @@ def run_workflow(
             working directory when the caller did not pass ``work_dir``, so
             relative paths and produced artifacts stay next to the workflow
             instead of landing in the process CWD.
+        task_name: optional name of the saved task definition this run belongs
+            to (``task.execute``), recorded on the history record as
+            ``task_name`` so run history can be filtered per task.  Empty for
+            template / inline / CLI runs.
 
     Returns:
         ``{"success", "status", "cancelled", "outputs", "node_results",
@@ -87,6 +93,10 @@ def run_workflow(
         work_dir=params.get("work_dir") or source_dir or ".",
         task_id=task_id,
         run_id=identity,
+        # $env.<name> resolves against this mapping. It used to default to an
+        # empty dict, which made every $env.* reference fail with "missing key";
+        # the backend process environment is the documented source.
+        env=dict(os.environ),
         stream_handler=stream_handler,
         workflow_stream=workflow_stream,
     )
@@ -116,6 +126,7 @@ def run_workflow(
         start,
         run_dir=context.run_dir or "",
         exec_run_id=identity,
+        task_name=task_name,
     )
     return payload
 
@@ -131,6 +142,7 @@ def record_history(
     run_id=None,
     run_dir="",
     exec_run_id="",
+    task_name="",
 ):
     """Best-effort history write — a recording failure never fails the run.
 
@@ -145,6 +157,9 @@ def record_history(
             ``$rundir``.  The IPC request id (``1700000000000-0.1234``) is
             NOT a valid history file id, so it is recorded here instead;
             falls back to the record id, then the task id.
+        task_name: saved task definition this run belongs to, or ``""`` for
+            template / inline / CLI runs.  Written as ``null`` in that case so
+            records read back uniformly (``record.get("task_name") is None``).
     """
     try:
         from app.history import store as history_store
@@ -154,6 +169,7 @@ def record_history(
                 "run_id": run_id or history_store.new_run_id(),
                 "exec_run_id": exec_run_id or run_id or task_id,
                 "task_id": task_id,
+                "task_name": task_name or None,
                 "workflow_name": getattr(definition, "name", ""),
                 "source": params.get("name") or params.get("path") or "inline",
                 "run_dir": run_dir,

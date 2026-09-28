@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Task-related handlers.
+Run-scoped task handlers.
+
+Everything in this module is keyed by a **run identity** (``task_id`` = the
+JSON-RPC request id / CLI task id), not by a task-definition name: per-run logs,
+per-run working directories and their outputs.  Task *definitions* — the saved
+"workflow + inputs" objects — live in :mod:`app.handlers.task_def_handler`.
 
 ``task.delete_output`` best-effort deletes output files/folders. Every path is
 containment-checked against ``get_output_dir()`` before any filesystem write,
 because ``paths`` originate from renderer localStorage which is user/devtools
 editable and therefore untrusted.
+
+``run.list`` reports the in-flight runs registered with
+:class:`~app.common.task_manager.TaskManager`; terminal runs live in the
+history store (``app.history.store``).  It was previously published as
+``task.list`` — renamed when ``task.*`` was given to the task-definition entity.
 """
 
 import os
@@ -131,9 +141,15 @@ def handle_delete_task_dir(params, stream_handler):
         return {"deleted": False, "path": path, "error": str(e)}
 
 
-def handle_list_tasks(params, stream_handler):
-    """Return a snapshot of all registered (running) tasks."""
-    return {"tasks": TaskManager().list_tasks()}
+def handle_list_runs(params, stream_handler):
+    """Return a snapshot of all registered (in-flight) runs.
+
+    Registered with :class:`TaskManager` under a **run identity** (the JSON-RPC
+    request id), so this lists what is running right now — terminal runs live
+    in the history store instead.  Named ``run.list``: ``task.*`` belongs to the
+    task-definition entity (see :mod:`app.handlers.task_def_handler`).
+    """
+    return {"runs": TaskManager().list_tasks()}
 
 
 def handle_cancel_request(params, stream_handler):
@@ -152,6 +168,6 @@ API_MAP = {
     "task.read_log": handle_read_log,
     "task.append_log": handle_append_log,
     "task.delete_task_dir": handle_delete_task_dir,
-    "task.list": handle_list_tasks,
+    "run.list": handle_list_runs,
     "request.cancel": handle_cancel_request,
 }

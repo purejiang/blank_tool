@@ -83,6 +83,19 @@ class TestRecordAndQuery:
         assert "node_results" not in runs[0]
         assert "inputs" not in runs[0]
 
+    def test_summary_projects_task_name(self, output_dir):
+        """`task_name` (the saved task a run belongs to) is part of the summary."""
+        history_store.record_run(_record(task_name="nightly"))
+        history_store.record_run(_record("plain"))
+        time.sleep(0.02)
+        history_store.record_run(_record("newer"))
+
+        by_name = {r["workflow_name"]: r for r in history_store.list_runs()}
+        assert by_name["wf"]["task_name"] == "nightly"
+        # A record written without the key reads back as None, not missing.
+        assert by_name["plain"]["task_name"] is None
+        assert "task_name" in by_name["newer"]
+
     def test_list_limit_and_offset(self, output_dir):
         for _ in range(5):
             history_store.record_run(_record())
