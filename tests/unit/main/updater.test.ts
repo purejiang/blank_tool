@@ -16,7 +16,8 @@ vi.mock('electron-updater', () => ({
 }))
 
 vi.mock('electron', () => ({
-  app: { isPackaged: true },
+  // setName: src/main/appIdentity.ts 模块顶层会调用它（决定 userData 目录）
+  app: { isPackaged: true, setName: vi.fn() },
   BrowserWindow: {
     getAllWindows: vi.fn(() => []),
   },

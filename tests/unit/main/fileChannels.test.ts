@@ -26,7 +26,10 @@ vi.mock('electron', () => ({
   BrowserWindow: { fromWebContents: (...args: any[]) => mockFromWebContents(...args) },
   app: {
     getVersion: () => '0.0.0-test',
-    getName: () => 'blank_tool-test',
+    getName: () => 'blanks-test',
+    // src/main/appIdentity.ts 在模块顶层调用 app.setName(APP_NAME)（真实 Electron 里
+    // 决定 userData 目录），stub 必须提供该成员，否则模块加载即抛 TypeError。
+    setName: vi.fn(),
     getAppPath: () => process.cwd(),
     getPath: () => process.cwd(),
     isPackaged: false,

@@ -1,3 +1,6 @@
+// ⚠️ 必须保持为第一个 import：模块内的 app.setName('blanks') 决定 userData 目录
+// （%APPDATA%\blanks），必须在 electron-store（./stores/index）构造之前生效。
+import './appIdentity';
 import { app, BrowserWindow } from 'electron';
 import { setupAllHandlers } from './ipc/index';
 import { initAutoUpdater, autoCheckForUpdates, isUpdateInstallInProgress } from './updater/updater';

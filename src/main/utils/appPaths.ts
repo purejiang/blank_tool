@@ -1,28 +1,33 @@
 import { app } from 'electron'
 import path from 'path'
 import { existsSync, mkdirSync } from 'fs'
-
-const APP_DIR_NAME = 'blank_tool'
+import { APP_NAME } from '../appIdentity'
 
 /**
  * 获取应用本地数据目录 (机器专属，不应随用户账号漫游)
  *
- * Windows:  %LOCALAPPDATA%\blank_tool\
- * macOS:    ~/Library/Caches/blank_tool/
- * Linux:    ~/.cache/blank_tool/
+ * Windows:  %LOCALAPPDATA%\blanks\
+ * macOS:    ~/Library/Caches/blanks/
+ * Linux:    ~/.cache/blanks/
+ *
+ * 目录名 = 应用名（`src/main/appIdentity.ts`）。应用从 Blank Tool 改名 Blanks 后，
+ * 这里跟着换成 `blanks`，与历史的 `blank_tool` 目录**分开**：旧目录不做迁移、原样保留，
+ * 新目录从零开始，避免新旧两种命名混写同一份数据。
+ * 注意 userData（`%APPDATA%\blanks`，放 app-config.json 与渲染层 localStorage）
+ * 由 `app.setName()` 决定，同样在 appIdentity.ts 里收口。
  *
  * 适用于：缓存、输出文件、下载文件等大容量或机器专属数据
  */
 export function getAppLocalDataPath(): string {
   if (process.platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local')
-    return path.join(localAppData, APP_DIR_NAME)
+    return path.join(localAppData, APP_NAME)
   }
   if (process.platform === 'darwin') {
-    return path.join(app.getPath('home'), 'Library', 'Caches', APP_DIR_NAME)
+    return path.join(app.getPath('home'), 'Library', 'Caches', APP_NAME)
   }
   // Linux
-  return path.join(app.getPath('home'), '.cache', APP_DIR_NAME)
+  return path.join(app.getPath('home'), '.cache', APP_NAME)
 }
 
 /**
