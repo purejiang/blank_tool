@@ -305,3 +305,37 @@ def test_builtin_primitive_resolves_via_unified_registry(name):
     assert tm._registry.get_kind(name) == "shipped-native", (
         f"{name!r} must be kind 'shipped-native'"
     )
+
+
+def test_builtin_status_surface_reports_available(monkeypatch):
+    """``tool.get_tools`` must report every shipped-native builtin available.
+
+    Regression guard (2026-09-29, "工具页显示的都是不可用"): ``BuiltinTool``
+    declared no ``is_valid`` at all, so the handler's
+    ``getattr(tool, "is_valid", False)`` flagged all ten builtins
+    "unavailable" and the Tools page painted every card red — while
+    ``workflow.list_tools`` (the surface the editor palette reads) hardcodes
+    True for those very instances, so the contradiction never failed loudly.
+
+    A builtin is an in-process Python primitive: no binary to resolve, no
+    environment dep to satisfy — valid by construction.
+
+    ``tool_handler.manager`` is rebound to the real singleton on purpose: it
+    is a module-level global bound at import time, and
+    ``tests/contracts/conftest.py`` patches ``ToolManager.instance`` while
+    importing the handler, so in a whole-suite run the global can already be
+    a MagicMock (empty ``get_all_tools()``) — an order-dependent flake.
+    """
+    from app.handlers import tool_handler
+
+    tm = ToolManager.instance()
+    monkeypatch.setattr(tool_handler, "manager", tm)
+
+    report = tool_handler.get_tools({}, None)
+    for name in _BUILTIN_NAMES:
+        tool = tm.get_tool(name)
+        assert getattr(tool, "is_valid", None) is True, (
+            f"{name!r} must carry is_valid=True (BuiltinTool contract)"
+        )
+        assert report[name]["is_valid"] is True, name
+        assert report[name]["status"] == "available", name

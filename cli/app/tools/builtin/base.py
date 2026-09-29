@@ -91,11 +91,26 @@ class BuiltinTool(ABC):
         name: Unique tool identifier (e.g. ``"file.read"``).
         description: Human-facing summary of what the tool does.
         ports: The declared input/output port contract used for validation.
+        is_valid: Always True — see the note on the class attribute below.
     """
 
     name: ClassVar[str]
     description: ClassVar[str]
     ports: ClassVar[PortSet]
+
+    # A builtin is an in-process Python primitive: no binary to resolve, no
+    # environment dependency to satisfy — it is usable the moment its plugin
+    # registers it.  The flag has to be *declared* because the tool-status
+    # contract is uniform: ``tool.get_tools`` and
+    # ``ToolRegistry.get_available_tools()`` read ``is_valid`` on every tool
+    # (descriptors included) and default to False when the attribute is
+    # missing, which painted every builtin as "不可用" on the Tools page while
+    # ``workflow.list_tools`` — consumed by the editor palette — hardcoded
+    # True for the very same instances.
+    # ``version`` / ``tool_path`` are deliberately NOT declared: every call
+    # site already defaults them to "" for a tool with no binary behind it.
+    # A builtin that ever gains a real external dependency must override this.
+    is_valid: ClassVar[bool] = True
 
     @abstractmethod
     def execute(self, inputs: dict, context: ToolContext) -> dict:
