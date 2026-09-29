@@ -2,7 +2,6 @@
   <div class="loading-screen">
     <div class="loading-container">
       <div class="loading-brand">
-        <img src="@assets/images/logo.svg" class="loading-logo" alt="Blanks" />
         <h1 class="loading-title">{{ $t('app.title') }}</h1>
         <p class="loading-subtitle">{{ $t('app.subtitle') }}</p>
       </div>
@@ -62,12 +61,6 @@ const emit = defineEmits<{
 }
 .loading-brand {
   margin-bottom: 32px;
-}
-.loading-logo {
-  width: 48px;
-  height: 48px;
-  display: block;
-  margin: 0 auto;
 }
 .loading-title {
   font-family: var(--font-family-base);

@@ -13,7 +13,8 @@ headless CLI's ``run --task`` both operate on.  Exposed over the existing
 - ``task.get``      one task definition by name;
 - ``task.save``     create/overwrite a task definition (the bound workflow must
   exist, so a task can always be executed right after it is saved);
-- ``task.delete``   remove one task definition (its run records are untouched);
+- ``task.delete``   remove one task definition, together with the run artifacts
+  that definition produced (its run records stay in history);
 - ``task.execute``  (@streaming)  run the bound workflow with the saved inputs.
 
 ⚠️ Key-name note: ``task.list`` used to report the IN-FLIGHT runs registered with
@@ -35,11 +36,19 @@ Execution semantics (mirrors ``template.execute``):
   task, while ``source`` stays the workflow name.
 """
 
+import os
+
 from app.common.decorators import logs_errors, streaming
 from app.common.exceptions import ToolException
+from app.handlers.task_handler import handle_delete_output
+from app.history import store as history_store
 from app.task.store import FileTaskStore, TaskNotFoundError
 from app.template.store import FileTemplateStore, TemplateNotFoundError
+from app.utils.logger import Logger
 from app.workflow.runner import run_workflow
+from app.workflow.rundir import runs_root, safe_slug
+
+logger = Logger.get_logger("TaskDefHandler")
 
 #: Process-wide stores, created lazily (keeps module import free of filesystem
 #: side effects and lets tests point both at a ``tmp_path``).
@@ -181,9 +190,67 @@ def task_save(params, stream_handler):
     return {"saved": True, "name": name}
 
 
+def _run_artifact_paths(task_name: str) -> list:
+    """Collect the artifact directories of every recorded run of *task_name*.
+
+    ``run_dir`` (``<output_dir>/runs/<run-id>``) is taken from the history
+    summary when present; otherwise it is re-derived from the run id the same
+    way :func:`app.workflow.rundir.run_dir_for` does.
+    """
+    try:
+        records = history_store.list_runs(limit=0)
+    except Exception as exc:  # defensive: history must never block a delete
+        logger.warning(f"task.delete: cannot list runs for '{task_name}': {exc}")
+        return []
+
+    paths = []
+    for record in records:
+        if not isinstance(record, dict) or record.get("task_name") != task_name:
+            continue
+        run_dir = record.get("run_dir")
+        if isinstance(run_dir, str) and run_dir.strip():
+            paths.append(run_dir.strip())
+            continue
+        run_id = record.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            paths.append(os.path.join(runs_root(), safe_slug(run_id)))
+    return paths
+
+
+def _purge_run_artifacts(task_name: str) -> int:
+    """Best-effort delete of *task_name*'s run artifacts; returns how many went.
+
+    Deleting a task therefore deletes the files it produced — the behavior the
+    removed ``autoDeleteOutputOnTaskRemove`` setting used to (never actually)
+    toggle.  Run *records* are deliberately kept: history has its own retention
+    policy and its own "clear" action in the run-records UI.
+
+    Every path is containment-checked against the output dir by
+    ``task.delete_output`` (paths reach us from history files, not from the
+    caller).  Failures are logged, never raised: an undeletable folder must not
+    leave the task definition behind.
+    """
+    paths = _run_artifact_paths(task_name)
+    if not paths:
+        return 0
+
+    try:
+        result = handle_delete_output({"paths": paths}, None)
+    except Exception as exc:  # defensive: deletion is best-effort
+        logger.warning(f"task.delete: cannot purge artifacts of '{task_name}': {exc}")
+        return 0
+
+    for failure in result.get("failed") or []:
+        logger.warning(
+            f"task.delete: could not remove '{failure.get('path')}': "
+            f"{failure.get('error')}"
+        )
+    return len(result.get("deleted") or [])
+
+
 @logs_errors("TaskDefHandler")
 def task_delete(params, stream_handler):
-    """Remove one task definition.
+    """Remove one task definition and the run artifacts it produced.
 
     Params:
         name: task name.
@@ -194,8 +261,10 @@ def task_delete(params, stream_handler):
     Raises:
         ToolException: the name is missing, unknown, or unsafe.
 
-    The task's run records and artifacts are deliberately NOT deleted: history
-    is pruned by its own retention policy and cleared from the run-records UI.
+    The task's run *records* are deliberately kept (history is pruned by its own
+    retention policy and cleared from the run-records UI), but the artifacts
+    those runs wrote under the output directory are removed along with the
+    definition — deleting a task deletes its files by default.
     """
     name = _require_name(params)
     try:
@@ -204,6 +273,7 @@ def task_delete(params, stream_handler):
         raise ToolException(f"task not found: {name}") from exc
     except ValueError as exc:
         raise ToolException(str(exc)) from exc
+    _purge_run_artifacts(name)
     return {"deleted": True, "name": name}
 
 

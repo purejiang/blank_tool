@@ -22,11 +22,6 @@
         <template #icon><AppIcon name="refresh" /></template>
         {{ t('plugins.reload') }}
       </n-button>
-      <span class="plugins-grow" />
-      <n-button size="small" quaternary :loading="loading" @click="fetchPlugins">
-        <template #icon><AppIcon name="refresh" /></template>
-        {{ t('tools.refresh') }}
-      </n-button>
     </div>
 
     <div class="plugins-hint">{{ t('plugins.reloadHint') }}</div>
@@ -299,10 +294,6 @@ function confirmDelete(plugin: PluginEntry) {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.plugins-grow {
-  flex: 1;
 }
 
 .plugins-hint {

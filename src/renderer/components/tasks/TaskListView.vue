@@ -14,11 +14,6 @@
         class="tl-search"
         :placeholder="t('tasks.search')"
       />
-      <span class="tl-grow" />
-      <n-button size="small" quaternary :loading="loading" @click="load">
-        <template #icon><AppIcon name="refresh" /></template>
-        {{ t('workflows.refresh') }}
-      </n-button>
     </div>
 
     <div v-if="loading && tasks.length === 0" class="tl-status">{{ t('tasks.loading') }}</div>
@@ -253,10 +248,6 @@ defineExpose({ load })
 
 .tl-search {
   width: 240px;
-}
-
-.tl-grow {
-  flex: 1;
 }
 
 .tl-status {

@@ -113,8 +113,8 @@ describe('appStore config migrations', () => {
     expect(appStore.get('app').autoStart).toBe(false)
     expect(appStore.get('app').minimizeToTray).toBe(false)
 
-    // Version bumped 1 → 8.
-    expect(appStore.get('configVersion')).toBe(8)
+    // Version bumped 1 → 9.
+    expect(appStore.get('configVersion')).toBe(9)
   })
 
   it('empty store gets canonical top-level defaults without throwing', async () => {
@@ -124,7 +124,7 @@ describe('appStore config migrations', () => {
 
     expect(appStore.get('theme')).toBe('auto')
     expect(appStore.get('language')).toBe('zh-CN')
-    expect(appStore.get('configVersion')).toBe(8)
+    expect(appStore.get('configVersion')).toBe(9)
     expect(appStore.get('app')).toEqual({ autoStart: false, minimizeToTray: false })
   })
 
@@ -140,7 +140,7 @@ describe('appStore config migrations', () => {
     const { default: appStore } = await import('../../../src/main/stores/appStore')
 
     expect(appStore.get('enableNotifications')).toBe(false)
-    expect(appStore.get('configVersion')).toBe(8)
+    expect(appStore.get('configVersion')).toBe(9)
   })
 
   it('MIGRATIONS[6] leaves an explicit enableNotifications: false alone', async () => {
@@ -152,7 +152,7 @@ describe('appStore config migrations', () => {
     const { default: appStore } = await import('../../../src/main/stores/appStore')
 
     expect(appStore.get('enableNotifications')).toBe(false)
-    expect(appStore.get('configVersion')).toBe(8)
+    expect(appStore.get('configVersion')).toBe(9)
   })
 
   it('MIGRATIONS[7] deletes the dead output/javaPath keys from an existing store', async () => {
@@ -171,6 +171,24 @@ describe('appStore config migrations', () => {
     expect(appStore.get('javaPath')).toBeUndefined()
     // Unrelated keys survive, and the version advances.
     expect(appStore.get('theme')).toBe('dark')
-    expect(appStore.get('configVersion')).toBe(8)
+    expect(appStore.get('configVersion')).toBe(9)
+  })
+
+  it('MIGRATIONS[8] deletes the dead autoDeleteOutputOnTaskRemove key', async () => {
+    // The setting left the UI and deleting a task now always cleans up that
+    // task's run artifacts, so a leftover value would only mislead.
+    mocks.setSeed({
+      configVersion: 8,
+      autoDeleteOutputOnTaskRemove: true,
+      theme: 'dark',
+    })
+
+    const { default: appStore, isWritableConfigKey } = await import('../../../src/main/stores/appStore')
+
+    expect(appStore.get('autoDeleteOutputOnTaskRemove')).toBeUndefined()
+    expect(isWritableConfigKey('autoDeleteOutputOnTaskRemove')).toBe(false)
+    // Unrelated keys survive, and the version advances.
+    expect(appStore.get('theme')).toBe('dark')
+    expect(appStore.get('configVersion')).toBe(9)
   })
 })

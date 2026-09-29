@@ -39,8 +39,7 @@ export const WRITABLE_CONFIG_KEYS = {
   logs: 'logs',
   language: 'language',
   theme: 'theme',
-  enableNotifications: 'enableNotifications',
-  autoDeleteOutputOnTaskRemove: 'autoDeleteOutputOnTaskRemove'
+  enableNotifications: 'enableNotifications'
 } as const
 
 export type WritableAppConfigKey = keyof typeof WRITABLE_CONFIG_KEYS

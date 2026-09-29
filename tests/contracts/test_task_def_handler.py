@@ -13,6 +13,7 @@ history, so no test touches real user data.
 """
 
 import json
+import os
 
 import pytest
 
@@ -247,6 +248,45 @@ def test_delete_leaves_run_records_alone(tmp_path):
     task_delete({"name": "t"}, None)
 
     assert len(history_store.list_runs()) == 1
+
+
+def test_delete_removes_the_run_artifacts(tmp_path):
+    """Deleting a task deletes the files its runs produced (the record stays).
+
+    This is the behavior the removed ``autoDeleteOutputOnTaskRemove`` setting
+    used to (never actually) toggle: deleting a task deletes its files.
+    """
+    _save_template("wf-a")
+    task_save({"name": "t", "workflow": "wf-a", "inputs": {"message": "x"}}, None)
+    task_execute({"name": "t", "task_id": "tdh-art-1", "work_dir": str(tmp_path)}, None)
+
+    artifact_dirs = [r["run_dir"] for r in history_store.list_runs() if r.get("run_dir")]
+    assert artifact_dirs, "the run must have produced an artifact dir"
+    assert all(os.path.isdir(d) for d in artifact_dirs)
+
+    task_delete({"name": "t"}, None)
+
+    assert all(not os.path.exists(d) for d in artifact_dirs)
+    # The run record survives: history has its own retention policy and its own
+    # "clear records" action in the run-records UI.
+    assert len(history_store.list_runs()) == 1
+
+
+def test_delete_only_purges_its_own_artifacts(tmp_path):
+    """The purge is keyed by ``task_name`` — a sibling task's files survive."""
+    _save_template("wf-a")
+    task_save({"name": "t1", "workflow": "wf-a", "inputs": {"message": "x"}}, None)
+    task_save({"name": "t2", "workflow": "wf-a", "inputs": {"message": "y"}}, None)
+    task_execute({"name": "t1", "task_id": "tdh-own-1", "work_dir": str(tmp_path)}, None)
+    task_execute({"name": "t2", "task_id": "tdh-own-2", "work_dir": str(tmp_path)}, None)
+
+    run_dirs = {r["task_name"]: r["run_dir"] for r in history_store.list_runs()}
+    assert set(run_dirs) == {"t1", "t2"}
+
+    task_delete({"name": "t1"}, None)
+
+    assert not os.path.exists(run_dirs["t1"])
+    assert os.path.isdir(run_dirs["t2"])
 
 
 # ---------------------------------------------------------------------------

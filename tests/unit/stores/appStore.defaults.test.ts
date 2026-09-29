@@ -86,7 +86,6 @@ describe('appStore config defaults', () => {
     expect(appStore.get('language')).toBe('zh-CN')
     expect(appStore.get('theme')).toBe('auto')
     expect(appStore.get('enableNotifications')).toBe(false)
-    expect(appStore.get('autoDeleteOutputOnTaskRemove')).toBe(false)
 
     // WP10 (#19): `output.output` / `javaPath` were writable but read nowhere
     // (data dirs are fixed subdirectories of getAppLocalDataPath()). They must
@@ -96,5 +95,10 @@ describe('appStore config defaults', () => {
     expect(isWritableConfigKey('output')).toBe(false)
     expect(isWritableConfigKey('output.output')).toBe(false)
     expect(isWritableConfigKey('javaPath')).toBe(false)
+
+    // Same treatment for `autoDeleteOutputOnTaskRemove`: the toggle is gone and
+    // deleting a task always cleans up its run artifacts.
+    expect(appStore.get('autoDeleteOutputOnTaskRemove')).toBeUndefined()
+    expect(isWritableConfigKey('autoDeleteOutputOnTaskRemove')).toBe(false)
   })
 })

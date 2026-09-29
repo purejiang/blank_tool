@@ -41,18 +41,17 @@
           <n-form-item :label="t('settings.notifications')">
             <n-switch v-model:value="general.enableNotifications" @update:value="saveGeneral" />
           </n-form-item>
-          <n-form-item :label="t('settings.autoDeleteOutput')">
-            <n-switch v-model:value="general.autoDeleteOutputOnTaskRemove" @update:value="saveGeneral" />
-          </n-form-item>
-          <n-form-item :label="t('settings.timeout')">
-            <div>
-              <n-input-number v-model:value="timeoutSeconds" :min="30" :max="3600" :step="10" @update:value="saveTimeout" style="width: 140px">
-                <template #suffix>{{ t('settings.seconds') }}</template>
-              </n-input-number>
-              <div class="form-hint">{{ t('settings.timeoutHint') }}</div>
-            </div>
-          </n-form-item>
         </n-form>
+      </n-card>
+
+      <!-- Nodes：节点级默认设置。删除任务时清理输出文件已是默认行为（不再可配），
+           节点超时等默认值后续落在这里。 -->
+      <n-card :bordered="false" class="settings-card">
+        <div class="section-header">
+          <AppIcon name="layers" size="lg" style="color: var(--primary)" />
+          <span class="section-title">{{ t('settings.nodes') }}</span>
+        </div>
+        <div class="form-hint" style="margin-top:12px">{{ t('settings.nodesEmpty') }}</div>
       </n-card>
 
       <!-- Logging -->
@@ -115,15 +114,10 @@
 
       <!-- Storage -->
       <n-card :bordered="false" class="settings-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div class="section-header" style="margin-bottom:0">
-            <AppIcon name="drive" size="lg" style="color: var(--primary)" />
-            <span class="section-title">{{ t('settings.storage') }}</span>
-            <span class="storage-total-text">{{ formatFileSize(cacheInfo.total.size) }}</span>
-          </div>
-          <n-button size="tiny" quaternary @click="refreshCache" :loading="isLoadingCacheInfo">
-            <template #icon><AppIcon name="refresh" /></template>
-          </n-button>
+        <div class="section-header" style="margin-bottom:12px">
+          <AppIcon name="drive" size="lg" style="color: var(--primary)" />
+          <span class="section-title">{{ t('settings.storage') }}</span>
+          <span class="storage-total-text">{{ formatFileSize(cacheInfo.total.size) }}</span>
         </div>
 
         <!-- Proportional bar -->
@@ -246,10 +240,7 @@ const triggerSaved = () => {
   savedTimer = setTimeout(() => { showSaved.value = false }, 2000)
 }
 
-const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: false, autoDeleteOutputOnTaskRemove: false })
-// 请求超时存的是 `commands.timeout`（毫秒），主进程在启动时读一次 → 需要重启应用生效。
-// 界面上用秒（更易读），保存时换算成毫秒；下限 30s 与 src/main/ipc/index.ts 的 >= 30000 判定对齐。
-const timeoutSeconds = ref(300)
+const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: false })
 const logLevel = ref('info')
 const logLevelOptions = [
   { label: 'Debug', value: 'debug' },
@@ -265,7 +256,6 @@ const cacheInfo = ref({
   logs: { size: 0, files: 0 },
   total: { size: 0, files: 0 }
 })
-const isLoadingCacheInfo = ref(false)
 const clearingTarget = ref<string | null>(null)
 const systemInfo = systemStore.systemInfo
 const buildInfo = systemStore.buildInfo
@@ -331,16 +321,6 @@ const loadSettings = async () => {
         }
       }
     } catch {}
-    // Load the request timeout from appConfig (commands.timeout, milliseconds)
-    try {
-      const commandsConfig = await window.electronAPI.appConfig.get('commands')
-      const storedMs = commandsConfig && typeof commandsConfig === 'object'
-        ? (commandsConfig as Record<string, unknown>).timeout
-        : undefined
-      if (typeof storedMs === 'number' && storedMs >= 30000) {
-        timeoutSeconds.value = Math.round(storedMs / 1000)
-      }
-    } catch {}
   } catch (e) { log.error('Failed to load settings:', e) }
 }
 
@@ -362,20 +342,8 @@ const saveLogLevel = async (value: string) => {
   } catch (e) { log.error('Failed to save log level:', e) }
 }
 
-// 写 `commands.timeout`（毫秒），不是顶层 `timeout`：后者不在 appStore schema 里，
-// `setMany` 会判为非法键（旧实现因此静默丢失该设置）。下限 30s 与 src/main/ipc/index.ts
-// 的 `>= 30000` 判定一致，所以 UI 接受的值一定生效。见 docs/08 §7 缺口 #19。
-const saveTimeout = async (seconds: number | null) => {
-  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 30) {
-    timeoutSeconds.value = 300
-    return
-  }
-  try {
-    await window.electronAPI.appConfig.set('commands.timeout', Math.round(seconds * 1000))
-    triggerSaved()
-  } catch (e) { showError(t('settings.saveFailed'), (e as Error).message) }
-}
-
+// 写 `commands.timeout`（毫秒）的界面入口已移除：请求超时是内部实现细节
+// （主进程启动时读一次），设置页不再暴露；节点级超时后续挪到「节点」卡片。
 const savePaths = async () => {
   try {
     const svc = await serviceManager.getService('settings')
@@ -400,13 +368,11 @@ const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
 }
 
 const refreshCache = async () => {
-  isLoadingCacheInfo.value = true
   try {
     const svc = await serviceManager.getService('cache')
     const info = await svc.getCacheInfo(true)
     if (info) cacheInfo.value = info
   } catch (e) { log.error('Failed to refresh cache:', e) }
-  finally { isLoadingCacheInfo.value = false }
 }
 
 const confirmClear = (target: string) => {

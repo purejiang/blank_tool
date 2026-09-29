@@ -28,11 +28,6 @@
           {{ t('tools.systemSearch') }}
         </n-button>
       </n-dropdown>
-      <span class="tools-grow" />
-      <n-button size="small" quaternary :loading="loading" @click="load(true)">
-        <template #icon><AppIcon name="refresh" /></template>
-        {{ t('tools.refresh') }}
-      </n-button>
     </div>
 
     <div class="tools-hint">{{ t('tools.searchModeHint') }}</div>
@@ -490,10 +485,6 @@ function confirmDelete(row: ToolRow) {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.tools-grow {
-  flex: 1;
 }
 
 .tools-hint {

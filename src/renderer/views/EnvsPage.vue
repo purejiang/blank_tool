@@ -1,5 +1,5 @@
 <template>
-  <!-- S6.2 环境页（docs/08 §3-S6.2）：检测到的 Java / Python / Node 等运行环境。
+  <!-- S6.2 运行时页（docs/08 §3-S6.2）：检测到的 Java / Python / Node 等运行时。
        告警带是 S6.1 依赖徽章的**反向视图**：工具页回答"我缺什么"，这里回答
        "缺了会怎样"。 -->
   <div class="screen envs-page">
@@ -13,7 +13,7 @@
       </div>
     </div>
 
-    <!-- 告警带：存在未配置且被工具依赖的环境 -->
+    <!-- 告警带：存在未配置且被工具依赖的运行时 -->
     <n-alert v-if="blockedEnvs.length > 0" type="warning" :show-icon="true" class="envs-banner">
       <div class="envs-banner-row">
         <span>{{ t('envs.alert', { env: blockedEnvs[0].label, count: blockedEnvs[0].count }) }}</span>
@@ -22,10 +22,6 @@
     </n-alert>
 
     <div class="envs-toolbar">
-      <n-button size="small" quaternary :loading="loading" @click="load(true)">
-        <template #icon><AppIcon name="refresh" /></template>
-        {{ t('tools.refresh') }}
-      </n-button>
       <n-button size="small" :loading="adding" @click="openAddDialog">
         <template #icon><AppIcon name="plus" /></template>
         {{ t('envs.add') }}
@@ -204,7 +200,7 @@ async function load(refreshEnvs = false) {
   loading.value = true
   loadError.value = ''
   try {
-    // 环境与工具必须一起刷新：set_path 会同时改变两侧（docs/08 §3-S6.2）
+    // 运行时与工具必须一起重取：set_path 会同时改变两侧（docs/08 §3-S6.2）
     const [envList, toolList] = await Promise.all([
       unifiedApi.call<{ environments?: EnvEntry[] }>(refreshEnvs ? 'workflow.list_envs' : 'env.list'),
       unifiedApi.call<{ tools?: ToolEntry[] }>('workflow.list_tools', {}),

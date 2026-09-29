@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { PATH_CONFIG_DEFAULTS, type WritableAppConfigKey } from '../../shared/config/pathConfig';
 
-export const APP_CONFIG_VERSION = 8;
+export const APP_CONFIG_VERSION = 9;
 export { PATH_CONFIG_DEFAULTS };
 
 const schema = {
@@ -131,10 +131,6 @@ const schema = {
     enableNotifications: {
         type: 'boolean',
         default: false
-    },
-    autoDeleteOutputOnTaskRemove: {
-        type: 'boolean',
-        default: false
     }
 };
 
@@ -230,6 +226,13 @@ const MIGRATIONS: Record<number, () => void> = {
     7: () => {
         appStore.delete('output');
         appStore.delete('javaPath');
+    },
+    // 8: drop `autoDeleteOutputOnTaskRemove` (never read anywhere; the setting UI
+    // was removed). Deleting a task now always cleans up that task's run
+    // artifacts (cli/app/handlers/task_def_handler.py), so there is nothing left
+    // to toggle — a stale key would only look like it still does something.
+    8: () => {
+        appStore.delete('autoDeleteOutputOnTaskRemove');
     }
 };
 

@@ -1,7 +1,6 @@
 <template>
   <!-- 手机顶栏：品牌 + 当前页标题（+ 页面主操作槽）。≥768 隐藏。 -->
   <header class="top-bar">
-    <img src="@assets/images/logo.svg" class="top-logo" alt="" aria-hidden="true" />
     <span class="top-title">{{ title || t('app.title') }}</span>
     <div class="top-actions">
       <slot name="actions" />
@@ -26,12 +25,6 @@ const { t } = useI18n()
   padding: 10px 14px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-}
-
-.top-logo {
-  width: 24px;
-  height: 24px;
-  flex: none;
 }
 
 .top-title {

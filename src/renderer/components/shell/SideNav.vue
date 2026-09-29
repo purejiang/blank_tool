@@ -3,7 +3,6 @@
        平板（768–1023）可折叠为 64px 图标栏；手机（<768）整条隐藏，改由底部 Tab 导航。 -->
   <aside class="side-nav" :class="{ collapsed }">
     <div class="side-brand">
-      <img src="@assets/images/logo.svg" class="side-logo" alt="Blank Tool" />
       <span v-if="!collapsed" class="side-name">{{ t('app.title') }}</span>
       <button
         type="button"
@@ -92,12 +91,6 @@ function go(key: string) {
   flex-direction: column;
   gap: 8px;
   padding: 14px 0 10px;
-}
-
-.side-logo {
-  width: 28px;
-  height: 28px;
-  flex: none;
 }
 
 .side-name {

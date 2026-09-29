@@ -14,10 +14,6 @@
         <div class="section-header">
           <AppIcon name="activity" size="lg" :style="{ color: healthColor }" />
           <span class="section-title">{{ t('diagnostics.backendHealth') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshHealth">
-            <template #icon><AppIcon name="refresh" /></template>
-            {{ t('diagnostics.refresh') }}
-          </n-button>
         </div>
         <div class="health-row">
           <span class="health-dot" :class="healthClass"></span>
@@ -32,10 +28,6 @@
         <div class="section-header">
           <AppIcon name="task" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('diagnostics.runningTasks') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshTasks">
-            <template #icon><AppIcon name="refresh" /></template>
-            {{ t('diagnostics.refresh') }}
-          </n-button>
         </div>
         <div v-if="tasks.length === 0" class="empty-hint">{{ t('diagnostics.noTasks') }}</div>
         <n-data-table v-else :columns="taskColumns" :data="tasks" :bordered="false" size="small" :row-key="taskRowKey" />
@@ -46,10 +38,6 @@
         <div class="section-header">
           <AppIcon name="file" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('diagnostics.logTail') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshLogTail()">
-            <template #icon><AppIcon name="refresh" /></template>
-            {{ t('diagnostics.refresh') }}
-          </n-button>
         </div>
         <n-tabs type="line" v-model:value="activeLogTab" @update:value="onTabChange">
           <n-tab-pane name="backend" :tab="t('diagnostics.logTailBackend')">
@@ -81,10 +69,6 @@
         <div class="section-header">
           <AppIcon name="folder" size="lg" style="color: var(--text-muted)" />
           <span class="section-title">{{ t('diagnostics.resolvedPaths') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshPaths">
-            <template #icon><AppIcon name="refresh" /></template>
-            {{ t('diagnostics.refresh') }}
-          </n-button>
         </div>
         <div class="path-grid">
           <div class="path-row">

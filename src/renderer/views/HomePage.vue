@@ -90,19 +90,6 @@
 
     <!-- 最近运行 -->
     <AppCard :title="t('home.recent.title')" flush-body>
-      <template #actions>
-        <AppButton
-          variant="ghost"
-          icon-only
-          :aria-label="t('home.refresh')"
-          :title="t('home.refresh')"
-          :loading="loading"
-          @click="load"
-        >
-          <template #icon><AppIcon name="refresh" /></template>
-        </AppButton>
-      </template>
-
       <div v-if="recentRuns.length === 0" class="home-recent-empty">
         <EmptyState :title="t('home.recent.empty')" :description="t('home.recent.emptyHint')">
           <template #actions>

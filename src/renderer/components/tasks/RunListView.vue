@@ -26,10 +26,6 @@
         :options="statusOptions"
       />
       <span class="rl-grow" />
-      <n-button size="small" quaternary :loading="loading" @click="reload">
-        <template #icon><AppIcon name="refresh" /></template>
-        {{ t('workflows.refresh') }}
-      </n-button>
       <n-button size="small" quaternary type="error" :disabled="rows.length === 0" @click="clearAll">
         {{ t('tasks.runs.clearAll') }}
       </n-button>

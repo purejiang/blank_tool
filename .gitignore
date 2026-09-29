@@ -25,6 +25,7 @@ test-results/
 .pt4/
 .pytest_cache/
 .tmp-pytest/
+.pytmp/
 pytest-of-*/
 cli/output/
 .workbuddy

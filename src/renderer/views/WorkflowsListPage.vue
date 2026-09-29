@@ -36,11 +36,6 @@
           <n-input v-model:value="query" size="small" :placeholder="t('workflows.search')" />
         </label>
       </div>
-      <div class="btns">
-        <button type="button" class="iconbtn boxed" :title="t('workflows.refresh')" @click="load()">
-          <AppIcon name="refresh" />
-        </button>
-      </div>
     </div>
 
     <div v-if="backendDown" class="notice">
