@@ -493,7 +493,7 @@ onMounted(() => {
 <style scoped>
 /* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:740px 会导致页面之间宽窄不一。 */
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
+.page-title { font-family: var(--font-family-base); font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 /* 满宽后卡片改栅格（窄屏自动回落单列），避免长条卡片右侧空一大截。
@@ -515,7 +515,7 @@ onMounted(() => {
 }
 .settings-card:hover { box-shadow: var(--shadow-lift); border-color: var(--primary-soft-border); transform: translateY(-1px); }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; justify-content: flex-start; }
-.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
+.section-title { font-family: var(--font-family-base); font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .form-hint { font-size: 11px; color: var(--app-text-dim); margin-top: 4px; }
 .storage-total-text { font-size: 16px; font-weight: 600; color: var(--app-green); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 12px; }
 .storage-bar { display: flex; height: 6px; border-radius: var(--radius-chip); overflow: hidden; background: var(--app-storage-bg); margin-bottom: 12px; }

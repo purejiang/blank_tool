@@ -28,7 +28,7 @@
 }
 
 .pv .mono {
-  font-family: "Fira Code", "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-family-monospace);
 }
 
 .pv .dim {
@@ -135,7 +135,7 @@
 }
 
 .pv .tagcode {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   /* 表达式/变量码：设计契约里是紫点缀，不是主色 */
   color: var(--app-purple);
@@ -540,7 +540,7 @@
 .pv .wf-card .meta {
   font-size: 11.5px;
   color: var(--app-text-dim);
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
 }
 
 .pv .wf-card .foot {
@@ -652,7 +652,7 @@
 .pv .tool-row .tn {
   display: block;
   overflow: hidden;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 12px;
   color: var(--app-text-secondary);
   text-overflow: ellipsis;
@@ -715,7 +715,7 @@
 }
 
 .pv .cfg-hd .cn {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 13px;
   font-weight: 600;
   color: var(--app-text-primary);
@@ -772,7 +772,7 @@
 
 .pv .warn-bar .w2 {
   margin: 6px 0 0 22px;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-orange);
 }
@@ -804,7 +804,7 @@
 .pv .trow .tn { font-size: 13.5px; font-weight: 600; flex: none; min-width: 132px; }
 
 .pv .trow .tw {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-text-muted);
   flex: none;
@@ -824,7 +824,7 @@
 }
 
 .pv .trow .tm {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-text-dim);
   flex: none;
@@ -849,7 +849,7 @@
 .pv .wf-pick .lbl2 { font-size: 11.5px; color: var(--app-text-dim); flex: none; }
 
 .pv .wf-pick .meta3 {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-text-muted);
   flex: none;
@@ -890,7 +890,7 @@
 .pv .dir-row .input {
   flex: 1;
   min-width: 0;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-text-secondary);
 }
@@ -931,7 +931,7 @@
 .pv .hrow .src { font-size: 11.5px; color: var(--app-text-dim); flex: 1; min-width: 0; }
 
 .pv .hrow .tm {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-text-muted);
   flex: none;
@@ -939,7 +939,7 @@
 }
 
 .pv .hrow .du {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-text-muted);
   flex: none;
@@ -1000,7 +1000,7 @@
 .pv .step .st {
   font-size: 10.5px;
   color: var(--app-text-dim);
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
 }
 
 .pv .step-rail { flex: 1; height: 1.5px; background: var(--app-card-border); margin-top: 13px; min-width: 12px; }
@@ -1011,7 +1011,7 @@
   border: 1px solid var(--app-card-border);
   border-radius: var(--radius-control);
   padding: 10px 12px;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   line-height: 1.75;
   color: var(--app-text-secondary);
@@ -1083,7 +1083,7 @@
 
 .pv .kv > div:nth-child(odd) {
   background: var(--app-storage-bg);
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-text-muted);
 }
@@ -1121,7 +1121,7 @@
 
 .pv .tl-row .tn {
   font-size: 12.5px;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   color: var(--app-text-secondary);
   display: flex;
   align-items: center;
@@ -1131,7 +1131,7 @@
 .pv .tl-row .tm {
   font-size: 11px;
   color: var(--app-text-dim);
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
 }
 
 .pv .tl-row .te { color: var(--app-red); font-size: 11.5px; margin-top: 3px; }
@@ -1174,7 +1174,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 13px;
   font-weight: 600;
 }
@@ -1182,7 +1182,7 @@
 .pv .toolcard .tcd { font-size: 11.5px; color: var(--app-text-dim); margin-top: 3px; }
 
 .pv .toolcard .tcp {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-text-dim);
   margin-top: 8px;
@@ -1200,7 +1200,7 @@
   height: 19px;
   padding: 0 7px;
   border-radius: var(--radius-chip);
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-text-muted);
   background: var(--app-storage-bg);
@@ -1255,12 +1255,12 @@
 }
 
 .pv .rowitem .rn { font-size: 13px; font-weight: 600; flex: none; width: 92px; }
-.pv .rowitem .rv { font-family: "Fira Code", Consolas, monospace; font-size: 11.5px; color: var(--app-text-muted); flex: none; width: 80px; }
+.pv .rowitem .rv { font-family: var(--font-family-monospace); font-size: 11.5px; color: var(--app-text-muted); flex: none; width: 80px; }
 
 .pv .rowitem .rmono {
   flex: 1;
   min-width: 0;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-text-dim);
 }
@@ -1280,7 +1280,7 @@
 
 .pv .rowitem .rerr {
   margin-top: 3px;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--app-red);
 }

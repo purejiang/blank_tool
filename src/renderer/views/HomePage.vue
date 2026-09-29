@@ -295,7 +295,7 @@ onMounted(() => {
 }
 
 .home-system-value {
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 12.5px;
   color: var(--text);
 }
@@ -349,7 +349,7 @@ onMounted(() => {
 .home-run-time,
 .home-run-duration {
   flex: none;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11.5px;
   color: var(--text-muted);
 }

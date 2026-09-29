@@ -110,7 +110,7 @@ watch(
 
 .page-title {
   margin: 0;
-  font-family: Inter, sans-serif;
+  font-family: var(--font-family-base);
   font-size: 22px;
   font-weight: 700;
   color: var(--app-text-primary);

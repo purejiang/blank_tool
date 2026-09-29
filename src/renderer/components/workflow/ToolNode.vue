@@ -231,7 +231,7 @@ const outgoingTitle = computed(() =>
 
 .tn-sub {
   overflow: hidden;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-text-dim);
   text-overflow: ellipsis;

@@ -325,7 +325,7 @@ async function browsePath() {
 
 .pi-mono :deep(.n-input__textarea-el),
 .pi-mono :deep(.n-input__input-el) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 12px;
 }
 
@@ -361,7 +361,7 @@ async function browsePath() {
 
 .pi-chip code {
   overflow: hidden;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-purple, var(--app-text-secondary));
   text-overflow: ellipsis;

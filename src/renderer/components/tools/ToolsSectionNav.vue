@@ -74,6 +74,8 @@ function go(key: SectionKey) {
 .tsn-item--active {
   color: var(--app-text-primary);
   background: var(--app-card-bg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  /* 凹槽上的选中胶囊：极简口径下静止面靠 1px 描边立住（不用静态阴影，也就不用
+   * 硬编码 rgba）。用 inset 画描边 = 不改变盒子尺寸、不会让选中项比兄弟高 2px。 */
+  box-shadow: inset 0 0 0 1px var(--app-card-border);
 }
 </style>

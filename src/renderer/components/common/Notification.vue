@@ -208,7 +208,9 @@ defineExpose({
   background: var(--bg-color, var(--surface));
   border: 1px solid var(--border-color, var(--border));
   border-radius: var(--radius-control);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  /* 浮层（toast）走 pop 档阴影；暗色下是纯黑两层，浅色下带蓝调 —— 与全局一条轨一致。
+   * 别再写死 rgba（写死的黑在浅色主题下比规范更脏、暗色下又缺层次）。 */
+  box-shadow: var(--shadow-pop);
   pointer-events: auto;
   position: relative;
   overflow: hidden;

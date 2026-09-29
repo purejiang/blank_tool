@@ -313,7 +313,7 @@ onUnmounted(() => {
 <style scoped>
 /* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:900px 会导致页面之间宽窄不一。 */
 .page-header { margin-bottom: 20px; text-align: left; display: block; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
+.page-title { font-family: var(--font-family-base); font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 /* 两张「单行状态」卡片并排，表格/日志类卡片整行铺满 —— 满宽之后不再有右侧空白。
  * DOM 顺序是 健康/任务/日志/路径；用 order 把「路径」提到第 2 位与健康并排，
@@ -332,7 +332,7 @@ onUnmounted(() => {
 .diag-card { background: var(--app-card-bg); border: 1px solid var(--app-card-border); border-radius: var(--radius-card); text-align: left; transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease; }
 .diag-card:hover { box-shadow: var(--shadow-lift); border-color: var(--primary-soft-border); transform: translateY(-1px); }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: flex-start; }
-.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
+.section-title { font-family: var(--font-family-base); font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .header-action { margin-left: auto; }
 
 /* Health */
@@ -361,7 +361,7 @@ onUnmounted(() => {
   border: 1px solid var(--app-card-border);
   padding: 12px;
   border-radius: var(--radius-chip);
-  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 12px;
   line-height: 1.6;
   color: var(--app-text-secondary);
@@ -375,5 +375,5 @@ onUnmounted(() => {
 .path-grid { display: flex; flex-direction: column; gap: 6px; }
 .path-row { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; }
 .path-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; }
-.path-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; word-break: break-all; flex: 1; }
+.path-val { font-size: 13px; color: var(--app-text-secondary); font-family: var(--font-family-monospace); word-break: break-all; flex: 1; }
 </style>

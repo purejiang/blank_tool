@@ -282,7 +282,7 @@ onMounted(loadTools)
 
 .pal-grp-count {
   flex: none;
-  font-family: "Fira Code", Consolas, monospace;
+  font-family: var(--font-family-monospace);
   font-size: 10px;
   color: var(--app-text-muted);
 }
@@ -290,7 +290,7 @@ onMounted(loadTools)
 .tag-plugin {
   margin-left: 6px;
   padding: 0 5px;
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-family-base);
   font-size: 10px;
   color: var(--app-text-dim);
   background: var(--app-hover);

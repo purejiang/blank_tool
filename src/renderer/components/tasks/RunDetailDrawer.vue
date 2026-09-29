@@ -360,7 +360,7 @@ function openRunDir() {
 
 .rd-ident code,
 .rd-node-path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
 }
 
 .rd-error {
@@ -413,7 +413,7 @@ function openRunDir() {
 .rd-kv-key {
   flex-shrink: 0;
   min-width: 140px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   color: var(--app-text-secondary);
 }
 
@@ -474,7 +474,7 @@ function openRunDir() {
 .rd-output-key {
   flex-shrink: 0;
   min-width: 140px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   color: var(--app-text-secondary);
 }
 
@@ -498,7 +498,7 @@ function openRunDir() {
   margin: 0;
   padding: 8px;
   overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   line-height: 1.5;
   white-space: pre-wrap;

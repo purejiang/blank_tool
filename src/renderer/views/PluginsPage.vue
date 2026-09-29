@@ -283,7 +283,7 @@ function confirmDelete(plugin: PluginEntry) {
 
 .page-title {
   margin: 0;
-  font-family: Inter, sans-serif;
+  font-family: var(--font-family-base);
   font-size: 22px;
   font-weight: 700;
   color: var(--app-text-primary);
@@ -367,7 +367,7 @@ function confirmDelete(plugin: PluginEntry) {
 
 .plugin-name {
   overflow: hidden;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 13px;
   font-weight: 600;
   color: var(--app-text-primary);
@@ -401,7 +401,7 @@ function confirmDelete(plugin: PluginEntry) {
 }
 
 .plugins-json :deep(.n-input__textarea-el) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 12px;
 }
 

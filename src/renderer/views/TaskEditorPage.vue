@@ -458,7 +458,7 @@ watch(nameFromRoute, (name) => {
 
 .page-title {
   margin: 0;
-  font-family: Inter, sans-serif;
+  font-family: var(--font-family-base);
   font-size: 20px;
   font-weight: 700;
   color: var(--app-text-primary);
@@ -553,7 +553,9 @@ watch(nameFromRoute, (name) => {
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
   border-radius: var(--radius-control);
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+  /* 这里原有 `0 -2px 10px rgba(0,0,0,.12)`（向上投影）纯属冗余：粘底条本身已带
+   * 1px 完整描边 + 不透明卡片底，滚动内容贴上来时边界已经清楚；三档阴影 token
+   * 全是向下打的，硬套会打在视口外。按极简口径去掉，顺带消掉一处硬编码色。 */
 }
 
 .te-workdir {

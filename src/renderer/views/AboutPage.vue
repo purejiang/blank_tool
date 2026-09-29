@@ -151,7 +151,7 @@ const cpuText = computed(() => {
  * 满宽后卡片改栅格：构建信息 / 系统信息 并排，「随包工具」因路径长而整行。
  * DOM 顺序是 构建/工具/系统 → 用 order 把「系统」提到第 2 位。 */
 .page-header { margin-bottom: 20px; text-align: left; display: block; }
-.page-title { font-family: Inter, sans-serif; font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
+.page-title { font-family: var(--font-family-base); font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
 .page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .about-content {
   display: grid;
@@ -172,13 +172,13 @@ const cpuText = computed(() => {
 }
 .about-card:hover { box-shadow: var(--shadow-lift); border-color: var(--primary-soft-border); transform: translateY(-1px); }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: flex-start; }
-.section-title { font-family: Inter, sans-serif; font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
+.section-title { font-family: var(--font-family-base); font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
 .info-grid { display: flex; flex-direction: column; gap: 6px; }
 .info-row { display: flex; align-items: baseline; justify-content: flex-start; gap: 12px; padding: 5px 0; text-align: left; }
 .info-row:last-child { border-bottom: none; }
 .info-label { font-size: 13px; color: var(--app-text-muted); min-width: 110px; text-align: left; }
-.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: 'Fira Code', monospace; min-width: 80px; }
-.info-path { font-size: 12px; color: var(--app-text-dim); font-family: 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
+.info-val { font-size: 13px; color: var(--app-text-secondary); font-family: var(--font-family-monospace); min-width: 80px; }
+.info-path { font-size: 12px; color: var(--app-text-dim); font-family: var(--font-family-monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
 .info-empty { font-size: 13px; color: var(--app-text-dim); padding: 8px 0; }
 .update-status-inline { font-size: 12px; color: var(--success-text); white-space: nowrap; }
 </style>

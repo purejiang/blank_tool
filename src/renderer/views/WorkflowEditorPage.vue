@@ -1386,7 +1386,7 @@ onBeforeUnmount(() => {
 
 .we-problem-node {
   flex-shrink: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-text-secondary);
 }

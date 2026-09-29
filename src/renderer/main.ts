@@ -78,7 +78,8 @@ app.mount('#app');
   } catch (error) {
     log.error('应用启动失败:', error);
     
-    // 显示错误信息
+    // 显示错误信息（这里只能内联样式：Vue 没起来，但 tokens.css 已随模块加载，
+    // 所以 --* 变量可用。别再写死 white / 黑阴影 / Arial —— 深色主题下会穿帮。）
     document.body.innerHTML = `
       <div style="
         display: flex;
@@ -86,23 +87,24 @@ app.mount('#app');
         align-items: center;
         height: 100vh;
         background: var(--bg);
-        font-family: Arial, sans-serif;
+        font-family: var(--font-family-base);
       ">
         <div style="
           text-align: center;
           padding: 2rem;
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-card);
+          box-shadow: var(--shadow-card);
         ">
           <h2 style="color: var(--danger-text); margin-bottom: 1rem;">App Initialization Failed</h2>
           <p style="color: var(--text-muted); margin-bottom: 1rem;">${error.message}</p>
           <button onclick="location.reload()" style="
             padding: 0.5rem 1rem;
             background: var(--primary);
-            color: white;
+            color: var(--on-primary);
             border: none;
-            border-radius: 4px;
+            border-radius: var(--radius-chip);
             cursor: pointer;
           ">Reload</button>
         </div>

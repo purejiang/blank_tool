@@ -44,7 +44,7 @@
         :height="6"
         :border-radius="3"
         color="var(--success-text)"
-        rail-color="rgba(0,0,0,0.06)"
+        rail-color="var(--border)"
       />
     </div>
 
@@ -152,8 +152,8 @@ function handleRetry(): void {
   gap: 8px;
   margin-bottom: 16px;
 }
-.ver-old { font-size: 13px; color: var(--app-text-muted); font-family: monospace; }
-.ver-new { font-size: 15px; font-weight: 700; color: var(--success-text); font-family: monospace; }
+.ver-old { font-size: 13px; color: var(--app-text-muted); font-family: var(--font-family-monospace); }
+.ver-new { font-size: 15px; font-weight: 700; color: var(--success-text); font-family: var(--font-family-monospace); }
 .release-notes {
   background: var(--app-hover);
   border-radius: var(--radius-control);

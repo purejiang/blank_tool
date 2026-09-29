@@ -313,7 +313,7 @@ function pickEnv() {
 }
 
 .ep-item-label {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 12px;
   color: var(--app-text-primary);
 }

@@ -12,7 +12,7 @@
         :height="6"
         :border-radius="3"
         color="var(--success-text)"
-        rail-color="rgba(255,255,255,0.1)"
+        rail-color="var(--border)"
       />
       <div class="loading-info">
         <p class="loading-step">{{ step }}</p>
@@ -70,14 +70,14 @@ const emit = defineEmits<{
   margin: 0 auto;
 }
 .loading-title {
-  font-family: Inter, sans-serif;
+  font-family: var(--font-family-base);
   font-size: 24px;
   font-weight: 700;
   color: var(--app-text-primary);
   margin: 12px 0 0;
 }
 .loading-subtitle {
-  font-family: Inter, sans-serif;
+  font-family: var(--font-family-base);
   font-size: 13px;
   color: var(--app-text-muted);
   margin: 4px 0 0;

@@ -354,7 +354,7 @@ function confirmDelete(env: EnvEntry) {
 
 .page-title {
   margin: 0;
-  font-family: Inter, sans-serif;
+  font-family: var(--font-family-base);
   font-size: 22px;
   font-weight: 700;
   color: var(--app-text-primary);
@@ -457,7 +457,7 @@ function confirmDelete(env: EnvEntry) {
 .env-path {
   margin-top: 3px;
   overflow: hidden;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 11px;
   color: var(--app-text-muted);
   text-overflow: ellipsis;
@@ -481,7 +481,7 @@ function confirmDelete(env: EnvEntry) {
 }
 
 .envs-json :deep(.n-input__textarea-el) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-family-monospace);
   font-size: 12px;
 }
 

@@ -60,7 +60,7 @@ const healthTitle = computed(() =>
   background: var(--app-sidebar-bg);
   border-top: 1px solid var(--app-sidebar-border);
   font-size: 11px;
-  font-family: Inter, sans-serif;
+  font-family: var(--font-family-base);
   flex-shrink: 0;
 }
 .status-bar.collapsed {
@@ -75,7 +75,7 @@ const healthTitle = computed(() =>
   align-items: center;
 }
 .version-text {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-family-monospace);
   color: var(--app-text-dim);
   font-size: 10px;
 }
