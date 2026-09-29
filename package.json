@@ -1,5 +1,5 @@
 {
-  "name": "blank_tool",
+  "name": "blanks",
   "version": "0.1.0",
   "main": "dist/main/main.js",
   "type": "module",
@@ -28,7 +28,7 @@
   "license": "ISC",
   "description": "一个基于 Electron+Vue3 的本地工作流编排桌面应用",
   "build": {
-    "appId": "com.cyanrain.blank-tool",
+    "appId": "com.cyanrain.blanks",
     "productName": "Blanks",
     "artifactName": "Blanks-Setup-${version}.${ext}",
     "directories": {

@@ -87,6 +87,7 @@ Python Backend (cli/main.py)
 ### 通信与超时
 
 - **Renderer → Main**：渲染层调 `window.electronAPI.*`，经 `contextBridge` 路由到 `src/main/ipc/` 下的 handler。
+- **载荷必须是纯 JSON**：`contextBridge` 按 structured-clone 复制参数，**Vue 的 `reactive`/`ref` 代理不可克隆**，送过去就抛 `DataCloneError: An object could not be cloned.`（且不说是哪个字段）。最常踩的是"从 `reactive()` 里读一个嵌套数组/对象再拼进载荷"（`n-select multiple` 的绑定值就是这种）。规矩：送 IPC 的载荷先过 `toJsonPayload()`（`src/renderer/utils/jsonPayload.ts`）——`unifiedApi.call` / `callApi` 已内置；**绕过 unifiedApi 直接调 `callBackendAPI` 的地方要自己拍平**（如工作流编辑器的 `workflow.execute`）。详见 [docs/02 §2.2](./docs/02-系统架构.md)。
 - **Main → Python**：`commandHandlers.ts` 通过 stdin 写 JSON-RPC 请求，按 `request.id` 在 `requestCallbacks` Map 里匹配响应。**默认超时是 300000ms（5 分钟），不是 30 秒**——长任务（反编译、签名）依赖这个。
 - **流式响应**：被 `@streaming`（`cli/app/common/decorators.py`）装饰的 handler 在独立线程运行，多次回包 `finished: false`，主进程通过命名 IPC 通道（如 `stream-event`）转发给渲染层（logcat、下载进度等）。注意：`@streaming` 本身仅是一个标记装饰器，真正的多线程逻辑在 `api_handler.py` 的 `stream_handler`（daemon `threading.Thread`）。该 wrapper 会**先同步写 init 帧再启动 worker**（避免事件帧抢在 init 帧之前被 main 当成 invoke 结果），并在**返回的终帧**里带上 handler 的返回值作为 `payload`。
 
@@ -157,6 +158,8 @@ Python Backend (cli/main.py)
 `runtime/` 的作用**不止"Python 在哪"**：它同时是后端解析**描述符里相对 `path`**（`examples/tools/android/adb.json` 的 `adb/adb.exe`、`apktool.json` 的 `apktool/apktool.jar`）与**内置环境 `search_paths`**（`cli/registry/environments/java.json` 的 `jre`、`python.json` 的 `python`）的根（`cli/app/utils/paths.py::get_runtime_dir`，回退链 `BT_RUNTIME_DIR` → `cli/runtime` → 项目根 `runtime/`，env 分支不检查存在性）。设置页那一行「工具链与运行时」就是 `appStore.runtime` → `BT_RUNTIME_DIR`，**后端启动时读取一次，改后必须重启后端**；打包后 `runtime/` 不在包内，相对路径的描述符工具全靠这一行指到用户自备的工具链。
 
 **数据目录不经 appStore**：`cache/`、`output/`、`tasks/`、`logs/` 固定为 `%LOCALAPPDATA%\blanks\`（macOS `~/Library/Caches/blanks/`、Linux `~/.cache/blanks/`）下的子目录，由 `src/main/python/service.ts` 注入 `BT_CACHE_DIR` / `BT_OUTPUT_DIR` / `BT_TASKS_DIR` / `BT_LOG_DIR`，**不可配置**。目录名收口在 `src/main/appIdentity.ts`（`APP_NAME = 'blanks'`）：同一个常量既喂 `app.setName()`（决定 userData `%APPDATA%\blanks`，放 `app-config.json` 与渲染层 localStorage）又喂 `appPaths.getAppLocalDataPath()`；该模块**必须是 `main.ts` 的第一个 import**（electron-store 模块构造时就定死 userData），改名会同时重置主题/语言与 localStorage。旧的 `blank_tool` 目录**刻意不迁移**、原样保留。`appStore` 里曾有的 `output.output` 与 `javaPath` 是**死键**（可写但无人读），已随 WP10 删除（`APP_CONFIG_VERSION` 7→8 的 `MIGRATIONS[7]` 清理老库残留）；设置页路径组**只支持 `runtime` / `server` 两个键**（`settings.getViewModel` / `settings.resolvePaths`），加键要同时改 schema、`WRITABLE_CONFIG_KEYS` 与 `getSettingsViewModel`/`resolveSettingsPaths`。
+
+**应用身份三处必须一致（改名时最容易只改一半）**：`APP_NAME`（userData/数据目录名）、`APP_ID`（`appIdentity.ts`，喂 Windows 的 `app.setAppUserModelId`）、`package.json > build.appId`（electron-builder 把它写进快捷方式的 AUMID）。AUMID 是 **Windows 判定"这是哪个应用"的依据**——任务栏分组与固定、通知归属、跳转列表都看它；两边不一致时窗口会挂到**旧 AUMID 那个应用**上（2026-09-29 实测：改名后运行仍与旧的 `Blank Tool` 挤同一任务栏分组，固定新快捷方式也对不上，且不报错）。`main.ts` **必须引用 `APP_ID` 常量，不得写死 `com.cyanrain.*` 字面量**；守卫见 `tests/unit/main/appIdentity.test.ts`（同时核对 `productName` / `artifactName`）。注意 `package.json` 的 `name`/`appId` 目前是**未提交**的工作区改动（HEAD 里仍是 `blank_tool` / `com.cyanrain.blank-tool`）。
 
 ### 安全边界（Security boundary / trust model）
 

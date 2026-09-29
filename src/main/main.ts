@@ -1,6 +1,7 @@
 // ⚠️ 必须保持为第一个 import：模块内的 app.setName('blanks') 决定 userData 目录
 // （%APPDATA%\blanks），必须在 electron-store（./stores/index）构造之前生效。
 import './appIdentity';
+import { APP_ID } from './appIdentity';
 import { app, BrowserWindow } from 'electron';
 import { setupAllHandlers } from './ipc/index';
 import { initAutoUpdater, autoCheckForUpdates, isUpdateInstallInProgress } from './updater/updater';
@@ -21,7 +22,9 @@ app.whenReady().then(async () => {
   configureLogging(logLevel);
 
   if (process.platform === 'win32') {
-    app.setAppUserModelId('com.cyanrain.blank-tool');
+    // 必须是 APP_ID（= package.json 的 build.appId）：写死旧 id 会让 Windows 把本应用
+    // 归到旧的 "Blank Tool" 那一组（任务栏分组/固定、通知归属全跟着错），见 appIdentity.ts。
+    app.setAppUserModelId(APP_ID);
   }
 
   await ensurePythonService();

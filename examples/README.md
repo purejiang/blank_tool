@@ -11,6 +11,7 @@
 - 当前包含：
   - `dir-report.json` — 扫描目录并生成摘要报告。
   - `text-scanner.json` — 递归搜索目录中的文本模式，输出匹配结果。
+  - `demo-smoke.json` — **全链路冒烟演示**：写样本文件到本次运行目录 → 关键词扫描 → 读回文件 → 数值断言。覆盖单选/多选/数字/布尔四类入参、`${rundir}` 产物路径、`flow.log` 日志流与失败路径（把「命中行数上限」调到 0 即故意失败），用来验证画布、入参表单、运行日志与「打开运行目录」。
 
 ### Android 示例 (`workflows/android/` + `tools/android/`)
 
@@ -68,6 +69,7 @@ python cli/cli.py import-templates examples/workflows/generic
 # 通用示例（无需任何准备）
 python cli/cli.py run examples/workflows/generic/dir-report.json --input target_dir=.
 python cli/cli.py run examples/workflows/generic/text-scanner.json --input target_dir=./src --input pattern="import"
+python cli/cli.py run examples/workflows/generic/demo-smoke.json --input title=Demo --input keyword=ERROR --input 'tags=["alpha","beta"]' --input max_matches=3 --input recursive=true
 
 # Android 示例（需先导入描述符 + 自备二进制）
 python cli/cli.py run examples/workflows/android/decompile.json --input apk_path=app.apk --input output_dir=./decompiled

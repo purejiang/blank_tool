@@ -1,0 +1,116 @@
+{
+  "name": "demo-smoke",
+  "version": "1.0",
+  "description": "零依赖冒烟演示：走一遍内置工具链（写样本文件 → 关键词扫描 → 读回文件 → 数值断言），用来验证画布、入参表单、日志流与运行目录。不需要 Java/adb/apktool 等任何外部运行时。",
+  "inputs": [
+    {
+      "name": "title",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "报告标题，会写进样本文件第一行"
+    },
+    {
+      "name": "keyword",
+      "type": {"base": "text"},
+      "required": true,
+      "options": ["ERROR", "WARN", "INFO"],
+      "description": "扫描关键词（单选；样本文件里 ERROR/WARN 各 1 行、INFO 2 行）"
+    },
+    {
+      "name": "tags",
+      "type": {"base": "text"},
+      "required": true,
+      "options": ["alpha", "beta", "gamma"],
+      "multi": true,
+      "description": "附带标签（多选，可以一个都不选）"
+    },
+    {
+      "name": "max_matches",
+      "type": {"base": "number"},
+      "required": true,
+      "description": "命中行数上限，超过则最后一步断言失败（建议 3）"
+    },
+    {
+      "name": "recursive",
+      "type": {"base": "boolean"},
+      "required": true,
+      "description": "扫描本次运行目录时是否递归子目录"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "passed",
+      "type": {"base": "boolean"},
+      "required": true,
+      "description": "最后一个节点的输出：断言通过时为 true"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "write_sample",
+      "tool": "file.write",
+      "params": {
+        "path": "${rundir}/sample.log",
+        "content": "${inputs.title}\n[demo] Blanks 工作流冒烟演示\nINFO  boot ok\nWARN  cache miss\nERROR adapter timeout\nINFO  retry ok\n"
+      },
+      "next": "scan"
+    },
+    {
+      "id": "scan",
+      "tool": "text.grep",
+      "params": {
+        "path": "${rundir}",
+        "pattern": "$inputs.keyword",
+        "include": "*.log",
+        "recursive": "$inputs.recursive"
+      },
+      "next": "log_hits"
+    },
+    {
+      "id": "log_hits",
+      "tool": "flow.log",
+      "params": {
+        "message": "扫描完成：${inputs.title} · 关键词「${inputs.keyword}」命中 ${nodes.scan.outputs.count} 行",
+        "level": "info"
+      },
+      "next": "read_sample"
+    },
+    {
+      "id": "read_sample",
+      "tool": "file.read",
+      "params": {
+        "path": "$nodes.write_sample.outputs.path"
+      },
+      "next": "log_size"
+    },
+    {
+      "id": "log_size",
+      "tool": "flow.log",
+      "params": {
+        "message": "样本文件 ${nodes.read_sample.outputs.size} 字节 · 标签 ${inputs.tags} · recursive=${inputs.recursive}",
+        "level": "info"
+      },
+      "next": "within_limit"
+    },
+    {
+      "id": "within_limit",
+      "tool": "flow.compare",
+      "params": {
+        "a": "$nodes.scan.outputs.count",
+        "b": "$inputs.max_matches",
+        "op": "le"
+      },
+      "next": "assert_limit"
+    },
+    {
+      "id": "assert_limit",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.within_limit.outputs.result",
+        "message": "命中 ${nodes.scan.outputs.count} 行，超过上限 ${inputs.max_matches}（把上限调大即可通过）"
+      },
+      "next": null,
+      "on_failure": "fail"
+    }
+  ]
+}

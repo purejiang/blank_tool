@@ -13,4 +13,16 @@ import { app } from 'electron'
  */
 export const APP_NAME = 'blanks'
 
+/**
+ * 应用身份（Windows 的 AppUserModelID）。
+ *
+ * 决定任务栏**分组与固定**、通知归属、跳转列表——也就是"Windows 认为这是哪个应用"。
+ * 必须与 electron-builder 写进快捷方式的 `package.json > build.appId` **逐字一致**：
+ * 两者不一致时，运行中的窗口会挂到**旧 AUMID 那个应用**上（改名后仍与旧的 Blank Tool
+ * 挤在同一个任务栏分组里，固定新版快捷方式也对不上），而且不报任何错。
+ *
+ * 这条规则由 `tests/unit/main/appIdentity.test.ts` 守着，改一个必须改另一个。
+ */
+export const APP_ID = 'com.cyanrain.blanks'
+
 app.setName(APP_NAME)

@@ -1,0 +1,99 @@
+{
+  "name": "file-transform",
+  "version": "1.0",
+  "description": "读源文件 → 复制内容写到新文件 → 对新文件做正则替换（原文件不动）→ 记录替换次数并断言至少命中一处。全部使用内置工具，无外部依赖。",
+  "inputs": [
+    {
+      "name": "source_path",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "源文件路径（只读，不会被修改）"
+    },
+    {
+      "name": "target_path",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "新文件路径（不存在则创建，已存在则覆盖）"
+    },
+    {
+      "name": "pattern",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "Python 正则（re.sub 兼容），如 \"ERROR\" 或 \"(\\d{4})-(\\d{2})-(\\d{2})\""
+    },
+    {
+      "name": "replacement",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "替换文本，支持反向引用（\\1、\\2 或 $inputs.xxx 插值）"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "new_path",
+      "type": {"base": "text"},
+      "required": true,
+      "description": "生成的新文件路径（text.replace 输出的 path）"
+    },
+    {
+      "name": "count",
+      "type": {"base": "number"},
+      "required": true,
+      "description": "替换次数"
+    },
+    {
+      "name": "changed",
+      "type": {"base": "boolean"},
+      "required": true,
+      "description": "是否至少替换了一处"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "read_source",
+      "tool": "file.read",
+      "params": {
+        "path": "$inputs.source_path"
+      },
+      "next": "write_new"
+    },
+    {
+      "id": "write_new",
+      "tool": "file.write",
+      "params": {
+        "path": "$inputs.target_path",
+        "content": "$nodes.read_source.outputs.content"
+      },
+      "next": "replace"
+    },
+    {
+      "id": "replace",
+      "tool": "text.replace",
+      "params": {
+        "path": "$nodes.write_new.outputs.path",
+        "pattern": "$inputs.pattern",
+        "replacement": "$inputs.replacement"
+      },
+      "next": "log_result"
+    },
+    {
+      "id": "log_result",
+      "tool": "flow.log",
+      "params": {
+        "message": "转换完成：${nodes.write_new.outputs.path} · 替换 ${nodes.replace.outputs.count} 处 · 源文件 ${nodes.read_source.outputs.size} 字节",
+        "level": "info"
+      },
+      "next": "assert_changed"
+    },
+    {
+      "id": "assert_changed",
+      "tool": "flow.assert",
+      "params": {
+        "condition": "$nodes.replace.outputs.changed",
+        "message": "正则未命中任何内容（count=0）：检查 pattern 是否写错，或删掉 assert_changed 节点以容忍未命中"
+      },
+      "next": null,
+      "on_failure": "fail"
+    }
+  ]
+}
