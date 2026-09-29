@@ -63,7 +63,7 @@
               :draggable="tool.is_valid ? 'true' : 'false'"
               :title="
                 tool.is_valid
-                  ? t('workflow.editor.palette.dragHint')
+                  ? `${describe(tool)} · ${t('workflow.editor.palette.dragHint')}`
                   : t('workflow.editor.palette.dragHintInvalid')
               "
               @dragstart="onDragStart($event, tool)"

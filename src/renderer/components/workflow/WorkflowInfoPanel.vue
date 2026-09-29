@@ -4,7 +4,6 @@
        workflow's name can be edited (there is no list page yet), and
        `template.save` uses it as the template name. -->
   <div class="workflow-info-panel">
-    <div class="wip-title">{{ t('workflow.editor.info.title') }}</div>
     <n-form label-placement="top" size="small">
       <n-form-item
         :label="t('workflow.editor.info.name')"
@@ -78,13 +77,5 @@ function update(patch: Partial<WorkflowMeta>) {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.wip-title {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--app-text-secondary);
 }
 </style>

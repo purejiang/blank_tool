@@ -169,6 +169,45 @@ def test_workflow_validate_with_empty_definition_returns_no_errors():
     assert result["errors"] == []
 
 
+def test_workflow_validate_reports_broken_chain_as_structure_finding():
+    """A structurally invalid definition must come back as a finding, not raise.
+
+    ``WorkflowDefinition.from_dict`` raises on a broken linear chain; before the
+    handler caught that, the exception escaped as a handler error, so the
+    editor's 问题 panel could only ever show an error toast for exactly the
+    definitions it exists to explain (regression: save-as-template failed with
+    "must have exactly one entry node").
+    """
+    result = handle_validate(
+        {
+            "definition": {
+                "name": "broken",
+                # No `next` on either node → two entry nodes: a chain the engine
+                # rejects.
+                "nodes": [
+                    {"id": "a", "tool": "file.read"},
+                    {"id": "b", "tool": "file.write"},
+                ],
+            }
+        },
+        None,
+    )
+
+    assert result["errors"]
+    finding = result["errors"][0]
+    assert finding["field"] == "structure"
+    assert finding["node_id"] is None
+    assert finding["severity"] == "error"
+    assert "entry node" in finding["message"]
+
+
+def test_workflow_validate_without_definition_returns_structure_finding():
+    result = handle_validate({}, None)
+
+    assert result["errors"]
+    assert result["errors"][0]["field"] == "structure"
+
+
 # ---------------------------------------------------------------------------
 # workflow.list_tools / workflow.list_envs
 # ---------------------------------------------------------------------------

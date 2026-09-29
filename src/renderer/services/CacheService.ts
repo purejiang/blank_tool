@@ -23,7 +23,18 @@ class CacheService {
         try {
             const api = unifiedApi.getAPI()
             if (api && typeof api.getCacheInfo === 'function') {
-                this.cacheInfo = await api.getCacheInfo();
+                const raw: any = await api.getCacheInfo();
+                // `callBackendAPI` resolves to a FAILURE ENVELOPE
+                // ({success:false, error}) instead of throwing, and a backend
+                // that is still starting up (or a handler error) produces it.
+                // Assigning that to `cacheInfo` makes SettingsPage read
+                // `.total.size` off undefined on the next render — the red toast
+                // on the storage card. Only a payload actually shaped like
+                // CacheInfo may be cached.
+                if (!raw || typeof raw !== 'object' || !raw.total || typeof raw.total !== 'object') {
+                    throw new Error(raw?.error || 'unexpected cache.info payload');
+                }
+                this.cacheInfo = raw;
                 return this.cacheInfo;
             }
             throw new Error('getCacheInfo API not implemented');

@@ -79,6 +79,7 @@ export default {
     english: 'English',
     theme: 'Theme',
     themeAuto: 'Follow System',
+    themeAutoShort: 'Auto',
     themeLight: 'Light',
     themeDark: 'Dark',
     autoDeleteOutput: 'Delete output files on task removal',

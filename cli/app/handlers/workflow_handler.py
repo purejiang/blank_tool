@@ -84,8 +84,27 @@ def handle_validate(params, stream_handler):
     Returns ``{"errors": [...]}`` where each entry is
     ``{"node_id", "field", "message", "severity"}``; an empty list means the
     definition is valid.
+
+    A structurally invalid definition (e.g. a broken linear chain — several
+    entry nodes) is reported as a single workflow-level finding instead of
+    raising: :meth:`WorkflowDefinition.from_dict` raises ``ValueError`` /
+    ``TypeError``, and letting that escape turned every such request into a
+    handler error, so callers only ever got an error message and could never
+    list what was wrong.
     """
-    definition = WorkflowDefinition.from_dict(params["definition"])
+    try:
+        definition = WorkflowDefinition.from_dict(params.get("definition") or {})
+    except (KeyError, TypeError, ValueError) as exc:
+        return {
+            "errors": [
+                {
+                    "node_id": None,
+                    "field": "structure",
+                    "message": str(exc),
+                    "severity": "error",
+                }
+            ]
+        }
     errors = validate_workflow(definition, ToolManager.instance())
     return {
         "errors": [

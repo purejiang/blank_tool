@@ -28,10 +28,16 @@ export type ThemeMode = 'light' | 'dark' | 'auto'
 
 const { t } = useI18n()
 
+/**
+ * 分段控件里用**短标签**：侧栏只有 ~150px 给三段，"跟随系统"（4 字）在 12px 下
+ * 放不进 1/3 宽，会被折成两行（"跟随系" / "统"）。设计契约（docs/ui-prompts/
+ * ui-preview.html 的 `.theme-box`）用的就是「自动」。设置页那个下拉继续用
+ * `themeAuto`（空间充裕，写全更清楚）。
+ */
 const options: Array<{ value: ThemeMode; labelKey: string }> = [
   { value: 'light', labelKey: 'settings.themeLight' },
   { value: 'dark', labelKey: 'settings.themeDark' },
-  { value: 'auto', labelKey: 'settings.themeAuto' },
+  { value: 'auto', labelKey: 'settings.themeAutoShort' },
 ]
 
 const mode = ref<ThemeMode>('auto')
@@ -88,6 +94,8 @@ defineExpose({ refresh })
   border: 0;
   border-right: 1px solid var(--border);
   cursor: pointer;
+  /* 宁可被 .seg 的 overflow:hidden 裁掉，也不要折成两行。 */
+  white-space: nowrap;
 }
 
 .seg-item:last-child {

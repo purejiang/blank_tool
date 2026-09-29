@@ -79,6 +79,7 @@ export default {
     english: 'English',
     theme: '主题',
     themeAuto: '跟随系统',
+    themeAutoShort: '自动',
     themeLight: '浅色',
     themeDark: '深色',
     autoDeleteOutput: '删除任务时清理输出文件',

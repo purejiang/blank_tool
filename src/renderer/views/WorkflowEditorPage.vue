@@ -817,6 +817,24 @@ async function openProblems() {
     problemCount.value = 0
     return
   }
+  // Structural findings are a CANVAS-LOCAL property (several entry nodes / a
+  // cycle / orphans), so report them without a backend round trip. The backend
+  // cannot answer for this case either: `workflow.validate` feeds the definition
+  // to WorkflowDefinition.from_dict, which RAISES on a broken chain, so the
+  // request came back as an error toast instead of findings — dead exactly when
+  // the panel mattered most. Same rules the loader uses (validateOnDeserialize),
+  // so the panel and the save guard can never disagree.
+  const structural = validateOnDeserialize(definition)
+  if (structural.length > 0) {
+    problems.value = structural.map((message) => ({
+      node_id: null,
+      field: 'structure',
+      message,
+      severity: 'error',
+    }))
+    problemCount.value = problems.value.length
+    return
+  }
   problemsLoading.value = true
   try {
     const result = await unifiedApi.call<{ errors?: ProblemFinding[] }>('workflow.validate', {

@@ -642,13 +642,30 @@
 
 .pv .tool-row .tt { flex: 1; min-width: 0; }
 
+/*
+ * 一行一条：名字与描述都必须能截断。
+ * `flow.compare` 的描述里含一个 48 字符的**不可断** token
+ * （(eq/ne/lt/le/gt/ge/contains/starts_with/ends_with)），11px 下实测约 243px，
+ * 而左栏留给文字只有 ~149px —— 不截断时它直接溢出左栏压到画布上，行高也被
+ * 撑成 3~4 行（整改前 audit 探针报 `.td 243>149` 横向溢出）。
+ */
 .pv .tool-row .tn {
+  display: block;
+  overflow: hidden;
   font-family: "Fira Code", Consolas, monospace;
   font-size: 12px;
   color: var(--app-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.pv .tool-row .td { font-size: 11px; color: var(--app-text-dim); }
+.pv .tool-row .td {
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--app-text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pv .tool-row .grip { color: var(--app-text-dim); opacity: 0.5; flex: none; }
 .pv .tool-row.off { opacity: 0.42; cursor: not-allowed; }
 .pv .tool-row.off:hover { background: transparent; }
