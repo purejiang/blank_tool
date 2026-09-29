@@ -13,9 +13,7 @@ import { installIconSprite } from './assets/icons/sprite';
 // Import app styles
 import './assets/styles/tokens.css';
 import './assets/styles/main.css';
-import './assets/styles/common/components.css';
 import './assets/styles/themes.css';
-import './assets/styles/common/responsive.css';
 import './assets/styles/naive-overrides.css';
 // 版式层：逐字取自 docs/ui-prompts/ui-preview.html（规则作用域挂在 .pv 下）
 import './assets/styles/preview-layout.css';

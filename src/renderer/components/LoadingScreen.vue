@@ -18,19 +18,27 @@
         <p class="loading-timer">{{ time }}s</p>
       </div>
       <div v-if="error" class="loading-error-card">
-        <n-alert type="error" :title="error">
-          <template #footer>
-            <n-button v-if="retryCount < maxRetries" @click="emit('retry')" type="error" size="small">
+        <AppNotice tone="danger" :title="error">
+          <template #action>
+            <AppButton
+              v-if="retryCount < maxRetries"
+              variant="danger"
+              size="small"
+              @click="emit('retry')"
+            >
               {{ $t('app.retry') }} ({{ retryCount }}/{{ maxRetries }})
-            </n-button>
+            </AppButton>
           </template>
-        </n-alert>
+        </AppNotice>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import AppButton from '@components/ui/AppButton.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
+
 defineProps<{
   progress: number
   step: string

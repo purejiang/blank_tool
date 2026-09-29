@@ -31,17 +31,17 @@
     </n-form>
     <div v-else class="rid-no-inputs">{{ t('workflow.editor.dialog.noInputs') }}</div>
 
-    <n-alert v-if="error" type="error" :show-icon="false" class="rid-error">{{ error }}</n-alert>
+    <AppNotice v-if="error" tone="danger">{{ error }}</AppNotice>
 
     <template #footer>
-      <div class="rid-footer">
-        <n-button size="small" @click="visible = false">
+      <AppDialogFooter>
+        <AppButton variant="outline" @click="visible = false">
           {{ t('workflow.editor.dialog.cancel') }}
-        </n-button>
-        <n-button size="small" type="primary" :loading="loading" @click="submit">
+        </AppButton>
+        <AppButton variant="primary" :loading="loading" @click="submit">
           {{ t('workflow.editor.dialog.run') }}
-        </n-button>
-      </div>
+        </AppButton>
+      </AppDialogFooter>
     </template>
   </n-modal>
 </template>
@@ -52,7 +52,11 @@ import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NForm, NFormItem, NModal } from 'naive-ui'
 
 import PortInput from './PortInput.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppDialogFooter from '@components/ui/AppDialogFooter.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
 import type { PortJSON, WorkflowDefinitionJSON } from './serializer'
+import { toJsonPayload } from '@utils/jsonPayload'
 
 /**
  * M1: collect a workflow's declared inputs before running it.
@@ -139,7 +143,10 @@ function submit() {
     }
     inputs[port.name] = value
   }
-  emit('submit', inputs)
+  // `draft` 是 reactive：多选端口读出来的是**数组的响应式代理**，直接塞进 IPC 会抛
+  // `DataCloneError: An object could not be cloned.`。落盘前拍平成纯 JSON
+  // （提交即快照，之后的编辑不该影响已发出的这次运行）。
+  emit('submit', toJsonPayload(inputs))
 }
 </script>
 

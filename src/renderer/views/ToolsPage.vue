@@ -3,24 +3,16 @@
        数据是 `workflow.list_tools`（含内置/插件/描述符）与 `tool.get_tools`
        （探测状态、实际路径）的合并。 -->
   <div class="screen tools-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('tools.title') }}</h1>
-        <p class="page-subtitle">{{ t('tools.subtitle') }}</p>
-      </div>
-      <div class="page-header-right">
-        <ToolsSectionNav active="tools" />
-      </div>
-    </div>
+    <PageHeader :title="t('tools.title')" :description="t('tools.subtitle')">
+      <template #nav><ToolsSectionNav active="tools" /></template>
+    </PageHeader>
 
     <div class="tools-toolbar">
-      <n-button size="small" :loading="importing === 'pack'" @click="importPack">
+      <!-- 导入只有一个入口、一种格式：压缩包（描述符放在压缩包根目录）。
+           目录/单描述符不走界面——那是 CLI `import-pack` 的用法。 -->
+      <n-button size="small" :loading="importing" @click="importPack">
         <template #icon><AppIcon name="folder-in" /></template>
-        {{ t('tools.importPack') }}
-      </n-button>
-      <n-button size="small" :loading="importing === 'file'" @click="importDescriptor">
-        <template #icon><AppIcon name="file" /></template>
-        {{ t('tools.importDescriptor') }}
+        {{ t('tools.import') }}
       </n-button>
       <n-dropdown trigger="click" :options="searchModeOptions" @select="setSearchMode">
         <n-button size="small" quaternary>
@@ -33,18 +25,19 @@
     <div class="tools-hint">{{ t('tools.searchModeHint') }}</div>
 
     <div v-if="loading && rows.length === 0" class="tools-status">{{ t('tools.loading') }}</div>
-    <n-alert v-else-if="loadError" type="error" :show-icon="true">
-      <div class="tools-status-row">
-        <span>{{ t('tools.loadFailed', { error: loadError }) }}</span>
-        <n-button size="tiny" @click="load(true)">{{ t('workflows.retry') }}</n-button>
-      </div>
-    </n-alert>
+    <AppNotice v-else-if="loadError" tone="danger">
+      {{ t('tools.loadFailed', { error: loadError }) }}
+      <template #action>
+        <AppButton variant="outline" size="tiny" @click="load(true)">{{ t('workflows.retry') }}</AppButton>
+      </template>
+    </AppNotice>
     <div v-else-if="rows.length === 0" class="tools-empty">
       <div class="tools-empty-title">{{ t('tools.empty.title') }}</div>
       <div class="tools-empty-hint">{{ t('tools.empty.hint') }}</div>
       <div class="tools-empty-actions">
-        <n-button size="small" type="primary" @click="importPack">{{ t('tools.importPack') }}</n-button>
-        <n-button size="small" @click="importDescriptor">{{ t('tools.importDescriptor') }}</n-button>
+        <n-button size="small" type="primary" :loading="importing" @click="importPack">
+          {{ t('tools.import') }}
+        </n-button>
       </div>
     </div>
 
@@ -77,9 +70,6 @@
         </div>
 
         <div v-if="row.path" class="tc-path" :title="row.path">{{ row.path }}</div>
-        <div v-if="row.customPath" class="tc-path tc-path--custom" :title="row.customPath">
-          {{ t('tools.customPath') }}: {{ row.customPath }}
-        </div>
 
         <!-- 环境依赖徽章行：只在该工具**确实声明过** env_deps 时出现（缺口 #18） -->
         <div v-if="row.envDeps.length > 0" class="tc-deps">
@@ -93,31 +83,20 @@
           </span>
         </div>
 
-        <div class="tc-actions">
-          <n-button size="tiny" quaternary @click="toggleDetail(row.name)">
+        <div class="app-actions">
+          <AppButton variant="ghost" size="tiny" @click="toggleDetail(row.name)">
             {{ expanded.has(row.name) ? t('tools.hideDetail') : t('tools.showDetail') }}
-          </n-button>
-          <n-button size="tiny" quaternary @click="browseCustomPath(row)">{{ t('tools.setPath') }}</n-button>
-          <n-button
-            v-if="row.customPath"
+          </AppButton>
+          <AppButton
+            variant="danger-ghost"
             size="tiny"
-            quaternary
-            :loading="busy === `reset-${row.name}`"
-            @click="resetPath(row)"
-          >
-            {{ t('settings.reset') }}
-          </n-button>
-          <n-button
-            size="tiny"
-            quaternary
-            type="error"
             :disabled="!canDeleteTool(row.kind)"
             :title="canDeleteTool(row.kind) ? '' : t('tools.deleteProtected')"
             :loading="busy === `delete-${row.name}`"
             @click="confirmDelete(row)"
           >
             {{ t('tasks.actions.delete') }}
-          </n-button>
+          </AppButton>
         </div>
 
         <!-- 详情：端口与操作 -->
@@ -166,6 +145,9 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NDropdown, NTag, useDialog } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 
 import ToolsSectionNav from '@components/tools/ToolsSectionNav.vue'
 import ImportReportDialog, {
@@ -209,7 +191,6 @@ interface ToolRow {
   version: string
   description: string
   path: string
-  customPath: string
   inputs: number
   outputs: number
   operations: number
@@ -224,11 +205,10 @@ const { showSuccess, showError } = useNotification()
 
 const tools = ref<ToolEntry[]>([])
 const statuses = ref<Record<string, ToolStatusEntry>>({})
-const customPaths = ref<Record<string, string>>({})
 const envs = ref<EnvEntry[]>([])
 const loading = ref(false)
 const loadError = ref('')
-const importing = ref<'pack' | 'file' | null>(null)
+const importing = ref(false)
 const busy = ref<string | null>(null)
 const expanded = ref(new Set<string>())
 
@@ -252,15 +232,13 @@ async function load(refresh = false) {
   loading.value = true
   loadError.value = ''
   try {
-    const [toolList, statusList, paths, envList] = await Promise.all([
+    const [toolList, statusList, envList] = await Promise.all([
       unifiedApi.call<{ tools?: ToolEntry[] }>('workflow.list_tools', {}),
       unifiedApi.call<Record<string, ToolStatusEntry>>('tool.get_tools', refresh ? { refresh: true } : {}),
-      unifiedApi.call<Record<string, string>>('tool.get_custom_paths'),
       unifiedApi.call<{ environments?: EnvEntry[] }>('env.list'),
     ])
     tools.value = Array.isArray(toolList?.tools) ? toolList.tools : []
     statuses.value = statusList && typeof statusList === 'object' ? statusList : {}
-    customPaths.value = paths && typeof paths === 'object' ? paths : {}
     envs.value = Array.isArray(envList?.environments) ? envList.environments : []
   } catch (error) {
     log.error('[ToolsPage] loading tools failed:', error)
@@ -289,7 +267,6 @@ const rows = computed<ToolRow[]>(() =>
       version: tool.version || status?.version || '',
       description: tool.description ?? '',
       path: status?.path || tool.tool_path || '',
-      customPath: customPaths.value[tool.name] ?? '',
       inputs: inputs.length,
       outputs: outputs.length,
       operations: operations.length,
@@ -309,7 +286,7 @@ function toggleDetail(name: string) {
   expanded.value = next
 }
 
-// ---- 导入（目录批量 / 单文件） ----------------------------------------------
+// ---- 导入（只吃压缩包） -----------------------------------------------------
 
 function toReport(report: Partial<ToolImportReport> & { updated?: number }): ImportReport {
   const results = Array.isArray(report?.results) ? (report.results as ImportReportEntry[]) : []
@@ -322,56 +299,32 @@ function toReport(report: Partial<ToolImportReport> & { updated?: number }): Imp
   }
 }
 
+/**
+ * 只支持压缩包。后端 `tool.import_pack` 另外还认目录与单个 `*.json`
+ * （CLI `import-pack` 在用），界面不暴露那两条路。
+ */
 async function importPack() {
   if (importing.value) return
   const svc = (await serviceManager.getService('system')) as any
   try {
-    const picked = await svc.selectDirectory({ title: t('tools.importPack') })
+    const picked = await svc.selectFile({
+      title: t('tools.import'),
+      properties: ['openFile'],
+      filters: [{ name: 'ZIP', extensions: ['zip'] }],
+    })
     if (!picked || picked.canceled) return
     const path = (picked.filePath || (picked.filePaths && picked.filePaths[0]) || '').trim()
     if (!path) return
-    importing.value = 'pack'
+    importing.value = true
     const report = await unifiedApi.call<ToolImportReport>('tool.import_pack', { path })
     reportDialog.report = toReport(report)
-    reportDialog.title = t('tools.importPack')
+    reportDialog.title = t('tools.import')
     reportDialog.show = true
     await load()
   } catch (error) {
     showError(t('tools.importFailed', { error: errMsg(error) }))
   } finally {
-    importing.value = null
-  }
-}
-
-async function importDescriptor() {
-  if (importing.value) return
-  const svc = (await serviceManager.getService('system')) as any
-  try {
-    const picked = await svc.selectFile({
-      title: t('tools.importDescriptor'),
-      properties: ['openFile'],
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    })
-    if (!picked || picked.canceled) return
-    const file = (picked.filePath || (picked.filePaths && picked.filePaths[0]) || '').trim()
-    if (!file) return
-    importing.value = 'file'
-    // 单文件：读 JSON → tool.add（WP1 的 readTextFile 通道）
-    const read = await svc.readTextFile(file)
-    if (!read || read.success === false) throw new Error(read?.error || t('tools.readFailed'))
-    let descriptor: Record<string, unknown>
-    try {
-      descriptor = JSON.parse(read.content)
-    } catch {
-      throw new Error(t('tools.invalidJson'))
-    }
-    const added = await unifiedApi.call<{ name?: string }>('tool.add', { descriptor })
-    showSuccess(t('tools.added', { name: added?.name ?? file }))
-    await load()
-  } catch (error) {
-    showError(t('tools.importFailed', { error: errMsg(error) }))
-  } finally {
-    importing.value = null
+    importing.value = false
   }
 }
 
@@ -397,38 +350,7 @@ async function setSearchMode(key: string) {
   }
 }
 
-// ---- 自定义路径 / 删除 -------------------------------------------------------
-
-async function browseCustomPath(row: ToolRow) {
-  const svc = (await serviceManager.getService('system')) as any
-  try {
-    const picked = await svc.selectFile({ title: t('tools.setPath') })
-    if (!picked || picked.canceled) return
-    const path = (picked.filePath || (picked.filePaths && picked.filePaths[0]) || '').trim()
-    if (!path) return
-    busy.value = `path-${row.name}`
-    await unifiedApi.call('tool.set_custom_path', { tool_name: row.name, path })
-    showSuccess(t('tools.pathSet', { name: row.name }))
-    await load(true)
-  } catch (error) {
-    showError(t('tools.pathFailed', { error: errMsg(error) }))
-  } finally {
-    busy.value = null
-  }
-}
-
-async function resetPath(row: ToolRow) {
-  busy.value = `reset-${row.name}`
-  try {
-    await unifiedApi.call('tool.reset_custom_path', { tool_name: row.name })
-    showSuccess(t('tools.pathReset', { name: row.name }))
-    await load(true)
-  } catch (error) {
-    showError(t('tools.pathFailed', { error: errMsg(error) }))
-  } finally {
-    busy.value = null
-  }
-}
+// ---- 删除 --------------------------------------------------------------------
 
 function confirmDelete(row: ToolRow) {
   dialog.warning({
@@ -453,33 +375,15 @@ function confirmDelete(row: ToolRow) {
 </script>
 
 <style scoped>
+/* 页面根不滚动（唯一滚动容器是外壳 .app-shell-content）——见 preview-layout.css */
 .tools-page {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
-  overflow-y: auto;
 }
 
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-}
 
-.page-title {
-  margin: 0;
-  font-family: var(--font-family-base);
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-text-primary);
-}
 
-.page-subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--app-text-muted);
-}
 
 .tools-toolbar {
   display: flex;
@@ -597,10 +501,6 @@ function confirmDelete(row: ToolRow) {
   color: var(--app-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.tc-path--custom {
-  color: var(--app-orange, var(--app-yellow));
 }
 
 .tc-deps {

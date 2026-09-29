@@ -1,7 +1,18 @@
 <template>
   <!-- 徽章：主徽章（primary-soft + primary）/ 中性（surface-alt + text-secondary）
-       / 语义四色。金色只用于语义，不用蓝色顶替成功或错误。 -->
-  <span class="app-badge" :class="`app-badge--${tone}`">
+       / 语义四色 + 点缀紫。颜色只用 token，不用蓝色顶替成功或错误。
+
+       这是应用里**唯一**的「标签/徽章」实现：`<n-tag>` 的软色是
+       Naive 用 changeColor(semanticColor, alpha) 算出来的半透明底，与设计契约
+       的实色底（.badge.ok = --success-bg）不是一回事，所以统一收编到这里。
+
+       size：sm = 20px（契约 .badge 口径）/ xs = 16px（原 `<n-tag size="tiny">` 口径）。
+       bordered：契约的 .badge 没有描边，而首页那处需要描边 —— 默认 true 保现状，
+                 迁移自 `<n-tag :bordered="false">` 的站点显式传 false。 -->
+  <span
+    class="app-badge"
+    :class="[`app-badge--${tone}`, `app-badge--${size}`, { 'app-badge--plain': !bordered }]"
+  >
     <slot name="icon" />
     <slot />
   </span>
@@ -18,22 +29,44 @@ export type BadgeTone =
   /* 点缀紫：只用于「种类」这类标记，不参与语义四色 */
   | 'purple'
 
-withDefaults(defineProps<{ tone?: BadgeTone }>(), { tone: 'neutral' })
+withDefaults(
+  defineProps<{
+    tone?: BadgeTone
+    size?: 'sm' | 'xs'
+    /** false = 无描边（契约 .badge 口径） */
+    bordered?: boolean
+  }>(),
+  { tone: 'neutral', size: 'sm', bordered: true },
+)
 </script>
 
 <style scoped>
 .app-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 7px;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-6);
   border-radius: var(--radius-chip);
   border: 1px solid transparent;
-  font-size: 11.5px;
   line-height: 1;
   white-space: nowrap;
   flex: none;
+}
+
+.app-badge--sm {
+  height: 20px;
+  padding: 0 7px;
+  font-size: var(--fs-aux);
+}
+
+.app-badge--xs {
+  height: 16px;
+  font-size: var(--fs-12);
+}
+
+/* 无描边：契约 .badge 只有底色，没有边 */
+.app-badge--plain {
+  border-color: transparent !important;
 }
 
 .app-badge--primary {

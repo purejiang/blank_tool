@@ -1,11 +1,6 @@
 <template>
   <div class="screen about-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('about.title') }}</h1>
-        <p class="page-subtitle">{{ t('about.subtitle') }}</p>
-      </div>
-    </div>
+    <PageHeader :title="t('about.title')" :description="t('about.subtitle')" />
 
     <div class="about-content">
 
@@ -75,6 +70,7 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 import { useSystemStore, useToolStore } from '@stores/index'
 import { useUpdateStore } from '@stores/updateStore'
 import serviceManager from '@services/ServiceManager'
@@ -150,9 +146,6 @@ const cpuText = computed(() => {
 /* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:740px 会导致页面之间宽窄不一。
  * 满宽后卡片改栅格：构建信息 / 系统信息 并排，「随包工具」因路径长而整行。
  * DOM 顺序是 构建/工具/系统 → 用 order 把「系统」提到第 2 位。 */
-.page-header { margin-bottom: 20px; text-align: left; display: block; }
-.page-title { font-family: var(--font-family-base); font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .about-content {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

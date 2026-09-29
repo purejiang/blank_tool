@@ -1,11 +1,14 @@
 <template>
-  <!-- Workflow-level inputs/outputs authoring (T6), inline in the right dock's
-       工作流 tab (it used to be hidden behind a toolbar modal). List mode shows
-       the declared ports of the active side; edit mode is a draft form
-       committed via the pure ioAuthoring helpers into meta.inputs /
+  <!-- Workflow-level inputs/outputs authoring (T6).
+       Two hosts, one component:
+        - 开始 / 结束 endpoints pass a fixed `side` + `hide-tabs` (入参在「开始」里配、
+          出参在「结束」里配，见 docs/08 §3·S2「虚拟端点」)；
+        - 不带 props 时是双 tab 的自带版本（旧行为，保留给任何还需要两侧切换的入口）。
+       List mode shows the declared ports of the active side; edit mode is a draft
+       form committed via the pure ioAuthoring helpers into meta.inputs /
        meta.outputs. -->
   <div class="io-panel">
-    <n-tabs :value="side" type="line" size="small" @update:value="onSideChange">
+    <n-tabs v-if="!hideTabs" :value="activeSide" type="line" size="small" @update:value="onSideChange">
       <n-tab-pane name="inputs" :tab="t('workflow.editor.io.inputs')" />
       <n-tab-pane name="outputs" :tab="t('workflow.editor.io.outputs')" />
     </n-tabs>
@@ -13,7 +16,7 @@
     <!-- List mode -->
     <div v-if="!editing" class="io-body">
       <div v-if="ports.length === 0" class="io-empty">
-        {{ t(side === 'inputs' ? 'workflow.editor.io.emptyInputs' : 'workflow.editor.io.emptyOutputs') }}
+        {{ t(activeSide === 'inputs' ? 'workflow.editor.io.emptyInputs' : 'workflow.editor.io.emptyOutputs') }}
       </div>
       <div v-else class="io-list">
         <div v-for="port in ports" :key="port.name" class="io-row">
@@ -29,32 +32,38 @@
               {{ port.description }}
             </div>
           </div>
-          <div class="io-row-actions">
-            <n-button size="small" quaternary :title="t('workflow.editor.io.edit')" @click="startEdit(port)">
+          <div class="app-actions">
+            <AppButton
+              variant="ghost"
+              icon-only
+              :aria-label="t('workflow.editor.io.edit')"
+              :title="t('workflow.editor.io.edit')"
+              @click="startEdit(port)"
+            >
               <template #icon><AppIcon name="pencil" size="sm" /></template>
-            </n-button>
-            <n-button
-              size="small"
-              quaternary
-              type="error"
+            </AppButton>
+            <AppButton
+              variant="danger-ghost"
+              icon-only
+              :aria-label="t('workflow.editor.io.remove')"
               :title="t('workflow.editor.io.remove')"
               @click="removePort(port)"
             >
               <template #icon><AppIcon name="trash" size="sm" /></template>
-            </n-button>
+            </AppButton>
           </div>
         </div>
       </div>
       <n-button size="small" class="io-add" @click="startAdd">
         <template #icon><AppIcon name="plus" size="sm" /></template>
-        {{ t(side === 'inputs' ? 'workflow.editor.io.addInput' : 'workflow.editor.io.addOutput') }}
+        {{ t(activeSide === 'inputs' ? 'workflow.editor.io.addInput' : 'workflow.editor.io.addOutput') }}
       </n-button>
     </div>
 
     <!-- Edit mode: add or edit one port -->
     <div v-else class="io-body">
       <div class="io-form-title">
-        {{ t(side === 'inputs' ? 'workflow.editor.io.editInput' : 'workflow.editor.io.editOutput') }}
+        {{ t(activeSide === 'inputs' ? 'workflow.editor.io.editInput' : 'workflow.editor.io.editOutput') }}
       </div>
       <n-form :model="draft" label-placement="top" size="small">
         <n-form-item
@@ -95,33 +104,35 @@
                 :placeholder="t('workflow.editor.io.fields.optionPlaceholder')"
                 @update:value="(value: string) => setOption(index, value)"
               />
-              <n-button
-                size="small"
-                quaternary
+              <AppButton
+                variant="ghost"
+                icon-only
                 :disabled="index === 0"
+                :aria-label="t('workflow.editor.io.fields.optionMoveUp')"
                 :title="t('workflow.editor.io.fields.optionMoveUp')"
                 @click="moveOption(index, -1)"
               >
                 <template #icon><AppIcon name="up" size="sm" /></template>
-              </n-button>
-              <n-button
-                size="small"
-                quaternary
+              </AppButton>
+              <AppButton
+                variant="ghost"
+                icon-only
                 :disabled="index === draft.options.length - 1"
+                :aria-label="t('workflow.editor.io.fields.optionMoveDown')"
                 :title="t('workflow.editor.io.fields.optionMoveDown')"
                 @click="moveOption(index, 1)"
               >
                 <template #icon><AppIcon name="down" size="sm" /></template>
-              </n-button>
-              <n-button
-                size="small"
-                quaternary
-                type="error"
+              </AppButton>
+              <AppButton
+                variant="danger-ghost"
+                icon-only
+                :aria-label="t('workflow.editor.io.fields.optionRemove')"
                 :title="t('workflow.editor.io.fields.optionRemove')"
                 @click="removeOption(index)"
               >
                 <template #icon><AppIcon name="trash" size="sm" /></template>
-              </n-button>
+              </AppButton>
             </div>
             <n-button size="small" dashed class="io-option-add" @click="addOption">
               <template #icon><AppIcon name="plus" size="sm" /></template>
@@ -129,13 +140,13 @@
             </n-button>
           </div>
         </n-form-item>
-        <n-alert v-if="error" type="error" :show-icon="false" class="io-error">
+        <AppNotice v-if="error" tone="danger">
           {{ t(error) }}
-        </n-alert>
-        <div class="io-form-footer">
-          <n-button size="small" @click="exitEdit">{{ t('common.cancel') }}</n-button>
-          <n-button size="small" type="primary" @click="commit">{{ t('workflow.editor.io.save') }}</n-button>
-        </div>
+        </AppNotice>
+        <AppDialogFooter>
+          <AppButton variant="outline" @click="exitEdit">{{ t('common.cancel') }}</AppButton>
+          <AppButton variant="primary" @click="commit">{{ t('workflow.editor.io.save') }}</AppButton>
+        </AppDialogFooter>
       </n-form>
     </div>
   </div>
@@ -156,6 +167,9 @@ import {
   NTabs,
 } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppDialogFooter from '@components/ui/AppDialogFooter.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
 
 import {
   PORT_TYPE_KEYS,
@@ -174,9 +188,16 @@ import type { PortJSON, WorkflowMeta } from './serializer'
  * rules (type mapping, name validation, duplicate checks) live in the pure
  * ioAuthoring module; this component only manages edit state and emits an
  * updated WorkflowMeta — it never mutates the prop.
+ *
+ * `side` pins one half (开始 = inputs, 结束 = outputs) and `hideTabs` removes the
+ * switcher; without them the component keeps its original two-tab behaviour.
  */
 const props = defineProps<{
   meta: WorkflowMeta
+  /** Pinned side; omit to let the built-in tabs drive it. */
+  side?: Side
+  /** Hide the inputs/outputs switcher (used when `side` is pinned by the host). */
+  hideTabs?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -187,13 +208,14 @@ const { t } = useI18n()
 
 type Side = 'inputs' | 'outputs'
 
-const side = ref<Side>('inputs')
+const localSide = ref<Side>('inputs')
+const activeSide = computed<Side>(() => props.side ?? localSide.value)
 const editing = ref(false)
 const originalName = ref<string | null>(null) // port being edited; null = adding
 const draft = reactive<PortDraft>(createEmptyDraft())
 const error = ref<string | null>(null) // IO_ERRORS i18n key, resolved on display
 
-const ports = computed<PortJSON[]>(() => props.meta?.[side.value] ?? [])
+const ports = computed<PortJSON[]>(() => props.meta?.[activeSide.value] ?? [])
 
 const usesOptions = computed(() => typeKeyUsesOptions(draft.typeKey))
 
@@ -206,7 +228,7 @@ const typeOptions = computed(() =>
 
 // A draft belongs to one side only; switching sides abandons it.
 function onSideChange(value: Side) {
-  side.value = value
+  localSide.value = value
   exitEdit()
 }
 
@@ -270,12 +292,15 @@ function commit() {
     error.value = result.error
     return
   }
-  emit('update:meta', { ...props.meta, [side.value]: result.ports })
+  emit('update:meta', { ...props.meta, [activeSide.value]: result.ports })
   exitEdit()
 }
 
 function removePort(port: PortJSON) {
-  emit('update:meta', { ...props.meta, [side.value]: removePortByName(ports.value, port.name) })
+  emit('update:meta', {
+    ...props.meta,
+    [activeSide.value]: removePortByName(ports.value, port.name),
+  })
 }
 </script>
 
@@ -310,6 +335,7 @@ function removePort(port: PortJSON) {
   gap: 6px;
   max-height: 360px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .io-row {

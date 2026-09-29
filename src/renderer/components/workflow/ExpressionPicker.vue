@@ -283,6 +283,7 @@ function pickEnv() {
   gap: 2px;
   max-height: 260px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ep-group {

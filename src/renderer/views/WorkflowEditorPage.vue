@@ -17,20 +17,40 @@
       <n-button size="small" quaternary :title="t('workflow.editor.back')" @click="goBack">
         <template #icon><AppIcon name="back" /></template>
       </n-button>
-      <button type="button" class="ed-name" :title="meta.name" @click="showWorkflowInfo">
+      <span class="ed-name" :title="meta.name">
         {{ meta.name || t('workflow.editor.title') }}
-      </button>
+      </span>
+      <!-- 工作流信息（名称/版本/描述）从右栏搬到这个按钮后面的弹窗：右栏只服务选中的
+           节点/端点，画布才能吃满宽度（docs/08 §3·S2）。 -->
+      <n-button
+        size="small"
+        quaternary
+        class="we-edit-info"
+        :title="t('workflow.editor.info.edit')"
+        @click="showInfoDialog = true"
+      >
+        <template #icon><AppIcon name="pencil" size="sm" /></template>
+      </n-button>
       <span class="we-state" :class="`we-state--${runState}`">{{ stateLabel }}</span>
 
       <div class="we-top-actions">
-        <TemplateManager
+        <WorkflowFileActions
           :get-definition="serializeCanvas"
           :blocked-reason="saveBlockedReason"
-          :default-name="meta.name"
-          :default-description="meta.description ?? ''"
-          @load="onTemplateLoad"
-          @saved="onTemplateSaved"
+          @save="onSaveClick"
+          @import="onImportPayload"
         />
+        <n-button
+          size="small"
+          :type="showRunLog ? 'primary' : 'default'"
+          :quaternary="!showRunLog"
+          :title="t('workflow.editor.runLog.toggle')"
+          data-test="run-log-toggle"
+          @click="showRunLog = !showRunLog"
+        >
+          <template #icon><AppIcon name="term" /></template>
+          {{ t('workflow.editor.runLog.title') }}
+        </n-button>
         <n-button size="small" @click="openProblems">
           {{ t('workflow.editor.problems.button') }}
           <template v-if="problemCount >= 0">&nbsp;{{ problemCount }}</template>
@@ -39,7 +59,7 @@
           v-if="!isRunning"
           size="small"
           type="primary"
-          :disabled="nodes.length === 0"
+          :disabled="realNodes.length === 0"
           @click="onRunClick"
         >
           {{ t('workflow.editor.run') }}
@@ -67,15 +87,15 @@
     </div>
 
     <!-- Terminal execution result banner; closable, persists until next Run -->
-    <n-alert
+    <AppNotice
       v-if="banner"
       class="we-banner"
-      :type="banner.type"
+      :tone="banner.tone"
       closable
       @close="banner = null"
     >
       {{ banner.text }}
-    </n-alert>
+    </AppNotice>
 
     <div class="ed-body">
       <!-- 左栏：工具面板 -->
@@ -106,6 +126,7 @@
           :min-zoom="0.2"
           :max-zoom="4"
           :connection-radius="40"
+          :delete-key-code="null"
           :default-edge-options="defaultEdgeOptions"
           @connect="onConnect"
           @nodes-initialized="onNodesInitialized"
@@ -118,53 +139,59 @@
           <MiniMap position="bottom-left" :pannable="true" :zoomable="true" />
         </VueFlow>
 
-        <div v-if="nodes.length === 0" class="we-empty">
+        <div v-if="realNodes.length === 0" class="we-empty">
           <AppIcon name="wf" :size="44" />
           <p class="we-empty-title">{{ t('workflow.editor.emptyCanvas') }}</p>
           <p class="we-empty-hint">{{ t('workflow.editor.emptyCanvasHint') }}</p>
         </div>
 
-        <!-- 右栏收起后的召回按钮（不然没地方点回来） -->
-        <button
-          v-if="!inspectorOpen"
-          type="button"
-          class="we-inspector-open"
-          :title="t('workflow.editor.dock.expand')"
-          @click="toggleInspector"
-        >
-          <AppIcon name="chevrons-l" size="sm" />
-        </button>
+        <!-- 运行日志：贴画布底部的抽屉（docs/08 §3·S2）。运行中吃 stream-event
+             （节点事件 + flow.log 的 `log` 事件），终态再读一次 task.read_log
+             拿到与磁盘一致的全文与 log_path。 -->
+        <RunLogPanel
+          v-if="showRunLog"
+          ref="runLogPanelRef"
+          :lines="runLogLines"
+          :running="isRunning"
+          :loading="runLogLoading"
+          :log-path="runLogPath"
+          :truncated="runLogTruncated"
+          @refresh="() => refreshRunLog(0)"
+          @close="showRunLog = false"
+          @open-file="openRunLogFile"
+        />
       </main>
 
-      <!-- 右栏：工作流信息 ⇄ 节点检查器（单栏切换，可整栏收起） -->
-      <div class="ed-right we-inspector" :class="{ 'we-inspector--collapsed': !inspectorOpen }">
+      <!-- 右栏 = 选中对象（节点 / 端点）的检查器。没有选中就没有右栏：工作流信息已经
+           搬到顶栏的弹窗里，画布因此吃满整宽（docs/08 §3·S2）。 -->
+      <div class="ed-right we-inspector" :class="{ 'we-inspector--collapsed': !selectedNode }">
         <div class="cfg-hd">
           <div class="we-cfg-hd-row">
-            <div class="cn">{{ selectedNode ? selectedToolName : t('workflow.editor.info.title') }}</div>
-            <button
-              v-if="selectedNode"
-              type="button"
-              class="we-cfg-btn"
-              :title="t('workflow.editor.dock.backToWorkflow')"
-              @click="deselectNode"
-            >
-              <AppIcon name="back" size="sm" />
-              <span>{{ t('workflow.editor.dock.backToWorkflow') }}</span>
-            </button>
+            <div class="cn">{{ selectedPanelTitle }}</div>
             <button
               type="button"
               class="we-cfg-btn we-cfg-btn--icon"
-              :title="t('workflow.editor.dock.collapse')"
-              @click="toggleInspector"
+              :title="t('workflow.editor.dock.close')"
+              @click="deselectNode"
             >
-              <AppIcon name="chevrons-r" size="sm" />
+              <AppIcon name="x" size="sm" />
             </button>
           </div>
-          <div class="cd">{{ selectedNode ? selectedNodeSubtitle : workflowSubtitle }}</div>
+          <div class="cd">{{ selectedNodeSubtitle }}</div>
         </div>
 
+        <!-- 端点就是工作流的出入参入口：开始 = 入参，结束 = 出参（docs/08 §3·S2） -->
+        <IoAuthoringPanel
+          v-if="selectedVirtualKind"
+          :key="selectedVirtualKind"
+          class="cfg-bd we-endpoint-io"
+          :meta="meta"
+          :side="selectedVirtualKind === 'start' ? 'inputs' : 'outputs'"
+          hide-tabs
+          @update:meta="meta = $event"
+        />
         <NodeConfigPanel
-          v-if="selectedNode"
+          v-else-if="selectedNode"
           :node="selectedNode"
           :workflow-inputs="meta.inputs ?? []"
           :upstream-nodes="upstreamNodes"
@@ -172,13 +199,17 @@
           @delete="onDeleteNode"
           @rename="onRenameNode"
         />
-        <div v-else class="cfg-bd">
-          <WorkflowInfoPanel :meta="meta" @update:meta="meta = $event" />
-          <div class="we-cfg-divider" />
-          <IoAuthoringPanel :meta="meta" @update:meta="meta = $event" />
-        </div>
       </div>
     </div>
+
+    <!-- 工作流信息弹窗（顶栏标题后的「编辑信息」按钮打开） -->
+    <WorkflowInfoDialog
+      v-model:show="showInfoDialog"
+      :meta="meta"
+      :node-count="realNodes.length"
+      :edge-count="realEdgeCount"
+      @update:meta="meta = $event"
+    />
 
     <!-- Run dialog（M1 公共弹层）：工作流列表的「试运行」用同一个组件 -->
     <RunInputsDialog
@@ -253,14 +284,27 @@ import {
   useMessage,
 } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppNotice, { type NoticeTone } from '@components/ui/AppNotice.vue'
 
 import ToolNode from '@components/workflow/ToolNode.vue'
+import VirtualNode from '@components/workflow/VirtualNode.vue'
 import WorkflowNodePalette from '@components/workflow/WorkflowNodePalette.vue'
 import NodeConfigPanel from '@components/workflow/NodeConfigPanel.vue'
 import IoAuthoringPanel from '@components/workflow/IoAuthoringPanel.vue'
-import WorkflowInfoPanel from '@components/workflow/WorkflowInfoPanel.vue'
+import WorkflowInfoDialog from '@components/workflow/WorkflowInfoDialog.vue'
 import RunInputsDialog from '@components/workflow/RunInputsDialog.vue'
-import TemplateManager, { type TemplateLoadPayload } from '@components/workflow/TemplateManager.vue'
+import RunLogPanel from '@components/workflow/RunLogPanel.vue'
+import WorkflowFileActions, {
+  type WorkflowImportPayload,
+} from '@components/workflow/WorkflowFileActions.vue'
+import {
+  RUN_LOG_EVENT_TYPES,
+  TERMINAL_RUN_EVENT_TYPES,
+  formatRunLogEvent,
+  linesFromTaskLog,
+  nowTimeString,
+  type RunLogLine,
+} from '@components/workflow/runLog'
 import {
   TOOL_DRAG_MIME,
   type ToolNodeData,
@@ -281,13 +325,24 @@ import {
   LAYOUT_X_SPACING,
   LAYOUT_X_START,
   LAYOUT_Y,
-  appendAnchor,
   chainOrder,
   extraOutgoingEdges,
   upstreamNodeIds,
 } from '@components/workflow/graphLayout'
 import { renameNodeId } from '@components/workflow/nodeRename'
+import {
+  VIRTUAL_END_ID,
+  VIRTUAL_START_ID,
+  appendAnchorBeforeEnd,
+  deleteSelectionGraph,
+  ensureEndpointGraph,
+  isVirtualNodeId,
+  insertBeforeEnd,
+  realGraph,
+  virtualKindOf,
+} from '@components/workflow/virtualNodes'
 import unifiedApi from '@/api/unifiedApi'
+import { toJsonPayload } from '@utils/jsonPayload'
 import { log } from '@utils/logger'
 
 import '@vue-flow/core/dist/style.css'
@@ -295,11 +350,14 @@ import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 
-// Custom node registration: node `type: "tool"` renders ToolNode.
+// Custom node registration: node `type: "tool"` renders ToolNode, the two
+// canvas-only endpoints render VirtualNode (see virtualNodes.ts).
 // markRaw keeps the component out of Vue's reactivity system (vue-flow
 // warns about reactive node-types objects).
 const nodeTypes = {
   tool: markRaw(ToolNode),
+  start: markRaw(VirtualNode),
+  end: markRaw(VirtualNode),
 }
 
 /**
@@ -412,7 +470,8 @@ function onDrop(event: DragEvent) {
 }
 
 /**
- * Palette click: append after the last node of the current chain.
+ * Palette click: append the tool right before 结束 — the tail of the REAL
+ * chain, not the tail of the canvas (which is always the End endpoint).
  *
  * Placing the node to the RIGHT of the tail is not enough — without the edge
  * `next` stays null, so a three-click workflow used to end up with three entry
@@ -421,16 +480,47 @@ function onDrop(event: DragEvent) {
  * cannot collide with a loaded template's edges.
  */
 function onAppendTool(tool: WorkflowToolInfo) {
-  const anchorId = appendAnchor(nodeIds.value, edges.value)
+  // The visible tail of the chain is ALWAYS 结束, so the anchor is resolved on
+  // the real graph (virtualNodes.appendAnchorBeforeEnd) and the new node is
+  // spliced in right BEFORE End: 开始 → … → 上一个 → 新节点 → 结束.
+  const anchorId = appendAnchorBeforeEnd(nodes.value, edges.value)
   const anchor = anchorId ? findNode(anchorId) : null
   const position = anchor
     ? { x: (anchor.position?.x ?? LAYOUT_X_START) + LAYOUT_X_SPACING, y: anchor.position?.y ?? LAYOUT_Y }
     : { x: LAYOUT_X_START, y: LAYOUT_Y }
   const newId = addToolNode(tool, position)
   if (anchorId) {
-    addEdges({ id: `${anchorId}->${newId}`, source: anchorId, target: newId })
+    setEdges(insertBeforeEnd(edges.value, anchorId, newId))
   }
 }
+
+// ---------------------------------------------------------------------------
+// Canvas-only endpoints (开始 / 结束) — see components/workflow/virtualNodes.ts
+// ---------------------------------------------------------------------------
+
+/** Tool nodes only (everything the serializer will actually save). */
+const realNodes = computed(() => nodes.value.filter((node) => !isVirtualNodeId(node.id)))
+
+/**
+ * Keep the two endpoints on the canvas. They can be removed like any node
+ * (Backspace / 删除), and a chain without its anchors is confusing, so a
+ * missing one is restored together with its chain edge. Manual edges are never
+ * rewritten: `ensureEndpointGraph` only wires endpoints it had to create.
+ */
+function restoreEndpoints() {
+  const graph = ensureEndpointGraph(nodes.value, edges.value)
+  if (graph.nodes.length === nodes.value.length && graph.edges.length === edges.value.length) return
+  setNodes(graph.nodes)
+  setEdges(graph.edges)
+}
+
+const nodeIdSignature = computed(() => nodes.value.map((node) => node.id).join('\u0000'))
+
+watch(nodeIdSignature, () => {
+  const ids = new Set(nodes.value.map((node) => node.id))
+  if (ids.has(VIRTUAL_START_ID) && ids.has(VIRTUAL_END_ID)) return
+  restoreEndpoints()
+})
 
 // ---------------------------------------------------------------------------
 // Right column: single flow — 工作流信息 ⇄ 节点检查器
@@ -455,71 +545,58 @@ const selectedToolName = computed(() => String(selectedNode.value?.data?.tool ??
 const selectedNodeSubtitle = computed(() => {
   const node = selectedNode.value
   if (!node) return ''
+  // 端点：`.cn` 已经是「开始 / 结束」，副标题说明这里配的是哪一侧的工作流端口。
+  if (isVirtualNodeId(node.id)) {
+    return virtualKindOf(node.id) === 'end'
+      ? t('workflow.editor.virtual.endIo')
+      : t('workflow.editor.virtual.startIo')
+  }
   const description = toolsCache.value?.find((tool) => tool?.name === selectedToolName.value)?.description
   const context = t('workflow.editor.dock.nodeContext', { label: node.id })
   return description ? `${description} · ${context}` : context
 })
 
-/** `.cd` line for the workflow info: N 个节点 · M 条连线. */
-const workflowSubtitle = computed(() =>
-  t('workflow.editor.dock.workflowSummary', { nodes: nodes.value.length, edges: edges.value.length }),
+/** Real (non-endpoint) connections — the number the saved definition carries. */
+const realEdgeCount = computed(
+  () =>
+    edges.value.filter((edge) => !isVirtualNodeId(edge.source) && !isVirtualNodeId(edge.target))
+      .length,
 )
 
-/** 返回工作流信息：清掉画布选中（ToolNode 的 selected 由 vue-flow 维护）。 */
+/** Selected canvas-only endpoint ('start' / 'end'), or null for a tool node. */
+const selectedVirtualKind = computed(() => virtualKindOf(selectedNode.value?.id))
+
+/** `.cn` title of the inspector header: tool name, or 开始 / 结束. */
+const selectedPanelTitle = computed(() => {
+  const kind = selectedVirtualKind.value
+  if (kind === 'start') return t('workflow.editor.virtual.start')
+  if (kind === 'end') return t('workflow.editor.virtual.end')
+  return selectedToolName.value
+})
+
+/** 工作流信息弹窗的开关（顶栏标题后的「编辑信息」按钮）。 */
+const showInfoDialog = ref(false)
+
+/** 取消选中：右栏随之收起（ToolNode 的 selected 由 vue-flow 维护）。 */
 function deselectNode() {
   for (const entry of nodes.value) entry.selected = false
 }
-
-/** 顶栏标题点击：同「返回工作流」——回到工作流信息那半边。 */
-const showWorkflowInfo = deselectNode
-
-// ---------------------------------------------------------------------------
-// 右栏收起 / 展开
-// ---------------------------------------------------------------------------
-// 三列同时占宽（240 + 320 + 画布）在 1280 窗口下会把画布压到 ~700px，所以右栏
-// 允许整栏收起：收起后画布吃满宽度，画布右上角留下一个召回按钮。状态持久化，
-// 选中节点时自动展开（否则点了节点却看不到检查器会很困惑）。
-
-const INSPECTOR_OPEN_KEY = 'bt:wfInspectorOpen'
-const inspectorOpen = ref(readInspectorOpen())
-
-function readInspectorOpen(): boolean {
-  try {
-    return localStorage.getItem(INSPECTOR_OPEN_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-
-watch(inspectorOpen, (open) => {
-  try {
-    localStorage.setItem(INSPECTOR_OPEN_KEY, open ? '1' : '0')
-  } catch {
-    /* 忽略持久化失败 */
-  }
-})
-
-function toggleInspector() {
-  inspectorOpen.value = !inspectorOpen.value
-}
-
-watch(selectedNode, (node) => {
-  if (node) inspectorOpen.value = true
-})
 
 const nodeIds = computed(() => nodes.value.map((node) => node.id))
 
 /**
  * Upstream nodes of the selected node, in chain order: only these have results
  * in the engine's `$nodes.<id>` context when the node resolves its params.
+ * The canvas-only endpoints are filtered out — they produce no results, so
+ * offering them in the binding picker would only create broken references.
  */
 const upstreamNodes = computed<UpstreamNodeRef[]>(() => {
   const selected = selectedNode.value
-  if (!selected) return []
+  if (!selected || isVirtualNodeId(selected.id)) return []
   const upstream = upstreamNodeIds(selected.id, edges.value)
   if (upstream.size === 0) return []
   return chainOrder(nodeIds.value, edges.value)
-    .filter((id) => upstream.has(id))
+    .filter((id) => !isVirtualNodeId(id) && upstream.has(id))
     .map((id) => {
       const node = findNode(id)
       const data = (node?.data ?? {}) as ToolNodeData & { operation?: string; inputs?: Record<string, unknown> }
@@ -550,11 +627,30 @@ const upstreamNodes = computed<UpstreamNodeRef[]>(() => {
 const edgeConflicts = computed(() => extraOutgoingEdges(nodeIds.value, edges.value))
 
 /**
+ * Canvas-local findings about the 开始 / 结束 wiring. They exist only on the
+ * canvas (the wire format has no endpoints), so they cannot come from
+ * `validateOnDeserialize` — but they decide which node the engine runs FIRST,
+ * so an unwired 开始 is reported exactly like the other structural blockers.
+ */
+function endpointProblems(): string[] {
+  if (realNodes.value.length === 0) return []
+  const real = realGraph(nodes.value, edges.value)
+  const entry = chainOrder(
+    real.nodes.map((node) => node.id),
+    real.edges,
+  )[0]
+  const startTarget = edges.value.find((edge) => edge.source === VIRTUAL_START_ID)?.target
+  if (startTarget && startTarget === entry) return []
+  return [t('workflow.editor.virtual.notWired', { entry: entry ?? '—' })]
+}
+
+/**
  * Reason string handed to TemplateManager; null means saving is allowed.
  *
- * Two independent blockers, checked in order:
+ * Three independent blockers, checked in order:
  *  1. extra outgoing edges — the canvas shows its own banner for that;
- *  2. a structurally invalid chain (several entry nodes / a cycle / orphans),
+ *  2. 开始 not wired to the chain entry (see endpointProblems);
+ *  3. a structurally invalid chain (several entry nodes / a cycle / orphans),
  *     which the backend rejects with a raw English message. Validating here with
  *     the SAME rules the loader uses (`validateOnDeserialize`) turns it into a
  *     pointer at the 问题 panel instead of a backend error toast.
@@ -563,6 +659,8 @@ function saveBlockedReason(): string | null {
   if (edgeConflicts.value.length > 0) {
     return t('workflow.editor.guard.title', { count: edgeConflicts.value.length })
   }
+  const endpoints = endpointProblems()
+  if (endpoints.length > 0) return endpoints[0]
   const definition = serializeCanvas()
   const structural = definition ? validateOnDeserialize(definition) : []
   if (structural.length === 0) return null
@@ -594,11 +692,15 @@ const stateLabel = computed(() =>
 )
 
 /**
- * Snapshot of the canvas for TemplateManager's save flow. Null = empty canvas
- * (TemplateManager shows a "nothing to save" toast).
+ * Snapshot of the canvas for TemplateManager's save flow. Null = nothing worth
+ * saving (TemplateManager shows a "nothing to save" toast).
+ *
+ * The canvas always carries the two virtual endpoints, so "empty" means "no
+ * TOOL node": serializing 开始 → 结束 alone would produce `nodes: []`, which is
+ * a valid but meaningless document.
  */
 function serializeCanvas(): WorkflowDefinitionJSON | null {
-  if (nodes.value.length === 0) return null
+  if (realNodes.value.length === 0) return null
   return serializeWorkflow(nodes.value, edges.value, meta.value)
 }
 
@@ -630,17 +732,23 @@ async function fetchToolPorts(): Promise<Record<string, ToolPorts>> {
 }
 
 /**
- * Apply a loaded template to the canvas. The serializer emits generic nodes
- * with `{tool, params, label}` data; that is hydrated into ToolNode shape here
- * (type 'tool', status 'idle', ports from workflow.list_tools) before replacing
- * the whole canvas state. Positions come from the serializer's horizontal
- * auto-layout, so a loaded chain renders as one straight row.
+ * Apply a loaded workflow (route load OR 导入工作流) to the canvas. The
+ * serializer emits generic nodes with `{tool, params, label}` data; that is
+ * hydrated into ToolNode shape here (type 'tool', status 'idle', ports from
+ * workflow.list_tools) before replacing the whole canvas state. Positions come
+ * from the serializer's horizontal auto-layout, shifted one slot to the right
+ * so 开始 gets its own column, and the two endpoints are then added around the
+ * chain (virtualNodes.ts).
  */
-async function onTemplateLoad(payload: TemplateLoadPayload) {
+async function applyCanvasPayload(payload: WorkflowImportPayload) {
   const portsByTool = await fetchToolPorts()
   const hydrated: Node[] = payload.nodes.map((node) => ({
     ...node,
     type: 'tool',
+    position: {
+      x: (node.position?.x ?? LAYOUT_X_START) + LAYOUT_X_SPACING,
+      y: node.position?.y ?? LAYOUT_Y,
+    },
     data: {
       ...node.data,
       status: 'idle',
@@ -648,8 +756,9 @@ async function onTemplateLoad(payload: TemplateLoadPayload) {
       label: (node.data as any).label ?? node.data.tool,
     },
   }))
-  setNodes(hydrated)
-  setEdges(payload.edges)
+  const graph = ensureEndpointGraph(hydrated, payload.edges)
+  setNodes(graph.nodes)
+  setEdges(graph.edges)
   meta.value = { ...payload.meta }
   banner.value = null // stale run feedback belongs to the previous canvas
   problems.value = []
@@ -686,10 +795,67 @@ function requestFitView() {
   if (measured) onNodesInitialized()
 }
 
-/** TemplateManager tells us the name/description it actually persisted. */
-function onTemplateSaved(info: { name: string; description: string }) {
-  meta.value = { ...meta.value, name: info.name, description: info.description }
-  savedSnapshot.value = canvasSnapshot()
+/** 保存（顶栏）：名称/描述就是 `meta` —— 空名字先让用户去信息弹窗填。 */
+async function onSaveClick() {
+  const name = (meta.value.name ?? '').trim()
+  if (!name) {
+    message.warning(t('workflow.editor.template.nameRequired'))
+    showInfoDialog.value = true
+    return
+  }
+  const definition = serializeCanvas()
+  if (!definition) {
+    message.warning(t('workflow.editor.template.emptyCanvas'))
+    return
+  }
+  try {
+    await unifiedApi.call('template.save', {
+      name,
+      // Definition name/description mirror the template identity so the stored
+      // WorkflowDefinition is self-consistent (name must be non-empty).
+      definition: { ...definition, name, description: meta.value.description ?? '' },
+      description: meta.value.description ?? '',
+      tags: [],
+    })
+    savedSnapshot.value = canvasSnapshot()
+    message.success(t('workflow.editor.template.saved', { name }))
+  } catch (error) {
+    log.error(`[WorkflowEditorPage] failed to save workflow “${name}”:`, error)
+    message.error(
+      t('workflow.editor.template.saveFailed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    )
+  }
+}
+
+/**
+ * 导入工作流：把一份工作流 JSON 读进画布（替换当前画布）。
+ *
+ * 有未保存改动时先确认——导入是**整块替换**，不是合并，未保存的节点会消失。
+ */
+function onImportPayload(payload: WorkflowImportPayload, sourcePath: string) {
+  const apply = async () => {
+    await applyCanvasPayload(payload)
+    message.success(
+      t('workflow.editor.import.imported', {
+        name: payload.meta.name || sourcePath,
+      }),
+    )
+  }
+  if (!dirty.value) {
+    void apply()
+    return
+  }
+  dialog.warning({
+    title: t('workflow.editor.import.confirmTitle'),
+    content: t('workflow.editor.import.confirmContent'),
+    positiveText: t('workflow.editor.import.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => {
+      void apply()
+    },
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -708,7 +874,7 @@ async function loadByName(name: string) {
     if (!result?.definition || typeof result.definition !== 'object') {
       throw new Error(`template “${name}” returned no definition`)
     }
-    await onTemplateLoad(deserializeWorkflow(result.definition))
+    await applyCanvasPayload(deserializeWorkflow(result.definition))
   } catch (error) {
     log.error(`[WorkflowEditorPage] failed to load template “${name}”:`, error)
     message.error(
@@ -723,7 +889,17 @@ watch(
   () => route.params.name,
   (name) => {
     const target = typeof name === 'string' && name ? decodeURIComponent(name) : ''
-    if (target) void loadByName(target)
+    if (target) {
+      void loadByName(target)
+      return
+    }
+    // 新建（无 name）：只为**首次进入**的空画布补上 开始 / 结束。已有的画布不动
+    // ——从「编辑 foo」跳到「新建」时旧画布原样留着，与本页一直以来的行为一致。
+    if (nodes.value.length === 0) {
+      const graph = ensureEndpointGraph([], [])
+      setNodes(graph.nodes)
+      setEdges(graph.edges)
+    }
   },
   { immediate: true },
 )
@@ -749,20 +925,75 @@ function goBack() {
 // only asks for them.
 // ---------------------------------------------------------------------------
 
+/**
+ * Keys that delete the current canvas selection.
+ *
+ * vue-flow's own keyboard delete is switched off (`:delete-key-code="null"`)
+ * because it only ever bound **Backspace** (its default `deleteKeyCode`), and
+ * its delete is a plain "remove" that cannot keep the chain intact. Here both
+ * keys behave identically and share ONE implementation with the inspector's
+ * 「删除节点」 button.
+ */
+const DELETE_KEY_CODES = new Set(['Backspace', 'Delete'])
+
+/**
+ * True when the canvas owns the key event. Backspace inside a text field must
+ * keep deleting characters, and while a dialog/drawer is open the keyboard
+ * belongs to that overlay.
+ */
+function canvasOwnsKeyEvent(event: KeyboardEvent): boolean {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  const target = (path[0] ?? event.target) as HTMLElement | null
+  if (!target) return true
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(target.nodeName)) return false
+  if (typeof target.hasAttribute === 'function' && target.hasAttribute('contenteditable')) return false
+  if (typeof target.closest === 'function' && target.closest('.nokey')) return false
+  // 任何 naive 弹层（模态 / 对话框 / 抽屉）打开时，键盘归它
+  return !document.querySelector('.n-modal, .n-dialog, .n-drawer')
+}
+
+/** Remove the given selection from the canvas and keep the chain connected. */
+function applyDeletion(selectedNodes: Node[], selectedEdges: Edge[]) {
+  if (selectedNodes.length === 0 && selectedEdges.length === 0) return
+  const result = deleteSelectionGraph(
+    nodes.value,
+    edges.value,
+    selectedNodes.map((node) => node.id),
+    selectedEdges.map((edge) => edge.id),
+  )
+  if (result.removedNodeIds.length > 0) {
+    setNodes(result.nodes)
+    setEdges(result.edges)
+  } else if (selectedEdges.length > 0) {
+    setEdges(result.edges)
+  }
+  // 端点删不掉是**有意**的（它们是画布结构），所以给一句话而不是静默恢复
+  if (result.blockedEndpoint) message.info(t('workflow.editor.virtual.protected'))
+}
+
+function onCanvasKeyDown(event: KeyboardEvent) {
+  if (!DELETE_KEY_CODES.has(event.key)) return
+  if (!canvasOwnsKeyEvent(event)) return
+  const selectedNodes = nodes.value.filter((node) => node.selected)
+  const selectedEdges = edges.value.filter((edge) => edge.selected)
+  if (selectedNodes.length === 0 && selectedEdges.length === 0) return
+  event.preventDefault()
+  applyDeletion(selectedNodes, selectedEdges)
+}
+
 function onDeleteNode(nodeId: string) {
   const node = findNode(nodeId)
   if (!node) return
+  if (isVirtualNodeId(nodeId)) {
+    message.info(t('workflow.editor.virtual.protected'))
+    return
+  }
   dialog.warning({
     title: t('workflow.editor.config.deleteTitle'),
     content: t('workflow.editor.config.deleteContent', { id: nodeId }),
     positiveText: t('workflow.editor.config.delete'),
     negativeText: t('common.cancel'),
-    onPositiveClick: () => {
-      // Drop the node and every edge touching it (vue-flow also prunes edges
-      // created through its own store, but loaded/renamed ones are explicit).
-      setNodes(nodes.value.filter((entry) => entry.id !== nodeId))
-      setEdges(edges.value.filter((edge) => edge.source !== nodeId && edge.target !== nodeId))
-    },
+    onPositiveClick: () => applyDeletion([node], []),
   })
 }
 
@@ -824,7 +1055,7 @@ async function openProblems() {
   // request came back as an error toast instead of findings — dead exactly when
   // the panel mattered most. Same rules the loader uses (validateOnDeserialize),
   // so the panel and the save guard can never disagree.
-  const structural = validateOnDeserialize(definition)
+  const structural = [...endpointProblems(), ...validateOnDeserialize(definition)]
   if (structural.length > 0) {
     problems.value = structural.map((message) => ({
       node_id: null,
@@ -865,14 +1096,7 @@ function focusProblem(problem: ProblemFinding) {
 // Execution: Run button → inputs dialog → workflow.execute → stream events
 // ---------------------------------------------------------------------------
 
-/** Real event types emitted by cli/app/workflow/streaming.py. */
-const WORKFLOW_EVENT_TYPES = new Set([
-  'node_started',
-  'node_completed',
-  'workflow_completed',
-  'workflow_failed',
-  'workflow_cancelled',
-])
+// Event types live in runLog.ts (single source for the filter + the formatter).
 
 /** Engine node status (streaming.py) → canvas status. */
 const NODE_STATUS_MAP: Record<string, ToolStatus> = {
@@ -883,7 +1107,7 @@ const NODE_STATUS_MAP: Record<string, ToolStatus> = {
 }
 
 interface ExecutionBanner {
-  type: 'success' | 'error' | 'warning' | 'info'
+  tone: NoticeTone
   text: string
 }
 
@@ -891,6 +1115,83 @@ const isRunning = ref(false)
 const banner = ref<ExecutionBanner | null>(null)
 const showInputsDialog = ref(false)
 const pendingDefinition = ref<WorkflowDefinitionJSON | null>(null)
+
+// ---- run log (docs/08 §3·S2) --------------------------------------------------
+// Two-phase, deliberately: while the run is in flight the panel shows the
+// streamed events (node lifecycle + `log` lines from tools such as flow.log);
+// on the terminal event the per-task log file is read back, which is the same
+// text plus everything a non-streaming tool logged, and carries `log_path`.
+
+const showRunLog = ref(false)
+const runLogLines = ref<RunLogLine[]>([])
+const runLogPath = ref('')
+const runLogTruncated = ref(false)
+const runLogLoading = ref(false)
+const runLogPanelRef = ref<InstanceType<typeof RunLogPanel> | null>(null)
+
+/** How much of the per-task log to pull back (the file itself is capped at 50 MiB). */
+const RUN_LOG_TAIL_BYTES = 256 * 1024
+
+function pushRunLogLine(line: RunLogLine | null) {
+  if (line) runLogLines.value.push(line)
+}
+
+/** Start of a run: fresh panel, visible, following the tail again. */
+function beginRunLog() {
+  runLogLines.value = []
+  runLogPath.value = ''
+  runLogTruncated.value = false
+  showRunLog.value = true
+  runLogPanelRef.value?.resetScroll()
+}
+
+/**
+ * Read the per-task log written by the engine (`task_log_writer`) at teardown.
+ *
+ * The file is only flushed when the run ends, so this is a terminal-state call —
+ * mid-run it would legitimately return nothing. A failure never touches the live
+ * lines already collected from the stream.
+ *
+ * `retries` exists because the flush happens in the backend's teardown, slightly
+ * AFTER the terminal event reaches the renderer: an empty read right after
+ * `workflow_completed` is usually "not flushed yet", not "no log".
+ */
+async function refreshRunLog(retries = 0) {
+  const taskId = activeWorkflowId
+  if (!taskId || runLogLoading.value) return
+  runLogLoading.value = true
+  try {
+    const result = await unifiedApi.call<{
+      content?: string
+      truncated?: boolean
+      log_path?: string
+    }>('task.read_log', { task_id: taskId, tail_bytes: RUN_LOG_TAIL_BYTES })
+    runLogPath.value = typeof result?.log_path === 'string' ? result.log_path : ''
+    runLogTruncated.value = result?.truncated === true
+    const fromFile = linesFromTaskLog(result?.content)
+    if (fromFile.length === 0 && retries < 3) {
+      runLogLoading.value = false
+      setTimeout(() => void refreshRunLog(retries + 1), 250)
+      return
+    }
+    // Only replace when the file actually has content: an empty read must not
+    // wipe the live lines (e.g. the flush failed).
+    if (fromFile.length > 0) runLogLines.value = fromFile
+  } catch (error) {
+    log.warn('[WorkflowEditorPage] task.read_log failed:', error)
+  } finally {
+    runLogLoading.value = false
+  }
+}
+
+function openRunLogFile() {
+  if (!runLogPath.value) return
+  const api = window.electronAPI
+  if (!api || typeof api.openPath !== 'function') return
+  void api.openPath(runLogPath.value).catch((error: unknown) => {
+    log.warn('[WorkflowEditorPage] openPath failed:', error)
+  })
+}
 
 // ---- edge status styling ------------------------------------------------------
 // The traversed path lights up while a run walks the chain: the edge leaving a
@@ -958,7 +1259,7 @@ function makeWorkflowRunId(): string {
 
 /** Run click: serialize the canvas, then open the shared M1 inputs dialog. */
 function onRunClick() {
-  if (isRunning.value || nodes.value.length === 0) return
+  if (isRunning.value || realNodes.value.length === 0) return
   banner.value = null
   pendingDefinition.value = serializeWorkflow(nodes.value, edges.value, meta.value)
   showInputsDialog.value = true
@@ -981,21 +1282,33 @@ async function startExecution(
   isRunning.value = true
   banner.value = null
   resetAllNodeStatuses()
+  beginRunLog()
 
   try {
     // workflow.execute is @streaming: the main process resolves this invoke on
     // the FIRST streamed event, so awaiting here only surfaces startup failures
     // (malformed definition, backend down). The terminal state arrives over the
     // stream-event channel instead, handled in handleStreamRaw.
-    await window.electronAPI.callBackendAPI('workflow.execute', {
-      definition,
-      inputs,
-      task_id: activeWorkflowId,
-    })
+    //
+    // This call bypasses unifiedApi (it needs the raw invoke), so it must flatten
+    // the payload itself: `inputs` comes from the run dialog and can still hold
+    // Vue reactive proxies (e.g. the array of a 多选 input), which contextBridge
+    // refuses to clone — "An object could not be cloned."
+    await window.electronAPI.callBackendAPI(
+      'workflow.execute',
+      toJsonPayload({ definition, inputs, task_id: activeWorkflowId }),
+    )
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)
     isRunning.value = false
-    banner.value = { type: 'error', text: t('workflow.editor.execution.startFailed', { error: text }) }
+    banner.value = { tone: 'danger', text: t('workflow.editor.execution.startFailed', { error: text }) }
+    pushRunLogLine({
+      kind: 'workflow',
+      time: nowTimeString(),
+      node: '',
+      text,
+      error: text,
+    })
     log.error('[WorkflowEditorPage] workflow.execute rejected:', error)
   }
 }
@@ -1064,7 +1377,7 @@ function handleStreamRaw(raw: unknown) {
     ) as Record<string, any>
 
     const type = typeof event.type === 'string' ? event.type : ''
-    if (!WORKFLOW_EVENT_TYPES.has(type)) return // logcat/download/etc. noise
+    if (!RUN_LOG_EVENT_TYPES.has(type)) return // logcat/download/etc. noise
     if (!activeWorkflowId) return // nothing started from this page
 
     // Correlation: api_handler injects the caller's task_id on every streamed
@@ -1073,6 +1386,10 @@ function handleStreamRaw(raw: unknown) {
     if (typeof event.task_id === 'string' && event.task_id && event.task_id !== activeWorkflowId) return
     if (activeRunId && typeof event.run_id === 'string' && event.run_id !== activeRunId) return
     if (!activeRunId && typeof event.run_id === 'string' && event.run_id) activeRunId = event.run_id
+
+    // Every accepted event becomes a line in the run log (same text the engine
+    // writes into the per-task file), terminal events included.
+    pushRunLogLine(formatRunLogEvent(event))
 
     switch (type) {
       case 'node_started':
@@ -1092,12 +1409,12 @@ function handleStreamRaw(raw: unknown) {
       }
       case 'workflow_completed':
         isRunning.value = false
-        banner.value = { type: 'success', text: t('workflow.editor.execution.success') }
+        banner.value = { tone: 'success', text: t('workflow.editor.execution.success') }
         break
       case 'workflow_failed':
         isRunning.value = false
         banner.value = {
-          type: 'error',
+          tone: 'danger',
           text: t('workflow.editor.execution.failed', {
             error: typeof event.error === 'string' ? event.error : 'unknown error',
           }),
@@ -1106,10 +1423,17 @@ function handleStreamRaw(raw: unknown) {
       case 'workflow_cancelled':
         isRunning.value = false
         markRunningAsCancelled()
-        banner.value = { type: 'warning', text: t('workflow.editor.execution.cancelled') }
+        banner.value = { tone: 'warning', text: t('workflow.editor.execution.cancelled') }
         break
       default:
         break
+    }
+
+    // Terminal state: the engine flushed the per-task log at teardown, so read
+    // it back for the authoritative full text + `log_path`. Deferred a tick so
+    // the backend's unregister() flush is not raced by this invoke.
+    if (TERMINAL_RUN_EVENT_TYPES.has(type)) {
+      setTimeout(() => void refreshRunLog(0), 0)
     }
   } catch (err) {
     // Handler errors must never break event routing.
@@ -1130,9 +1454,13 @@ onMounted(() => {
   } else {
     log.warn('[WorkflowEditorPage] onStreamEvent not available — execution events will not be received')
   }
+
+  // 键盘删除由本页接管（vue-flow 自带的已在 <VueFlow> 上关掉），见 onCanvasKeyDown
+  window.addEventListener('keydown', onCanvasKeyDown)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onCanvasKeyDown)
   if (unsubscribeStream) {
     try {
       unsubscribeStream()
@@ -1145,39 +1473,44 @@ onBeforeUnmount(() => {
 <style scoped>
 /*
  * Only the editor-specific gaps the preview stylesheet does not cover live
- * here: the top bar's flex distribution (title grows, action group is pinned
- * right and never clipped) and the inspector header's back affordance.
+ * here: the top bar's flex distribution (title + 编辑信息 button, action group
+ * pinned right and never clipped) and the inspector's collapsed state.
  * Everything else (`.screen.editor`, `.ed-top`, `.ed-body`, `.ed-left`,
  * `.canvas`, `.ed-right`, `.cfg-hd`, `.cfg-bd`, `.warn-bar`) comes from
  * assets/styles/preview-layout.css. Compound scoped selectors beat the `.pv`
  * rules regardless of stylesheet injection order.
  */
+/* 只读标题：名称的编辑入口是紧随其后的铅笔按钮（弹窗），标题本身不再可点 */
 .we-editor .ed-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 42%;
   overflow: hidden;
-  font: inherit;
   font-size: 14.5px;
   font-weight: 600;
   color: var(--app-text-primary);
-  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
 }
 
-.we-editor .ed-name:hover {
-  color: var(--app-blue);
+.we-edit-info {
+  flex: none;
 }
 
-/* Tail group: fixed size + margin-left:auto so it is never squeezed/clipped. */
+/* Tail group pinned right. It is allowed to SHRINK and WRAP (never to clip):
+   with 保存 / 导入工作流 / 运行日志 / 问题 / 运行 the row is ~460px wide, which no
+   longer fits next to a long workflow name on a narrow window — wrapping to a
+   second line keeps every action reachable (the alternative, `flex: none`, just
+   pushed 运行 off the right edge). */
 .we-top-actions {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   gap: 8px;
+  row-gap: 6px;
   align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
   margin-left: auto;
 }
 
@@ -1246,31 +1579,9 @@ onBeforeUnmount(() => {
   color: var(--app-text-muted);
 }
 
-/* 右栏收起后留在画布右上角的召回按钮 */
-.we-inspector-open {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: inline-flex;
-  z-index: 6;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  color: var(--app-text-secondary);
-  cursor: pointer;
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
-  border-radius: var(--radius-chip);
-}
-
-.we-inspector-open:hover {
-  color: var(--app-text-primary);
-  background: var(--app-hover);
-}
-
-/* Right column: single flow, and collapsible (3 fixed columns crush the canvas
-   on a 1280px window). 320px / `flex: none` come from `.pv .ed-right`. */
+/* Right column: node/endpoint inspector only, and it exists ONLY while something
+   is selected — no selection means the canvas takes the full width (the workflow
+   info moved into the top bar's dialog). Width comes from `.pv .ed-right`. */
 .we-editor .we-inspector {
   transition: width 0.16s ease;
 }
@@ -1279,6 +1590,11 @@ onBeforeUnmount(() => {
   width: 0;
   overflow: hidden;
   border-left: 0;
+}
+
+/* 端点检查器：入参 / 出参编辑区（`.cfg-bd` 已给 padding 与滚动） */
+.we-editor .we-endpoint-io {
+  margin: 0;
 }
 
 .we-cfg-hd-row {
@@ -1349,6 +1665,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   max-height: 380px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .we-problems-status {

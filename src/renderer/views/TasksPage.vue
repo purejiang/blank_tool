@@ -2,12 +2,7 @@
   <!-- 任务中心（docs/08 §2.1）：默认 tab 是**任务定义**，`?tab=runs` 是运行记录。
        两个 tab 是同一个任务对象的两种视图（与 /tools 三页的区段切换有意不同）。 -->
   <div class="screen tasks-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('tasks.title') }}</h1>
-        <p class="page-subtitle">{{ t('tasks.subtitle') }}</p>
-      </div>
-    </div>
+    <PageHeader :title="t('tasks.title')" :description="t('tasks.subtitle')" />
 
     <n-tabs :value="tab" type="line" size="small" @update:value="onTabChange">
       <n-tab-pane name="tasks" :tab="t('tasks.tabs.tasks')" />
@@ -37,6 +32,7 @@ import { NTabPane, NTabs } from 'naive-ui'
 
 import TaskListView from '@components/tasks/TaskListView.vue'
 import RunListView from '@components/tasks/RunListView.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 import type { RunRecord } from '../../shared/ipc/protocol'
 
 /**
@@ -104,21 +100,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
-  overflow-y: auto;
 }
 
-.page-title {
-  margin: 0;
-  font-family: var(--font-family-base);
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-text-primary);
-}
 
-.page-subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--app-text-muted);
-}
 </style>

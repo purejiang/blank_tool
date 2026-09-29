@@ -31,6 +31,7 @@
 import type { Edge, Node } from '@vue-flow/core'
 
 import { LAYOUT_X_START, LAYOUT_Y, horizontalLayout, resolveNextMap } from './graphLayout'
+import { isVirtualNodeId } from './virtualNodes'
 
 // ---------------------------------------------------------------------------
 // Wire-format types (mirror the backend Python dataclasses)
@@ -337,22 +338,32 @@ export function validateOnDeserialize(json: WorkflowDefinitionJSON): string[] {
  * schema), so the backend accepts it via WorkflowDefinition.from_dict
  * unchanged. Positions are intentionally NOT serialized (layout is recomputed
  * on load).
+ *
+ * The canvas-only Start/End endpoints (`virtualNodes.ts`) are dropped together
+ * with every edge touching them, and a `next` that would point at a virtual id
+ * becomes null: the entry node is "nothing points at it", which is exactly what
+ * the endpoints express visually.
  */
 export function serializeWorkflow(
   nodes: Node[],
   edges: Edge[],
   meta: WorkflowMeta,
 ): WorkflowDefinitionJSON {
+  const realNodes = (nodes ?? []).filter((node) => node && !isVirtualNodeId(node.id))
+  const realIds = new Set(realNodes.map((node) => node.id))
   const nextBySource = resolveNextMap(edges)
 
-  const serializedNodes: WorkflowNodeJSON[] = (nodes ?? []).map((node) => {
+  const serializedNodes: WorkflowNodeJSON[] = realNodes.map((node) => {
     const data = (node.data ?? {}) as WorkflowNodeData
+    const next = nextBySource.get(node.id)
     return {
       id: node.id,
       type: NODE_DEFAULTS.type,
       tool: typeof data.tool === 'string' ? data.tool : '',
       params: nodeParamsToWire(data),
-      next: nextBySource.get(node.id) ?? null,
+      // A `next` pointing at 结束 (or at a node that is gone) is not part of the
+      // wire model — absence of `next` IS "the chain ends here".
+      next: typeof next === 'string' && realIds.has(next) ? next : null,
       on_failure:
         typeof data.on_failure === 'string' && data.on_failure.length > 0
           ? data.on_failure

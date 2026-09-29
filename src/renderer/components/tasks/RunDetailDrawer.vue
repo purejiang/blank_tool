@@ -29,21 +29,21 @@
           <span>{{ t('tasks.detail.duration') }}: {{ formatMs(run.duration_ms) }}</span>
         </div>
 
-        <n-alert v-if="run.error" type="error" :show-icon="false" class="rd-error">
+        <AppNotice v-if="run.error" tone="danger">
           {{ run.error }}
-        </n-alert>
+        </AppNotice>
 
         <!-- 操作 -->
-        <div class="rd-actions">
-          <n-button size="tiny" :disabled="!run.run_dir" @click="openRunDir">
+        <div class="app-actions">
+          <AppButton variant="outline" size="tiny" :disabled="!run.run_dir" @click="openRunDir">
             {{ t('tasks.detail.openRunDir') }}
-          </n-button>
-          <n-button size="tiny" :loading="rerunning" @click="emit('rerun', run)">
+          </AppButton>
+          <AppButton variant="outline" size="tiny" :loading="rerunning" @click="emit('rerun', run)">
             {{ t('tasks.detail.rerun') }}
-          </n-button>
-          <n-button size="tiny" type="error" quaternary @click="emit('delete', run)">
+          </AppButton>
+          <AppButton variant="danger-ghost" size="tiny" @click="emit('delete', run)">
             {{ t('tasks.detail.deleteRecord') }}
-          </n-button>
+          </AppButton>
         </div>
 
         <!-- 输入快照 -->
@@ -133,6 +133,8 @@ import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NDrawer, NDrawerContent } from 'naive-ui'
 
 import StatusBadge from '@components/ui/StatusBadge.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
 import {
   formatMs,
   isPathLike,
@@ -498,6 +500,7 @@ function openRunDir() {
   margin: 0;
   padding: 8px;
   overflow: auto;
+  overscroll-behavior: contain;
   font-family: var(--font-family-monospace);
   font-size: 11px;
   line-height: 1.5;

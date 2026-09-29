@@ -1,11 +1,6 @@
 <template>
   <div class="screen diagnostics-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('diagnostics.title') }}</h1>
-        <p class="page-subtitle">{{ t('diagnostics.subtitle') }}</p>
-      </div>
-    </div>
+    <PageHeader :title="t('diagnostics.title')" :description="t('diagnostics.subtitle')" />
 
     <div class="diagnostics-content">
 
@@ -91,6 +86,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NTag, useDialog, useMessage } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { useRendererLogStore } from '@stores/rendererLogStore'
 import unifiedApi from '../api/unifiedApi'
@@ -281,11 +277,22 @@ async function refreshPaths(): Promise<void> {
 }
 
 // ---- Lifecycle --------------------------------------------------------------
+
+/** 四块卡片一起重取（挂载时调用；页面级刷新按钮已移除）。 */
+const refreshing = ref(false)
+
+async function refreshAll(): Promise<void> {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    await Promise.all([refreshHealth(), refreshTasks(), refreshLogTail(), refreshPaths()])
+  } finally {
+    refreshing.value = false
+  }
+}
+
 onMounted(() => {
-  refreshHealth()
-  refreshTasks()
-  refreshLogTail()
-  refreshPaths()
+  void refreshAll()
   taskPoll = setInterval(refreshTasks, TASK_POLL_MS)
 })
 
@@ -296,9 +303,6 @@ onUnmounted(() => {
 
 <style scoped>
 /* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:900px 会导致页面之间宽窄不一。 */
-.page-header { margin-bottom: 20px; text-align: left; display: block; }
-.page-title { font-family: var(--font-family-base); font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 /* 两张「单行状态」卡片并排，表格/日志类卡片整行铺满 —— 满宽之后不再有右侧空白。
  * DOM 顺序是 健康/任务/日志/路径；用 order 把「路径」提到第 2 位与健康并排，
  * 否则第 1、4 行都会各留半行空白。 */
@@ -317,7 +321,6 @@ onUnmounted(() => {
 .diag-card:hover { box-shadow: var(--shadow-lift); border-color: var(--primary-soft-border); transform: translateY(-1px); }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: flex-start; }
 .section-title { font-family: var(--font-family-base); font-size: 15px; font-weight: 600; color: var(--app-text-primary); }
-.header-action { margin-left: auto; }
 
 /* Health */
 .health-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -340,6 +343,8 @@ onUnmounted(() => {
   max-height: 400px;
   min-height: 120px;
   overflow-y: auto;
+  /* 列表/日志类控件自己滚到底，不把滚动链甩给整页 */
+  overscroll-behavior: contain;
   margin: 8px 0 6px;
   background: var(--app-code-bg);
   border: 1px solid var(--app-card-border);

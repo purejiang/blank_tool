@@ -26,20 +26,20 @@
         :options="statusOptions"
       />
       <span class="rl-grow" />
-      <n-button size="small" quaternary type="error" :disabled="rows.length === 0" @click="clearAll">
+      <AppButton variant="danger-ghost" @click="clearAll" :disabled="rows.length === 0">
         {{ t('tasks.runs.clearAll') }}
-      </n-button>
+      </AppButton>
     </div>
 
     <div class="rl-hint">{{ t('tasks.runs.retentionHint') }}</div>
 
     <div v-if="loading && merged.length === 0" class="rl-status">{{ t('tasks.runs.loading') }}</div>
-    <n-alert v-else-if="loadError" type="error" :show-icon="true" class="rl-status">
-      <div class="rl-status-row">
-        <span>{{ t('tasks.loadFailed', { error: loadError }) }}</span>
-        <n-button size="tiny" @click="reload">{{ t('workflows.retry') }}</n-button>
-      </div>
-    </n-alert>
+    <AppNotice v-else-if="loadError" tone="danger">
+      {{ t('tasks.loadFailed', { error: loadError }) }}
+      <template #action>
+        <AppButton variant="outline" size="tiny" @click="reload">{{ t('workflows.retry') }}</AppButton>
+      </template>
+    </AppNotice>
     <div v-else-if="filtered.length === 0" class="rl-empty">
       <div class="rl-empty-title">{{ t('tasks.runs.empty') }}</div>
       <n-button size="small" type="primary" @click="emit('new-task')">
@@ -71,9 +71,9 @@
           >
             {{ t('tasks.runs.openRunDir') }}
           </n-button>
-          <n-button v-if="!item.running" size="tiny" quaternary type="error" @click="remove(item)">
+          <AppButton v-if="!item.running" variant="danger-ghost" size="tiny" @click="remove(item)">
             {{ t('tasks.actions.delete') }}
-          </n-button>
+          </AppButton>
           <n-button
             v-if="!item.running"
             size="tiny"
@@ -110,6 +110,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NInput, NSelect, useDialog } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
 
 import StatusBadge from '@components/ui/StatusBadge.vue'
 import RunDetailDrawer from './RunDetailDrawer.vue'

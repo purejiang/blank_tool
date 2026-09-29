@@ -55,3 +55,13 @@
   font-size: 13px;
   font-weight: 600;
 }
+
+/* 列表类控件（下拉/选择器/虚拟列表菜单）自己滚到底就停住，不把滚动链传给整页。
+ * 这些弹层被 teleport 到 body，不在 .pv 作用域内，所以只能是全局规则。 */
+.n-base-select-menu .n-base-select-menu__empty,
+.n-base-select-menu .n-virtual-list,
+.n-base-select-menu .n-scrollbar-container,
+.n-dropdown-menu,
+.n-virtual-list {
+  overscroll-behavior: contain;
+}

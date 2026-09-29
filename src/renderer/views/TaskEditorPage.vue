@@ -2,16 +2,24 @@
   <!-- S3.2 任务编辑（docs/08 §3-S3.2）：主体是**入参的持久化表单**；工作流只是
        "入参 schema 来源 + 运行目标"，只占顶部一行紧凑选择器，不占侧栏。 -->
   <div class="screen task-editor">
-    <div class="page-header">
-      <n-button size="small" quaternary :title="t('workflow.editor.back')" @click="goBack">
-        <template #icon><AppIcon name="back" /></template>
-      </n-button>
-      <h1 class="page-title">{{ isNew ? t('tasks.editor.createTitle') : t('tasks.editor.editTitle') }}</h1>
-      <span class="page-grow" />
-      <n-button v-if="!isNew" size="small" type="error" quaternary @click="removeTask">
-        {{ t('tasks.actions.delete') }}
-      </n-button>
-    </div>
+    <PageHeader :title="isNew ? t('tasks.editor.createTitle') : t('tasks.editor.editTitle')">
+      <template #lead>
+        <AppButton
+          variant="ghost"
+          icon-only
+          :aria-label="t('workflow.editor.back')"
+          :title="t('workflow.editor.back')"
+          @click="goBack"
+        >
+          <template #icon><AppIcon name="back" /></template>
+        </AppButton>
+      </template>
+      <template #actions>
+        <AppButton v-if="!isNew" variant="danger-ghost" @click="removeTask">
+          {{ t('tasks.actions.delete') }}
+        </AppButton>
+      </template>
+    </PageHeader>
 
     <!-- 基本信息一行 -->
     <div class="te-row">
@@ -58,9 +66,9 @@
       </n-button>
     </div>
 
-    <n-alert v-if="workflowMissing" type="warning" :show-icon="true">
+    <AppNotice v-if="workflowMissing" tone="warning">
       {{ t('tasks.editor.workflowMissingHint', { workflow: form.workflow }) }}
-    </n-alert>
+    </AppNotice>
 
     <!-- 入参表单：两列网格，路径 / JSON 整行 -->
     <div v-if="!form.workflow" class="te-placeholder">{{ t('tasks.editor.pickWorkflowFirst') }}</div>
@@ -134,6 +142,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NInput, NSelect, useDialog } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 
 import PortInput from '@components/workflow/PortInput.vue'
 import type { PortJSON, WorkflowDefinitionJSON } from '@components/workflow/serializer'
@@ -141,6 +152,7 @@ import type { TaskGetResult } from '../../shared/ipc/protocol'
 import unifiedApi from '@/api/unifiedApi'
 import serviceManager from '@services/ServiceManager'
 import { useNotification } from '@composables/useNotification'
+import { toJsonPayload } from '@utils/jsonPayload'
 import { log } from '@utils/logger'
 
 /**
@@ -388,7 +400,9 @@ async function save(thenRun: boolean) {
     await unifiedApi.call('task.save', {
       name: form.name.trim(),
       workflow: form.workflow,
-      inputs: payload,
+      // `inputs` 是 reactive：多选端口读出来的是数组代理，拍平成纯 JSON 再落盘
+      // （否则 contextBridge 会抛 "An object could not be cloned."）。
+      inputs: toJsonPayload(payload),
       work_dir: form.work_dir.trim() || undefined,
       description: form.description.trim() || undefined,
     })
@@ -445,28 +459,11 @@ watch(nameFromRoute, (name) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
-  overflow-y: auto;
   padding-bottom: 76px;
 }
 
-.page-header {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
 
-.page-title {
-  margin: 0;
-  font-family: var(--font-family-base);
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--app-text-primary);
-}
 
-.page-grow {
-  flex: 1;
-}
 
 .te-row {
   display: flex;

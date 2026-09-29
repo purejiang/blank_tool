@@ -360,12 +360,15 @@
 }
 
 /* ===== 页面级（.screen 由路由容器使用；mock 的变体规则不搬） ===== */
+/* 页面根布局**不滚动**：唯一的滚动容器是外壳的 .app-shell-content
+ * （AppShell.vue）。在根上加 height:100% + overflow-y:auto 会造出第二层滚动，
+ * 内层列表滚到底后滚动链会接着滚整页（"列表一滑全页跟着动"）。这里只留
+ * min-height:100% 保证短页面撑满，长页面自然长高、交给外壳滚。 */
 .pv .screen {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
   padding: 24px;
-  overflow-y: auto;
 }
 
 .pv .page-hd { flex: none; margin-bottom: 16px; }
@@ -563,7 +566,9 @@
 }
 
 /* ===== 5. S2 工作流编辑器 ===== */
-.pv .screen.editor { padding: 0; overflow: hidden; }
+/* 编辑器自带满屏三栏：这里必须保留**确定高度**，`.ed-body { flex: 1 }` 才成立；
+   页面根不再提供滚动，编辑器走 flush 外壳（AppShell 的 --flush 变体）。 */
+.pv .screen.editor { padding: 0; height: 100%; overflow: hidden; }
 
 .pv .ed-top {
   display: flex;
@@ -586,8 +591,10 @@
 
 .pv .ed-body { flex: 1; min-height: 0; display: flex; }
 
+/* 2026-09-29：三列收窄（240/320 → 208/280）。右栏只在选中节点/端点时出现，
+ * 所以画布在"没有选中"时吃满整宽。 */
 .pv .ed-left {
-  width: 240px;
+  width: 208px;
   flex: none;
   border-right: 1px solid var(--app-card-border);
   background: var(--app-card-bg);
@@ -597,7 +604,7 @@
 }
 
 .pv .ed-right {
-  width: 320px;
+  width: 280px;
   flex: none;
   border-left: 1px solid var(--app-card-border);
   background: var(--app-card-bg);
@@ -607,7 +614,8 @@
 }
 
 .pv .pal { padding: 10px; display: flex; flex-direction: column; gap: 6px; flex: none; }
-.pv .pal-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 12px; }
+/* 编辑器左栏工具列表：自己滚，滚到底不把滚动链传给整页 */
+.pv .pal-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 12px; }
 
 .pv .pal-grp {
   font-size: 10.5px;
@@ -722,7 +730,7 @@
 }
 
 .pv .cfg-hd .cd { font-size: 11.5px; color: var(--app-text-dim); margin-top: 2px; }
-.pv .cfg-bd { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+.pv .cfg-bd { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px; }
 .pv .cfg-ft { flex: none; padding: 12px 14px; border-top: 1px solid var(--app-card-border); display: flex; gap: 8px; }
 
 .pv .err-line {

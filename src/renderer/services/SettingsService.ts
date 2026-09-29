@@ -1,6 +1,7 @@
 import unifiedApi from '../api/unifiedApi'
 import type { AppConfigApi, SettingsApi, SettingsViewModel } from '../../shared/ipc/electronApi'
 import type { AppConfigStoreLike } from '../../shared/stores/appConfigStore'
+import { toJsonPayload } from '@utils/jsonPayload'
 
 interface StoreServiceLike {
   ensureAppConfigStore: () => Promise<AppConfigStoreLike>
@@ -69,7 +70,9 @@ class SettingsService {
     const appStore = await this.storeService.ensureAppConfigStore()
     const appConfigApi = this.getAppConfigApi()
     if (appConfigApi) {
-      try { await appConfigApi.setMany(updates || {}) } catch {}
+      // 拍平成纯 JSON 再发：载荷可能来自 reactive 表单，代理不可克隆；这里的 catch
+      // 是静默的，克隆失败会让设置无声丢失。
+      try { await appConfigApi.setMany(toJsonPayload(updates || {})) } catch {}
     }
     await appStore.update(updates)
     return await this.loadSettingsModel()

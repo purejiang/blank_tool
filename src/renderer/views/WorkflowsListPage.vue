@@ -3,10 +3,7 @@
        页面头 → 工具栏 → 3 列卡片网格 / 空态。本页不与 history.list join，
        卡片上没有运行状态徽章。 -->
   <div class="screen">
-    <div class="page-hd">
-      <h1>{{ t('workflows.title') }}</h1>
-      <p>{{ t('workflows.subtitle') }}</p>
-    </div>
+    <PageHeader :title="t('workflows.title')" :description="t('workflows.subtitle')" />
 
     <div class="toolbar">
       <n-button type="primary" size="small" @click="openEditor()">
@@ -163,6 +160,7 @@ import { useI18n } from 'vue-i18n'
 import { useDialog } from 'naive-ui'
 import { NDropdown, NForm, NFormItem, NInput, NModal, NSkeleton, NButton } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 
 import RunInputsDialog from '@components/workflow/RunInputsDialog.vue'
 import ImportReportDialog, {
@@ -279,7 +277,12 @@ function openEditor(name?: string) {
 
 // ---- 导入（M2 报告） --------------------------------------------------------
 
-/** 文件多选或目录选择 → `template.import_path`（逐路径调用后合并报告）。 */
+/**
+ * 只按 JSON 文件导入（可多选）→ `template.import_path`（逐路径调用后合并报告）。
+ *
+ * 后端 `template.import_path` 另外还认目录（CLI `import-templates` 在用），
+ * 界面不暴露那条路；取消文件对话框就是取消，不再接着弹一个目录选择器。
+ */
 async function handleImport() {
   if (importing.value) return
   const svc = (await serviceManager.getService('system')) as any
@@ -290,17 +293,8 @@ async function handleImport() {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'JSON', extensions: ['json'] }],
     })
-    if (picked && !picked.canceled) {
-      paths = (picked.filePaths ?? []).filter((path: string) => !!path)
-    }
-    if (paths.length === 0) {
-      // 没选文件 → 让用户选一个包含工作流 JSON 的目录
-      const dir = await svc.selectDirectory({ title: t('workflows.import.title') })
-      if (dir && !dir.canceled) {
-        const single = (dir.filePath || (dir.filePaths && dir.filePaths[0]) || '').trim()
-        if (single) paths = [single]
-      }
-    }
+    if (!picked || picked.canceled) return
+    paths = (picked.filePaths ?? []).filter((path: string) => !!path)
   } catch (error) {
     showError(t('workflows.import.failed', { error: errMsg(error) }))
     return

@@ -21,6 +21,49 @@
   border: 0;
 }
 
+/* ==========================================================================
+ * 语义色调：**全应用唯一**的 tone → 颜色映射
+ * --------------------------------------------------------------------------
+ * 起因：同一套「成功=绿 / 警告=橙 / 失败=红 / 中性=灰」曾在 10 个文件里各写一遍
+ * （RunLogPanel 的 .rl-tone--*、ToolNode 的 .tn-status-*、NodeConfigPanel 的
+ * .npc-dot--*、PortInput 的 .pi-issue--*、ToolsPage 的 .tc-dep--* …），并且一半
+ * 用弃用别名 --app-green/--app-orange/--app-red，另一半用规范名 --success-text。
+ * 现在只有这一处定义，组件/页面引用它，新增语义色不再需要碰任何组件文件。
+ *
+ * 用法：<span class="app-tone--error">…</span>
+ *       <AppStatusDot tone="warning" />   ← 圆点取的是同一个 token 当背景色
+ * ========================================================================== */
+.app-tone--success { color: var(--success-text); }
+.app-tone--warning { color: var(--warning-text); }
+.app-tone--danger  { color: var(--danger-text); }
+.app-tone--info    { color: var(--info-text); }
+.app-tone--primary { color: var(--primary); }
+.app-tone--neutral { color: var(--text-secondary); }
+.app-tone--muted   { color: var(--text-muted); }
+.app-tone--dim     { color: var(--text-dim); }
+
+/* 弱化说明文字：全仓重复最多的一对声明（16 处 / 14 文件） */
+.app-hint {
+  font-size: var(--fs-meta);
+  color: var(--text-dim);
+}
+
+/* flex 占位撑开：全仓重复第二多（19 处 / 12 文件）。
+ * min-width:0 是必须的 —— 少了它，flex 子项里的省略号不生效。 */
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 行内动作组（一排按钮 / 图标按钮）：全仓 5 处重复的同一套布局。
+ * AppRow 的 actions 槽也用它，所以这里必须是全局类而不是组件 scoped 样式。 */
+.app-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
 /* 减少动效偏好：关掉上浮/脉冲等纯装饰动画 */
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -28,3 +71,4 @@
     animation-duration: 0.01ms !important;
   }
 }
+

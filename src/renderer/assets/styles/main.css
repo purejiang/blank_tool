@@ -60,15 +60,9 @@
     --spacing-lg: 1.5rem;
     --spacing-xl: 3rem;
     
-    /* 字体：唯一来源。组件里禁止再写死字体栈，一律引用这两个 token。
-     * 口径对齐设计契约 docs/ui-prompts/ui-preview.html：
-     *   - 正文 = 契约 line 14 的栈（Segoe UI 起手 + 显式列出中文字体）
-     *   - 等宽 = 契约行内最常用的 `"Fira Code", Consolas, monospace`
-     * 注意：契约 `.mono`（line 114）还列了 `"Cascadia Mono"`，而本机**装了** Cascadia Mono、
-     * 没装 Fira Code —— 一旦加进栈里，全应用等宽字体会从 Consolas 变成 Cascadia Mono
-     * （字形/字宽都变）。那是刻意的外观决策，未获确认前不擅自改。 */
-    --font-family-base: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    --font-family-monospace: "Fira Code", Consolas, monospace;
+    /* 字体：`--font-family-base` / `--font-family-monospace` 已迁到 tokens.css
+     * 的非颜色维度块（它们本来就是设计 token，且被 67 处引用）。这里不再声明，
+     * 免得又出现两处定义、由加载顺序决定谁生效。 */
     
     /* 字体大小 */
     --font-size-xs: 0.75rem;

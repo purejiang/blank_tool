@@ -1,6 +1,10 @@
 <template>
   <!-- 卡片：surface 底 + 1px border 边 + --radius-card 大圆角（极简，静止态无阴影）。
-       hoverable 时 hover 边框转 primary-soft-border 并上浮 + 出阴影（键盘聚焦同样生效）。 -->
+       hoverable 时 hover 边框转 primary-soft-border 并上浮 + 出阴影（键盘聚焦同样生效）。
+
+       替代 AboutPage `.about-card` / DiagnosticsPage `.diag-card` /
+       SettingsPage `.settings-card` 三份 `n-card :bordered="false"` + 本地卡片样式
+       （那三份连 hover 上浮效果都是各写一遍，与 AppCard 的 hoverable 完全同体）。 -->
   <component
     :is="as"
     class="app-card"
@@ -8,6 +12,7 @@
   >
     <div v-if="$slots.header || title" class="app-card-hd">
       <slot name="header">
+        <span v-if="$slots.icon" class="app-card-hd-icon"><slot name="icon" /></span>
         <h3>{{ title }}</h3>
       </slot>
       <div v-if="$slots.actions" class="app-card-actions"><slot name="actions" /></div>
@@ -43,11 +48,13 @@ withDefaults(
   text-align: left;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--hairline);
   border-radius: var(--radius-card);
   /* 极简：静止态只留 1px 描边（平面），hover 才升起 */
   box-shadow: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
 }
 
 /* 保留 flat 入参以免调用点报错；默认即无阴影，故它现在是空操作 */
@@ -69,14 +76,20 @@ withDefaults(
 .app-card-hd {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+  gap: var(--gap-sm);
+  padding: var(--sp-12) var(--sp-16);
+  border-bottom: var(--hairline);
+}
+
+.app-card-hd-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .app-card-hd h3 {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-card-title);
   font-weight: 600;
   color: var(--text);
 }
@@ -85,11 +98,11 @@ withDefaults(
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-6);
 }
 
 .app-card-bd {
-  padding: 16px;
+  padding: var(--card-pad);
   min-width: 0;
 }
 
@@ -98,10 +111,10 @@ withDefaults(
 }
 
 .app-card-ft {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
+  padding: var(--sp-12) var(--sp-16);
+  border-top: var(--hairline);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gap-sm);
 }
 </style>

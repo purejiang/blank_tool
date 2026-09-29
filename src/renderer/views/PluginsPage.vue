@@ -3,23 +3,18 @@
        ⚠️ 本页**不显示环境依赖徽章、也不显示"该插件注册了哪些工具"**——后端没有
        这两个字段（缺口 #18），画上去就是编数据。 -->
   <div class="screen plugins-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('plugins.title') }}</h1>
-        <p class="page-subtitle">{{ t('plugins.subtitle') }}</p>
-      </div>
-      <div class="page-header-right">
-        <ToolsSectionNav active="plugins" />
-      </div>
-    </div>
+    <PageHeader :title="t('plugins.title')" :description="t('plugins.subtitle')">
+      <template #nav><ToolsSectionNav active="plugins" /></template>
+    </PageHeader>
 
     <div class="plugins-toolbar">
       <n-button size="small" type="primary" @click="openAddDialog">
         <template #icon><AppIcon name="pkg" /></template>
         {{ t('plugins.add') }}
       </n-button>
+      <!-- 「重新加载插件」是动作：重跑清单加载器，与「重取列表」不是一回事。 -->
       <n-button size="small" :loading="reloading" @click="reload">
-        <template #icon><AppIcon name="refresh" /></template>
+        <template #icon><AppIcon name="loop" /></template>
         {{ t('plugins.reload') }}
       </n-button>
     </div>
@@ -27,12 +22,12 @@
     <div class="plugins-hint">{{ t('plugins.reloadHint') }}</div>
 
     <div v-if="loading && plugins.length === 0" class="plugins-status">{{ t('plugins.loading') }}</div>
-    <n-alert v-else-if="loadError" type="error" :show-icon="true">
-      <div class="plugins-status-row">
-        <span>{{ t('plugins.loadFailed', { error: loadError }) }}</span>
-        <n-button size="tiny" @click="fetchPlugins">{{ t('workflows.retry') }}</n-button>
-      </div>
-    </n-alert>
+    <AppNotice v-else-if="loadError" tone="danger">
+      {{ t('plugins.loadFailed', { error: loadError }) }}
+      <template #action>
+        <AppButton variant="outline" size="tiny" @click="fetchPlugins">{{ t('workflows.retry') }}</AppButton>
+      </template>
+    </AppNotice>
     <div v-else-if="plugins.length === 0" class="plugins-empty">
       <div class="plugins-empty-title">{{ t('plugins.empty') }}</div>
       <n-button size="small" type="primary" @click="openAddDialog">{{ t('plugins.add') }}</n-button>
@@ -65,17 +60,16 @@
             </template>
           </div>
         </div>
-        <n-button
+        <AppButton
+          variant="danger-ghost"
           size="tiny"
-          quaternary
-          type="error"
           :disabled="plugin.kind === 'shipped-native'"
           :title="plugin.kind === 'shipped-native' ? t('plugins.deleteProtected') : ''"
           :loading="deletingModule === plugin.module"
           @click="confirmDelete(plugin)"
         >
           {{ t('tasks.actions.delete') }}
-        </n-button>
+        </AppButton>
       </div>
     </div>
 
@@ -98,16 +92,21 @@
           />
         </n-form-item>
       </n-form>
-      <n-alert v-if="addDialog.error" type="error" :show-icon="false">{{ addDialog.error }}</n-alert>
+      <AppNotice v-if="addDialog.error" tone="danger">{{ addDialog.error }}</AppNotice>
       <template #footer>
-        <div class="plugins-dialog-footer">
-          <n-button size="small" :disabled="adding" @click="addDialog.show = false">
+        <AppDialogFooter>
+          <AppButton variant="outline" :disabled="adding" @click="addDialog.show = false">
             {{ t('workflow.editor.template.cancel') }}
-          </n-button>
-          <n-button size="small" type="primary" :disabled="!addDialog.module.trim()" :loading="adding" @click="submitAdd">
+          </AppButton>
+          <AppButton
+            variant="primary"
+            :disabled="!addDialog.module.trim()"
+            :loading="adding"
+            @click="submitAdd"
+          >
             {{ t('plugins.add') }}
-          </n-button>
-        </div>
+          </AppButton>
+        </AppDialogFooter>
       </template>
     </n-modal>
   </div>
@@ -118,6 +117,10 @@ import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NTag, useDialog } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppDialogFooter from '@components/ui/AppDialogFooter.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 import { storeToRefs } from 'pinia'
 
 import ToolsSectionNav from '@components/tools/ToolsSectionNav.vue'
@@ -266,29 +269,10 @@ function confirmDelete(plugin: PluginEntry) {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
-  overflow-y: auto;
 }
 
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-}
 
-.page-title {
-  margin: 0;
-  font-family: var(--font-family-base);
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-text-primary);
-}
 
-.page-subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--app-text-muted);
-}
 
 .plugins-toolbar {
   display: flex;

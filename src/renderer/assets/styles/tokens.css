@@ -163,9 +163,104 @@
   --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.55);
 }
 
-/* 焦点环（可访问性）：所有可交互元素统一 focus-visible 表现 */
+/* ==========================================================================
+ * 5) 非颜色维度（字号 / 间距 / 密度 / 描边 / 动效 / 字体栈）
+ * --------------------------------------------------------------------------
+ * 这些维度与主题无关，所以只在这里声明一份，**不进**浅/深两个主题块。
+ *
+ * ⚠️ 命名约定：本块不得使用 main.css `:root` 已声明过的名字。main.css 在
+ * tokens.css 之后加载且同为 :root 特异性，重名会静默覆盖（历史事故见
+ * main.css 顶部关于 --text-secondary 自引用的注释）。所以这里是 `--fs-*` /
+ * `--sp-*`，而不是 main.css 那套 `--font-size-*` / `--spacing-*`。
+ *
+ * 字号阶刻意做成半档细阶（10 ~ 22px）：设计契约 docs/ui-prompts/ui-preview.html
+ * 用的就是这一套，此前只有 12/14/16/18/20/24/30 七档，导致组件里出现 21 种
+ * 字面量、标题在 19/20/22px 之间漂移。组件只允许引用下面的**语义角色**，
+ * 页面里确需特例时才直接用 `--fs-<数值>`。
+ * ========================================================================== */
 :root {
+  /* 焦点环（可访问性）：所有可交互元素统一 focus-visible 表现 */
   --focus-ring: 0 0 0 3px var(--ring);
   /* 品牌渐变之上的文字色（logo / 渐变徽标），两种模式都用浅色 */
   --on-brand: #FFFFFF;
+
+  /* ---- 字体栈（唯一来源；组件里禁止再写字体栈）。
+   * 口径对齐设计契约 ui-preview.html：
+   *   - 正文 = 契约的栈（Segoe UI 起手 + 显式列出中文字体）
+   *   - 等宽 = 契约行内最常用的 `"Fira Code", Consolas, monospace`
+   * 注意：契约 `.mono` 还列了 `"Cascadia Mono"`，而本机**装了** Cascadia Mono、
+   * 没装 Fira Code —— 一旦加进栈里，全应用等宽字体会从 Consolas 变成 Cascadia
+   * Mono（字形/字宽都变）。那是刻意的外观决策，未获确认前不擅自改。 */
+  --font-family-base: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-family-monospace: "Fira Code", Consolas, monospace;
+
+  /* ---- 字号：细阶（数值即实际 px，方便与设计稿逐字对齐） ---- */
+  --fs-10: 10px;
+  --fs-10-5: 10.5px;
+  --fs-11: 11px;
+  --fs-11-5: 11.5px;
+  --fs-12: 12px;
+  --fs-12-5: 12.5px;
+  --fs-13: 13px;
+  --fs-13-5: 13.5px;
+  --fs-14: 14px;
+  --fs-14-5: 14.5px;
+  --fs-15: 15px;
+  --fs-15-5: 15.5px;
+  --fs-16: 16px;
+  --fs-19: 19px;
+  --fs-20: 20px;
+  --fs-22: 22px;
+
+  /* ---- 字号语义角色（组件只允许用这一层） ---- */
+  --fs-page-title: var(--fs-19);   /* 页面 h1（契约 .page-hd h1 = 19px） */
+  --fs-page-desc: var(--fs-12-5);  /* 页面副标题 */
+  --fs-section-title: var(--fs-14-5); /* 卡片/区块小节标题 */
+  --fs-card-title: var(--fs-13-5);
+  --fs-row-title: var(--fs-13-5);  /* 列表项标题 */
+  --fs-body: var(--fs-13);
+  --fs-label: var(--fs-12);        /* 表单 label */
+  --fs-aux: var(--fs-11-5);        /* 徽章、次级说明 */
+  --fs-meta: var(--fs-11);         /* 元信息、辅助文字（全仓最常用的一档） */
+  --fs-mono: var(--fs-11-5);
+  --fs-stat: var(--fs-22);         /* 概览数字 */
+
+  /* ---- 间距：覆盖实际用到的 2/4/6/8/10/12/14/16/20/24/40 ---- */
+  --sp-2: 2px;
+  --sp-4: 4px;
+  --sp-6: 6px;
+  --sp-8: 8px;
+  --sp-10: 10px;
+  --sp-12: 12px;
+  --sp-14: 14px;
+  --sp-16: 16px;
+  --sp-20: 20px;
+  --sp-24: 24px;
+  --sp-40: 40px;
+
+  /* ---- 间距语义角色 ---- */
+  --gap-xs: var(--sp-6);
+  --gap-sm: var(--sp-8);
+  --gap-md: var(--sp-12);
+  --gap-lg: var(--sp-16);
+  --gap-xl: var(--sp-24);
+  --row-pad-y: var(--sp-10);
+  --row-pad-x: var(--sp-12);
+  --card-pad: var(--sp-16);
+
+  /* ---- 控件密度（对齐 theme/overrides.ts 的 Button/Input 高度） ---- */
+  --control-h-tiny: 24px;
+  --control-h-sm: 30px;
+  --control-h-md: 34px;
+
+  /* ---- 描边 ---- */
+  --hairline: 1px solid var(--border);
+  /* 空态 art 盒 / 虚线按钮：契约口径是 1.5px dashed（.empty .art） */
+  --dash-border: 1.5px dashed var(--border);
+
+  /* ---- 动效（含 prefers-reduced-motion 的关闭策略，见 ui.css） ---- */
+  --duration-fast: 0.1s;
+  --duration-base: 0.2s;
+  --duration-slow: 0.3s;
+  --ease-standard: ease-in-out;
 }

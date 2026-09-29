@@ -1,15 +1,13 @@
 <template>
   <div class="screen settings-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('settings.title') }}</h1>
-        <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
-      </div>
-      <n-tag v-if="showSaved" type="success" size="small" :bordered="false" class="saved-tag">
-        <template #icon><AppIcon name="check" /></template>
-        {{ t('settings.savedIndicator') }}
-      </n-tag>
-    </div>
+    <PageHeader :title="t('settings.title')" :description="t('settings.subtitle')">
+      <template #actions>
+        <AppBadge v-if="showSaved" tone="success" :bordered="false" class="saved-tag">
+          <template #icon><AppIcon name="check" /></template>
+          {{ t('settings.savedIndicator') }}
+        </AppBadge>
+      </template>
+    </PageHeader>
 
     <div class="settings-content">
 
@@ -141,25 +139,25 @@
               <div class="storage-row-label">{{ t(cat.label) }}</div>
               <div class="storage-row-sub">{{ formatFileSize(getCatSize(cat.key)) }} · {{ getCatFiles(cat.key) }} {{ t('settings.filesUnit') }}</div>
             </div>
-            <n-button
+            <AppButton
+              variant="danger-ghost"
               size="tiny"
-              quaternary
-              type="error"
+              icon-only
+              :aria-label="t('settings.clearCategory')"
+              :title="t('settings.clearCategory')"
               :loading="clearingTarget === cat.key"
               :disabled="getCatSize(cat.key) === 0"
               @click="confirmClear(cat.key)"
             >
               <template #icon><AppIcon name="trash" size="sm" /></template>
-            </n-button>
+            </AppButton>
           </div>
         </div>
 
         <!-- Clear all -->
         <div style="margin-top:12px">
-          <n-button
-            size="small"
-            type="error"
-            ghost
+          <AppButton
+            variant="danger-ghost"
             block
             :loading="clearingTarget === 'all'"
             :disabled="cacheInfo.total.size === 0"
@@ -167,7 +165,7 @@
           >
             <template #icon><AppIcon name="trash" /></template>
             {{ t('settings.clearAllStorage') }}
-          </n-button>
+          </AppButton>
         </div>
       </n-card>
 
@@ -201,6 +199,9 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NButton, useDialog } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppBadge from '@components/ui/AppBadge.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 import serviceManager from '@services/ServiceManager'
 import { log, setLogLevel } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
@@ -458,9 +459,6 @@ onMounted(() => {
 
 <style scoped>
 /* 页面宽度交给外壳（满宽）；mock 遗留的 max-width:740px 会导致页面之间宽窄不一。 */
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.page-title { font-family: var(--font-family-base); font-size: 22px; font-weight: 700; color: var(--app-text-primary); margin: 0; letter-spacing: -0.02em; }
-.page-subtitle { font-size: 13px; color: var(--app-text-muted); margin: 4px 0 0; }
 .saved-tag { margin-top: 4px; transition: opacity 0.3s; }
 /* 满宽后卡片改栅格（窄屏自动回落单列），避免长条卡片右侧空一大截。
  * 下限 460px 让 1600 视口下是舒服的两列；太窄的列会让 label-width:100 的表单挤爆。 */

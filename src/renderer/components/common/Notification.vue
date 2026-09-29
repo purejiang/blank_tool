@@ -369,7 +369,10 @@ defineExpose({
 }
 
 .notification-action-btn.primary:hover {
-  background: var(--primary-hover);
+  /* 原本是 `var(--primary-hover)`，而 main.css 的 `--primary-hover` 别名到
+   * `var(--primary-active)`（Bootstrap 风格别名层，正在退役）。这里直接写规范名，
+   * 取值与改前完全一致。 */
+  background: var(--primary-active);
 }
 
 /* 关闭按钮 */

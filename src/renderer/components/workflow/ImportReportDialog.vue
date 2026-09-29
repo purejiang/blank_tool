@@ -117,6 +117,8 @@ const visible = computed({
   gap: 6px;
   max-height: 360px;
   overflow-y: auto;
+  /* 内部列表自己滚，滚到底不带动整页 */
+  overscroll-behavior: contain;
 }
 
 .irp-row {

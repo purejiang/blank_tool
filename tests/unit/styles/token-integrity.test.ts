@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 
 /**
  * 样式 token 完整性守卫。
@@ -18,7 +18,9 @@ import { join, resolve } from 'node:path'
  *   1. 任何自定义属性（直接或间接）自引用 → 失败
  *   2. 声明了空值（`--x:;`）→ 失败
  *   3. 关键 token 必须被声明过 → 失败
- *   4. 别名层（themes.css）里 `var(--x)` 引用必须都能在全仓找到定义 → 失败
+ *   4. `var(--x)` 引用必须都能在全仓找到定义 → 失败
+ *      （**只算没有 fallback 的写法**。`var(--x, var(--y))` 是有意为之的降级，
+ *        x 未定义时仍能取到 y，不算 bug；`var(--x)` 则会让整条声明静默失效。）
  *
  * ⚠️ 解析前必须剥掉 CSS 注释：修复说明里就原样写了那段自引用代码，
  *    不剥注释会把注释当成"仍然存在自引用"。
@@ -55,11 +57,44 @@ const CRITICAL_TOKENS = [
   '--radius-chip',
   '--font-family-base',
   '--font-family-monospace',
+  /* 非颜色维度（tokens.css 末尾的「非颜色维度」块）：字号阶 + 语义角色 */
+  '--fs-page-title',
+  '--fs-page-desc',
+  '--fs-section-title',
+  '--fs-card-title',
+  '--fs-row-title',
+  '--fs-body',
+  '--fs-label',
+  '--fs-aux',
+  '--fs-meta',
+  '--fs-mono',
+  '--fs-stat',
+  /* 间距阶 + 语义角色 + 列表/卡片内距 */
+  '--gap-xs',
+  '--gap-sm',
+  '--gap-md',
+  '--gap-lg',
+  '--gap-xl',
+  '--row-pad-y',
+  '--row-pad-x',
+  '--card-pad',
+  /* 控件密度、描边、动效 */
+  '--control-h-tiny',
+  '--control-h-sm',
+  '--control-h-md',
+  '--hairline',
+  '--dash-border',
+  '--duration-fast',
+  '--duration-base',
+  '--duration-slow',
+  '--ease-standard',
 ]
 
 const COMMENT = /\/\*[\s\S]*?\*\//g
 const DECL = /(--[A-Za-z0-9_-]+)\s*:\s*([^;{}]*)/g
 const VARREF = /var\(\s*(--[A-Za-z0-9_-]+)/g
+/** 只匹配**没有 fallback** 的引用：`var(--x)` 会让整条声明静默失效，`var(--x, y)` 不会。 */
+const VARREF_NOFALLBACK = /var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g
 const STYLE_BLOCK = /<style[^>]*>([\s\S]*?)<\/style>/g
 
 interface Decl {
@@ -114,6 +149,24 @@ function collectDeclarations(): Decl[] {
 }
 
 const DECLS = collectDeclarations()
+
+/**
+ * 全仓样式来源：独立 CSS 文件 + 每个 `.vue` 的 `<style>` 块。
+ * 用于「引用是否存在」的检查 —— 这个检查必须看**引用点的原文**，
+ * 而 DECLS 只保留了声明。
+ */
+function collectSources(): { file: string; text: string }[] {
+  const out: { file: string; text: string }[] = []
+  for (const file of collectCssFiles(STYLES_DIR)) {
+    out.push({ file, text: readFileSync(file, 'utf8') })
+  }
+  for (const file of collectVueFiles(RENDERER)) {
+    const text = readFileSync(file, 'utf8')
+    const blocks = [...text.matchAll(STYLE_BLOCK)].map((m) => m[1]).join('\n')
+    if (blocks.trim()) out.push({ file, text: blocks })
+  }
+  return out
+}
 
 /** name → 它引用到的所有自定义属性（跨声明取并集：被覆盖的声明同样是隐患）。 */
 function buildGraph(decls: Decl[]): Map<string, Set<string>> {
@@ -170,16 +223,27 @@ describe('样式 token 完整性', () => {
     expect(missing, `缺少关键 token：${missing.join(', ')}`).toEqual([])
   })
 
-  it('别名层（themes.css）引用的变量都能在全仓找到定义', () => {
+  /**
+   * 原实现只检查 themes.css 的别名层，于是 `common/components.css` 里
+   * `var(--primary-color-alpha)` / `var(--primary-color-light)` / `var(--transition-normal)`
+   * 三个悬空引用长期无人发现（相关声明整条静默失效，进度条渐变根本没渲染）。
+   * 现在覆盖**全仓** CSS + 所有组件 `<style>` 块。
+   */
+  it('全仓没有引用未定义变量的 var()（只算无 fallback 的写法）', () => {
     const declared = new Set(DECLS.map((d) => d.name))
-    const themes = DECLS.filter((d) => d.file.endsWith('themes.css'))
-    const dangling = new Set<string>()
-    for (const d of themes) {
-      for (const ref of d.value.matchAll(VARREF)) {
-        if (!declared.has(ref[1])) dangling.add(`${ref[1]} (from ${d.name})`)
+    const dangling: string[] = []
+    for (const { file, text } of collectSources()) {
+      const stripped = text.replace(COMMENT, (m) => ' '.repeat(m.length))
+      for (const ref of stripped.matchAll(VARREF_NOFALLBACK)) {
+        if (!declared.has(ref[1])) {
+          dangling.push(`${ref[1]} @ ${relative(RENDERER, file)}:${lineOf(stripped, ref.index ?? 0)}`)
+        }
       }
     }
-    expect([...dangling], `别名指向了不存在的变量：${[...dangling].join(', ')}`).toEqual([])
+    expect(
+      dangling,
+      `引用了未定义的自定义属性（该声明不会生效）：\n${dangling.join('\n')}`,
+    ).toEqual([])
   })
 
   it('修复说明要留在源码里（防止有人再加回自引用）', () => {

@@ -3,23 +3,17 @@
        告警带是 S6.1 依赖徽章的**反向视图**：工具页回答"我缺什么"，这里回答
        "缺了会怎样"。 -->
   <div class="screen envs-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('envs.title') }}</h1>
-        <p class="page-subtitle">{{ t('envs.subtitle') }}</p>
-      </div>
-      <div class="page-header-right">
-        <ToolsSectionNav active="env" />
-      </div>
-    </div>
+    <PageHeader :title="t('envs.title')" :description="t('envs.subtitle')">
+      <template #nav><ToolsSectionNav active="env" /></template>
+    </PageHeader>
 
     <!-- 告警带：存在未配置且被工具依赖的运行时 -->
-    <n-alert v-if="blockedEnvs.length > 0" type="warning" :show-icon="true" class="envs-banner">
-      <div class="envs-banner-row">
-        <span>{{ t('envs.alert', { env: blockedEnvs[0].label, count: blockedEnvs[0].count }) }}</span>
-        <n-button size="tiny" @click="goTools">{{ t('envs.viewAffected') }}</n-button>
-      </div>
-    </n-alert>
+    <AppNotice v-if="blockedEnvs.length > 0" tone="warning">
+      {{ t('envs.alert', { env: blockedEnvs[0].label, count: blockedEnvs[0].count }) }}
+      <template #action>
+        <AppButton variant="outline" size="tiny" @click="goTools">{{ t('envs.viewAffected') }}</AppButton>
+      </template>
+    </AppNotice>
 
     <div class="envs-toolbar">
       <n-button size="small" :loading="adding" @click="openAddDialog">
@@ -74,33 +68,32 @@
           </div>
         </div>
 
-        <div class="env-actions">
-          <n-button size="tiny" quaternary :loading="busy === `file-${env.name}`" @click="changePath(env, false)">
+        <div class="app-actions">
+          <AppButton variant="ghost" size="tiny" :loading="busy === `file-${env.name}`" @click="changePath(env, false)">
             {{ t('envs.changePath') }}
-          </n-button>
-          <n-button size="tiny" quaternary :loading="busy === `dir-${env.name}`" @click="changePath(env, true)">
+          </AppButton>
+          <AppButton variant="ghost" size="tiny" :loading="busy === `dir-${env.name}`" @click="changePath(env, true)">
             {{ t('envs.changePathDir') }}
-          </n-button>
-          <n-button
+          </AppButton>
+          <AppButton
             v-if="env.path_override"
+            variant="ghost"
             size="tiny"
-            quaternary
             :loading="busy === `reset-${env.name}`"
             @click="resetPath(env)"
           >
             {{ t('envs.resetPath') }}
-          </n-button>
-          <n-button
+          </AppButton>
+          <AppButton
+            variant="danger-ghost"
             size="tiny"
-            quaternary
-            type="error"
             :disabled="env.source === 'bundled'"
             :title="env.source === 'bundled' ? t('envs.deleteProtected') : ''"
             :loading="busy === `delete-${env.name}`"
             @click="confirmDelete(env)"
           >
             {{ t('tasks.actions.delete') }}
-          </n-button>
+          </AppButton>
         </div>
       </div>
     </div>
@@ -127,16 +120,16 @@
           <n-button size="small" @click="pickDescriptorFile">{{ t('envs.loadFromFile') }}</n-button>
         </n-form-item>
       </n-form>
-      <n-alert v-if="addDialog.error" type="error" :show-icon="false">{{ addDialog.error }}</n-alert>
+      <AppNotice v-if="addDialog.error" tone="danger">{{ addDialog.error }}</AppNotice>
       <template #footer>
-        <div class="envs-dialog-footer">
-          <n-button size="small" :disabled="adding" @click="addDialog.show = false">
+        <AppDialogFooter>
+          <AppButton variant="outline" :disabled="adding" @click="addDialog.show = false">
             {{ t('workflow.editor.template.cancel') }}
-          </n-button>
-          <n-button size="small" type="primary" :loading="adding" @click="submitAdd">
+          </AppButton>
+          <AppButton variant="primary" :loading="adding" @click="submitAdd">
             {{ t('envs.add') }}
-          </n-button>
-        </div>
+          </AppButton>
+        </AppDialogFooter>
       </template>
     </n-modal>
   </div>
@@ -148,6 +141,10 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NTag, useDialog } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppDialogFooter from '@components/ui/AppDialogFooter.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
+import PageHeader from '@components/ui/PageHeader.vue'
 
 import ToolsSectionNav from '@components/tools/ToolsSectionNav.vue'
 import { envDependents, envLabel } from '@components/tools/toolEnvDeps'
@@ -338,29 +335,10 @@ function confirmDelete(env: EnvEntry) {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
-  overflow-y: auto;
 }
 
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-}
 
-.page-title {
-  margin: 0;
-  font-family: var(--font-family-base);
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-text-primary);
-}
 
-.page-subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--app-text-muted);
-}
 
 .envs-banner-row {
   display: flex;

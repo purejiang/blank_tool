@@ -17,12 +17,12 @@
     </div>
 
     <div v-if="loading && tasks.length === 0" class="tl-status">{{ t('tasks.loading') }}</div>
-    <n-alert v-else-if="loadError" type="error" :show-icon="true">
-      <div class="tl-status-row">
-        <span>{{ t('tasks.loadFailed', { error: loadError }) }}</span>
-        <n-button size="tiny" @click="load">{{ t('workflows.retry') }}</n-button>
-      </div>
-    </n-alert>
+    <AppNotice v-else-if="loadError" tone="danger">
+      {{ t('tasks.loadFailed', { error: loadError }) }}
+      <template #action>
+        <AppButton variant="outline" size="tiny" @click="load">{{ t('workflows.retry') }}</AppButton>
+      </template>
+    </AppNotice>
 
     <div v-else-if="tasks.length === 0" class="tl-empty">
       <div class="tl-empty-title">{{ t('tasks.empty.title') }}</div>
@@ -85,9 +85,9 @@
           <n-button size="tiny" quaternary @click="emit('view-runs', task.name)">
             {{ t('tasks.actions.viewRuns') }}
           </n-button>
-          <n-button size="tiny" quaternary type="error" @click="remove(task)">
+          <AppButton variant="danger-ghost" size="tiny" @click="remove(task)">
             {{ t('tasks.actions.delete') }}
-          </n-button>
+          </AppButton>
         </div>
       </div>
     </div>
@@ -100,6 +100,8 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NInput, NTag, useDialog } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
 
 import type { TaskDefinitionSummary } from '../../../shared/ipc/protocol'
 import unifiedApi from '@/api/unifiedApi'

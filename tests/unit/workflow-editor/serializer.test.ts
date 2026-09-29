@@ -12,6 +12,13 @@ import {
   LAYOUT_X_START,
   LAYOUT_Y,
 } from '@/renderer/components/workflow/graphLayout'
+import {
+  VIRTUAL_END_ID,
+  VIRTUAL_START_ID,
+  ensureEndpointGraph,
+} from '@/renderer/components/workflow/virtualNodes'
+
+import demoSmoke from '../../../examples/workflows/generic/demo-smoke.json'
 
 /**
  * Workflow serializer unit tests (todo 40).
@@ -113,6 +120,46 @@ describe('serializeWorkflow', () => {
     expect(node.on_failure).toBe('fail')
     expect(node.retry).toBe(0)
     expect(node.next).toBeNull()
+  })
+
+  it('drops the canvas-only 开始 / 结束 endpoints (virtualNodes.ts)', () => {
+    const nodes = [
+      { id: VIRTUAL_START_ID, type: 'start', position: { x: 0, y: 0 }, data: {} } as any,
+      makeNode('a'),
+      makeNode('b'),
+      { id: VIRTUAL_END_ID, type: 'end', position: { x: 900, y: 0 }, data: {} } as any,
+    ]
+    const edges = [
+      makeEdge(VIRTUAL_START_ID, 'a'),
+      makeEdge('a', 'b'),
+      makeEdge('b', VIRTUAL_END_ID),
+    ]
+
+    const result = serializeWorkflow(nodes, edges, META)
+
+    expect(result.nodes.map((n) => n.id)).toEqual(['a', 'b'])
+    // 开始 is not a node anymore, so `a` is the entry (nothing points at it) and
+    // `b` ends the chain — the endpoint edges must not leak into `next`.
+    expect(result.nodes.map((n) => n.next)).toEqual(['b', null])
+  })
+
+  it('treats a next pointing at 结束 as "end of chain"', () => {
+    const nodes = [makeNode('a'), { id: VIRTUAL_END_ID, type: 'end', position: { x: 0, y: 0 }, data: {} } as any]
+
+    const result = serializeWorkflow(nodes, [makeEdge('a', VIRTUAL_END_ID)], META)
+
+    expect(result.nodes).toHaveLength(1)
+    expect(result.nodes[0].next).toBeNull()
+  })
+
+  it('produces a definition the loader accepts after wrapping it in endpoints again', () => {
+    const real = {
+      ...ensureEndpointGraph([makeNode('a'), makeNode('b')], [makeEdge('a', 'b')]),
+    }
+    const json = serializeWorkflow(real.nodes, real.edges, META)
+
+    expect(validateOnDeserialize(json)).toEqual([])
+    expect(deserializeWorkflow(json).nodes.map((n) => n.id)).toEqual(['a', 'b'])
   })
 })
 
@@ -315,5 +362,87 @@ describe('select/multi port fields (options + multi) — T2', () => {
     expect(restored.meta.inputs).toEqual([
       { name: 'path', type: { base: 'file', subtype: null }, required: true },
     ])
+  })
+})
+
+/**
+ * The shipped zero-dependency demo (`examples/workflows/generic/demo-smoke.json`)
+ * must survive the canvas round trip: it is the workflow users import first, and
+ * the one used to eyeball the editor (endpoints, I/O authoring, run dialog,
+ * streamed logs).  Backend-side loadability is covered by the Python sweep
+ * (`tests/cli/unit/test_examples_validity.py`); this guards the TS path.
+ */
+describe('shipped demo example (examples/workflows/generic/demo-smoke.json)', () => {
+  const raw = demoSmoke as unknown as WorkflowDefinitionJSON
+
+  it('passes canvas validation and keeps its chain, params and meta', () => {
+    expect(validateOnDeserialize(raw)).toEqual([])
+
+    const { nodes, edges, meta } = deserializeWorkflow(raw)
+
+    expect(nodes.map((node) => node.id)).toEqual(raw.nodes.map((node) => node.id))
+    expect(edges.map((edge) => `${edge.source}->${edge.target}`)).toEqual([
+      'write_sample->scan',
+      'scan->log_hits',
+      'log_hits->read_sample',
+      'read_sample->log_size',
+      'log_size->within_limit',
+      'within_limit->assert_limit',
+    ])
+
+    // Re-serializing must not lose a single param (the `${rundir}`/`$inputs.*`
+    // expressions ride through verbatim) nor a declared port.
+    const serialized = serializeWorkflow(nodes, edges, meta)
+    expect(serialized.nodes.map((node) => ({ id: node.id, params: node.params }))).toEqual(
+      raw.nodes.map((node) => ({ id: node.id, params: node.params })),
+    )
+    expect(serialized.nodes.map((node) => node.next)).toEqual(raw.nodes.map((node) => node.next ?? null))
+    expect(serialized.inputs).toEqual(raw.inputs)
+    expect(serialized.outputs).toEqual(raw.outputs)
+    expect(serialized.name).toBe('demo-smoke')
+  })
+
+  it('wraps into 开始 → 7 real nodes → 结束 and drops the endpoints on save', () => {
+    const { nodes, edges, meta } = deserializeWorkflow(raw)
+    const graph = ensureEndpointGraph(nodes, edges)
+
+    const ids = graph.nodes.map((node) => node.id)
+    expect(new Set(ids)).toEqual(new Set([VIRTUAL_START_ID, ...raw.nodes.map((n) => n.id), VIRTUAL_END_ID]))
+    // Order-insensitive (the endpoints are appended, not prepended).
+    const links = graph.edges.map((edge) => `${edge.source}->${edge.target}`).sort()
+    expect(links).toEqual(
+      [
+        `${VIRTUAL_START_ID}->write_sample`,
+        'write_sample->scan',
+        'scan->log_hits',
+        'log_hits->read_sample',
+        'read_sample->log_size',
+        'log_size->within_limit',
+        'within_limit->assert_limit',
+        `assert_limit->${VIRTUAL_END_ID}`,
+      ].sort(),
+    )
+
+    // Endpoints are canvas-only: saving the wrapped graph emits the same real
+    // chain, with `next: null` on the last node (never a virtual id).
+    const saved = serializeWorkflow(graph.nodes, graph.edges, meta)
+    expect(saved.nodes.map((node) => ({ id: node.id, next: node.next }))).toEqual(
+      raw.nodes.map((node) => ({ id: node.id, next: node.next ?? null })),
+    )
+  })
+
+  it('keeps exercising the run-dialog control matrix (select / multi / number / boolean)', () => {
+    const inputs = raw.inputs ?? []
+    const byName = Object.fromEntries(inputs.map((port) => [port.name, port]))
+
+    expect(byName.title.type.base).toBe('text')
+    expect(byName.keyword.options).toEqual(['ERROR', 'WARN', 'INFO'])
+    expect(byName.tags.multi).toBe(true)
+    expect(byName.max_matches.type.base).toBe('number')
+    expect(byName.recursive.type.base).toBe('boolean')
+    // Every referenced `$inputs.*` must be required: the run dialog drops empty
+    // optional ports, and the expression engine raises on a missing key
+    // (`| default:` cannot rescue it — the pipe never runs).
+    for (const port of inputs) expect(port.required).toBe(true)
   })
 })

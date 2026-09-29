@@ -1,5 +1,6 @@
 import type { ApiMethodMap } from '../../shared/ipc/protocol'
 import type { ElectronApi } from '../../shared/ipc/electronApi'
+import { toJsonPayload } from '@utils/jsonPayload'
 import { log } from '@utils/logger'
 
 type MethodParams<M extends keyof ApiMethodMap> = ApiMethodMap[M]['params']
@@ -9,7 +10,7 @@ export async function callApi<M extends keyof ApiMethodMap>(
   method: M,
   params: MethodParams<M>
 ): Promise<MethodResult<M>> {
-  return window.electronAPI.callBackendAPI(method, params)
+  return window.electronAPI.callBackendAPI(method, toJsonPayload(params))
 }
 
 type ApiFn = (...args: unknown[]) => unknown | Promise<unknown>
@@ -121,7 +122,10 @@ class UnifiedApi {
   }
 
   async call<T = unknown>(action: string, params: Record<string, unknown> = {}): Promise<T> {
-    const resp = await this.safeCall('callBackendAPI', action, params)
+    // 唯一出口：所有后端调用都在这里拍平成纯 JSON，避免把 Vue 响应式代理
+    // （reactive/ref 里读出来的嵌套对象）送进 contextBridge —— 那会抛
+    // `DataCloneError: An object could not be cloned.`，且不告诉你是哪个字段。
+    const resp = await this.safeCall('callBackendAPI', action, toJsonPayload(params))
     if (isFailedCallResult(resp)) {
       throw new Error(resp.error)
     }

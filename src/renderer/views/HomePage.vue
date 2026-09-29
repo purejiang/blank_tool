@@ -8,7 +8,7 @@
     <AppNotice v-if="loadError" tone="danger" :title="t('home.loadFailed')">
       {{ loadError }}
       <template #action>
-        <AppButton variant="outline" @click="load">{{ t('home.retry') }}</AppButton>
+        <AppButton variant="outline" size="tiny" @click="load">{{ t('home.retry') }}</AppButton>
       </template>
     </AppNotice>
 
@@ -45,19 +45,19 @@
       <!-- 快捷入口 -->
       <AppCard :title="t('home.quick.title')">
         <div class="home-actions">
-          <AppButton variant="primary" @click="go('/workflows/editor')">
+          <AppButton variant="primary" size="tiny" @click="go('/workflows/editor')">
             <template #icon><AppIcon name="plus" size="sm" /></template>
             {{ t('home.quick.newWorkflow') }}
           </AppButton>
-          <AppButton variant="secondary" @click="go('/tasks/editor')">
+          <AppButton variant="secondary" size="tiny" @click="go('/tasks/editor')">
             <template #icon><AppIcon name="plus" size="sm" /></template>
             {{ t('home.quick.newTask') }}
           </AppButton>
-          <AppButton variant="outline" @click="go('/workflows')">
+          <AppButton variant="outline" size="tiny" @click="go('/workflows')">
             <template #icon><AppIcon name="folder-in" size="sm" /></template>
             {{ t('home.quick.import') }}
           </AppButton>
-          <AppButton variant="ghost" @click="go('/tasks?tab=runs')">
+          <AppButton variant="ghost" size="tiny" @click="go('/tasks?tab=runs')">
             <template #icon><AppIcon name="clock" size="sm" /></template>
             {{ t('home.quick.runs') }}
           </AppButton>
@@ -93,7 +93,7 @@
       <div v-if="recentRuns.length === 0" class="home-recent-empty">
         <EmptyState :title="t('home.recent.empty')" :description="t('home.recent.emptyHint')">
           <template #actions>
-            <AppButton variant="primary" @click="go('/workflows/editor')">
+            <AppButton variant="primary" size="tiny" @click="go('/workflows/editor')">
               {{ t('home.recent.goCreate') }}
             </AppButton>
           </template>

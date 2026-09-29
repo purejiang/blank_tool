@@ -1,8 +1,8 @@
 <template>
   <!-- Workflow-level identity (name / version / description).
-       Lives in the right dock's 工作流 tab: the editor is the only place a
-       workflow's name can be edited (there is no list page yet), and
-       `template.save` uses it as the template name. -->
+       Rendered inside WorkflowInfoDialog (opened from the editor's top bar); it
+       used to live permanently in the right dock. `template.save` uses the name
+       as the template name, hence the required-field validation. -->
   <div class="workflow-info-panel">
     <n-form label-placement="top" size="small">
       <n-form-item
@@ -50,10 +50,10 @@ import type { WorkflowMeta } from './serializer'
 
 /**
  * Workflow metadata form. Stateless: every keystroke emits a new meta object,
- * so the page owns the single source of truth (and its unsaved-changes flag).
+ * so the host owns the single source of truth (and its unsaved-changes flag).
  *
- * 节点数 / 连线数不在这里显示 —— 编辑器右栏头部的 `.cd`（preview 的 `.cfg-hd`）
- * 已经写了「N 个节点 · M 条连线」，同一栏里再来一遍是重复信息。
+ * 节点数 / 连线数不在这里显示 —— 弹窗（`WorkflowInfoDialog`）在表单下方另起一行写
+ * 「N 个节点 · M 条连线」，那是宿主传进来的只读摘要。
  */
 const props = defineProps<{
   meta: WorkflowMeta

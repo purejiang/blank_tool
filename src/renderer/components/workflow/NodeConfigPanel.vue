@@ -113,12 +113,12 @@
       <!-- Commit draft values to node.data (params or operation/inputs) -->
       <div class="npc-footer">
         <div v-if="saveError" class="npc-error">{{ saveError }}</div>
-        <n-button size="small" type="error" quaternary data-test="npc-delete" @click="requestDelete">
+        <AppButton variant="danger-ghost" data-test="npc-delete" @click="requestDelete">
           {{ t('workflow.editor.config.delete') }}
-        </n-button>
-        <n-button size="small" type="primary" :disabled="!dirty" data-test="npc-save" @click="save">
+        </AppButton>
+        <AppButton variant="primary" :disabled="!dirty" data-test="npc-save" @click="save">
           {{ t('workflow.editor.config.save') }}
-        </n-button>
+        </AppButton>
       </div>
     </template>
   </div>
@@ -132,6 +132,7 @@ import type { Node } from '@vue-flow/core'
 import unifiedApi from '../../api/unifiedApi'
 import { log } from '@utils/logger'
 import PortInput from './PortInput.vue'
+import AppButton from '@components/ui/AppButton.vue'
 import { portJsonToTypeKey, type PortTypeKey } from './ioAuthoring'
 import type { ToolNodeData, ToolOperation, ToolPorts, UpstreamNodeRef, WorkflowToolInfo } from './toolMeta'
 import type { PortJSON } from './serializer'
@@ -524,6 +525,7 @@ function requestDelete() {
   min-height: 0;
   padding: 14px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Section boxes: 功能 / 参数 / 配置 视觉分区（preview `.section-box` 的观感） */

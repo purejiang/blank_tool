@@ -20,7 +20,7 @@
         <span class="ver-old">{{ store.currentVersion || $t('common.unknown') }}</span>
         <AppIcon name="arrow-r" />
         <span class="ver-new">{{ store.latestVersion }}</span>
-        <n-tag type="success" size="small" round>Latest</n-tag>
+        <n-tag type="success" size="small" round>{{ $t('update.latest') }}</n-tag>
       </div>
       <div v-if="store.releaseNotes" class="release-notes">
         <div class="rn-title">{{ $t('update.releaseNotes') }}</div>
@@ -61,11 +61,11 @@
 
     <!-- Error state -->
     <div v-else-if="store.status === 'error'" class="update-body">
-      <n-alert type="error" :title="store.error || $t('update.error')" />
-      <div class="update-actions" style="margin-top: 16px">
-        <n-button quaternary @click="handleClose">{{ $t('update.later') }}</n-button>
-        <n-button type="primary" @click="handleRetry">{{ $t('app.retry') }}</n-button>
-      </div>
+      <AppNotice tone="danger" :title="store.error || $t('update.error')" />
+      <AppDialogFooter class="update-actions" style="margin-top: 16px">
+        <AppButton variant="ghost" @click="handleClose">{{ $t('update.later') }}</AppButton>
+        <AppButton variant="primary" @click="handleRetry">{{ $t('app.retry') }}</AppButton>
+      </AppDialogFooter>
     </div>
 
     <!-- Checking state -->
@@ -81,6 +81,9 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NModal, NButton, NProgress, NTag, NAlert, NSpin } from 'naive-ui'
 import AppIcon from '@components/ui/AppIcon.vue'
+import AppButton from '@components/ui/AppButton.vue'
+import AppDialogFooter from '@components/ui/AppDialogFooter.vue'
+import AppNotice from '@components/ui/AppNotice.vue'
 import { useUpdateStore } from '@stores/updateStore'
 
 const { t } = useI18n()
