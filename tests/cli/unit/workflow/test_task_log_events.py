@@ -9,6 +9,7 @@ Covers:
 """
 
 import json
+import re
 
 import pytest
 
@@ -18,6 +19,7 @@ from app.utils.task_log_writer import (
     cleanup_task_log,
 )
 from app.workflow.streaming import (
+    LOG,
     NODE_COMPLETED,
     NODE_STARTED,
     WORKFLOW_CANCELLED,
@@ -32,33 +34,72 @@ from app.workflow.streaming import (
 # render_event_line — every known event type
 # ---------------------------------------------------------------------------
 
+#: Fixed timestamp passed as ``ts`` so exact assertions stay deterministic.
+TS = "12:00:01"
+
+#: Every line starts with ``[<ts>] `` — helper strips it for the asserts below.
+_TS_PREFIX_RE = re.compile(r"^\[\d{1,2}:\d{2}:\d{2}\] ")
+
+
+def _render(event: dict) -> str:
+    """render_event_line with a fixed ts injected (unless the event has one)."""
+    return render_event_line({**{"ts": TS}, **event})
+
 
 def test_render_node_started():
-    line = render_event_line(
-        {"type": NODE_STARTED, "node_id": "n1", "tool": "file.read"}
+    line = _render({"type": NODE_STARTED, "node_id": "n1", "tool": "file.read"})
+    assert line == "[12:00:01] [node_started] n1 (file.read)"
+
+
+def test_render_log_line():
+    """Tool-level `log` events render as ``[log] <node> [<level>] <message>``."""
+    line = _render(
+        {"type": LOG, "level": "warning", "message": "样本文件 115 字节", "node_id": "n1"}
     )
-    assert line == "[node_started] n1 (file.read)"
+    assert line == "[12:00:01] [log] n1 [warning] 样本文件 115 字节"
+
+
+def test_render_log_line_without_node():
+    """No node_id → the node segment is omitted."""
+    assert _render({"type": LOG, "message": "hi"}) == "[12:00:01] [log] [info] hi"
+
+
+def test_render_log_line_defaults_level_to_info():
+    assert _render({"type": LOG, "message": "hi"}) == "[12:00:01] [log] [info] hi"
 
 
 def test_render_node_started_missing_tool():
-    line = render_event_line({"type": NODE_STARTED, "node_id": "n1"})
-    assert line == "[node_started] n1 ()"
+    line = _render({"type": NODE_STARTED, "node_id": "n1"})
+    assert line == "[12:00:01] [node_started] n1 ()"
 
 
 def test_render_node_completed_with_status():
-    line = render_event_line(
+    line = _render(
         {"type": NODE_COMPLETED, "node_id": "n1", "status": "ok", "duration_ms": 42}
     )
-    assert line == "[node_completed] n1 status=ok (42 ms)"
+    assert line == "[12:00:01] [node_completed] n1 status=ok (42 ms)"
 
 
 def test_render_node_completed_missing_duration():
-    line = render_event_line({"type": NODE_COMPLETED, "node_id": "n1", "status": "ok"})
-    assert line == "[node_completed] n1 status=ok (? ms)"
+    line = _render({"type": NODE_COMPLETED, "node_id": "n1", "status": "ok"})
+    assert line == "[12:00:01] [node_completed] n1 status=ok (? ms)"
+
+
+def test_render_node_completed_attempts_appended_when_above_one():
+    line = _render(
+        {
+            "type": NODE_COMPLETED,
+            "node_id": "n1",
+            "status": "ok",
+            "duration_ms": 42,
+            "attempts": 3,
+        }
+    )
+    assert line == "[12:00:01] [node_completed] n1 status=ok (42 ms, attempts=3)"
 
 
 def test_render_node_completed_failed_includes_error():
-    line = render_event_line(
+    line = _render(
         {
             "type": NODE_COMPLETED,
             "node_id": "sub/r",
@@ -67,11 +108,11 @@ def test_render_node_completed_failed_includes_error():
             "error": "boom",
         }
     )
-    assert line == "[node_completed] sub/r status=failed (10 ms) error: boom"
+    assert line == "[12:00:01] [node_completed] sub/r status=failed (10 ms) error: boom"
 
 
 def test_render_node_completed_skipped_without_error_suffix():
-    line = render_event_line(
+    line = _render(
         {"type": NODE_COMPLETED, "node_id": "n1", "status": "skipped", "duration_ms": 1}
     )
     assert "error:" not in line
@@ -79,30 +120,40 @@ def test_render_node_completed_skipped_without_error_suffix():
 
 
 def test_render_workflow_completed():
-    line = render_event_line({"type": WORKFLOW_COMPLETED, "success": True})
-    assert line == "[workflow_completed] success=True"
+    line = _render({"type": WORKFLOW_COMPLETED, "success": True})
+    assert line == "[12:00:01] [workflow_completed] success=True"
 
 
 def test_render_workflow_failed():
-    line = render_event_line({"type": WORKFLOW_FAILED, "error": "kapow"})
-    assert line == "[workflow_failed] kapow"
+    line = _render({"type": WORKFLOW_FAILED, "error": "kapow"})
+    assert line == "[12:00:01] [workflow_failed] kapow"
 
 
 def test_render_workflow_cancelled_bare_tag():
     """workflow_cancelled produces a bare tag (empty message)."""
-    line = render_event_line({"type": WORKFLOW_CANCELLED})
-    assert line == "[workflow_cancelled]"
+    line = _render({"type": WORKFLOW_CANCELLED})
+    assert line == "[12:00:01] [workflow_cancelled]"
+
+
+def test_render_missing_ts_falls_back_to_now():
+    """No ``ts`` field → the current local time is stamped on the line."""
+    line = render_event_line({"type": LOG, "message": "hi"})
+    assert _TS_PREFIX_RE.match(line), f"missing time prefix: {line}"
+    assert line.endswith("[log] [info] hi")
 
 
 def test_render_unknown_type_falls_back_to_json_dumps():
-    line = render_event_line({"type": "custom_event", "x": 1})
-    parsed = json.loads(line[line.index(" ") + 1 :])  # after "[custom_event] "
-    assert parsed == {"type": "custom_event", "x": 1}
+    event = {"type": "custom_event", "x": 1, "ts": TS}
+    line = render_event_line(event)
+    prefix = f"[{TS}] [custom_event] "
+    assert line.startswith(prefix)
+    parsed = json.loads(line[len(prefix):])
+    assert parsed == event
 
 
 def test_render_missing_type_defaults_to_event():
-    line = render_event_line({})
-    assert line.startswith("[event] ")
+    line = render_event_line({"ts": TS})
+    assert line.startswith(f"[{TS}] [event] ")
 
 
 # ---------------------------------------------------------------------------
@@ -203,10 +254,14 @@ class TestTeeAndCallbackAgree:
         handler.emit_node_completed("sub/w", "ok", 10)
 
         lines = _buffer_lines("sub1")
-        assert lines == [
-            "[node_started] sub/w (flow.log)",
-            "[node_completed] sub/w status=ok (10 ms)",
-        ]
+        assert len(lines) == 2
+        # Time prefix varies (now()) — assert the dialect after it.
+        assert _TS_PREFIX_RE.match(lines[0]) and lines[0].endswith(
+            "[node_started] sub/w (flow.log)"
+        )
+        assert _TS_PREFIX_RE.match(lines[1]) and lines[1].endswith(
+            "[node_completed] sub/w status=ok (10 ms)"
+        )
         assert [e["node_id"] for e in events] == ["sub/w", "sub/w"]
 
     def test_workflow_level_events_render_normally(self):
@@ -221,9 +276,15 @@ class TestTeeAndCallbackAgree:
         handler.emit_workflow_cancelled()
 
         lines = _buffer_lines("sub1")
-        assert "[workflow_completed] success=True" in lines
-        assert "[workflow_failed] sub-boom" in lines
-        assert "[workflow_cancelled]" in lines
+        assert any(
+            l.endswith("[workflow_completed] success=True") for l in lines
+        ), f"missing workflow_completed line: {lines}"
+        assert any(
+            l.endswith("[workflow_failed] sub-boom") for l in lines
+        ), f"missing workflow_failed line: {lines}"
+        assert any(
+            l.endswith("[workflow_cancelled]") for l in lines
+        ), f"missing workflow_cancelled line: {lines}"
         assert len(events) == 3
 
 
@@ -242,7 +303,11 @@ class TestCallbackEventDictUnchanged:
         assert events[0]["tool"] == "file.read"
 
     def test_callback_event_has_exact_fields(self):
-        """Verify the exact schema of the callback event dict."""
+        """Verify the exact schema of the callback event dict.
+
+        ``ts`` is the local emission time — validated by shape, then removed
+        before the exact-field comparison.
+        """
         events = []
         handler = WorkflowStreamHandler(
             workflow_id="wf",
@@ -252,6 +317,10 @@ class TestCallbackEventDictUnchanged:
         )
         handler.emit_node_started("n1", "file.read")
         handler.emit_node_completed("n1", "ok", 100)
+
+        ts_re = re.compile(r"^\d{2}:\d{2}:\d{2}$")
+        for event in events:
+            assert ts_re.match(event.pop("ts"))
 
         assert events[0] == {
             "type": NODE_STARTED,
@@ -281,7 +350,7 @@ def test_exact_node_started_line_in_buffer():
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_node_started("read", "file.read")
-    assert "[node_started] read (file.read)" in _buffer_lines()
+    assert any(l.endswith("[node_started] read (file.read)") for l in _buffer_lines())
 
 
 def test_exact_node_completed_line_in_buffer():
@@ -289,7 +358,9 @@ def test_exact_node_completed_line_in_buffer():
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_node_completed("read", "ok", 123)
-    assert "[node_completed] read status=ok (123 ms)" in _buffer_lines()
+    assert any(
+        l.endswith("[node_completed] read status=ok (123 ms)") for l in _buffer_lines()
+    )
 
 
 def test_exact_node_failed_line_in_buffer():
@@ -297,7 +368,10 @@ def test_exact_node_failed_line_in_buffer():
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_node_completed("read", "failed", 5, error="ZOG")
-    assert "[node_completed] read status=failed (5 ms) error: ZOG" in _buffer_lines()
+    assert any(
+        l.endswith("[node_completed] read status=failed (5 ms) error: ZOG")
+        for l in _buffer_lines()
+    )
 
 
 def test_exact_workflow_completed_line_in_buffer():
@@ -305,7 +379,9 @@ def test_exact_workflow_completed_line_in_buffer():
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_workflow_completed(False)
-    assert "[workflow_completed] success=False" in _buffer_lines()
+    assert any(
+        l.endswith("[workflow_completed] success=False") for l in _buffer_lines()
+    )
 
 
 def test_exact_workflow_failed_line_in_buffer():
@@ -313,7 +389,7 @@ def test_exact_workflow_failed_line_in_buffer():
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_workflow_failed("final error")
-    assert "[workflow_failed] final error" in _buffer_lines()
+    assert any(l.endswith("[workflow_failed] final error") for l in _buffer_lines())
 
 
 def test_exact_workflow_cancelled_line_in_buffer():
@@ -321,4 +397,15 @@ def test_exact_workflow_cancelled_line_in_buffer():
         workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_workflow_cancelled()
-    assert "[workflow_cancelled]" in _buffer_lines()
+    assert any(l.endswith("[workflow_cancelled]") for l in _buffer_lines())
+
+
+def test_buffer_lines_carry_a_time_prefix():
+    """Every tee'd line starts with ``[HH:MM:SS] `` — the panel parses it."""
+    handler = WorkflowStreamHandler(
+        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+    )
+    handler.emit_node_started("read", "file.read")
+    handler.emit_workflow_completed(True)
+    for line in _buffer_lines():
+        assert _TS_PREFIX_RE.match(line), f"missing time prefix: {line}"

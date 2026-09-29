@@ -1,4 +1,4 @@
-"""Tests: ToolRegistry.import_descriptor_dir (two-phase domain pack import).
+"""Tests: ToolRegistry pack import (two-phase domain pack import).
 
 Covers the bulk-import contract used by ``tool.import_pack`` and
 ``cli.py import-pack``:
@@ -10,9 +10,12 @@ Covers the bulk-import contract used by ``tool.import_pack`` and
 - unusable inputs (missing dir, dir without *.json) raise ``ToolException``
   and write nothing (WP0 #7: no more top-level ``error`` payload);
 - script-type descriptors keep the self-containment behavior (script file
-  copied into ``<overlay>/scripts/<name>/``, path rewritten);
+  copied into ``<overlay>/scripts/<name>/``, path rewritten) — with relative
+  ``path`` values resolved against the **pack directory**, not the CWD;
 - non-blocking warnings: an unresolvable env dep does not fail the import
-  but surfaces in the entry's ``warnings``.
+  but surfaces in the entry's ``warnings``;
+- ``import_pack`` dispatch: directory / single ``*.json`` / ``*.zip``
+  (descriptors in the archive root only, zip-slip members skipped).
 
 Every test constructs the registry with an explicit ``registry_overlay_dir``
 under ``tmp_path`` so no real overlay is touched.
@@ -20,6 +23,7 @@ under ``tmp_path`` so no real overlay is touched.
 
 import json
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -165,3 +169,149 @@ class TestImportDescriptorDir:
             "definitely_missing_env" in warning
             for warning in entry.get("warnings", [])
         )
+
+
+class TestImportPackDispatch:
+    """``import_pack`` takes a directory, a single ``*.json`` or a ``*.zip``."""
+
+    @staticmethod
+    def _script_pack(pack_dir, *, declared_path, script_rel):
+        """Write a python_script descriptor + its script file under *pack_dir*."""
+        script = pack_dir / script_rel
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text("print('{}')\n", encoding="utf-8")
+        _write_json(
+            pack_dir,
+            "scripty",
+            _descriptor("scripty", type="python_script", path=declared_path),
+        )
+        return script
+
+    def test_script_path_resolves_against_the_pack_dir(self, registry, pack_dir):
+        """Regression: a pack-relative script path must reach the overlay.
+
+        ``examples/tools/android/apk-audit.json`` declares
+        ``apk-audit/apk_audit.py`` — relative to the pack it lives in.
+        Resolving that against the backend's CWD (the old behavior) never
+        matched, so the script was never copied and all five script-typed
+        tools of that pack imported as ``is_valid: false``.
+        """
+        self._script_pack(
+            pack_dir, declared_path="scripty/run.py", script_rel="scripty/run.py"
+        )
+
+        report = registry.import_pack(str(pack_dir))
+
+        assert report["ok"] is True
+        assert report["imported"] == 1
+        tool = registry.get("scripty")
+        assert tool.is_valid is True
+        assert "scripts" in tool.tool_path
+        assert Path(tool.tool_path).is_file()
+        # Self-contained: the written overlay descriptor points at the copy.
+        overlay_json = json.loads(
+            (
+                Path(registry._registry_overlay_dir) / "tools" / "scripty.json"
+            ).read_text(encoding="utf-8")
+        )
+        assert overlay_json["path"] == tool.tool_path
+
+    def test_basename_only_path_falls_back_to_the_pack_tree(
+        self, registry, pack_dir
+    ):
+        """A bare ``run.py`` is matched when the pack keeps it in a subdir."""
+        self._script_pack(
+            pack_dir, declared_path="run.py", script_rel="scripty/run.py"
+        )
+
+        report = registry.import_pack(str(pack_dir))
+
+        assert report["ok"] is True
+        assert registry.get("scripty").is_valid is True
+
+    def test_ambiguous_basename_is_not_guessed(self, registry, pack_dir):
+        """Two same-named scripts: no copy, and the report explains why."""
+        self._script_pack(pack_dir, declared_path="run.py", script_rel="a/run.py")
+        other = pack_dir / "b"
+        other.mkdir()
+        (other / "run.py").write_text("print('{}')\n", encoding="utf-8")
+
+        report = registry.import_pack(str(pack_dir))
+
+        assert registry.get("scripty").is_valid is False
+        assert any(
+            "not found" in warning
+            for warning in report["results"][0].get("warnings", [])
+        )
+
+    def test_single_descriptor_file_is_imported(self, registry, pack_dir):
+        self._script_pack(pack_dir, declared_path="run.py", script_rel="run.py")
+
+        report = registry.import_pack(str(pack_dir / "scripty.json"))
+
+        assert report["ok"] is True
+        assert report["imported"] == 1
+        assert registry.get("scripty").is_valid is True
+
+    def test_zip_with_root_descriptors_is_imported(self, registry, tmp_path):
+        archive = tmp_path / "pack.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr(
+                "scripty.json",
+                json.dumps(
+                    _descriptor(
+                        "scripty", type="python_script", path="scripty/run.py"
+                    )
+                ),
+            )
+            zf.writestr("scripty/run.py", "print('{}')\n")
+            zf.writestr("binary.json", json.dumps(_descriptor("binary")))
+
+        report = registry.import_pack(str(archive))
+
+        assert report["ok"] is True
+        assert report["imported"] == 2
+        tool = registry.get("scripty")
+        assert tool.is_valid is True
+        assert Path(tool.tool_path).is_file()
+
+    def test_zip_with_a_wrapping_folder_is_rejected(self, registry, tmp_path):
+        """Only the archive root is a pack — a single wrapper dir is not."""
+        from app.common.exceptions import ToolException
+
+        archive = tmp_path / "wrapped.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("android/adb.json", json.dumps(_descriptor("adb")))
+
+        with pytest.raises(ToolException, match="at the root of"):
+            registry.import_pack(str(archive))
+
+    def test_unsafe_zip_members_are_skipped(self, registry, tmp_path):
+        """Zip-slip: ``..`` / absolute members never land outside the root."""
+        archive = tmp_path / "evil.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("ok.txt", "ok")
+            zf.writestr("../escape.txt", "nope")
+            zf.writestr("/abs.txt", "nope")
+
+        dest = tmp_path / "out"
+        dest.mkdir()
+        registry._extract_zip(str(archive), str(dest))
+
+        assert (dest / "ok.txt").read_text(encoding="utf-8") == "ok"
+        assert not (tmp_path / "escape.txt").exists()
+
+    def test_unsupported_extension_raises(self, registry, tmp_path):
+        from app.common.exceptions import ToolException
+
+        bad = tmp_path / "notes.txt"
+        bad.write_text("nope", encoding="utf-8")
+
+        with pytest.raises(ToolException, match="unsupported tool pack"):
+            registry.import_pack(str(bad))
+
+    def test_missing_path_raises(self, registry, tmp_path):
+        from app.common.exceptions import ToolException
+
+        with pytest.raises(ToolException, match="does not exist"):
+            registry.import_pack(str(tmp_path / "nope"))

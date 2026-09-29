@@ -2,9 +2,11 @@
 
 Covers the WorkflowStreamHandler emit methods and their wire-schema dicts
 (node_started / node_completed / workflow_completed / workflow_failed /
-workflow_cancelled), the run_id + workflow_id stamping, the silent no-op when
-the callback is None, and event ordering.
+workflow_cancelled), the ts + run_id + workflow_id stamping, the silent no-op
+when the callback is None, and event ordering.
 """
+
+import re
 
 from app.workflow.streaming import (
     NODE_COMPLETED,
@@ -23,6 +25,17 @@ def _handler(callback, **kwargs):
     return WorkflowStreamHandler(callback=callback, **kwargs)
 
 
+#: ``ts`` is the local emission time — validated by shape, then removed so the
+#: exact-field comparisons below stay deterministic.
+_TS_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
+
+
+def _pop_ts(events):
+    for event in events:
+        assert _TS_RE.match(event.pop("ts")), f"bad ts in {event}"
+    return events
+
+
 # ---------------------------------------------------------------------------
 # Emit methods — wire-schema dicts
 # ---------------------------------------------------------------------------
@@ -30,7 +43,7 @@ def _handler(callback, **kwargs):
 def test_emit_node_started_with_correct_fields():
     events = []
     _handler(events.append).emit_node_started("convert", "bundletool")
-    assert events == [
+    assert _pop_ts(events) == [
         {
             "type": NODE_STARTED,
             "run_id": "run-1",
@@ -44,7 +57,7 @@ def test_emit_node_started_with_correct_fields():
 def test_emit_node_completed_carries_status_and_attempts():
     events = []
     _handler(events.append).emit_node_completed("convert", "ok", 42)
-    assert events[0] == {
+    assert _pop_ts(events)[0] == {
         "type": NODE_COMPLETED,
         "run_id": "run-1",
         "workflow_id": "wf-1",
@@ -74,7 +87,7 @@ def test_emit_node_completed_omits_error_when_absent():
 def test_emit_workflow_completed_with_success():
     events = []
     _handler(events.append).emit_workflow_completed(True)
-    assert events == [
+    assert _pop_ts(events) == [
         {
             "type": WORKFLOW_COMPLETED,
             "run_id": "run-1",
@@ -87,7 +100,7 @@ def test_emit_workflow_completed_with_success():
 def test_emit_workflow_failed_with_error():
     events = []
     _handler(events.append).emit_workflow_failed("workflow boom")
-    assert events == [
+    assert _pop_ts(events) == [
         {
             "type": WORKFLOW_FAILED,
             "run_id": "run-1",
@@ -100,7 +113,7 @@ def test_emit_workflow_failed_with_error():
 def test_emit_workflow_cancelled():
     events = []
     _handler(events.append).emit_workflow_cancelled()
-    assert events == [
+    assert _pop_ts(events) == [
         {
             "type": WORKFLOW_CANCELLED,
             "run_id": "run-1",

@@ -10,6 +10,7 @@ import http.server
 import io
 import logging
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -963,3 +964,33 @@ def test_flow_log_with_task_id_appends_to_task_log(tmp_path):
         assert any("[warning] task line" in line for line in buffered)
     finally:
         task_log_writer.cleanup_task_log(task_id)
+
+
+def test_flow_log_streams_log_event_to_the_renderer(tmp_path):
+    """The live run log (editor panel / CLI console) gets the same line."""
+    events = []
+    FlowLog().execute(
+        {"message": "live line", "level": "error"},
+        _ctx(tmp_path, stream_handler=events.append, current_node_path="step/one"),
+    )
+    assert len(events) == 1
+    # ``ts`` is the local emission time — validated by shape, then removed so the
+    # rest of the event can still be compared exactly (same pattern as
+    # tests/cli/unit/workflow/test_streaming.py).
+    assert re.match(r"^\d{2}:\d{2}:\d{2}$", events[0].pop("ts"))
+    assert events == [
+        {
+            "type": "log",
+            "level": "error",
+            "message": "live line",
+            "node_id": "step/one",
+        }
+    ]
+
+
+def test_flow_log_without_stream_handler_still_logs(tmp_path, caplog):
+    """No stream callback (headless contexts) must stay a silent no-op."""
+    caplog.set_level(logging.INFO)
+    result = FlowLog().execute({"message": "no stream"}, _ctx(tmp_path))
+    assert result["logged"] is True
+    assert any(r.getMessage() == "no stream" for r in caplog.records)

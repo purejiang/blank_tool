@@ -7,7 +7,9 @@ ToolRegistry — lazy-loading tool registry with auto-discovery and dependency i
 import json
 import os
 import shutil
+import tempfile
 import threading
+import zipfile
 from pathlib import Path
 from typing import Dict, Optional, Any
 
@@ -372,7 +374,65 @@ class ToolRegistry:
             return Path(self._registry_overlay_dir) / "scripts"
         return None
 
-    def _write_descriptor_file(self, descriptor_json: dict) -> str:
+    # Dirs never searched by the basename fallback of ``_resolve_script_source``.
+    _SCRIPT_SEARCH_SKIP = frozenset({"__pycache__", ".git", "node_modules"})
+
+    def _resolve_script_source(
+        self, raw_path: Any, source_dir: Optional[str]
+    ) -> Optional[str]:
+        """Resolve a descriptor's ``path`` to a real script file, or None.
+
+        Descriptor ``path`` values are authored **relative to the pack
+        directory they live in** (``examples/tools/android/apk-audit.json``
+        declares ``apk-audit/apk_audit.py``).  Self-containment therefore has
+        to resolve them against *source_dir*; resolving them against the
+        backend's current working directory — as this used to do — never
+        matched, so the script was not copied and every script-typed tool
+        imported from a pack came back ``is_valid: false``.
+
+        Resolution order (first hit wins):
+
+        1. an absolute *raw_path* that exists;
+        2. ``<source_dir>/<raw_path>`` — nested relative paths included;
+        3. a recursive basename search under *source_dir*, accepted only when
+           exactly ONE candidate exists (an ambiguous basename is never
+           guessed).
+
+        Only ``str`` paths are considered — platform-mapped ``{windows: …}``
+        paths are left alone (they are binary/java_jar declarations in
+        practice, not scripts).
+
+        Returns:
+            The resolved absolute-ish path, or None when nothing matched
+            (the descriptor then keeps its literal ``path`` and the import
+            report carries a ``binary/script not found`` warning).
+        """
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            return None
+        raw_path = raw_path.strip()
+
+        if os.path.isabs(raw_path):
+            return raw_path if os.path.isfile(raw_path) else None
+        if not source_dir:
+            return raw_path if os.path.isfile(raw_path) else None
+
+        direct = os.path.normpath(os.path.join(source_dir, raw_path))
+        if os.path.isfile(direct):
+            return direct
+
+        wanted = os.path.basename(raw_path)
+        matches = []
+        for root, dirs, files in os.walk(source_dir):
+            dirs[:] = [d for d in dirs if d not in self._SCRIPT_SEARCH_SKIP]
+            if wanted in files:
+                matches.append(os.path.join(root, wanted))
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    def _write_descriptor_file(
+        self, descriptor_json: dict, source_dir: Optional[str] = None
+    ) -> str:
         """Validate *descriptor_json* and write it to the overlay tools/ dir.
 
         Does NOT re-discover — the caller decides when to rebuild the
@@ -380,10 +440,18 @@ class ToolRegistry:
         re-discover once at the end).
 
         For script-type tools (python_script / node_script / shell_script),
-        when the ``path`` field references an existing local file, the file is
-        copied into ``<overlay>/scripts/<tool_name>/<filename>`` and the
-        descriptor's ``path`` is rewritten to the copied location so the tool
-        stays usable even when the original source file is moved or deleted.
+        when ``path`` resolves to an existing local file (see
+        :meth:`_resolve_script_source`, which reads relative paths against
+        *source_dir* — the pack directory being imported), the file is copied
+        into ``<overlay>/scripts/<tool_name>/<filename>`` and the descriptor's
+        ``path`` is rewritten to the copied location so the tool stays usable
+        even when the original pack is moved or deleted.
+
+        Args:
+            descriptor_json: the raw descriptor dict (mutated copy on script
+                self-containment; the caller's dict is untouched).
+            source_dir: directory the descriptor was read from; relative
+                script paths resolve against it.
 
         Returns the validated descriptor's name.
 
@@ -399,8 +467,10 @@ class ToolRegistry:
         # ── Script type: copy the script file into the overlay ─────────
         tool_type = descriptor_json.get("type", "")
         if isinstance(tool_type, str) and tool_type in self._SCRIPT_TOOL_TYPES:
-            script_path = descriptor_json.get("path", "")
-            if isinstance(script_path, str) and os.path.isfile(script_path):
+            resolved = self._resolve_script_source(
+                descriptor_json.get("path", ""), source_dir
+            )
+            if resolved:
                 tool_name = descriptor_json.get("name", "unknown")
                 if not isinstance(tool_name, str) or not tool_name:
                     tool_name = "unknown"
@@ -408,16 +478,15 @@ class ToolRegistry:
                 if scripts_dir is not None:
                     dest_dir = scripts_dir / tool_name
                     dest_dir.mkdir(parents=True, exist_ok=True)
-                    dest_file = dest_dir / os.path.basename(script_path)
-                    shutil.copy2(script_path, str(dest_file))
+                    dest_file = dest_dir / os.path.basename(resolved)
+                    shutil.copy2(resolved, str(dest_file))
                     # Rewrite the path in the descriptor dict to the copied location
                     # so the descriptor JSON is self-contained.
                     descriptor_json = dict(descriptor_json)
                     descriptor_json["path"] = str(dest_file)
 
         # Validate via load_descriptor BEFORE writing (no partial files)
-        import tempfile as _tempfile
-        with _tempfile.NamedTemporaryFile(
+        with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False, encoding="utf-8",
         ) as tmp:
             json.dump(descriptor_json, tmp)
@@ -461,6 +530,11 @@ class ToolRegistry:
     def import_descriptor_dir(self, dir_path: str) -> Dict[str, Any]:
         """Import every ``*.json`` descriptor in *dir_path* (two-phase).
 
+        The directory IS the pack: descriptors sit in *dir_path* itself
+        (sub-directories are not scanned for descriptors — they hold the
+        scripts a descriptor may point at), and relative script ``path``
+        values resolve against it (see :meth:`_resolve_script_source`).
+
         Phase 1 pre-validates every file with :func:`load_descriptor`; ANY
         failure aborts the whole import with zero writes (the failing entries
         carry ``status: "failed"`` + ``reason``, the valid ones are reported
@@ -493,6 +567,133 @@ class ToolRegistry:
         if not files:
             raise ToolException(f"no *.json descriptors found in {dir_path!r}")
 
+        return self._import_descriptors(dir_path, files)
+
+    def import_descriptor_file(self, json_path: str) -> Dict[str, Any]:
+        """Import a single descriptor ``*.json`` file (two-phase, 1 entry).
+
+        Same contract as :meth:`import_descriptor_dir` with a one-file pack;
+        relative script paths resolve against the file's own directory.
+        """
+        if not isinstance(json_path, str) or not os.path.isfile(json_path):
+            raise ToolException(f"not a file: {json_path!r}")
+        if not json_path.lower().endswith(".json"):
+            raise ToolException(
+                f"not a tool descriptor (*.json): {json_path!r}"
+            )
+        absolute = os.path.abspath(json_path)
+        return self._import_descriptors(
+            os.path.dirname(absolute), [os.path.basename(absolute)]
+        )
+
+    def import_pack(self, path: str) -> Dict[str, Any]:
+        """Import a tool pack from a directory, a single ``*.json``, or a ``*.zip``.
+
+        One entry point for every shape a pack can arrive in, so the UI (and
+        the CLI) does not have to pre-classify the user's pick:
+
+        * directory → :meth:`import_descriptor_dir`;
+        * ``*.json`` → :meth:`import_descriptor_file`;
+        * ``*.zip`` → extracted to a temp dir by :meth:`_extract_zip`, then
+          imported as a directory.  Descriptors must sit in the **archive
+          root**: a zip whose only content is one wrapping folder reports
+          ``no *.json descriptors at the root of …`` instead of silently
+          importing nothing (the temp dir is always cleaned up).
+
+        Raises:
+            ToolException: on a missing path, an unsupported file type, or
+                whatever the delegated importer raises.
+        """
+        if not isinstance(path, str) or not path:
+            raise ToolException("Missing 'path' field")
+
+        if os.path.isdir(path):
+            return self.import_descriptor_dir(path)
+        if os.path.isfile(path):
+            lowered = path.lower()
+            if lowered.endswith(".zip"):
+                return self._import_zip(path)
+            if lowered.endswith(".json"):
+                return self.import_descriptor_file(path)
+            raise ToolException(
+                f"unsupported tool pack: {path!r} "
+                "(expected a directory, a *.json descriptor or a *.zip archive)"
+            )
+        raise ToolException(f"path does not exist: {path!r}")
+
+    def _import_zip(self, zip_path: str) -> Dict[str, Any]:
+        """Extract *zip_path* and import it as a pack directory.
+
+        Raises:
+            ToolException: when the archive holds no ``*.json`` descriptor in
+                its root (the layout the UI promises to accept).
+        """
+        tmp_root = tempfile.mkdtemp(prefix="bt-toolpack-")
+        try:
+            self._extract_zip(zip_path, tmp_root)
+            root_descriptors = sorted(
+                f for f in os.listdir(tmp_root)
+                if f.endswith(".json")
+                and os.path.isfile(os.path.join(tmp_root, f))
+            )
+            if not root_descriptors:
+                raise ToolException(
+                    f"no *.json descriptors at the root of {zip_path!r} "
+                    "(a tool pack keeps its descriptors in the archive root)"
+                )
+            return self.import_descriptor_dir(tmp_root)
+        finally:
+            shutil.rmtree(tmp_root, ignore_errors=True)
+
+    def _extract_zip(self, zip_path: str, dest_dir: str) -> None:
+        """Extract every regular file of *zip_path* into *dest_dir*.
+
+        Archives come from the user, so members are treated as untrusted:
+        absolute paths, drive-relative paths, ``..`` traversal (zip-slip) and
+        entries resolving outside *dest_dir* are skipped with a warning
+        instead of being written.  Directory entries are recreated implicitly.
+        """
+        dest_root = os.path.realpath(dest_dir)
+        with zipfile.ZipFile(zip_path) as archive:
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+                name = member.filename.replace("\\", "/")
+                if (
+                    not name
+                    or name.startswith("/")
+                    or os.path.isabs(name)
+                    or ".." in name.split("/")
+                ):
+                    self.logger.warning(
+                        f"skipping unsafe archive member {member.filename!r}"
+                    )
+                    continue
+                target = os.path.realpath(os.path.join(dest_dir, name))
+                try:
+                    inside = os.path.commonpath([dest_root, target]) == dest_root
+                except ValueError:  # different drives on Windows
+                    inside = False
+                if not inside:
+                    self.logger.warning(
+                        f"skipping archive member outside the pack: "
+                        f"{member.filename!r}"
+                    )
+                    continue
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with archive.open(member) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out)
+
+    def _import_descriptors(
+        self, source_dir: str, files: list
+    ) -> Dict[str, Any]:
+        """Two-phase import of *files* (names) read from *source_dir*.
+
+        Shared core of :meth:`import_descriptor_dir` /
+        :meth:`import_descriptor_file`: phase 1 pre-validates everything and
+        writes nothing, phase 2 writes all and re-discovers once.  See
+        :meth:`import_descriptor_dir` for the report shape.
+        """
         empty = {"ok": False, "imported": 0, "updated": 0, "failed": 0,
                  "results": []}
 
@@ -501,7 +702,7 @@ class ToolRegistry:
         results = []
         precheck_failed = False
         for fname in files:
-            fpath = os.path.join(dir_path, fname)
+            fpath = os.path.join(source_dir, fname)
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
                     raw = json.load(f)
@@ -534,7 +735,7 @@ class ToolRegistry:
         for _fname, raw, name in payloads:
             had_overlay = self.is_overlay_descriptor(name)
             try:
-                self._write_descriptor_file(raw)
+                self._write_descriptor_file(raw, source_dir=source_dir)
                 written.append((name, had_overlay))
             except Exception as exc:
                 results.append({

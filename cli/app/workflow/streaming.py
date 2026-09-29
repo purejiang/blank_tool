@@ -15,12 +15,13 @@ generic ``streamEvent`` branch.  On the wire the *routing* key is
 
 Event schema (dicts passed to the stream callback)::
 
-    node_started        {type, run_id, workflow_id, node_id, tool}
-    node_completed      {type, run_id, workflow_id, node_id, status,
+    node_started        {type, ts, run_id, workflow_id, node_id, tool}
+    node_completed      {type, ts, run_id, workflow_id, node_id, status,
                          duration_ms, attempts, error?}
-    workflow_completed  {type, run_id, workflow_id, success}
-    workflow_failed     {type, run_id, workflow_id, error}
-    workflow_cancelled  {type, run_id, workflow_id}
+    log                 {type, ts, run_id?, workflow_id?, level, message, node_id}
+    workflow_completed  {type, ts, run_id, workflow_id, success}
+    workflow_failed     {type, ts, run_id, workflow_id, error}
+    workflow_cancelled  {type, ts, run_id, workflow_id}
 
 Field semantics:
     ``run_id``
@@ -45,6 +46,7 @@ long-running tools poll it through ``ToolContext.cancel_check``.
 """
 
 import json
+from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 from app.utils.task_log_writer import append_task_log
@@ -59,6 +61,15 @@ NODE_STARTED = "node_started"
 NODE_COMPLETED = "node_completed"
 """A node reached a terminal state.  Payload: ``{node_id, status,
 duration_ms, attempts, error?}``."""
+
+LOG = "log"
+"""A tool-level log line, for the renderer's live run log.
+
+Payload: ``{level, message, node_id}``.  Emitted by tools that produce their
+own progress messages — ``flow.log`` today.  It is NOT a substitute for the
+per-task log: the emitting tool still writes the same line through
+``task_log_writer``, so the live view and ``task.read_log`` agree.  Consumers
+that do not know the type can ignore it (it is not a terminal event)."""
 
 WORKFLOW_COMPLETED = "workflow_completed"
 """The whole workflow finished.  Payload: ``{success}``."""
@@ -79,30 +90,48 @@ except ImportError:  # TaskManager unavailable — is_cancelled() reports False
     TaskManager = None  # type: ignore[assignment]
 
 
+def now_time_str() -> str:
+    """Local ``HH:MM:SS`` timestamp stamped onto every event / log line."""
+    return datetime.now().strftime("%H:%M:%S")
+
+
 def render_event_line(event: Dict[str, Any]) -> str:
     """Render a workflow event dict as a plain-text log line.
 
-    Produces EXACTLY these formats:
+    Every line is prefixed with the event's emission time (``ts`` field,
+    falling back to ``now()`` when absent):
 
-    * ``[node_started] <node_id> (<tool>)``
-    * ``[node_completed] <node_id> status=<status> (<duration_ms> ms)``
-      plus `` error: <error>`` for a failed/skipped node
-    * ``[workflow_completed] success=<bool>``
-    * ``[workflow_failed] <error>``
-    * ``[workflow_cancelled]`` (bare tag when message is empty)
+    * ``[12:00:01] [node_started] <node_id> (<tool>)``
+    * ``[12:00:02] [node_completed] <node_id> status=<status> (<duration_ms> ms)``
+      plus ``, attempts=<N>`` inside the parens when a node needed retries,
+      plus `` error: <error>`` for a failed node
+    * ``[12:00:03] [workflow_completed] success=<bool>``
+    * ``[12:00:04] [workflow_failed] <error>``
+    * ``[12:00:05] [workflow_cancelled]`` (bare tag when message is empty)
+    * ``[12:00:06] [log] [<node_id> ] [<level>] <message>`` — tool-level lines
+      (``flow.log``); the node segment is present only when the event knows
+      which node emitted it
     * Unknown types fall back to ``[<type>] <json dumps of event>``.
     """
     event_type = event.get("type") or "event"
     if event_type == NODE_STARTED:
         message = f"{event.get('node_id', '?')} ({event.get('tool', '')})"
     elif event_type == NODE_COMPLETED:
+        duration = f"{event.get('duration_ms', '?')} ms"
+        attempts = event.get("attempts", 1)
+        if isinstance(attempts, int) and attempts > 1:
+            duration += f", attempts={attempts}"
         message = (
             f"{event.get('node_id', '?')} "
             f"status={event.get('status', '?')} "
-            f"({event.get('duration_ms', '?')} ms)"
+            f"({duration})"
         )
         if event.get("error"):
             message += f" error: {event['error']}"
+    elif event_type == LOG:
+        node = event.get("node_id") or ""
+        node_part = f"{node} " if node else ""
+        message = f"{node_part}[{event.get('level', 'info')}] {event.get('message', '')}"
     elif event_type == WORKFLOW_COMPLETED:
         message = f"success={event.get('success', '?')}"
     elif event_type == WORKFLOW_FAILED:
@@ -111,7 +140,8 @@ def render_event_line(event: Dict[str, Any]) -> str:
         message = ""
     else:
         message = json.dumps(event, default=str, ensure_ascii=False)
-    return f"[{event_type}] {message}" if message else f"[{event_type}]"
+    ts = str(event.get("ts") or now_time_str())
+    return f"[{ts}] [{event_type}] {message}" if message else f"[{ts}] [{event_type}]"
 
 
 class WorkflowStreamHandler:
@@ -157,6 +187,7 @@ class WorkflowStreamHandler:
         """
         event: Dict[str, Any] = {
             "type": event_type,
+            "ts": now_time_str(),
             "run_id": self.run_id,
             "workflow_id": self.workflow_id,
         }

@@ -44,6 +44,8 @@ from app.template.store import TemplateNotFoundError
 from app.tools.builtin.workflow_tools import run_child_template
 from app.utils.task_log_writer import append_task_log
 from app.workflow.rundir import safe_slug
+from app.workflow.streaming import LOG as LOG_EVENT
+from app.workflow.streaming import now_time_str, render_event_line
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,33 @@ _VALID_LEVELS = frozenset({"debug", "info", "warning", "error", "critical"})
 
 #: Default message used when a flow.assert failure carries no explicit one.
 _DEFAULT_ASSERT_MESSAGE = "Assertion failed"
+
+
+def _stream_log_line(context: ToolContext, level: str, message: str) -> dict:
+    """Build the tool-level ``log`` event and forward it to the live run log.
+
+    Returns the event dict so the caller can tee the SAME dict (rendered by
+    ``render_event_line``) into the per-task log — keeping the streamed line
+    and the on-disk line byte-identical.
+
+    Best-effort: the message is ALREADY in the application logger by the time
+    this runs, so a missing or failing stream callback must never break the
+    tool.
+    """
+    event = {
+        "type": LOG_EVENT,
+        "ts": now_time_str(),
+        "level": level,
+        "message": message,
+        "node_id": context.current_node_path or "",
+    }
+    handler = getattr(context, "stream_handler", None)
+    if handler is not None:
+        try:
+            handler(event)
+        except Exception:  # pragma: no cover — defensive, callback is IPC-side
+            logger.warning("failed to stream log line", exc_info=True)
+    return event
 
 
 class FlowAssert(BuiltinTool):
@@ -121,7 +150,10 @@ class FlowLog(BuiltinTool):
         level_num = getattr(logging, level.upper(), logging.INFO)
         logger.log(level_num, message)
         if context.task_id:
-            append_task_log(context.task_id, f"[{level}] {message}")
+            event = _stream_log_line(context, level, message)
+            append_task_log(context.task_id, render_event_line(event))
+        else:
+            _stream_log_line(context, level, message)
         return {"logged": True}
 
 

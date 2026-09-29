@@ -177,12 +177,16 @@ def handle_tool_delete(params, stream_handler):
 
 @logs_errors("ToolHandler")
 def handle_tool_import_pack(params, stream_handler):
-    """Import every ``*.json`` descriptor in a directory (domain pack).
+    """Import a tool pack: a directory, a single ``*.json``, or a ``*.zip``.
 
     Params:
-        path: directory containing tool descriptor JSON files (e.g.
-            ``examples/tools/android``).  The directory IS the pack — no
-            manifest file is required.
+        path: a directory of tool descriptor JSON files (e.g.
+            ``examples/tools/android``) — the directory IS the pack, no
+            manifest file is required — a single descriptor file, or a zip
+            archive whose descriptors sit in the archive root.
+
+    The UI's one import entry point funnels all three shapes here so the
+    caller does not have to pre-classify the user's pick.
 
     Returns the registry's two-phase import report:
     ``{"ok", "imported", "updated", "failed", "results": [...]}``.
@@ -190,7 +194,7 @@ def handle_tool_import_pack(params, stream_handler):
     path = params.get("path")
     if not isinstance(path, str) or not path:
         raise ToolException("Missing 'path' field")
-    return _get_registry().import_descriptor_dir(path)
+    return _get_registry().import_pack(path)
 
 
 API_MAP = {

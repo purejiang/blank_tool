@@ -12,6 +12,7 @@ documented in ``app/workflow/streaming.py`` — ``node_failed`` and
 """
 
 import json
+import re
 
 import pytest
 
@@ -30,16 +31,20 @@ WORKFLOW_METHODS = {"workflow.execute", "workflow.validate", "workflow.list_tool
 
 #: Exactly the keys each event type carries (``error`` is optional on
 #: ``node_completed`` and only present when the node failed/skipped).
+#: Every event also carries ``ts`` — the local ``HH:MM:SS`` emission time.
 _EVENT_KEYS = {
-    "node_started": {"type", "run_id", "workflow_id", "node_id", "tool"},
+    "node_started": {"type", "ts", "run_id", "workflow_id", "node_id", "tool"},
     "node_completed": {
-        "type", "run_id", "workflow_id", "node_id", "status", "duration_ms",
+        "type", "ts", "run_id", "workflow_id", "node_id", "status", "duration_ms",
         "attempts",
     },
-    "workflow_completed": {"type", "run_id", "workflow_id", "success"},
-    "workflow_failed": {"type", "run_id", "workflow_id", "error"},
-    "workflow_cancelled": {"type", "run_id", "workflow_id"},
+    "workflow_completed": {"type", "ts", "run_id", "workflow_id", "success"},
+    "workflow_failed": {"type", "ts", "run_id", "workflow_id", "error"},
+    "workflow_cancelled": {"type", "ts", "run_id", "workflow_id"},
 }
+
+#: ``ts`` shape only — the value is the wall clock at emission.
+_TS_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
 _NODE_STATUSES = {"ok", "failed", "skipped", "cancelled"}
 
@@ -79,6 +84,14 @@ def _of_type(events, event_type):
     return [event for event in events if event["type"] == event_type]
 
 
+def _strip_ts(events):
+    """Copy *events* without their ``ts`` stamp (its shape is asserted above)."""
+    return [
+        {key: value for key, value in event.items() if key != "ts"}
+        for event in events
+    ]
+
+
 def _completed_for(events, node_id):
     matches = [
         event for event in _of_type(events, "node_completed")
@@ -99,6 +112,7 @@ def _assert_event_schema(event, run_id, workflow_id):
     if event_type == "node_completed" and "error" in event:
         expected.add("error")
     assert set(event) == expected
+    assert _TS_RE.match(event["ts"]), f"bad ts: {event['ts']!r}"
 
     assert event["run_id"] == run_id
     assert event["workflow_id"] == workflow_id
@@ -351,7 +365,7 @@ def test_workflow_execute_with_inline_definition_runs(tmp_path):
         _assert_event_schema(event, "contract-inline-1", "contract-exec")
 
     assert all(event["status"] == "ok" for event in _of_type(events, "node_completed"))
-    assert _of_type(events, "workflow_completed") == [
+    assert _strip_ts(_of_type(events, "workflow_completed")) == [
         {
             "type": "workflow_completed",
             "run_id": "contract-inline-1",

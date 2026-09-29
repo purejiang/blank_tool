@@ -439,21 +439,21 @@ def _print_result_summary(tool_name: str, result: dict) -> None:
 
 
 def cmd_import_pack(path: str) -> int:
-    """Import every tool descriptor in a directory (domain pack).
+    """Import a tool pack from a directory, a single descriptor, or a zip.
 
-    Delegates to :meth:`ToolRegistry.import_descriptor_dir` (two-phase:
-    pre-validate all, write all), prints a per-tool summary, and returns
-    0 when every descriptor imported cleanly, 1 otherwise.
+    Delegates to :meth:`ToolRegistry.import_pack` (two-phase: pre-validate
+    all, write all), prints a per-tool summary, and returns 0 when every
+    descriptor imported cleanly, 1 otherwise.
     """
     from app.tools.tool_manager import ToolManager
     from app.common.exceptions import ToolException
 
     registry = ToolManager.instance().get_registry()
     try:
-        report = registry.import_descriptor_dir(path)
+        report = registry.import_pack(path)
     except ToolException as exc:
-        # Unusable input (missing directory / no *.json descriptors) is an
-        # error envelope on the IPC path and a non-zero exit here (WP0 #7).
+        # Unusable input (missing path / no *.json descriptors) is an error
+        # envelope on the IPC path and a non-zero exit here (WP0 #7).
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
@@ -590,6 +590,7 @@ def cmd_list_tasks() -> int:
 _EVENT_COLORS = {
     "node_started": "\033[36m",  # cyan
     "node_completed": "\033[32m",  # green
+    "log": "\033[90m",  # bright black — tool-level lines (flow.log)
     "workflow_completed": "\033[32m",  # green
     "workflow_failed": "\033[31m",  # red
     "workflow_cancelled": "\033[33m",  # yellow
@@ -1208,10 +1209,12 @@ def _build_parser() -> argparse.ArgumentParser:
     # import-pack
     pack_parser = subparsers.add_parser(
         "import-pack",
-        help="Import every tool descriptor in a directory (domain pack)",
+        help="Import a tool pack (directory, *.json descriptor, or *.zip)",
     )
     pack_parser.add_argument(
-        "path", help="Directory of *.json tool descriptors to import",
+        "path",
+        help="Directory of *.json tool descriptors, a single *.json "
+             "descriptor, or a *.zip with descriptors in its root",
     )
 
     # import-templates
