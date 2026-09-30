@@ -472,6 +472,10 @@ export default {
       name: '新名称',
       nameRequired: '请输入名称',
       invalid: '名称不能包含 \\ / : 等路径字符',
+      // 模板名就是身份（<name>.json 一文件一模板），同名保存=覆盖整份
+      overwriteTitle: '覆盖同名工作流？',
+      overwriteContent: '已经有名为「{name}」的工作流。继续会把它整份覆盖（含节点与参数），且无法撤销。',
+      overwriteConfirm: '覆盖',
       confirm: '确定',
     },
     delete: {

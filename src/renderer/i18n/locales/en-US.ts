@@ -475,6 +475,11 @@ export default {
       name: 'New name',
       nameRequired: 'A name is required',
       invalid: 'The name must not contain path characters such as \\ / :',
+      // The template name IS the identity (<name>.json, one file per template):
+      // saving under an existing name overwrites it wholesale.
+      overwriteTitle: 'Overwrite the existing workflow?',
+      overwriteContent: 'A workflow named “{name}” already exists. Continuing overwrites it entirely (nodes and parameters) and cannot be undone.',
+      overwriteConfirm: 'Overwrite',
       confirm: 'OK',
     },
     delete: {

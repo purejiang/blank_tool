@@ -393,6 +393,28 @@ async function submitNameDialog() {
     return
   }
   const newName = nameDialog.value.trim()
+  // 模板名就是身份：存储是 `<name>.json` 一文件一模板，`template.save` 是
+  // create-or-overwrite，所以撞名 = 整份覆盖（rename 还会顺手删掉旧名，等于一次
+  // 点掉两份里的一个）。先查重再确认。按小写比较：Windows/macOS 文件系统大小写不
+  // 敏感，`Foo` 与 `foo` 落到同一个文件。
+  const clash = templates.value.find(
+    (item) => item.name.toLowerCase() === newName.toLowerCase(),
+  )
+  if (clash && clash.name !== template.name) {
+    dialog.warning({
+      title: t('workflows.nameDialog.overwriteTitle'),
+      content: t('workflows.nameDialog.overwriteContent', { name: clash.name }),
+      positiveText: t('workflows.nameDialog.overwriteConfirm'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: () => void applyNameDialog(newName, template),
+    })
+    return
+  }
+  await applyNameDialog(newName, template)
+}
+
+/** 真正落盘：存新名（+ 删除旧名）后刷新列表。确认框「覆盖」也走这里。 */
+async function applyNameDialog(newName: string, template: TemplateInfo) {
   nameDialog.busy = true
   try {
     const loaded = await unifiedApi.call<{
