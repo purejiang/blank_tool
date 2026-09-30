@@ -3,39 +3,8 @@
     <div v-if="!node" class="npc-empty">{{ t('workflow.editor.config.noSelection') }}</div>
     <template v-else>
       <div class="npc-body">
-        <!-- 基础：节点名（可改）+ 只读 id。
-             id 是引用身份（`$nodes.<id>.*`）且由画布自动生成，不给改——所以它
-             只是一行可复制的文本，不再是输入框。 -->
-        <section class="npc-sec">
-          <div class="npc-sec-title">{{ t('workflow.editor.config.sections.basic') }}</div>
-          <AppField
-            :label="t('workflow.editor.config.fields.name')"
-            :help="t('workflow.editor.config.fields.nameHint')"
-          >
-            <n-input
-              :value="nodeName"
-              size="small"
-              :placeholder="toolName"
-              data-test="npc-name"
-              @update:value="onNameChange"
-            />
-          </AppField>
-          <div class="npc-id-row">
-            <span class="npc-id-label">{{ t('workflow.editor.config.fields.idLabel') }}</span>
-            <code class="npc-id" data-test="npc-id" :title="t('workflow.editor.config.fields.idReadonlyHint')">
-              {{ nodeId }}
-            </code>
-            <button
-              type="button"
-              class="npc-id-copy"
-              :title="t('workflow.editor.config.fields.copyId')"
-              data-test="npc-copy-id"
-              @click="copyId"
-            >
-              {{ copied ? t('workflow.editor.config.fields.copied') : t('workflow.editor.config.fields.copyId') }}
-            </button>
-          </div>
-        </section>
+        <!-- 节点身份（节点名 + 只读 id）不在这里：右栏标题栏（页面的 `.cfg-hd`）
+             已经常显这两项，名字的编辑入口也挂在那儿——面板从「功能」直接开始。 -->
 
         <!-- 功能：这个节点做什么（工具 + 操作 + 描述） -->
         <section class="npc-sec">
@@ -209,14 +178,14 @@
  * 三条设计约束（见 docs/07 / docs/08 §3-S2）：
  *  1. **字段即时生效**：编辑直接写进 `node.data`，没有节点级「保存」。落盘只有
  *     顶栏那一个保存动作，画布 dirty 指示器随之亮起；切换节点不会丢草稿。
- *  2. **id 只读**：节点身份是画布自动生成的 id（引用 `$nodes.<id>.*` 用它），
- *     人可读的名字走 `data.label`。
+ *  2. **不重复节点身份**：节点名（`data.label`）与只读 id 由右栏标题栏
+ *     （页面的 `.cfg-hd`）常显并承担改名入口，面板不再有「基础」分区。
  *  3. **一处校验**：必填/操作缺失由 `nodeValidation` 判定，面板做字段级提示，
  *     页面用它挡住顶栏保存——两边不会漂移。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NInput, NInputNumber, NRadioButton, NRadioGroup, NSelect } from 'naive-ui'
+import { NInputNumber, NRadioButton, NRadioGroup, NSelect } from 'naive-ui'
 import type { Node } from '@vue-flow/core'
 
 import unifiedApi from '../../api/unifiedApi'
@@ -265,14 +234,10 @@ const emit = defineEmits<{
 // ---- node data ---------------------------------------------------------
 
 const nodeData = computed<Record<string, any>>(() => (props.node?.data ?? {}) as Record<string, any>)
-const nodeId = computed(() => String(props.node?.id ?? ''))
+/** 工具名（「功能」分区那行只读文本；节点名由右栏标题栏负责）。 */
 const toolName = computed<string>(() => {
   const data = nodeData.value
   return String(data.tool || data.toolName || props.node?.id || '')
-})
-const nodeName = computed(() => {
-  const label = nodeData.value.label
-  return typeof label === 'string' && label.length > 0 ? label : toolName.value
 })
 
 // ---- tool metadata (operation mode) ------------------------------------
@@ -366,30 +331,6 @@ const pendingIssueCount = computed(
 )
 
 // ---- immediate edits ---------------------------------------------------
-
-function onNameChange(value: string) {
-  const data = nodeData.value
-  const name = String(value ?? '').trim()
-  // 名字等于工具名（或为空）就等于"没名字"：删掉这个键，工具名自然兜底。
-  if (!name || name === toolName.value) delete data.label
-  else data.label = name
-}
-
-const copied = ref(false)
-let copiedTimer: ReturnType<typeof setTimeout> | null = null
-
-async function copyId() {
-  try {
-    await navigator.clipboard?.writeText(nodeId.value)
-    copied.value = true
-    if (copiedTimer) clearTimeout(copiedTimer)
-    copiedTimer = setTimeout(() => {
-      copied.value = false
-    }, 1200)
-  } catch (error) {
-    log.warn('[NodeConfigPanel] clipboard unavailable', error)
-  }
-}
 
 function onOperationChange(name: string | null) {
   markTouched('operation')
@@ -589,47 +530,6 @@ function requestDelete() {
   font-size: 11px;
   line-height: 1.5;
   color: var(--app-text-dim);
-}
-
-/* 基础区：只读 id 一行 */
-.npc-id-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-}
-
-.npc-id-label {
-  flex: none;
-  font-family: var(--font-family-monospace);
-  font-size: 11px;
-  color: var(--app-text-dim);
-}
-
-.npc-id {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-family: var(--font-family-monospace);
-  font-size: 11.5px;
-  color: var(--app-text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.npc-id-copy {
-  flex: none;
-  padding: 0 4px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--app-text-muted);
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-}
-
-.npc-id-copy:hover {
-  color: var(--app-blue);
 }
 
 .npc-tool-row {

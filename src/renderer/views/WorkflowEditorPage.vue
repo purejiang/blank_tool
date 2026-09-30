@@ -166,8 +166,36 @@
            搬到顶栏的弹窗里，画布因此吃满整宽（docs/08 §3·S2）。 -->
       <div class="ed-right we-inspector" :class="{ 'we-inspector--collapsed': !selectedNode }">
         <div class="cfg-hd">
+          <!-- 标题 = 选中的东西：工具节点显示**节点名**（`data.label`，空则工具名），
+               端点显示 开始 / 结束。节点身份（名字 + id）只在这一处出现，改名入口
+               就挂在名字右侧，所以节点面板里不再有「基础」分区（docs/08 §3-S2）。 -->
           <div class="we-cfg-hd-row">
-            <div class="cn">{{ selectedPanelTitle }}</div>
+            <n-input
+              v-if="renaming"
+              ref="renameFieldRef"
+              class="we-cfg-rename"
+              size="small"
+              :value="renameDraft"
+              :placeholder="selectedToolName"
+              data-test="npc-rename-input"
+              @update:value="(value: string) => (renameDraft = value)"
+              @keydown.enter.prevent="commitRename"
+              @keydown.esc.stop.prevent="cancelRename"
+              @blur="commitRename"
+            />
+            <template v-else>
+              <div class="cn" :title="selectedPanelTitle">{{ selectedPanelTitle }}</div>
+              <button
+                v-if="isToolNodeSelected"
+                type="button"
+                class="we-cfg-btn we-cfg-btn--icon"
+                :title="t('workflow.editor.config.fields.rename')"
+                data-test="npc-rename"
+                @click="startRename"
+              >
+                <AppIcon name="pencil" size="sm" />
+              </button>
+            </template>
             <button
               type="button"
               class="we-cfg-btn we-cfg-btn--icon"
@@ -177,7 +205,16 @@
               <AppIcon name="x" size="sm" />
             </button>
           </div>
-          <div class="cd">{{ selectedNodeSubtitle }}</div>
+          <!-- id 是引用身份（`$nodes.<id>.*`）且自动生成、不可改：一行可复制的文本 -->
+          <div
+            class="cd"
+            :class="{ 'cd--copy': isToolNodeSelected }"
+            :title="nodeIdTitle"
+            data-test="npc-id"
+            @click="copyNodeId"
+          >
+            {{ selectedNodeSubtitle }}
+          </div>
         </div>
 
         <!-- 端点就是工作流的出入参入口：开始 = 入参，结束 = 出参（docs/08 §3·S2） -->
@@ -278,6 +315,7 @@ import { MiniMap } from '@vue-flow/minimap'
 import {
   NAlert,
   NButton,
+  NInput,
   NModal,
   useDialog,
   useMessage,
@@ -550,12 +588,20 @@ const selectedNode = computed(() => nodes.value.find((n) => n.selected) ?? null)
 const selectedToolName = computed(() => String(selectedNode.value?.data?.tool ?? ''))
 
 /**
+ * 节点展示名 = `data.label`，没名字时兜底工具名（与画布节点卡片、表达式选择器
+ * 同一套口径）。右栏标题显示的就是它。
+ */
+const selectedNodeTitle = computed(() => {
+  const label = (selectedNode.value?.data as Record<string, unknown> | undefined)?.label
+  return typeof label === 'string' && label.length > 0 ? label : selectedToolName.value
+})
+
+/**
  * `.cd` line for the node inspector: the node's **id**.
  *
  * The id is the node's identity — it is what `$nodes.<id>.outputs…` bindings
- * embed — and it is auto-generated/read-only. The human-readable name and the
- * tool description now live inside the panel (基础 / 功能 sections), so repeating
- * them here would only duplicate content.
+ * embed — and it is auto-generated/read-only. It is shown here (and copied on
+ * click) instead of in a panel section, so the inspector never repeats it.
  */
 const selectedNodeSubtitle = computed(() => {
   const node = selectedNode.value
@@ -579,13 +625,78 @@ const realEdgeCount = computed(
 /** Selected canvas-only endpoint ('start' / 'end'), or null for a tool node. */
 const selectedVirtualKind = computed(() => virtualKindOf(selectedNode.value?.id))
 
-/** `.cn` title of the inspector header: tool name, or 开始 / 结束. */
+/** 选中的是真实工具节点（端点没有名字，也没有可复制的节点 id）。 */
+const isToolNodeSelected = computed(() => !!selectedNode.value && !selectedVirtualKind.value)
+
+/** `.cn` title of the inspector header: node display name, or 开始 / 结束. */
 const selectedPanelTitle = computed(() => {
   const kind = selectedVirtualKind.value
   if (kind === 'start') return t('workflow.editor.virtual.start')
   if (kind === 'end') return t('workflow.editor.virtual.end')
-  return selectedToolName.value
+  return selectedNodeTitle.value
 })
+
+/**
+ * `.cd` 的 tooltip：说明 id 只读、可复制。端点行不是 id，不给提示。
+ */
+const nodeIdTitle = computed(() =>
+  isToolNodeSelected.value
+    ? `${t('workflow.editor.config.fields.idReadonlyHint')} · ${t('workflow.editor.config.fields.idCopyHint')}`
+    : '',
+)
+
+// ---- 节点改名（标题右侧的铅笔按钮） ------------------------------------
+//
+// 名字就是 `data.label`（纯显示用，表达式永远引用 id）。留空或写回工具名都等于
+// 「没名字」——直接删键，工具名自然兜底，工作流 JSON 里不会留下冗余 label。
+
+const renaming = ref(false)
+const renameDraft = ref('')
+const renameFieldRef = ref<InstanceType<typeof NInput> | null>(null)
+
+async function startRename() {
+  if (!isToolNodeSelected.value || renaming.value) return
+  renameDraft.value = selectedNodeTitle.value
+  renaming.value = true
+  await nextTick()
+  renameFieldRef.value?.focus()
+}
+
+function cancelRename() {
+  renaming.value = false
+  renameDraft.value = ''
+}
+
+/** 提交改名：Enter / 失焦都走这里（Esc 走 cancelRename）。 */
+function commitRename() {
+  if (!renaming.value) return
+  const node = selectedNode.value
+  const value = renameDraft.value.trim()
+  renaming.value = false
+  renameDraft.value = ''
+  if (!node) return
+  const data = (node.data ?? {}) as Record<string, unknown>
+  if (!value || value === selectedToolName.value) delete data.label
+  else data.label = value
+}
+
+/** 换选中（或收起右栏）时退出编辑态，半截输入不留给下一个节点。 */
+watch(
+  () => selectedNode.value?.id,
+  () => cancelRename(),
+)
+
+/** 复制节点 id（名称引用 `$nodes.<id>.*` 要用它）。 */
+async function copyNodeId() {
+  const node = selectedNode.value
+  if (!node || !isToolNodeSelected.value) return
+  try {
+    await navigator.clipboard?.writeText(node.id)
+    message.success(t('workflow.editor.config.fields.copied'))
+  } catch (error) {
+    log.warn('[WorkflowEditorPage] clipboard unavailable', error)
+  }
+}
 
 /** 工作流信息弹窗的开关（顶栏标题后的「编辑信息」按钮）。 */
 const showInfoDialog = ref(false)
@@ -1632,6 +1743,21 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 改名输入框就地替换标题（同一个 flex 槽位，宽度不跳） */
+.we-cfg-rename {
+  flex: 1;
+  min-width: 0;
+}
+
+/* `.cd` 是节点 id：可点击复制（端点行不是 id，不加这个类） */
+.we-cfg-hd-row + .cd--copy {
+  cursor: pointer;
+}
+
+.cd--copy:hover {
+  color: var(--app-blue);
 }
 
 .we-cfg-btn {

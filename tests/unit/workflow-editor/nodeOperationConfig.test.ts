@@ -4,12 +4,12 @@
  * Covers the NodeConfigPanel: operation mode (descriptor tools that expose
  * operations via workflow.list_tools), the legacy free-form params fallback
  * (builtin tools / descriptors without operations), native plugin tools
- * (kind "native"), the read-only node id / editable node name, the typed
- * parameter badges, the optional-parameter disclosure, the 跟随系统 / 自定义
- * behaviour toggle, and the serializer mapping between node.data.{operation,
- * inputs} and the engine wire params `{operation, <input_name>: value}` (T4
- * contract), including the T5 round-trip shape of
- * examples/workflows/android/decompile.json.
+ * (kind "native"), the absent node-identity section (name + id are rendered by
+ * the dock header), the typed parameter badges, the optional-parameter
+ * disclosure, the 跟随系统 / 自定义 behaviour toggle, and the serializer mapping
+ * between node.data.{operation, inputs} and the engine wire params
+ * `{operation, <input_name>: value}` (T4 contract), including the T5 round-trip
+ * shape of examples/workflows/android/decompile.json.
  *
  * The panel applies edits IMMEDIATELY (there is no per-node Save button), so
  * every assertion checks `node.data` right after the interaction.
@@ -640,26 +640,16 @@ describe('NodeConfigPanel identity + behaviour', () => {
     vi.mocked(unifiedApi.call).mockResolvedValue(TOOL_LIST)
   })
 
-  it('shows the auto-generated id read-only and edits the node name', async () => {
+  it('does not repeat the node identity: name / id live in the dock header', async () => {
     const node = makeNode({ tool: 'file.read', ports: FILEREAD.ports }, 'tool-file-read-7')
     const wrapper = mountPanel(node)
     await settled()
 
-    // The id is a read-only label, not an input.
-    const id = wrapper.find('[data-test="npc-id"]')
-    expect(id.exists()).toBe(true)
-    expect(id.text()).toBe('tool-file-read-7')
-
-    const name = wrapper.find('[data-test="npc-name"]')
-    expect((name.element as HTMLInputElement).value).toBe('file.read')
-    await name.setValue('读取配置')
-    await nextTick()
-    expect((node.data as Record<string, any>).label).toBe('读取配置')
-
-    // Clearing the name falls back to the tool name (the key is dropped).
-    await name.setValue('  ')
-    await nextTick()
-    expect((node.data as Record<string, any>).label).toBeUndefined()
+    // 2026-09-30：右栏标题栏（WorkflowEditorPage 的 `.cfg-hd`）常显节点名 + 只读 id，
+    // 改名入口是名字右侧的铅笔按钮 —— 面板不再有「基础」分区，直接从「功能」开始。
+    expect(wrapper.find('[data-test="npc-name"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="npc-id"]').exists()).toBe(false)
+    expect(wrapper.find('.npc-sec-title').text()).toBe('workflow.editor.config.sections.capability')
   })
 
   it('defaults to 跟随系统: no behaviour fields, summary shows the settings defaults', async () => {

@@ -230,20 +230,18 @@ export default {
       },
       config: {
         noSelection: '选择一个节点进行配置',
-        // Node sections (基础 / 功能 / 参数 / 输出 / 行为 分区)
+        // Node sections (功能 / 参数 / 输出 / 行为 分区；节点身份在右栏标题栏)
         sections: {
-          basic: '基础',
           behavior: '行为',
           capability: '功能',
           params: '参数',
           outputs: '输出',
         },
         fields: {
-          name: '节点名',
-          nameHint: '显示在画布节点上；留空则用工具名',
-          idLabel: 'id',
+          // 节点名 / id 由右栏标题栏显示：名字右侧的铅笔按钮打开重命名
+          rename: '修改节点名',
           idReadonlyHint: '自动生成、不可修改。引用上游输出时用它（$nodes.<id>.…）',
-          copyId: '复制',
+          idCopyHint: '点击复制',
           copied: '已复制',
           onFailure: '失败策略',
           retry: '重试次数',

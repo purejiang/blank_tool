@@ -231,20 +231,20 @@ export default {
       },
       config: {
         noSelection: 'Select a node to configure',
-        // Node sections (basics / function / parameters / outputs / behavior)
+        // Node sections (function / parameters / outputs / behavior; the node
+        // identity lives in the dock header)
         sections: {
-          basic: 'Basics',
           behavior: 'Behavior',
           capability: 'Function',
           params: 'Parameters',
           outputs: 'Outputs',
         },
         fields: {
-          name: 'Node name',
-          nameHint: 'Shown on the canvas node; leave empty to use the tool name',
-          idLabel: 'id',
+          // Node name / id are rendered in the dock header: the pencil next to
+          // the name starts an in-place rename.
+          rename: 'Rename node',
           idReadonlyHint: 'Generated automatically and read-only. This is what references use ($nodes.<id>.…)',
-          copyId: 'Copy',
+          idCopyHint: 'Click to copy',
           copied: 'Copied',
           onFailure: 'On failure',
           retry: 'Retries',
