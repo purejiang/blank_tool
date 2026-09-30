@@ -1,6 +1,6 @@
 <template>
   <!-- M2 导入结果报告（docs/08 §4）：逐条列出成功/失败与原因。
-       `template.import_path` 与 `tool.import_pack` 的条目形状不同，这里按可选字段
+       `workflow.import_path` 与 `tool.import_pack` 的条目形状不同，这里按可选字段
        兼容渲染（工作流：file/name/status/reason/renamed_from；描述符：name/status/reason/warnings）。 -->
   <n-modal
     v-model:show="visible"
@@ -48,7 +48,7 @@
     <template #footer>
       <div class="irp-footer">
         <n-button size="small" type="primary" @click="visible = false">
-          {{ t('workflow.editor.template.close') }}
+          {{ t('workflow.editor.actions.close') }}
         </n-button>
       </div>
     </template>
@@ -70,7 +70,7 @@ export interface ImportReportEntry {
   warnings?: string[]
 }
 
-/** `template.import_path` / `tool.import_pack` report shape. */
+/** `workflow.import_path` / `tool.import_pack` report shape. */
 export interface ImportReport {
   ok: boolean
   imported: number
@@ -82,7 +82,7 @@ export interface ImportReport {
 
 /**
  * M2: share the "what got imported and what failed, and why" report between
- * workflow import (`template.import_path`) and descriptor import
+ * workflow import (`workflow.import_path`) and descriptor import
  * (`tool.import_pack`).
  */
 const props = defineProps<{

@@ -78,7 +78,8 @@ export interface CacheInfoResult {
   total: { size: number; files: number }
   /** Managed subdirectories of output/ — excluded from output.clear by default (WP4). */
   managed: {
-    templates: DirInfo
+    /** Saved workflows (one `<wf-id>.json` per workflow). */
+    workflows: DirInfo
     /** Saved task definitions (workflow + inputs), added with the task entity. */
     task_defs: DirInfo
     history: DirInfo
@@ -178,17 +179,29 @@ export interface RunListResult {
 }
 
 /**
- * A saved task definition — a workflow name plus the input values to run it
+ * A saved task definition — a bound workflow plus the input values to run it
  * with (backend `app.task.store`).  What the task pages and the headless
- * `run --task <name>` both operate on.
+ * `run --task <id|name>` both operate on.
  */
 export interface TaskDefinition {
+  /** Storage identity — also the `<id>.json` file name. */
+  id: string
+  /** Free-form display name (may repeat, any characters). */
   name: string
-  /** Name of the saved template this task runs (never an embedded definition). */
+  /**
+   * Storage id of the bound saved workflow (the stable binding, unaffected by
+   * renames). `null` for a task written before ids existed — the binding then
+   * falls back to `workflow`.
+   */
+  workflow_id: string | null
+  /**
+   * Display name of the bound workflow, resolved live when the binding can be
+   * resolved. Never an embedded definition.
+   */
   workflow: string
   /** Stored input values, exactly as submitted (validated at run time). */
   inputs: Record<string, unknown>
-  /** Optional working directory; `''` means "the workflow's own directory". */
+  /** Optional working directory; `''` means "the run's artifact directory". */
   work_dir: string
   description: string
   created_at: string | null
@@ -198,8 +211,8 @@ export interface TaskDefinition {
 /**
  * One row of the `task.list` response.
  *
- * `workflow_exists: false` marks a task whose bound workflow was renamed or
- * deleted: the task is kept, cannot run, and must be re-pointed.
+ * `workflow_exists: false` marks a task whose bound workflow was deleted: the
+ * task is kept, cannot run, and must be re-pointed.
  */
 export interface TaskDefinitionSummary extends TaskDefinition {
   workflow_exists: boolean
@@ -221,12 +234,14 @@ export interface TaskGetResult {
 /** Return type of task.save */
 export interface TaskSaveResult {
   saved: boolean
+  id: string
   name: string
 }
 
 /** Return type of task.delete */
 export interface TaskDeleteResult {
   deleted: boolean
+  id: string
   name: string
 }
 
@@ -267,7 +282,7 @@ export interface PluginListResult {
   plugins: PluginEntry[]
 }
 
-// ---- Workflow / tool / port shapes (workflow.list_tools) ----
+// ---- Workflow / tool / port shapes (tool.list) ----
 
 /** One port as serialized by the backend `Port.to_dict()`. */
 export interface PortJson {
@@ -294,7 +309,7 @@ export interface OperationJson {
   outputs: PortJson[]
 }
 
-/** One entry of the `workflow.list_tools` response `tools` array. */
+/** One entry of the `tool.list` response `tools` array. */
 export interface ToolEntry {
   name: string
   kind: 'shipped-native' | 'native' | 'descriptor'
@@ -310,12 +325,12 @@ export interface ToolEntry {
   env_deps?: string[]
 }
 
-/** Return type of workflow.list_tools */
+/** Return type of tool.list */
 export interface ToolListResult {
   tools: ToolEntry[]
 }
 
-// ---- Environments (env.list / workflow.list_envs) ----
+// ---- Environments (env.list / env.list) ----
 
 export type EnvType = 'jre' | 'python' | 'node' | 'custom'
 
@@ -338,15 +353,23 @@ export interface EnvEntry {
   source?: 'bundled' | 'overlay'
 }
 
-/** Return type of env.list / workflow.list_envs */
+/** Return type of env.list / env.list */
 export interface EnvListResult {
   environments: EnvEntry[]
 }
 
-// ---- Templates ----
+// ---- Saved workflows ----
 
-/** One entry of the `template.list` response. */
-export interface TemplateInfo {
+/**
+ * One entry of the `workflow.list` response.
+ *
+ * `id` is the storage identity — also the `<id>.json` file name in the
+ * workflow library — and `name` is the free-form display name stored inside
+ * the definition.  Both are accepted wherever a workflow is referenced
+ * (`workflow.load` / `workflow.delete` / `workflow.execute`).
+ */
+export interface WorkflowInfo {
+  id: string
   name: string
   description: string
   created_at: string | null
@@ -355,17 +378,33 @@ export interface TemplateInfo {
   node_count: number
 }
 
-/** Return type of template.list */
-export interface TemplateListResult {
-  templates: TemplateInfo[]
+/** Return type of workflow.list */
+export interface WorkflowListResult {
+  workflows: WorkflowInfo[]
+}
+
+/** Return type of workflow.save */
+export interface WorkflowSaveResult {
+  saved: boolean
+  id: string
+  name: string
+}
+
+/** Return type of workflow.delete */
+export interface WorkflowDeleteResult {
+  deleted: boolean
+  id: string
+  name: string
 }
 
 /**
- * Return type of template.load. WP5 (#12) extended the response with the
- * wrapper metadata that `FileTemplateStore.load()` used to discard; a raw
- * (bare-definition) template file yields the defaults.
+ * Return type of workflow.load: the definition plus the wrapper metadata that
+ * `FileWorkflowStore.load_with_meta()` returns.  A raw (bare-definition) file
+ * yields the metadata defaults.
  */
-export interface TemplateLoadResult {
+export interface WorkflowLoadResult {
+  id: string
+  name: string
   definition: Record<string, unknown>
   description: string
   tags: string[]
@@ -373,21 +412,22 @@ export interface TemplateLoadResult {
   updated_at: string | null
 }
 
-/** One per-file entry of the template.import_path report. */
-export interface TemplateImportEntry {
+/** One per-file entry of the workflow.import_path report. */
+export interface WorkflowImportEntry {
   file: string
   status: string
+  id?: string
   name?: string
   reason?: string
   renamed_from?: string
 }
 
-/** Return type of template.import_path (M2 import report). */
-export interface TemplateImportResult {
+/** Return type of workflow.import_path (bulk import report). */
+export interface WorkflowImportResult {
   ok: boolean
   imported: number
   failed: number
-  results: TemplateImportEntry[]
+  results: WorkflowImportEntry[]
 }
 
 /** One per-descriptor entry of the tool.import_pack report. */
@@ -424,11 +464,22 @@ export interface RunSummary {
   run_id: string
   task_id: string
   /**
-   * Saved task definition this run belongs to (`task.execute`); `null` for
-   * template / inline / CLI runs. Records written before the task entity was
-   * added project it as `null` rather than absent.
+   * Display name of the saved task definition this run belongs to
+   * (`task.execute`); `null` for saved-workflow / inline / CLI runs. Records
+   * written before the task entity was added project it as `null` rather than
+   * absent.
    */
   task_name?: string | null
+  /**
+   * Storage id of that task definition.  Unlike `task_name` it survives a
+   * rename, so it is what artifact cleanup and "rerun this task" match on.
+   */
+  task_def_id?: string | null
+  /**
+   * Storage id of the saved workflow that ran (`wf-…`); `null` for an inline
+   * definition or a bare `.json` file.  `workflow_name` stays the display name.
+   */
+  workflow_id?: string | null
   workflow_name: string
   source: string
   started_at: string | null
@@ -489,7 +540,7 @@ export interface HistoryConfigResult {
 // ---- Workflow execution / validation ----
 
 /**
- * The wire shape returned by workflow.execute and template.execute (and
+ * The wire shape returned by workflow.execute (and
  * mirrored into the history record). WP2 added `run_dir`.
  */
 export interface WorkflowRunResult {
@@ -535,11 +586,12 @@ export interface ApiMethodMap {
   'output.clear': { params: Record<string, never>; result: ClearResult }
   'tasks.clear': { params: Record<string, never>; result: ClearResult }
   'logs.clear': { params: Record<string, never>; result: ClearResult }
-  'storage.clear': { params: { target?: 'all' | 'tasks' | 'output' | 'logs' | 'templates' | 'task_defs' | 'history' | 'runs' | 'registry'; include_managed?: boolean }; result: ClearResult }
+  'storage.clear': { params: { target?: 'all' | 'tasks' | 'output' | 'logs' | 'workflows' | 'task_defs' | 'history' | 'runs' | 'registry'; include_managed?: boolean }; result: ClearResult }
 
   // --- tool_handler.py ---
   'tool.version': { params: { tool_name: string }; result: { version: string } }
   'tool.get_tools': { params: { tool_name?: string; refresh?: boolean }; result: ToolDetail | Record<string, ToolStatusEntry> }
+  'tool.list': { params: Record<string, never>; result: ToolListResult }
   'tool.set_search_mode': { params: { system_search?: boolean }; result: { system_search: boolean } }
   'tool.set_custom_path': { params: { tool_name: string; path: string }; result: Record<string, unknown> }
   'tool.reset_custom_path': { params: { tool_name: string }; result: Record<string, unknown> }
@@ -558,21 +610,22 @@ export interface ApiMethodMap {
 
   // --- task_def_handler.py (task DEFINITIONS: workflow + saved inputs) ---
   'task.list': { params: Record<string, never>; result: TaskDefinitionListResult }
-  'task.get': { params: { name: string }; result: TaskGetResult }
-  'task.save': { params: { name: string; workflow: string; inputs?: Record<string, unknown>; work_dir?: string; description?: string }; result: TaskSaveResult }
-  'task.delete': { params: { name: string }; result: TaskDeleteResult }
-  'task.execute': { params: { name: string; inputs?: Record<string, unknown>; task_id?: string; work_dir?: string }; result: WorkflowRunResult }
+  'task.get': { params: { id?: string; name?: string }; result: TaskGetResult }
+  'task.save': { params: { id?: string; name: string; workflow_id?: string; workflow?: string; inputs?: Record<string, unknown>; work_dir?: string; description?: string }; result: TaskSaveResult }
+  'task.delete': { params: { id?: string; name?: string }; result: TaskDeleteResult }
+  'task.execute': { params: { id?: string; name?: string; inputs?: Record<string, unknown>; task_id?: string; work_dir?: string }; result: WorkflowRunResult }
 
   // --- log_handler.py ---
   'logs.tail': { params: { lines?: number }; result: LogTailResult }
 
-  // --- template_handler.py ---
-  'template.save': { params: { name: string; definition: Record<string, unknown>; description?: string; tags?: string[] }; result: { saved: boolean; name: string } }
-  'template.load': { params: { name: string }; result: TemplateLoadResult }
-  'template.list': { params: Record<string, never>; result: TemplateListResult }
-  'template.delete': { params: { name: string }; result: { deleted: boolean; name: string } }
-  'template.import_path': { params: { path: string }; result: TemplateImportResult }
-  'template.execute': { params: { name: string; inputs?: Record<string, unknown>; task_id?: string; work_dir?: string }; result: WorkflowRunResult }
+  // --- workflow_handler.py (the whole workflow domain) ---
+  'workflow.execute': { params: { id?: string; name?: string; definition?: Record<string, unknown>; path?: string; inputs?: Record<string, unknown>; task_id?: string; work_dir?: string }; result: WorkflowRunResult }
+  'workflow.validate': { params: { definition?: Record<string, unknown>; id?: string; name?: string }; result: WorkflowValidateResult }
+  'workflow.save': { params: { id?: string; name: string; definition: Record<string, unknown>; description?: string; tags?: string[] }; result: WorkflowSaveResult }
+  'workflow.load': { params: { id?: string; name?: string }; result: WorkflowLoadResult }
+  'workflow.list': { params: Record<string, never>; result: WorkflowListResult }
+  'workflow.delete': { params: { id?: string; name?: string }; result: WorkflowDeleteResult }
+  'workflow.import_path': { params: { path: string }; result: WorkflowImportResult }
 
   // --- env_handler.py ---
   'env.list': { params: Record<string, never>; result: EnvListResult }
@@ -588,12 +641,6 @@ export interface ApiMethodMap {
   'history.clear': { params: Record<string, never>; result: { cleared: number } }
   'history.get_config': { params: Record<string, never>; result: HistoryConfigResult }
   'history.set_config': { params: { enabled?: boolean; max_runs?: number; max_bytes?: number }; result: HistoryConfigResult }
-
-  // --- workflow_handler.py ---
-  'workflow.execute': { params: { definition?: Record<string, unknown>; path?: string; inputs?: Record<string, unknown>; task_id?: string; work_dir?: string }; result: WorkflowRunResult }
-  'workflow.validate': { params: { definition: Record<string, unknown> }; result: WorkflowValidateResult }
-  'workflow.list_tools': { params: Record<string, never>; result: ToolListResult }
-  'workflow.list_envs': { params: Record<string, never>; result: EnvListResult }
 
   // --- plugin_handler.py ---
   'plugin.list': { params: Record<string, never>; result: PluginListResult }

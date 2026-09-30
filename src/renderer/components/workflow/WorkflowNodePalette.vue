@@ -130,10 +130,10 @@ async function loadTools() {
   loading.value = true
   error.value = ''
   try {
-    // workflow.list_tools returns { tools: [...] } — descriptor/code tools
+    // tool.list returns { tools: [...] } — descriptor/code tools
     // from ToolManager plus the builtin workflow primitives (ports + builtin
     // flag are only present for builtins).
-    const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('workflow.list_tools', {})
+    const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('tool.list', {})
     tools.value = Array.isArray(result?.tools) ? result.tools : []
   } catch (err) {
     log.error('Failed to load workflow tools:', err)

@@ -1,13 +1,13 @@
 /**
  * One-shot workflow run with terminal-state resolution.
  *
- * The engine's `@streaming` handlers (`workflow.execute` / `template.execute`)
- * resolve the invoke on the FIRST streamed event, so awaiting the call only
- * proves the run started. The terminal outcome arrives on the shared
- * `stream-event` channel instead — correlated by the `task_id` the caller
- * passes (api_handler stamps it onto every event; the event's own
- * `workflow_id` is the definition name and its `run_id` is the JSON-RPC
- * request id, which the renderer cannot know in advance).
+ * The engine's `@streaming` handler (`workflow.execute`) resolves the invoke on
+ * the FIRST streamed event, so awaiting the call only proves the run started.
+ * The terminal outcome arrives on the shared `stream-event` channel instead —
+ * correlated by the `task_id` the caller passes (api_handler stamps it onto
+ * every event; the event's own `workflow_id` is the storage id, `workflow_name`
+ * the display name, and its `run_id` is the JSON-RPC request id, which the
+ * renderer cannot know in advance).
  *
  * Used by the workflow list's 「试运行」 and (later) the task page. The editor
  * keeps its own handler because it also maps per-node statuses.
@@ -28,12 +28,18 @@ export interface RunOutcome {
 
 const TERMINAL_TYPES = new Set(['workflow_completed', 'workflow_failed', 'workflow_cancelled'])
 
-/** Which backend method starts a run. */
-export type RunMethod = 'workflow.execute' | 'template.execute'
+/**
+ * Which backend method starts a run.
+ *
+ * There is only one now: `workflow.execute` runs a saved workflow (`{id}` /
+ * `{name}`) or an inline/file definition (`{definition}` / `{path}`), so the
+ * renderer no longer has to know which of two near-identical methods to call.
+ */
+export type RunMethod = 'workflow.execute'
 
 export interface StartRunOptions {
   method: RunMethod
-  /** Exactly the params the method takes (definition/name + inputs). */
+  /** Exactly the params the method takes (id/name or definition/path + inputs). */
   params: Record<string, unknown>
 }
 
@@ -103,7 +109,7 @@ export function useWorkflowRun() {
   async function start(options: StartRunOptions): Promise<RunOutcome | null> {
     if (isRunning.value) return null
     // 「跟随系统」的节点在引擎里靠这个参数拿到默认行为；两条运行路径
-    // （workflow.execute / template.execute）都在这里统一注入，避免各调用点各写一份。
+    // （workflow.execute）都在这里统一注入，避免各调用点各写一份。
     const params = await withNodeDefaults(options.params)
     const api = window.electronAPI
     if (!api || typeof api.onStreamEvent !== 'function') {

@@ -3,14 +3,14 @@
 """
 Task-definition CRUD + execute IPC handlers.
 
-A **task definition** is a saved workflow name plus the input values to run it
-with (see :mod:`app.task.store`) — the object the renderer's task pages and the
+A **task definition** is a saved workflow plus the input values to run it with
+(see :mod:`app.task.store`) — the object the renderer's task pages and the
 headless CLI's ``run --task`` both operate on.  Exposed over the existing
 ``call-backend-api`` JSON-RPC channel (no new IPC channels); the module-level
 ``API_MAP`` is auto-discovered by :class:`app.api_handler.ApiHandler`:
 
 - ``task.list``     every stored task definition, plus ``workflow_exists``;
-- ``task.get``      one task definition by name;
+- ``task.get``      one task definition by id or name;
 - ``task.save``     create/overwrite a task definition (the bound workflow must
   exist, so a task can always be executed right after it is saved);
 - ``task.delete``   remove one task definition, together with the run artifacts
@@ -22,18 +22,25 @@ headless CLI's ``run --task`` both operate on.  Exposed over the existing
 (see :mod:`app.handlers.task_handler`).  The remaining ``task.*`` keys that take
 a ``task_id`` (``task.read_log`` / ``task.append_log`` / ``task.delete_task_dir``
 / ``task.delete_output``) are keyed by a **run identity**, not by a task
-definition name — they are deliberately left untouched here.
+definition — they are deliberately left untouched here.
 
-Execution semantics (mirrors ``template.execute``):
+Identity:
+    A task definition carries an auto-generated ``tk-…`` id (its file name) and
+    a free-form display name; both ``task.get`` / ``task.delete`` /
+    ``task.execute`` accept ``id`` or ``name``.  The workflow it runs is bound
+    by ``workflow_id`` (stable across renames), with the saved ``workflow``
+    display name as a fallback for tasks written before ids existed.
 
-- the definition comes from the template store by the task's ``workflow`` name,
-  so editing the workflow keeps every task on the current graph;
+Execution semantics (mirrors the saved-workflow path of ``workflow.execute``):
+
+- the definition comes from the workflow store by the task's bound id, so
+  editing the workflow keeps every task on the current graph;
 - inputs are merged shallowly — saved values are the defaults, values passed to
   ``task.execute`` override them (the saved task is never rewritten by a run);
 - the working directory is ``work_dir`` from the request, else the task's saved
-  ``work_dir``, else the workflow's own directory;
-- the run is recorded with ``task_name`` so run history can be filtered per
-  task, while ``source`` stays the workflow name.
+  ``work_dir``, else the run's artifact directory;
+- the run is recorded with ``task_name`` / ``task_def_id`` so run history can be
+  filtered per task, while ``source`` stays the workflow name.
 """
 
 import os
@@ -42,79 +49,146 @@ from app.common.decorators import logs_errors, streaming
 from app.common.exceptions import ToolException
 from app.handlers.task_handler import handle_delete_output
 from app.history import store as history_store
-from app.task.store import FileTaskStore, TaskNotFoundError
-from app.template.store import FileTemplateStore, TemplateNotFoundError
+from app.task.store import (
+    AmbiguousTaskNameError,
+    FileTaskStore,
+    TaskDefinitionInfo,
+    TaskNotFoundError,
+)
 from app.utils.logger import Logger
 from app.workflow.runner import run_workflow
 from app.workflow.rundir import runs_root, safe_slug
+from app.workflow.store import (
+    AmbiguousWorkflowNameError,
+    FileWorkflowStore,
+    WorkflowNotFoundError,
+)
 
 logger = Logger.get_logger("TaskDefHandler")
 
 #: Process-wide stores, created lazily (keeps module import free of filesystem
 #: side effects and lets tests point both at a ``tmp_path``).
 _task_store = None
-_template_store = None
+_workflow_store = None
+
+#: Whether the one-time ``workflow_id`` backfill already ran in this process.
+_backfilled = False
 
 
 def _get_task_store() -> FileTaskStore:
-    """Return the process-wide :class:`FileTaskStore`, creating it lazily."""
-    global _task_store
+    """Return the process-wide :class:`FileTaskStore`, creating it lazily.
+
+    Construction also migrates pre-id task files to ``tk-…`` names and — once
+    per process — backfills ``workflow_id`` on tasks that only bound their
+    workflow by display name, so those bindings survive a workflow rename too.
+    """
+    global _task_store, _backfilled
     if _task_store is None:
         _task_store = FileTaskStore()
+    if not _backfilled:
+        _backfilled = True
+        try:
+            _task_store.backfill_workflow_ids(_resolve_workflow_name)
+        except Exception:  # never let a one-time backfill break a request
+            logger.warning("workflow_id backfill failed", exc_info=True)
     return _task_store
 
 
-def _get_template_store() -> FileTemplateStore:
-    """Return the template store used to resolve/execute a task's workflow.
+def _get_workflow_store() -> FileWorkflowStore:
+    """Return the workflow store used to resolve/execute a task's workflow.
 
-    A separate instance from ``app.handlers.template_handler._store`` — both
-    resolve the same directory (``BT_TEMPLATES_DIR`` → ``<output>/templates``)
+    A separate instance from ``app.handlers.workflow_handler._store`` — both
+    resolve the same directory (``BT_WORKFLOWS_DIR`` → ``<output>/workflows``)
     and the store holds no state beyond that path.
     """
-    global _template_store
-    if _template_store is None:
-        _template_store = FileTemplateStore()
-    return _template_store
+    global _workflow_store
+    if _workflow_store is None:
+        _workflow_store = FileWorkflowStore()
+    return _workflow_store
 
 
-def _require_name(params: dict) -> str:
-    name = params.get("name")
-    if not isinstance(name, str) or not name:
-        raise ToolException("Missing 'name' field")
-    return name
+def _resolve_workflow_name(name: str):
+    """Map a workflow display name to its id (``None`` when unknown)."""
+    return _get_workflow_store().find_id_by_name(name)
 
 
-def _workflow_exists(workflow: str) -> bool:
-    """Whether *workflow* is a stored template name.
+def _resolve_task_id(params: dict, *, required: bool = True) -> str:
+    """Resolve the ``id``/``name`` params to a stored task id.
 
-    Raises:
-        ToolException: the name could never be a template name (path
-            separators / ``..``), which the template store rejects outright.
+    ``id`` wins over ``name``.  Raises :class:`ToolException` when neither is
+    given (and *required*), when nothing matches, or when a name matches
+    several tasks.
     """
+    task_id = params.get("id")
+    ref = task_id or params.get("name")
+    if not ref:
+        if required:
+            raise ToolException("Missing 'id' or 'name' field")
+        return ""
     try:
-        return _get_template_store().exists(workflow)
-    except ValueError as exc:
-        raise ToolException(f"invalid workflow name: {workflow!r}") from exc
+        resolved = _get_task_store().resolve(ref)
+    except AmbiguousTaskNameError as exc:
+        raise ToolException(str(exc)) from exc
+    if resolved is None:
+        raise ToolException(f"task not found: {ref}")
+    return resolved
+
+
+def _workflow_status(info: TaskDefinitionInfo):
+    """Return ``(exists, display_name)`` for the workflow a task binds.
+
+    The binding is ``workflow_id`` when the task has one (stable across
+    renames); otherwise the saved display name is resolved, which is how tasks
+    written before ids existed keep working.  A workflow that cannot be read
+    (deleted, or a corrupt file) reports ``exists=False`` rather than raising,
+    so one broken binding cannot break the whole task list.
+    """
+    ref = info.workflow_id or info.workflow
+    if not ref:
+        return False, info.workflow
+    try:
+        definition, metadata = _get_workflow_store().load_with_meta(ref)
+    except (
+        WorkflowNotFoundError,
+        AmbiguousWorkflowNameError,
+        ValueError,
+        OSError,
+    ):
+        return False, info.workflow
+    return True, (metadata.get("name") or definition.name or info.workflow)
+
+
+def _serialize(info: TaskDefinitionInfo) -> dict:
+    """Wire shape for one task definition, with the live workflow name filled in.
+
+    The storage id is added here rather than in
+    :meth:`TaskDefinitionInfo.to_dict` (which is also the on-disk shape): the
+    id is the file name, so writing it into the file would be redundant.
+    """
+    exists, workflow_name = _workflow_status(info)
+    payload = {"id": info.id, **info.to_dict()}
+    payload["workflow"] = workflow_name
+    payload["workflow_exists"] = exists
+    return payload
 
 
 @logs_errors("TaskDefHandler")
 def task_list(params, stream_handler):
-    """Return every stored task definition (sorted by name).
+    """Return every stored task definition (sorted by display name).
 
     Returns:
-        ``{"tasks": [{name, workflow, workflow_exists, inputs, input_count,
-        has_work_dir, description, created_at, updated_at}, ...]}``.  ``inputs``
-        is included so a list UI can show a summary and run a task without a
-        second round-trip; ``workflow_exists = false`` marks a task whose bound
-        workflow was renamed or deleted (the task is kept, never dropped).
+        ``{"tasks": [{id, name, workflow, workflow_id, workflow_exists, inputs,
+        input_count, has_work_dir, description, created_at, updated_at}, ...]}``.
+        ``inputs`` is included so a list UI can show a summary and run a task
+        without a second round-trip; ``workflow_exists = false`` marks a task
+        whose bound workflow was deleted (the task is kept, never dropped).
     """
     task_store = _get_task_store()
     tasks = []
     for info in task_store.list():
         tasks.append(
             {
-                **info.to_dict(),
-                "workflow_exists": _workflow_exists(info.workflow),
+                **_serialize(info),
                 "input_count": len(info.inputs),
                 "has_work_dir": bool(info.work_dir),
             }
@@ -127,25 +201,24 @@ def task_get(params, stream_handler):
     """Return one task definition.
 
     Params:
-        name: task name.
+        id: task id (preferred).
+        name: task display name (fallback).
 
     Returns:
         ``{"task": {...}, "workflow_exists": <bool>}``.
 
     Raises:
-        ToolException: the name is missing, unknown, or the file is invalid.
+        ToolException: the reference is missing, unknown, or the file is invalid.
     """
-    name = _require_name(params)
+    task_id = _resolve_task_id(params)
     try:
-        info = _get_task_store().load(name)
+        info = _get_task_store().load(task_id)
     except TaskNotFoundError as exc:
-        raise ToolException(f"task not found: {name}") from exc
+        raise ToolException(f"task not found: {task_id}") from exc
     except ValueError as exc:
         raise ToolException(str(exc)) from exc
-    return {
-        "task": info.to_dict(),
-        "workflow_exists": _workflow_exists(info.workflow),
-    }
+    payload = _serialize(info)
+    return {"task": payload, "workflow_exists": payload["workflow_exists"]}
 
 
 @logs_errors("TaskDefHandler")
@@ -153,23 +226,25 @@ def task_save(params, stream_handler):
     """Create or overwrite a task definition.
 
     Params:
-        name: task name (must be path-safe).
-        workflow: name of a SAVED template to run (must exist).
+        id: optional task id to overwrite; omitted means "create a new task".
+        name: task display name (free-form; may repeat).
+        workflow_id: id of a SAVED workflow to run (preferred binding).
+        workflow: display name of a SAVED workflow (fallback binding; resolved
+            to its id when it matches exactly one workflow).
         inputs: optional object of input values, stored as given.
-        work_dir: optional working directory (``""`` = workflow's own dir).
+        work_dir: optional working directory (``""`` = the run's artifact dir).
         description: optional human-facing one-liner.
 
     Returns:
-        ``{"saved": True, "name": <name>}``.
+        ``{"saved": True, "id": <id>, "name": <name>}``.
 
     Raises:
-        ToolException: missing/blank ``workflow``, unknown workflow, non-object
-            ``inputs``, or an unsafe task name.
+        ToolException: missing/blank name, missing or unknown workflow binding,
+            non-object ``inputs``, or an ambiguous workflow name.
     """
-    name = _require_name(params)
-    workflow = params.get("workflow")
-    if not isinstance(workflow, str) or not workflow.strip():
-        raise ToolException("Missing 'workflow' field")
+    name = params.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ToolException("Missing 'name' field")
 
     inputs = params.get("inputs")
     if inputs is not None and not isinstance(inputs, dict):
@@ -178,20 +253,53 @@ def task_save(params, stream_handler):
     work_dir = params.get("work_dir") or ""
     description = params.get("description") or ""
 
-    if not _workflow_exists(workflow):
-        raise ToolException(f"workflow not found: {workflow}")
+    workflow_store = _get_workflow_store()
+    workflow_id = params.get("workflow_id")
+    workflow_name = ""
+    if workflow_id:
+        try:
+            definition, metadata = workflow_store.load_with_meta(workflow_id)
+        except WorkflowNotFoundError as exc:
+            raise ToolException(f"workflow not found: {workflow_id}") from exc
+        except (AmbiguousWorkflowNameError, ValueError) as exc:
+            raise ToolException(f"workflow {workflow_id!r}: {exc}") from exc
+        workflow_name = metadata.get("name") or definition.name
+    else:
+        workflow = params.get("workflow")
+        if not isinstance(workflow, str) or not workflow.strip():
+            raise ToolException("Missing 'workflow_id' or 'workflow' field")
+        try:
+            definition, metadata = workflow_store.load_with_meta(workflow)
+        except WorkflowNotFoundError as exc:
+            raise ToolException(f"workflow not found: {workflow}") from exc
+        except AmbiguousWorkflowNameError as exc:
+            raise ToolException(str(exc)) from exc
+        except ValueError as exc:
+            raise ToolException(f"workflow {workflow!r}: {exc}") from exc
+        workflow_id = metadata.get("id") or None
+        workflow_name = metadata.get("name") or definition.name
 
     try:
-        _get_task_store().save(
-            name, workflow, inputs or {}, work_dir, description
+        info = _get_task_store().save(
+            name,
+            workflow_name,
+            inputs or {},
+            work_dir,
+            description,
+            workflow_id=workflow_id,
+            task_id=params.get("id") or None,
         )
     except ValueError as exc:
         raise ToolException(str(exc)) from exc
-    return {"saved": True, "name": name}
+    return {"saved": True, "id": info.id, "name": info.name}
 
 
-def _run_artifact_paths(task_name: str) -> list:
-    """Collect the artifact directories of every recorded run of *task_name*.
+def _run_artifact_paths(task_id: str, task_name: str) -> list:
+    """Collect the artifact directories of every recorded run of a task.
+
+    Records are matched on ``task_def_id`` (the task's storage id) so renaming
+    a task does not orphan the files it produced; records written before ids
+    existed carry no id and fall back to the ``task_name`` they stored.
 
     ``run_dir`` (``<output_dir>/runs/<run-id>``) is taken from the history
     summary when present; otherwise it is re-derived from the run id the same
@@ -205,7 +313,13 @@ def _run_artifact_paths(task_name: str) -> list:
 
     paths = []
     for record in records:
-        if not isinstance(record, dict) or record.get("task_name") != task_name:
+        if not isinstance(record, dict):
+            continue
+        record_id = record.get("task_def_id")
+        if record_id:
+            if record_id != task_id:
+                continue
+        elif record.get("task_name") != task_name:
             continue
         run_dir = record.get("run_dir")
         if isinstance(run_dir, str) and run_dir.strip():
@@ -217,8 +331,8 @@ def _run_artifact_paths(task_name: str) -> list:
     return paths
 
 
-def _purge_run_artifacts(task_name: str) -> int:
-    """Best-effort delete of *task_name*'s run artifacts; returns how many went.
+def _purge_run_artifacts(task_id: str, task_name: str) -> int:
+    """Best-effort delete of a task's run artifacts; returns how many went.
 
     Deleting a task therefore deletes the files it produced — the behavior the
     removed ``autoDeleteOutputOnTaskRemove`` setting used to (never actually)
@@ -230,7 +344,7 @@ def _purge_run_artifacts(task_name: str) -> int:
     caller).  Failures are logged, never raised: an undeletable folder must not
     leave the task definition behind.
     """
-    paths = _run_artifact_paths(task_name)
+    paths = _run_artifact_paths(task_id, task_name)
     if not paths:
         return 0
 
@@ -253,28 +367,33 @@ def task_delete(params, stream_handler):
     """Remove one task definition and the run artifacts it produced.
 
     Params:
-        name: task name.
+        id: task id (preferred).
+        name: task display name (fallback).
 
     Returns:
-        ``{"deleted": True, "name": <name>}``.
+        ``{"deleted": True, "id": <id>, "name": <name>}``.
 
     Raises:
-        ToolException: the name is missing, unknown, or unsafe.
+        ToolException: the reference is missing, unknown, or ambiguous.
 
     The task's run *records* are deliberately kept (history is pruned by its own
     retention policy and cleared from the run-records UI), but the artifacts
     those runs wrote under the output directory are removed along with the
     definition — deleting a task deletes its files by default.
     """
-    name = _require_name(params)
+    task_id = _resolve_task_id(params)
     try:
-        _get_task_store().delete(name)
+        info = _get_task_store().load(task_id)
     except TaskNotFoundError as exc:
-        raise ToolException(f"task not found: {name}") from exc
+        raise ToolException(f"task not found: {task_id}") from exc
     except ValueError as exc:
         raise ToolException(str(exc)) from exc
-    _purge_run_artifacts(name)
-    return {"deleted": True, "name": name}
+    try:
+        _get_task_store().delete(task_id)
+    except TaskNotFoundError as exc:
+        raise ToolException(f"task not found: {task_id}") from exc
+    _purge_run_artifacts(task_id, info.name)
+    return {"deleted": True, "id": info.id, "name": info.name}
 
 
 @streaming
@@ -287,38 +406,45 @@ def task_execute(params, stream_handler):
     ``stream-event``.
 
     Params:
-        name: task name to load and run.
+        id: task id to load and run (preferred).
+        name: task display name (fallback).
         inputs: optional per-run overrides, merged shallowly over the saved
             values (saved values act as defaults).
         task_id: optional run identifier, forwarded to tools and used as the
-            workflow_id on streamed events (NOT derived from the task name, so
+            run identity on streamed events (NOT derived from the task name, so
             the same task can run concurrently).
         work_dir: optional working directory override.
 
     Returns:
-        Same shape as ``workflow.execute``:
+        Same shape as the saved-workflow path of ``workflow.execute``:
         ``{"success", "status", "cancelled", "outputs", "node_results",
         "error", "run_dir"}``.
 
     Raises:
-        ToolException: unknown task, unknown/renamed bound workflow, non-object
+        ToolException: unknown task, unknown/deleted bound workflow, non-object
             ``inputs``.
     """
-    name = _require_name(params)
+    task_id_ref = _resolve_task_id(params)
     try:
-        info = _get_task_store().load(name)
+        info = _get_task_store().load(task_id_ref)
     except TaskNotFoundError as exc:
-        raise ToolException(f"task not found: {name}") from exc
+        raise ToolException(f"task not found: {task_id_ref}") from exc
     except ValueError as exc:
         raise ToolException(str(exc)) from exc
 
-    template_store = _get_template_store()
+    workflow_store = _get_workflow_store()
+    binding = info.workflow_id or info.workflow
     try:
-        definition = template_store.load(info.workflow)
-    except TemplateNotFoundError as exc:
+        definition, metadata = workflow_store.load_with_meta(binding)
+    except WorkflowNotFoundError as exc:
         raise ToolException(f"workflow not found: {info.workflow}") from exc
+    except AmbiguousWorkflowNameError as exc:
+        raise ToolException(str(exc)) from exc
     except ValueError as exc:
         raise ToolException(f"workflow {info.workflow!r}: {exc}") from exc
+
+    workflow_id = metadata.get("id") or info.workflow_id or ""
+    workflow_name = metadata.get("name") or info.workflow
 
     overrides = params.get("inputs")
     if overrides is not None and not isinstance(overrides, dict):
@@ -329,10 +455,12 @@ def task_execute(params, stream_handler):
     run_id = params.get("_run_id") or task_id
 
     # ``name`` in the run params is the WORKFLOW name: the history ``source``
-    # field keeps meaning "template name / file path / inline", and the task
-    # identity travels separately as ``task_name``.
+    # field keeps meaning "workflow name / file path / inline", and the task
+    # identity travels separately as ``task_name`` / ``task_def_id``.
+    # ``source_dir`` stays None so the run's working directory falls through to
+    # the per-run artifact directory instead of the workflow library.
     run_params = {
-        "name": info.workflow,
+        "name": workflow_name,
         "inputs": inputs,
         "work_dir": params.get("work_dir") or info.work_dir,
     }
@@ -342,8 +470,9 @@ def task_execute(params, stream_handler):
         stream_handler,
         task_id,
         run_id,
-        source_dir=getattr(template_store, "templates_dir", None),
         task_name=info.name,
+        task_def_id=info.id,
+        workflow_id=workflow_id,
     )
 
 

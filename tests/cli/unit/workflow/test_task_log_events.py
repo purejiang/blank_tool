@@ -190,7 +190,7 @@ class TestTeeWritesLifecycleTypes:
     @pytest.mark.parametrize("method_name,args", _LIFECYCLE_EMIT_ARGS)
     def test_lifecycle_type_writes_to_buffer(self, method_name, args):
         handler = WorkflowStreamHandler(
-            workflow_id="w1", callback=lambda e: None, task_log_id=TASK_ID
+            workflow_name="w1", callback=lambda e: None, task_log_id=TASK_ID
         )
         getattr(handler, method_name)(*args)
         lines = _buffer_lines()
@@ -205,7 +205,7 @@ class TestTeeSilentWhenTaskLogIdNone:
 
     def test_no_task_log_id_no_buffer_write(self):
         handler = WorkflowStreamHandler(
-            workflow_id="w1", callback=lambda e: None
+            workflow_name="w1", callback=lambda e: None
         )
         before = len(_buffer_lines())
         handler.emit_node_started("n1", "file.read")
@@ -222,7 +222,7 @@ class TestTeeWithCallbackNone:
 
     def test_tee_writes_with_callback_none(self):
         handler = WorkflowStreamHandler(
-            workflow_id="w1", callback=None, task_log_id=TASK_ID
+            workflow_name="w1", callback=None, task_log_id=TASK_ID
         )
         before_count = len(_buffer_lines())
         handler.emit_node_started("n1", "file.read")
@@ -246,7 +246,7 @@ class TestTeeAndCallbackAgree:
     def test_log_line_matches_callback_event(self):
         events = []
         handler = WorkflowStreamHandler(
-            workflow_id="sub1",
+            workflow_name="sub1",
             callback=events.append,
             task_log_id="sub1",
         )
@@ -267,7 +267,7 @@ class TestTeeAndCallbackAgree:
     def test_workflow_level_events_render_normally(self):
         events = []
         handler = WorkflowStreamHandler(
-            workflow_id="sub1",
+            workflow_name="sub1",
             callback=events.append,
             task_log_id="sub1",
         )
@@ -294,7 +294,7 @@ class TestCallbackEventDictUnchanged:
     def test_callback_event_not_mutated(self):
         events = []
         handler = WorkflowStreamHandler(
-            workflow_id="sub1",
+            workflow_name="sub1",
             callback=events.append,
             task_log_id="sub1",
         )
@@ -310,7 +310,7 @@ class TestCallbackEventDictUnchanged:
         """
         events = []
         handler = WorkflowStreamHandler(
-            workflow_id="wf",
+            workflow_name="wf",
             callback=events.append,
             run_id="run-9",
             task_log_id="wf",
@@ -325,14 +325,16 @@ class TestCallbackEventDictUnchanged:
         assert events[0] == {
             "type": NODE_STARTED,
             "run_id": "run-9",
-            "workflow_id": "wf",
+            "workflow_id": "",
+            "workflow_name": "wf",
             "node_id": "n1",
             "tool": "file.read",
         }
         assert events[1] == {
             "type": NODE_COMPLETED,
             "run_id": "run-9",
-            "workflow_id": "wf",
+            "workflow_id": "",
+            "workflow_name": "wf",
             "node_id": "n1",
             "status": "ok",
             "duration_ms": 100,
@@ -347,7 +349,7 @@ class TestCallbackEventDictUnchanged:
 
 def test_exact_node_started_line_in_buffer():
     handler = WorkflowStreamHandler(
-        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+        workflow_name=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_node_started("read", "file.read")
     assert any(l.endswith("[node_started] read (file.read)") for l in _buffer_lines())
@@ -355,7 +357,7 @@ def test_exact_node_started_line_in_buffer():
 
 def test_exact_node_completed_line_in_buffer():
     handler = WorkflowStreamHandler(
-        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+        workflow_name=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_node_completed("read", "ok", 123)
     assert any(
@@ -365,7 +367,7 @@ def test_exact_node_completed_line_in_buffer():
 
 def test_exact_node_failed_line_in_buffer():
     handler = WorkflowStreamHandler(
-        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+        workflow_name=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_node_completed("read", "failed", 5, error="ZOG")
     assert any(
@@ -376,7 +378,7 @@ def test_exact_node_failed_line_in_buffer():
 
 def test_exact_workflow_completed_line_in_buffer():
     handler = WorkflowStreamHandler(
-        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+        workflow_name=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_workflow_completed(False)
     assert any(
@@ -386,7 +388,7 @@ def test_exact_workflow_completed_line_in_buffer():
 
 def test_exact_workflow_failed_line_in_buffer():
     handler = WorkflowStreamHandler(
-        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+        workflow_name=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_workflow_failed("final error")
     assert any(l.endswith("[workflow_failed] final error") for l in _buffer_lines())
@@ -394,7 +396,7 @@ def test_exact_workflow_failed_line_in_buffer():
 
 def test_exact_workflow_cancelled_line_in_buffer():
     handler = WorkflowStreamHandler(
-        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+        workflow_name=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_workflow_cancelled()
     assert any(l.endswith("[workflow_cancelled]") for l in _buffer_lines())
@@ -403,7 +405,7 @@ def test_exact_workflow_cancelled_line_in_buffer():
 def test_buffer_lines_carry_a_time_prefix():
     """Every tee'd line starts with ``[HH:MM:SS] `` — the panel parses it."""
     handler = WorkflowStreamHandler(
-        workflow_id=TASK_ID, callback=None, task_log_id=TASK_ID
+        workflow_name=TASK_ID, callback=None, task_log_id=TASK_ID
     )
     handler.emit_node_started("read", "file.read")
     handler.emit_workflow_completed(True)

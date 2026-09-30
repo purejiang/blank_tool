@@ -7,7 +7,7 @@ value as a node output:
 2. ``DescriptorTool._execute_operation`` copies the bound value of every
    ``direction=output`` input port into the returned outputs dict (so
    downstream ``$nodes.<id>.outputs.<name>`` references resolve).
-3. ``workflow_handler._operations_payload`` mirrors direction=output input
+3. ``tool_handler._operations_payload`` mirrors direction=output input
    ports into the ``outputs`` array (deduped by name) so the workflow
    editor renders them as declared outputs without the descriptor author
    redeclaring them on the outputs side.
@@ -219,15 +219,15 @@ def test_execute_operation_skips_missing_output_direction_input():
 
 
 # ---------------------------------------------------------------------------
-# workflow_handler._operations_payload mirrors direction=output inputs
+# tool_handler._operations_payload mirrors direction=output inputs
 # ---------------------------------------------------------------------------
 
 
 def test_operations_payload_mirrors_output_direction_inputs_to_outputs():
-    """``workflow.list_tools`` should expose direction=output input ports
+    """``tool.list`` should expose direction=output input ports
     on the outputs side too, so the editor renders them as declared
     outputs without forcing the descriptor author to redeclare them."""
-    from app.handlers.workflow_handler import _operations_payload
+    from app.handlers.tool_handler import _operations_payload
 
     tool = _make_tool()
     payload = _operations_payload(tool)
@@ -246,7 +246,7 @@ def test_operations_payload_mirrors_output_direction_inputs_to_outputs():
 def test_operations_payload_dedupes_when_input_output_share_a_name():
     """If the descriptor already declares a same-named output port, the
     mirror must not duplicate it."""
-    from app.handlers.workflow_handler import _operations_payload
+    from app.handlers.tool_handler import _operations_payload
 
     # Operation declares out_path on BOTH inputs (direction=output) and outputs.
     op = Operation(

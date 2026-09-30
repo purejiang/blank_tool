@@ -229,6 +229,8 @@ interface RunRow {
   status: RunStatusKey
   workflow: string
   taskName: string | null
+  /** 任务的存储 id（比名字稳定：改名/重名都不影响复跑与筛选）。 */
+  taskDefId: string | null
   source: string
   startedAt: string | null
   durationMs: number | null
@@ -252,6 +254,7 @@ const merged = computed<RunRow[]>(() => {
       status: item.cancelled ? 'cancelled' : 'running',
       workflow: '',
       taskName: null,
+      taskDefId: null,
       source: '',
       startedAt: item.started_at ? new Date(item.started_at * 1000).toISOString() : null,
       durationMs: null,
@@ -270,6 +273,7 @@ const merged = computed<RunRow[]>(() => {
       status: runStatusOf(record),
       workflow: record.workflow_name ?? '',
       taskName: record.task_name ?? null,
+      taskDefId: record.task_def_id ?? null,
       source: record.source ?? '',
       startedAt: record.started_at ?? null,
       durationMs: typeof record.duration_ms === 'number' ? record.duration_ms : null,
@@ -287,11 +291,16 @@ const merged = computed<RunRow[]>(() => {
 })
 
 const taskOptions = computed(() => {
-  const names = new Set<string>()
+  // 下拉的 value 用任务 id（记录里带 task_def_id），名字只做标签：两条同名任务
+  // 在筛选表里必须能区分，改名后旧记录也仍然归到同一个任务下。
+  const options = new Map<string, string>()
   for (const row of merged.value) {
-    if (row.taskName) names.add(row.taskName)
+    if (!row.taskName) continue
+    options.set(row.taskDefId || row.taskName, row.taskName)
   }
-  return [...names].sort().map((name) => ({ label: name, value: name }))
+  return [...options.entries()]
+    .map(([value, label]) => ({ label, value }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 })
 
 const statusOptions = computed(() => [
@@ -305,10 +314,12 @@ const statusOptions = computed(() => [
 const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
   return merged.value.filter((row) => {
-    if (taskFilter.value && row.taskName !== taskFilter.value) return false
+    if (taskFilter.value && row.taskDefId !== taskFilter.value && row.taskName !== taskFilter.value) {
+      return false
+    }
     if (statusFilter.value !== 'all' && row.status !== statusFilter.value) return false
     if (!needle) return true
-    return [row.workflow, row.source, row.taskName ?? '', row.runId]
+    return [row.workflow, row.source, row.taskName ?? '', row.taskDefId ?? '', row.runId]
       .some((field) => String(field).toLowerCase().includes(needle))
   })
 })
@@ -328,15 +339,21 @@ async function cancel(row: RunRow) {
   }
 }
 
-/** 有 task_name → 用任务当前保存的入参复跑；否则用记录快照复跑。 */
+/**
+ * 有任务绑定 → 用任务**当前**保存的入参复跑；否则用记录快照复跑。
+ *
+ * 两者都优先用存储 id：任务/工作流改名后名字会对不上，id 不会；而老记录里没有
+ * id 字段，于是回退到当时存下的名字。
+ */
 async function rerun(row: RunRow) {
   busyKey.value = row.key
   try {
     // 「跟随系统」的节点用设置里的默认行为（见 nodeDefaults.ts）
     const defaults = await nodeDefaultsParams()
-    if (row.taskName) {
+    const taskRef = row.taskDefId || row.taskName
+    if (taskRef) {
       await unifiedApi.call('task.execute', {
-        name: row.taskName,
+        ...(row.taskDefId ? { id: row.taskDefId } : { name: row.taskName }),
         task_id: `rerun-${Date.now().toString(36)}`,
         ...defaults,
       })
@@ -344,9 +361,10 @@ async function rerun(row: RunRow) {
       const full = await unifiedApi.call<{ run: RunRecord }>('history.get', { run_id: row.runId })
       const record = full?.run
       if (!record) throw new Error(t('tasks.detail.notFound'))
-      if (!record.workflow_name) throw new Error(t('tasks.runs.cannotRerun'))
-      await unifiedApi.call('template.execute', {
-        name: record.workflow_name,
+      const workflowRef = record.workflow_id || record.workflow_name
+      if (!workflowRef) throw new Error(t('tasks.runs.cannotRerun'))
+      await unifiedApi.call('workflow.execute', {
+        ...(record.workflow_id ? { id: record.workflow_id } : { name: record.workflow_name }),
         inputs: record.inputs ?? {},
         task_id: `rerun-${Date.now().toString(36)}`,
         ...defaults,

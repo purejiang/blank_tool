@@ -14,7 +14,11 @@
     :style="{ width: '460px' }"
     :mask-closable="true"
   >
-    <WorkflowInfoPanel :meta="draft" @update:meta="draft = $event" />
+    <WorkflowInfoPanel
+      :meta="draft"
+      :workflow-id="workflowId"
+      @update:meta="draft = $event"
+    />
     <div class="we-info-summary">
       {{
         t('workflow.editor.dock.workflowSummary', {
@@ -45,6 +49,8 @@ import type { WorkflowMeta } from './serializer'
 const props = defineProps<{
   show: boolean
   meta: WorkflowMeta
+  /** 已保存工作流的 id；新建（尚未保存）时传空串，面板里那一行就不显示。 */
+  workflowId?: string
   /** 真实节点数 / 真实连线数（不含画布端点），只作只读摘要。 */
   nodeCount?: number
   edgeCount?: number

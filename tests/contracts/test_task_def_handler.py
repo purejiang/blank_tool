@@ -7,7 +7,7 @@ file.write -> file.read workflow through the engine, so these tests also prove
 the save -> execute roundtrip against the real tool stack, plus that the run is
 recorded in history with ``task_name`` (and ``source`` still the workflow name).
 
-Each test gets isolated ``FileTaskStore`` / ``FileTemplateStore`` instances
+Each test gets isolated ``FileTaskStore`` / ``FileWorkflowStore`` instances
 injected into the handler's module singletons, plus a temp output dir for run
 history, so no test touches real user data.
 """
@@ -28,23 +28,28 @@ from app.handlers.task_def_handler import (
     task_save,
 )
 from app.history import store as history_store
+from app.ids import TASK_ID_RE
 from app.task.store import FileTaskStore, TaskNotFoundError
-from app.template.store import FileTemplateStore
+from app.workflow.store import FileWorkflowStore
 
 TASK_METHODS = {"task.list", "task.get", "task.save", "task.delete", "task.execute"}
 
 
 @pytest.fixture(autouse=True)
 def isolated_stores(tmp_path, monkeypatch):
-    """Isolate the task store, template store and run-history dir per test."""
+    """Isolate the task store, workflow store and run-history dir per test."""
     monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path / "output"))
     monkeypatch.setenv("BT_SERVER_CONFIG", str(tmp_path / "no-server-config.json"))
 
     tdh._task_store = FileTaskStore(task_defs_dir=str(tmp_path / "task_defs"))
-    tdh._template_store = FileTemplateStore(templates_dir=str(tmp_path / "templates"))
+    tdh._workflow_store = FileWorkflowStore(workflows_dir=str(tmp_path / "workflows"))
+    # The workflow_id backfill runs once per process; reset it so each test's
+    # freshly injected store gets its own pass.
+    tdh._backfilled = False
     yield
     tdh._task_store = None
-    tdh._template_store = None
+    tdh._workflow_store = None
+    tdh._backfilled = False
 
 
 def _definition(name="wf", message="hello-contract"):
@@ -72,16 +77,18 @@ def _definition(name="wf", message="hello-contract"):
     }
 
 
-def _save_template(name="wf", message="hello-contract"):
-    """Store a workflow template through the template handler's own API."""
-    from app.handlers import template_handler as th
+def _save_workflow(name="wf", message="hello-contract"):
+    """Store a workflow through the workflow handler's own API."""
+    from app.handlers import workflow_handler as wh
 
-    previous = th._store
-    th._store = tdh._get_template_store()
+    previous = wh._store
+    wh._store = tdh._get_workflow_store()
     try:
-        th.handle_save({"name": name, "definition": _definition(name, message)}, None)
+        return wh.handle_save(
+            {"name": name, "definition": _definition(name, message)}, None
+        )
     finally:
-        th._store = previous
+        wh._store = previous
 
 
 # ---------------------------------------------------------------------------
@@ -105,9 +112,9 @@ def test_task_list_does_not_shadow_the_in_flight_run_listing():
 # ---------------------------------------------------------------------------
 
 def test_save_and_list_roundtrip():
-    _save_template("wf-a")
+    _save_workflow("wf-a")
 
-    assert task_save(
+    saved = task_save(
         {
             "name": "nightly",
             "workflow": "wf-a",
@@ -116,14 +123,20 @@ def test_save_and_list_roundtrip():
             "description": "desc",
         },
         None,
-    ) == {"saved": True, "name": "nightly"}
+    )
+    assert saved["saved"] is True
+    assert saved["name"] == "nightly"
+    assert TASK_ID_RE.match(saved["id"])
 
     payload = task_list({}, None)
     assert len(payload["tasks"]) == 1
     entry = payload["tasks"][0]
+    assert entry["id"] == saved["id"]
     assert entry["name"] == "nightly"
     assert entry["workflow"] == "wf-a"
     assert entry["workflow_exists"] is True
+    # The binding is by workflow id, with the name kept as the fallback label.
+    assert entry["workflow_id"] == tdh._get_workflow_store().find_id_by_name("wf-a")
     assert entry["inputs"] == {"message": "saved"}
     assert entry["input_count"] == 1
     assert entry["has_work_dir"] is True
@@ -140,7 +153,7 @@ def test_save_and_list_roundtrip():
 def test_list_is_sorted_by_name_and_empty_by_default():
     assert task_list({}, None) == {"tasks": []}
 
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     task_save({"name": "zeta", "workflow": "wf-a"}, None)
     task_save({"name": "alpha", "workflow": "wf-a"}, None)
 
@@ -148,9 +161,9 @@ def test_list_is_sorted_by_name_and_empty_by_default():
 
 
 def test_list_marks_a_task_whose_workflow_was_deleted():
-    _save_template("wf-gone")
+    _save_workflow("wf-gone")
     task_save({"name": "orphan", "workflow": "wf-gone"}, None)
-    tdh._get_template_store().delete("wf-gone")
+    tdh._get_workflow_store().delete("wf-gone")
 
     entry = task_list({}, None)["tasks"][0]
     assert entry["workflow_exists"] is False
@@ -158,7 +171,7 @@ def test_list_marks_a_task_whose_workflow_was_deleted():
 
 
 def test_has_work_dir_is_false_without_one():
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     task_save({"name": "plain", "workflow": "wf-a"}, None)
 
     entry = task_list({}, None)["tasks"][0]
@@ -168,16 +181,23 @@ def test_has_work_dir_is_false_without_one():
 
 
 def test_save_overwrites_and_keeps_created_at():
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     first = task_save({"name": "t", "workflow": "wf-a", "inputs": {"message": "1"}}, None)
     created = task_list({}, None)["tasks"][0]["created_at"]
 
-    task_save({"name": "t", "workflow": "wf-a", "inputs": {"message": "2"}}, None)
+    # Saving the SAME task means passing its id: the display name is data now,
+    # so a name-only save would create a second task instead of overwriting.
+    task_save(
+        {"id": first["id"], "name": "t", "workflow": "wf-a", "inputs": {"message": "2"}},
+        None,
+    )
 
-    entry = task_list({}, None)["tasks"][0]
+    tasks = task_list({}, None)["tasks"]
+    assert len(tasks) == 1
+    entry = tasks[0]
     assert entry["created_at"] == created
     assert entry["inputs"] == {"message": "2"}
-    assert first == {"saved": True, "name": "t"}
+    assert first["saved"] is True and first["name"] == "t"
 
 
 def test_save_requires_an_existing_workflow():
@@ -185,32 +205,41 @@ def test_save_requires_an_existing_workflow():
         task_save({"name": "t", "workflow": "ghost"}, None)
 
 
-def test_save_rejects_an_unsafe_workflow_name():
-    with pytest.raises(ToolException, match="invalid workflow name"):
+def test_save_rejects_an_unknown_workflow_id():
+    with pytest.raises(ToolException, match="workflow not found: wf-000000000000"):
+        task_save({"name": "t", "workflow_id": "wf-000000000000"}, None)
+
+
+def test_save_with_a_path_like_workflow_name_finds_nothing():
+    """A name is never treated as a path: it simply resolves to no workflow."""
+    with pytest.raises(ToolException, match="workflow not found"):
         task_save({"name": "t", "workflow": "../escape"}, None)
 
 
 def test_save_requires_a_workflow_field():
     for params in ({"name": "t"}, {"name": "t", "workflow": ""}, {"name": "t", "workflow": "  "}):
-        with pytest.raises(ToolException, match="Missing 'workflow' field"):
+        with pytest.raises(ToolException, match="Missing 'workflow_id' or 'workflow' field"):
             task_save(params, None)
 
 
 def test_save_requires_an_object_for_inputs():
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     with pytest.raises(ToolException, match="'inputs' must be an object"):
         task_save({"name": "t", "workflow": "wf-a", "inputs": ["not", "a", "dict"]}, None)
 
 
-def test_save_rejects_unsafe_task_names():
-    _save_template("wf-a")
-    with pytest.raises(ToolException, match="invalid characters"):
-        task_save({"name": "../escape", "workflow": "wf-a"}, None)
+def test_free_form_task_names_are_accepted():
+    """The task name is data now, not a file name."""
+    _save_workflow("wf-a")
+    saved = task_save({"name": "../中文 任务/名", "workflow": "wf-a"}, None)
+
+    assert saved["name"] == "../中文 任务/名"
+    assert task_get({"id": saved["id"]}, None)["task"]["name"] == "../中文 任务/名"
 
 
 def test_missing_name_is_a_contract_error():
     for handler in (task_get, task_delete, task_execute):
-        with pytest.raises(ToolException, match="Missing 'name' field"):
+        with pytest.raises(ToolException, match="Missing 'id' or 'name' field"):
             handler({}, None)
     with pytest.raises(ToolException, match="Missing 'name' field"):
         task_save({"workflow": "wf-a"}, None)
@@ -226,10 +255,11 @@ def test_get_unknown_task_raises():
 # ---------------------------------------------------------------------------
 
 def test_delete_removes_the_task():
-    _save_template("wf-a")
-    task_save({"name": "t", "workflow": "wf-a"}, None)
+    _save_workflow("wf-a")
+    saved = task_save({"name": "t", "workflow": "wf-a"}, None)
 
-    assert task_delete({"name": "t"}, None) == {"deleted": True, "name": "t"}
+    result = task_delete({"name": "t"}, None)
+    assert result == {"deleted": True, "id": saved["id"], "name": "t"}
     assert task_list({}, None) == {"tasks": []}
 
 
@@ -240,7 +270,7 @@ def test_delete_unknown_task_raises():
 
 def test_delete_leaves_run_records_alone(tmp_path):
     """Deleting a task must not touch the runs it produced."""
-    _save_template("wf-a", "keep-history")
+    _save_workflow("wf-a", "keep-history")
     task_save({"name": "t", "workflow": "wf-a", "inputs": {"message": "keep"}}, None)
     task_execute({"name": "t", "task_id": "tdh-del-1", "work_dir": str(tmp_path)}, None)
     assert len(history_store.list_runs()) == 1
@@ -256,7 +286,7 @@ def test_delete_removes_the_run_artifacts(tmp_path):
     This is the behavior the removed ``autoDeleteOutputOnTaskRemove`` setting
     used to (never actually) toggle: deleting a task deletes its files.
     """
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     task_save({"name": "t", "workflow": "wf-a", "inputs": {"message": "x"}}, None)
     task_execute({"name": "t", "task_id": "tdh-art-1", "work_dir": str(tmp_path)}, None)
 
@@ -273,8 +303,8 @@ def test_delete_removes_the_run_artifacts(tmp_path):
 
 
 def test_delete_only_purges_its_own_artifacts(tmp_path):
-    """The purge is keyed by ``task_name`` — a sibling task's files survive."""
-    _save_template("wf-a")
+    """The purge is keyed by the task's id — a sibling task's files survive."""
+    _save_workflow("wf-a")
     task_save({"name": "t1", "workflow": "wf-a", "inputs": {"message": "x"}}, None)
     task_save({"name": "t2", "workflow": "wf-a", "inputs": {"message": "y"}}, None)
     task_execute({"name": "t1", "task_id": "tdh-own-1", "work_dir": str(tmp_path)}, None)
@@ -282,6 +312,7 @@ def test_delete_only_purges_its_own_artifacts(tmp_path):
 
     run_dirs = {r["task_name"]: r["run_dir"] for r in history_store.list_runs()}
     assert set(run_dirs) == {"t1", "t2"}
+    assert all(r.get("task_def_id") for r in history_store.list_runs())
 
     task_delete({"name": "t1"}, None)
 
@@ -289,12 +320,31 @@ def test_delete_only_purges_its_own_artifacts(tmp_path):
     assert os.path.isdir(run_dirs["t2"])
 
 
+def test_delete_purges_artifacts_of_a_renamed_task(tmp_path):
+    """Renaming a task must not orphan the files its earlier runs produced.
+
+    The purge matches on ``task_def_id``; a name-keyed purge would silently
+    stop finding these artifacts the moment the task was renamed.
+    """
+    _save_workflow("wf-a")
+    saved = task_save({"name": "before", "workflow": "wf-a", "inputs": {"message": "x"}}, None)
+    task_execute({"id": saved["id"], "task_id": "tdh-rename-1", "work_dir": str(tmp_path)}, None)
+    run_dir = history_store.list_runs()[0]["run_dir"]
+    assert os.path.isdir(run_dir)
+
+    # Rename the task, keeping its id.
+    task_save({"id": saved["id"], "name": "after", "workflow": "wf-a"}, None)
+    task_delete({"id": saved["id"]}, None)
+
+    assert not os.path.exists(run_dir)
+
+
 # ---------------------------------------------------------------------------
 # task.execute
 # ---------------------------------------------------------------------------
 
 def test_execute_runs_the_bound_workflow_with_saved_inputs(tmp_path):
-    _save_template("wf-a", "saved-message")
+    _save_workflow("wf-a", "saved-message")
     task_save(
         {"name": "t", "workflow": "wf-a", "inputs": {"message": "from-task"}}, None
     )
@@ -314,7 +364,7 @@ def test_execute_runs_the_bound_workflow_with_saved_inputs(tmp_path):
 
 
 def test_execute_request_inputs_override_saved_values(tmp_path):
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     task_save(
         {"name": "t", "workflow": "wf-a", "inputs": {"message": "saved"}}, None
     )
@@ -335,7 +385,7 @@ def test_execute_request_inputs_override_saved_values(tmp_path):
 
 def test_execute_does_not_rewrite_the_saved_inputs(tmp_path):
     """A run is not a save: the stored task keeps its own values."""
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     task_save({"name": "t", "workflow": "wf-a", "inputs": {"message": "saved"}}, None)
 
     task_execute(
@@ -354,12 +404,14 @@ def test_execute_does_not_rewrite_the_saved_inputs(tmp_path):
 def test_execute_uses_the_saved_work_dir_when_none_is_passed(tmp_path):
     work_dir = tmp_path / "task-work"
     work_dir.mkdir()
-    _save_template("wf-a")
-    task_save(
+    _save_workflow("wf-a")
+    saved = task_save(
         {"name": "t", "workflow": "wf-a", "inputs": {"message": "wd"}}, None
     )
     # A directory chosen after the save, to prove the saved value is used.
-    tdh._get_task_store().save("t", "wf-a", {"message": "wd"}, str(work_dir))
+    tdh._get_task_store().save(
+        "t", "wf-a", {"message": "wd"}, str(work_dir), task_id=saved["id"]
+    )
 
     task_execute({"name": "t", "task_id": "tdh-exec-4"}, None)
 
@@ -367,8 +419,8 @@ def test_execute_uses_the_saved_work_dir_when_none_is_passed(tmp_path):
 
 
 def test_execute_records_the_task_and_the_workflow_in_history(tmp_path):
-    _save_template("wf-history", "hist-message")
-    task_save(
+    saved_workflow = _save_workflow("wf-history", "hist-message")
+    saved_task = task_save(
         {"name": "nightly", "workflow": "wf-history", "inputs": {"message": "h"}}, None
     )
 
@@ -379,10 +431,13 @@ def test_execute_records_the_task_and_the_workflow_in_history(tmp_path):
     runs = history_store.list_runs()
     assert len(runs) == 1
     summary = runs[0]
-    # The task identity travels as task_name; source stays the WORKFLOW name.
+    # The task identity travels as task_name / task_def_id; source stays the
+    # WORKFLOW name, and workflow_id is the saved workflow's storage id.
     assert summary["task_name"] == "nightly"
+    assert summary["task_def_id"] == saved_task["id"]
     assert summary["source"] == "wf-history"
     assert summary["workflow_name"] == "wf-history"
+    assert summary["workflow_id"] == saved_workflow["id"]
     assert summary["task_id"] == "tdh-exec-5"
 
     full = history_store.get_run(summary["run_id"])
@@ -391,12 +446,12 @@ def test_execute_records_the_task_and_the_workflow_in_history(tmp_path):
 
 def test_execute_is_retryable_after_a_failed_run(tmp_path):
     """A failing node must not corrupt the task or block the next run."""
-    from app.handlers import template_handler as th
+    from app.handlers import workflow_handler as wh
 
-    previous = th._store
-    th._store = tdh._get_template_store()
+    previous = wh._store
+    wh._store = tdh._get_workflow_store()
     try:
-        th.handle_save(
+        wh.handle_save(
             {
                 "name": "wf-failing",
                 "definition": {
@@ -413,7 +468,7 @@ def test_execute_is_retryable_after_a_failed_run(tmp_path):
             None,
         )
     finally:
-        th._store = previous
+        wh._store = previous
     task_save({"name": "t", "workflow": "wf-failing"}, None)
 
     result = task_execute(
@@ -431,16 +486,16 @@ def test_execute_unknown_task_raises():
 
 
 def test_execute_with_a_deleted_workflow_raises(tmp_path):
-    _save_template("wf-gone")
+    _save_workflow("wf-gone")
     task_save({"name": "t", "workflow": "wf-gone"}, None)
-    tdh._get_template_store().delete("wf-gone")
+    tdh._get_workflow_store().delete("wf-gone")
 
     with pytest.raises(ToolException, match="workflow not found: wf-gone"):
         task_execute({"name": "t", "task_id": "tdh-exec-6"}, None)
 
 
 def test_execute_rejects_non_object_inputs(tmp_path):
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     task_save({"name": "t", "workflow": "wf-a"}, None)
 
     with pytest.raises(ToolException, match="'inputs' must be an object"):
@@ -448,7 +503,7 @@ def test_execute_rejects_non_object_inputs(tmp_path):
 
 
 def test_execute_reports_a_corrupt_task_file(tmp_path):
-    _save_template("wf-a")
+    _save_workflow("wf-a")
     (tmp_path / "task_defs" / "broken.json").write_text("{not json", encoding="utf-8")
 
     with pytest.raises(ToolException, match="invalid JSON"):

@@ -49,7 +49,7 @@
     <div class="te-workflow">
       <label class="te-label">{{ t('tasks.editor.workflow') }} <span class="te-req">*</span></label>
       <n-select
-        v-model:value="form.workflow"
+        v-model:value="form.workflowId"
         size="small"
         filterable
         class="te-workflow-select"
@@ -61,17 +61,17 @@
       <span v-if="workflowDescription" class="te-workflow-desc" :title="workflowDescription">
         {{ workflowDescription }}
       </span>
-      <n-button size="small" quaternary :disabled="!form.workflow" @click="openWorkflow">
+      <n-button size="small" quaternary :disabled="!form.workflowId" @click="openWorkflow">
         {{ t('tasks.editor.openWorkflow') }}
       </n-button>
     </div>
 
     <AppNotice v-if="workflowMissing" tone="warning">
-      {{ t('tasks.editor.workflowMissingHint', { workflow: form.workflow }) }}
+      {{ t('tasks.editor.workflowMissingHint', { workflow: workflowNames[form.workflowId] || form.workflowId }) }}
     </AppNotice>
 
     <!-- 入参表单：两列网格，路径 / JSON 整行 -->
-    <div v-if="!form.workflow" class="te-placeholder">{{ t('tasks.editor.pickWorkflowFirst') }}</div>
+    <div v-if="!form.workflowId" class="te-placeholder">{{ t('tasks.editor.pickWorkflowFirst') }}</div>
     <div v-else-if="loadingDefinition" class="te-placeholder">{{ t('tasks.editor.loadingDefinition') }}</div>
     <div v-else-if="ports.length === 0" class="te-placeholder">{{ t('tasks.editor.noInputs') }}</div>
     <div v-else class="te-fields">
@@ -117,7 +117,7 @@
       </div>
       <div class="te-footer-actions">
         <n-button size="small" :disabled="saving" @click="goBack">
-          {{ t('workflow.editor.template.cancel') }}
+          {{ t('workflow.editor.actions.cancel') }}
         </n-button>
         <n-button size="small" :disabled="saving || workflowMissing" :loading="saving" @click="save(false)">
           {{ t('tasks.editor.save') }}
@@ -166,19 +166,30 @@ const router = useRouter()
 const dialog = useDialog()
 const { showSuccess, showError } = useNotification()
 
-const nameFromRoute = computed(() =>
-  typeof route.params.name === 'string' && route.params.name ? decodeURIComponent(route.params.name) : '',
+/**
+ * 路由上的 ref：任务 id（新）或任务名（历史链接，后端仍能按名字解析）。
+ * 空 = 新建。
+ */
+const refFromRoute = computed(() =>
+  typeof route.params.ref === 'string' && route.params.ref ? decodeURIComponent(route.params.ref) : '',
 )
-const isNew = computed(() => !nameFromRoute.value)
+const isNew = computed(() => !refFromRoute.value)
 
-const form = reactive({ name: '', description: '', workflow: '', work_dir: '' })
+/** 与后端 `app.ids` 的形状判断保持一致。 */
+const TASK_ID_RE = /^tk-[0-9a-f]{12}$/
+
+/** 当前任务 id；空串 = 还没保存过（新建）。 */
+const taskId = ref('')
+
+const form = reactive({ name: '', description: '', workflowId: '', work_dir: '' })
 const inputs = reactive<Record<string, any>>({})
 const ports = ref<PortJSON[]>([])
 const workflowOptions = ref<Array<{ label: string; value: string }>>([])
+const workflowNames = ref<Record<string, string>>({})
 const workflowDescriptions = ref<Record<string, string>>({})
 const workflowMissing = ref(false)
-/** 上一次成功装载过定义的工作流，用于「取消改绑」时回退选择器。 */
-const appliedWorkflow = ref('')
+/** 上一次成功装载过定义的工作流 id，用于「取消改绑」时回退选择器。 */
+const appliedWorkflowId = ref('')
 
 const loadingDefinition = ref(false)
 const saving = ref(false)
@@ -186,7 +197,7 @@ const savingAndRunning = ref(false)
 const nameError = ref<string | null>(null)
 const fieldErrors = reactive<Record<string, string>>({})
 
-const workflowDescription = computed(() => workflowDescriptions.value[form.workflow] ?? '')
+const workflowDescription = computed(() => workflowDescriptions.value[form.workflowId] ?? '')
 
 function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -197,32 +208,36 @@ function errMsg(error: unknown): string {
 async function loadWorkflows() {
   try {
     const result = await unifiedApi.call<{
-      templates?: Array<{ name: string; description: string; node_count: number }>
-    }>('template.list', {})
-    const templates = Array.isArray(result?.templates) ? result.templates : []
-    workflowOptions.value = templates.map((template) => ({
-      label: `${template.name} · ${t('workflows.card.nodes', { count: template.node_count })}`,
-      value: template.name,
+      workflows?: Array<{ id: string; name: string; description: string; node_count: number }>
+    }>('workflow.list', {})
+    const workflows = Array.isArray(result?.workflows) ? result.workflows : []
+    // 选择器的 value 是工作流 **id**：显示名可以重复，按名字绑定会指错工作流。
+    workflowOptions.value = workflows.map((workflow) => ({
+      label: `${workflow.name} · ${t('workflows.card.nodes', { count: workflow.node_count })}`,
+      value: workflow.id,
     }))
+    workflowNames.value = Object.fromEntries(
+      workflows.map((workflow) => [workflow.id, workflow.name]),
+    )
     workflowDescriptions.value = Object.fromEntries(
-      templates.map((template) => [template.name, template.description ?? '']),
+      workflows.map((workflow) => [workflow.id, workflow.description ?? '']),
     )
   } catch (error) {
-    log.error('[TaskEditorPage] template.list failed:', error)
+    log.error('[TaskEditorPage] workflow.list failed:', error)
     workflowOptions.value = []
   }
 }
 
 /** 按工作流定义重建入参表单；按端口名保留已有值（docs/08 §3-S3.2 改绑口径）。 */
-async function loadDefinition(workflow: string) {
-  if (!workflow) {
+async function loadDefinition(workflowId: string) {
+  if (!workflowId) {
     ports.value = []
     return
   }
   loadingDefinition.value = true
   try {
-    const result = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('template.load', {
-      name: workflow,
+    const result = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('workflow.load', {
+      id: workflowId,
     })
     const declared = Array.isArray(result?.definition?.inputs) ? result.definition!.inputs! : []
     ports.value = declared.filter(
@@ -235,7 +250,7 @@ async function loadDefinition(workflow: string) {
       }
     }
   } catch (error) {
-    log.error(`[TaskEditorPage] template.load “${workflow}” failed:`, error)
+    log.error(`[TaskEditorPage] workflow.load “${workflowId}” failed:`, error)
     ports.value = []
     showError(t('workflows.loadFailed', { error: errMsg(error) }))
   } finally {
@@ -254,7 +269,7 @@ function onWorkflowChange(next: string) {
   const apply = async () => {
     workflowMissing.value = false
     await loadDefinition(next)
-    appliedWorkflow.value = next
+    appliedWorkflowId.value = next
   }
   if (staleFilled.length === 0) {
     void apply()
@@ -271,13 +286,13 @@ function onWorkflowChange(next: string) {
     },
     onNegativeClick: () => {
       // 取消改绑：把选择器退回上一个已生效的工作流
-      form.workflow = appliedWorkflow.value
+      form.workflowId = appliedWorkflowId.value
     },
   })
 }
 
 function openWorkflow() {
-  if (form.workflow) void router.push(`/workflows/editor/${encodeURIComponent(form.workflow)}`)
+  if (form.workflowId) void router.push(`/workflows/editor/${encodeURIComponent(form.workflowId)}`)
 }
 
 // ---- 端口辅助 ---------------------------------------------------------------
@@ -315,22 +330,29 @@ async function browseWorkDir() {
 
 // ---- 装载 / 保存 -------------------------------------------------------------
 
-async function loadTask(name: string) {
+async function loadTask(ref: string) {
   try {
-    const result = await unifiedApi.call<TaskGetResult>('task.get', { name })
+    // id 优先、名字兜底：历史链接里的任务名仍然能打开。
+    const params = TASK_ID_RE.test(ref) ? { id: ref } : { name: ref }
+    const result = await unifiedApi.call<TaskGetResult>('task.get', params)
     const task = result?.task
     if (!task) throw new Error(t('tasks.detail.notFound'))
+    taskId.value = task.id ?? ''
     form.name = task.name
     form.description = task.description ?? ''
-    form.workflow = task.workflow ?? ''
+    form.workflowId = task.workflow_id ?? ''
     form.work_dir = task.work_dir ?? ''
     workflowMissing.value = result.workflow_exists === false
+    // 绑定失联（工作流被删）或老任务只存了名字时，选择器仍要能显示它的当前名。
+    if (form.workflowId && task.workflow) {
+      workflowNames.value[form.workflowId] = task.workflow
+    }
     for (const key of Object.keys(inputs)) delete inputs[key]
     Object.assign(inputs, task.inputs ?? {})
-    await loadDefinition(form.workflow)
-    appliedWorkflow.value = form.workflow
+    await loadDefinition(form.workflowId)
+    appliedWorkflowId.value = form.workflowId
   } catch (error) {
-    log.error(`[TaskEditorPage] task.get “${name}” failed:`, error)
+    log.error(`[TaskEditorPage] task.get “${ref}” failed:`, error)
     showError(t('tasks.loadFailed', { error: errMsg(error) }))
   }
 }
@@ -338,8 +360,8 @@ async function loadTask(name: string) {
 onMounted(async () => {
   await loadWorkflows()
 
-  if (nameFromRoute.value) {
-    await loadTask(nameFromRoute.value)
+  if (refFromRoute.value) {
+    await loadTask(refFromRoute.value)
     return
   }
 
@@ -347,7 +369,7 @@ onMounted(async () => {
   const queryWorkflow = typeof route.query.workflow === 'string' ? route.query.workflow : ''
   const queryInputs = typeof route.query.inputs === 'string' ? route.query.inputs : ''
   if (queryWorkflow) {
-    form.workflow = queryWorkflow
+    form.workflowId = queryWorkflow
     if (queryInputs) {
       try {
         const parsed = JSON.parse(queryInputs)
@@ -356,16 +378,17 @@ onMounted(async () => {
         log.warn('[TaskEditorPage] could not parse prefilled inputs')
       }
     }
-    await loadDefinition(form.workflow)
-    appliedWorkflow.value = form.workflow
+    await loadDefinition(form.workflowId)
+    appliedWorkflowId.value = form.workflowId
   }
 })
 
+/**
+ * 任务名不再是文件名、也不再是身份（id 才是），所以这里只要求"非空"。
+ */
 function validateName(): string | null {
   const name = form.name.trim()
   if (!name) return t('tasks.editor.nameRequired')
-  // 路径安全：无分隔符、无 ..
-  if (/[\\/]/.test(name) || name.includes('..')) return t('tasks.editor.nameInvalid')
   return null
 }
 
@@ -398,18 +421,22 @@ async function save(thenRun: boolean) {
   saving.value = true
   savingAndRunning.value = thenRun
   try {
-    await unifiedApi.call('task.save', {
+    const saved = await unifiedApi.call<{ id?: string }>('task.save', {
+      // 带上 id = 覆盖这一个任务；不带 = 新建（后端随后分配 id）。
+      id: taskId.value || undefined,
       name: form.name.trim(),
-      workflow: form.workflow,
+      workflow_id: form.workflowId,
       // `inputs` 是 reactive：多选端口读出来的是数组代理，拍平成纯 JSON 再落盘
       // （否则 contextBridge 会抛 "An object could not be cloned."）。
       inputs: toJsonPayload(payload),
       work_dir: form.work_dir.trim() || undefined,
       description: form.description.trim() || undefined,
     })
+    if (saved?.id) taskId.value = saved.id
+    const runRef = { id: taskId.value || undefined, name: form.name.trim() }
     if (thenRun) {
       await unifiedApi.call('task.execute', {
-        name: form.name.trim(),
+        ...runRef,
         task_id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         // 「跟随系统」的节点用设置里的默认行为（见 nodeDefaults.ts）
         ...(await nodeDefaultsParams()),
@@ -438,7 +465,8 @@ function removeTask() {
     negativeText: t('common.cancel'),
     onPositiveClick: async () => {
       try {
-        await unifiedApi.call('task.delete', { name })
+        // 按 id 删：名字可以重复，按名字删可能删掉同名的那一个。
+        await unifiedApi.call('task.delete', taskId.value ? { id: taskId.value } : { name })
         await router.push('/tasks')
       } catch (error) {
         showError(t('tasks.deleteFailed', { error: errMsg(error) }))
@@ -451,9 +479,9 @@ function goBack() {
   void router.push('/tasks')
 }
 
-// 直接改 URL 的 name 时重新装载（二级页复用同一组件实例）
-watch(nameFromRoute, (name) => {
-  if (name) void loadTask(name)
+// 直接改 URL 的 ref 时重新装载（二级页复用同一组件实例）
+watch(refFromRoute, (ref) => {
+  if (ref) void loadTask(ref)
 })
 </script>
 

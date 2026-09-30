@@ -241,7 +241,7 @@ const toolName = computed<string>(() => {
 })
 
 // ---- tool metadata (operation mode) ------------------------------------
-// The panel fetches workflow.list_tools itself so it stays self-contained (no
+// The panel fetches tool.list itself so it stays self-contained (no
 // parent prop); on failure it degrades to the legacy free-form params UI.
 
 const toolList = ref<WorkflowToolInfo[]>([])
@@ -251,10 +251,10 @@ async function fetchToolList() {
   if (toolsFetched) return
   toolsFetched = true
   try {
-    const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('workflow.list_tools', {})
+    const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('tool.list', {})
     toolList.value = Array.isArray(result?.tools) ? result.tools : []
   } catch (err) {
-    log.warn('[NodeConfigPanel] workflow.list_tools unavailable; operation mode disabled', err)
+    log.warn('[NodeConfigPanel] tool.list unavailable; operation mode disabled', err)
   }
 }
 

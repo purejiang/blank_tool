@@ -33,16 +33,16 @@
 
 | 卡片元素 | 来源 |
 |---|---|
-| 名称 / 版本 / 操作数 / 描述 / `ports` / `operations` | `workflow.list_tools` |
-| 来源徽章 内置（`kind = shipped-native`）/ 插件（`native`）/ 已导入（`descriptor`） | `workflow.list_tools` 的 `kind` |
-| 状态徽章 可用 / 不可用 | `workflow.list_tools` 的 `is_valid`（或 `tool.get_tools` 的 `status`） |
+| 名称 / 版本 / 操作数 / 描述 / `ports` / `operations` | `tool.list` |
+| 来源徽章 内置（`kind = shipped-native`）/ 插件（`native`）/ 已导入（`descriptor`） | `tool.list` 的 `kind` |
+| 状态徽章 可用 / 不可用 | `tool.list` 的 `is_valid`（或 `tool.get_tools` 的 `status`） |
 | 实际路径 | `tool.get_tools` 的 `path`（`refresh: true` 可重新探测）/ `tool_path` |
-| **环境依赖徽章** | `workflow.list_tools[].env_deps`（**只有描述符工具返回**，字符串数组如 `["java"]`）**join** `env.list[]`（按 `name` 匹配，取 `display_name` + `is_valid`）——`is_valid` 为真 → 绿「已检测」，假 → 橙「未配置」 |
+| **环境依赖徽章** | `tool.list[].env_deps`（**只有描述符工具返回**，字符串数组如 `["java"]`）**join** `env.list[]`（按 `name` 匹配，取 `display_name` + `is_valid`）——`is_valid` 为真 → 绿「已检测」，假 → 橙「未配置」 |
 
 ## 边界
 
-- **`env_deps` 只有描述符工具有**：内置工具（`file.read` / `shell.exec` / `exec.code` …）当前的 `workflow.list_tools` 与 `tool.get_tools` 都**不返回**该字段（缺口 #18）。所以"这张卡片为什么不显示依赖"有两种情况：真的没声明（描述符里 `env_deps: []`）与后端不返回（内置/插件工具）——**界面都表现为"不显示"，不要用占位文字解释**。
-- `tool.get_tools` 的**列表分支不返回 `env_deps`**，只有单工具分支返回；卡片上的依赖一律用 `workflow.list_tools` 的字段，不要依赖列表分支。
+- **`env_deps` 只有描述符工具有**：内置工具（`file.read` / `shell.exec` / `exec.code` …）当前的 `tool.list` 与 `tool.get_tools` 都**不返回**该字段（缺口 #18）。所以"这张卡片为什么不显示依赖"有两种情况：真的没声明（描述符里 `env_deps: []`）与后端不返回（内置/插件工具）——**界面都表现为"不显示"，不要用占位文字解释**。
+- `tool.get_tools` 的**列表分支不返回 `env_deps`**，只有单工具分支返回；卡片上的依赖一律用 `tool.list` 的字段，不要依赖列表分支。
 - `tool.add` / `tool.delete` / `tool.import_pack` 失败时后端**抛错**（error envelope → 渲染层 `BackendError`），不是 `{"error": ...}` 成功 payload（缺口 #7 已修）；坏路径 / 压缩包根目录没有描述符同样走异常路径。
 - **导入只吃压缩包**（2026-09-29 决策）：`selectFile`（filter `zip`）→ `tool.import_pack`；描述符必须在 zip **根目录**，脚本可放子目录（导入时按包目录解析并拷进 overlay）。后端还认目录与单个 `*.json`（CLI `import-pack` 在用），界面不暴露。
 - 详情展开：`ports.inputs` / `ports.outputs`（类型、必填、`options`、`direction: "output"` 的产物端口）、每个 `operations[]`（名称、描述、inputs、outputs）。

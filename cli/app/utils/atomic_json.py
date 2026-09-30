@@ -4,7 +4,7 @@
 Atomic JSON writes (temp file + ``os.replace``).
 
 Shared by the stores that persist user data as one JSON document per file
-(``app.template.store`` for saved workflows, ``app.task.store`` for task
+(``app.workflow.store`` for saved workflows, ``app.task.store`` for task
 definitions).  A reader either sees the previous complete file or the new
 one — never a truncated prefix; without this, a save racing a concurrent
 load makes the reader fail with "invalid JSON".

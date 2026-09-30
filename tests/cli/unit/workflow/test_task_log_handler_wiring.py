@@ -1,9 +1,9 @@
-"""T2 tests: handler wiring — workflow.execute + template.execute pass task_log_id.
+"""T2 tests: handler wiring — workflow.execute passes task_log_id.
 
 Covers:
-  - workflow.execute with task_id: buffer gains lifecycle lines; callback
-    receives events (tee is additive, not stealing).
-  - template.execute with task_id: same dual-assertion via saved template.
+  - workflow.execute with an inline definition + task_id: buffer gains
+    lifecycle lines; callback receives events (tee is additive, not stealing).
+  - workflow.execute on a SAVED workflow + task_id: same dual-assertion.
   - workflow.execute WITHOUT task_id: no buffer key created; execution
     succeeds (logging must never break execution).
   - Monkeypatched BT_TASKS_DIR to tmp_path so cleanup_task_log flushes
@@ -14,7 +14,7 @@ import os
 
 import pytest
 
-from app.template.store import FileTemplateStore
+from app.workflow.store import FileWorkflowStore
 from app.utils.task_log_writer import _per_task_buffers, cleanup_task_log
 from app.workflow.definition import WorkflowDefinition
 
@@ -23,7 +23,6 @@ from app.workflow.definition import WorkflowDefinition
 # ---------------------------------------------------------------------------
 
 import app.handlers.workflow_handler as wh
-import app.handlers.template_handler as th
 
 
 # ---------------------------------------------------------------------------
@@ -44,16 +43,16 @@ def _monkeypatch_tasks_dir(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def _monkeypatch_templates_dir(monkeypatch, tmp_path):
-    """Redirect template store to a temp dir."""
-    templates_dir = tmp_path / "templates"
-    os.makedirs(templates_dir, exist_ok=True)
-    monkeypatch.setenv("BT_TEMPLATES_DIR", str(templates_dir))
-    # Reset the template_handler module's store singleton so it picks up the
+def _monkeypatch_workflows_dir(monkeypatch, tmp_path):
+    """Redirect the workflow store to a temp dir."""
+    workflows_dir = tmp_path / "workflows"
+    os.makedirs(workflows_dir, exist_ok=True)
+    monkeypatch.setenv("BT_WORKFLOWS_DIR", str(workflows_dir))
+    # Reset the workflow_handler module's store singleton so it picks up the
     # monkeypatched env var.
-    th._store = None
+    wh._store = None
     yield
-    th._store = None
+    wh._store = None
 
 
 # ---------------------------------------------------------------------------
@@ -151,28 +150,28 @@ def test_workflow_execute_with_task_id_does_not_steal_callback_events():
 
 
 # ===================================================================
-# template.execute — with task_id
+# workflow.execute on a saved workflow — with task_id
 # ===================================================================
 
 
-def _save_minimal_template(store: FileTemplateStore, name: str):
-    """Save a minimal flow.assert(true) template into *store*."""
-    definition = WorkflowDefinition.from_dict(_MINIMAL_DEFINITION)
-    store.save(name, definition, {"description": "minimal test template", "tags": []})
+def _save_minimal_workflow(store: FileWorkflowStore, name: str):
+    """Save a minimal flow.assert(true) workflow into *store* under *name*."""
+    definition = WorkflowDefinition.from_dict({**_MINIMAL_DEFINITION, "name": name})
+    store.save(definition, {"description": "minimal test workflow", "tags": []})
 
 
-def test_template_execute_with_task_id_buffers_lifecycle_events():
-    """Given: a saved minimal template + template.execute with task_id.
+def test_saved_workflow_execute_with_task_id_buffers_lifecycle_events():
+    """Given: a saved minimal workflow + workflow.execute with task_id.
     When: called with a capture-list stream handler.
     Then: _per_task_buffers["tmpl1"] contains [node_started] and
           [workflow_completed] success=True.
     """
-    store = FileTemplateStore()  # uses monkeypatched BT_TEMPLATES_DIR
-    th._store = store
-    _save_minimal_template(store, "minimal_assert")
+    store = FileWorkflowStore()  # uses monkeypatched BT_WORKFLOWS_DIR
+    wh._store = store
+    _save_minimal_workflow(store, "minimal_assert")
 
     captured = []
-    result = th.handle_execute(
+    result = wh.handle_execute(
         {"name": "minimal_assert", "task_id": "tmpl1"},
         stream_handler=captured.append,
     )
@@ -191,17 +190,17 @@ def test_template_execute_with_task_id_buffers_lifecycle_events():
     assert "success=True" in completed
 
 
-def test_template_execute_with_task_id_does_not_steal_callback_events():
-    """Given: template.execute with task_id.
+def test_saved_workflow_execute_with_task_id_does_not_steal_callback_events():
+    """Given: workflow.execute on a saved workflow, with task_id.
     When: called with a capture-list stream handler.
     Then: the callback also received the event dicts (tee is additive).
     """
-    store = FileTemplateStore()
-    th._store = store
-    _save_minimal_template(store, "minimal_assert")
+    store = FileWorkflowStore()
+    wh._store = store
+    _save_minimal_workflow(store, "minimal_assert")
 
     captured = []
-    th.handle_execute(
+    wh.handle_execute(
         {"name": "minimal_assert", "task_id": "tmpl1"},
         stream_handler=captured.append,
     )

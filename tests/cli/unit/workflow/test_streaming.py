@@ -2,8 +2,13 @@
 
 Covers the WorkflowStreamHandler emit methods and their wire-schema dicts
 (node_started / node_completed / workflow_completed / workflow_failed /
-workflow_cancelled), the ts + run_id + workflow_id stamping, the silent no-op
-when the callback is None, and event ordering.
+workflow_cancelled), the ts + run_id + workflow_id + workflow_name stamping, the
+silent no-op when the callback is None, and event ordering.
+
+Identity contract: ``workflow_name`` is the definition's display name and is
+always present; ``workflow_id`` is the saved workflow's storage id and is ``""``
+when the definition did not come from the store (an inline definition or a bare
+file).
 """
 
 import re
@@ -20,7 +25,8 @@ from app.workflow.streaming import (
 
 
 def _handler(callback, **kwargs):
-    kwargs.setdefault("workflow_id", "wf-1")
+    kwargs.setdefault("workflow_name", "display-name")
+    kwargs.setdefault("workflow_id", "wf-000000000001")
     kwargs.setdefault("run_id", "run-1")
     return WorkflowStreamHandler(callback=callback, **kwargs)
 
@@ -47,7 +53,8 @@ def test_emit_node_started_with_correct_fields():
         {
             "type": NODE_STARTED,
             "run_id": "run-1",
-            "workflow_id": "wf-1",
+            "workflow_id": "wf-000000000001",
+            "workflow_name": "display-name",
             "node_id": "convert",
             "tool": "bundletool",
         }
@@ -60,7 +67,8 @@ def test_emit_node_completed_carries_status_and_attempts():
     assert _pop_ts(events)[0] == {
         "type": NODE_COMPLETED,
         "run_id": "run-1",
-        "workflow_id": "wf-1",
+        "workflow_id": "wf-000000000001",
+        "workflow_name": "display-name",
         "node_id": "convert",
         "status": "ok",
         "duration_ms": 42,
@@ -91,7 +99,8 @@ def test_emit_workflow_completed_with_success():
         {
             "type": WORKFLOW_COMPLETED,
             "run_id": "run-1",
-            "workflow_id": "wf-1",
+            "workflow_id": "wf-000000000001",
+            "workflow_name": "display-name",
             "success": True,
         }
     ]
@@ -104,7 +113,8 @@ def test_emit_workflow_failed_with_error():
         {
             "type": WORKFLOW_FAILED,
             "run_id": "run-1",
-            "workflow_id": "wf-1",
+            "workflow_id": "wf-000000000001",
+            "workflow_name": "display-name",
             "error": "workflow boom",
         }
     ]
@@ -117,7 +127,8 @@ def test_emit_workflow_cancelled():
         {
             "type": WORKFLOW_CANCELLED,
             "run_id": "run-1",
-            "workflow_id": "wf-1",
+            "workflow_id": "wf-000000000001",
+            "workflow_name": "display-name",
         }
     ]
 
@@ -126,22 +137,40 @@ def test_emit_workflow_cancelled():
 # identity propagation + ordering
 # ---------------------------------------------------------------------------
 
-def test_all_events_carry_run_and_workflow_id():
+def test_all_events_carry_run_and_workflow_identity():
     events = []
     handler = _handler(events.append)
     handler.emit_node_started("a", "file.read")
     handler.emit_node_completed("a", "ok", 5)
     handler.emit_workflow_completed(True)
-    assert all(event["workflow_id"] == "wf-1" for event in events)
+    assert all(event["workflow_id"] == "wf-000000000001" for event in events)
+    assert all(event["workflow_name"] == "display-name" for event in events)
     assert all(event["run_id"] == "run-1" for event in events)
 
 
-def test_run_id_defaults_to_workflow_id():
+def test_workflow_id_defaults_to_empty_for_an_inline_definition():
+    """An inline definition has no storage identity: the id is "", never the name."""
     events = []
     WorkflowStreamHandler(
-        workflow_id="solo", callback=events.append
+        workflow_name="inline-wf", callback=events.append, run_id="run-9"
     ).emit_workflow_completed(True)
-    assert events[0]["run_id"] == "solo"
+
+    assert events[0]["workflow_id"] == ""
+    assert events[0]["workflow_name"] == "inline-wf"
+
+
+def test_run_id_falls_back_to_the_workflow_id_then_the_name():
+    events = []
+    WorkflowStreamHandler(
+        workflow_name="named", workflow_id="wf-000000000002", callback=events.append
+    ).emit_workflow_completed(True)
+    assert events[0]["run_id"] == "wf-000000000002"
+
+    unnamed_events = []
+    WorkflowStreamHandler(
+        workflow_name="solo", callback=unnamed_events.append
+    ).emit_workflow_completed(True)
+    assert unnamed_events[0]["run_id"] == "solo"
 
 
 def test_event_order_started_then_completed():
@@ -157,7 +186,7 @@ def test_event_order_started_then_completed():
 # ---------------------------------------------------------------------------
 
 def test_noop_when_callback_is_none():
-    handler = WorkflowStreamHandler(workflow_id="wf-1", callback=None)
+    handler = WorkflowStreamHandler(workflow_name="named", callback=None)
     handler.emit_node_started("a", "file.read")
     handler.emit_node_completed("a", "ok", 1)
     handler.emit_workflow_completed(True)

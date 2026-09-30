@@ -24,11 +24,11 @@ Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接�
 
 ### 无头 CLI（cli/cli.py）
 
-无头 CLI 入口 `cli/cli.py`（10 子命令：run/list-tools/list-envs/validate/tool/list-templates/**list-tasks**/import-pack/import-templates/history）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
+无头 CLI 入口 `cli/cli.py`（10 子命令：run/list-tools/list-envs/validate/tool/list-workflows/**list-tasks**/import-pack/import-workflows/history）。不随 npm scripts 或 Electron 自动调用，仅供手动/CI/测试调用。
 
 `run`/`tool` 会把自己注册到 `TaskManager`（`honor_stop_event=True`），因此引擎的取消检查点与子进程 holder 在 CLI 下是**活的**：
 
-- `run --task <名称>`：用**任务定义**（`<output>/task_defs/<name>.json` = 绑定的工作流名 + 保存的入参）执行，`--input k=v` 逐键覆盖保存值；与位置参数 `target` **互斥**，两者都缺是用法错误（退出码 2），未知任务/工作流返回 1。`list-tasks` 每行输出 `名称<TAB>工作流`。
+- `run --task <id|名称>`：用**任务定义**（`<output>/task_defs/<id>.json` = 绑定的工作流 + 保存的入参）执行，按 `id` 或名称解析（id 优先），`--input k=v` 逐键覆盖保存值；与位置参数 `target` **互斥**，两者都缺是用法错误（退出码 2），未知任务/工作流返回 1。`list-workflows` 每行输出 `id<TAB>名称`，`list-tasks` 每行输出 `id<TAB>名称<TAB>工作流`。
 - `run --timeout SECONDS`：整轮 wall-clock 预算，到期取消并返回 `124`（`0`/省略=不限）。
 - `run|tool --run-id <32-hex>`：run 身份，决定 `$rundir`（`<output>/runs/<id>`）与 history 记录 id；默认随机 `uuid4().hex`（并发 CLI run 不再共用 `runs/cli`）。非 32 位小写 hex 会被拒绝（退出码 1）。
 - `run` 退出码：`0` 成功 / `1` 失败 / `2` 取消（注意 argparse 用法错误也是 2）/ `124` 超时 / `130` 连按两次 Ctrl+C 强退。

@@ -43,10 +43,10 @@
     </div>
 
     <div v-else class="tl-rows">
-      <div v-for="task in filtered" :key="task.name" class="tl-row">
+      <div v-for="task in filtered" :key="task.id" class="tl-row">
         <div class="tl-main">
           <div class="tl-head">
-            <button type="button" class="tl-name" :title="task.name" @click="emit('edit-task', task.name)">
+            <button type="button" class="tl-name" :title="task.name" @click="emit('edit-task', task.id)">
               {{ task.name }}
             </button>
             <n-tag v-if="!task.workflow_exists" type="warning" size="small" :bordered="false">
@@ -71,18 +71,18 @@
             size="tiny"
             type="primary"
             :disabled="!task.workflow_exists"
-            :loading="runningName === task.name"
+            :loading="runningId === task.id"
             @click="runTask(task)"
           >
             {{ t('tasks.actions.run') }}
           </n-button>
-          <n-button size="tiny" quaternary @click="emit('edit-task', task.name)">
+          <n-button size="tiny" quaternary @click="emit('edit-task', task.id)">
             {{ t('workflows.actions.edit') }}
           </n-button>
           <n-button size="tiny" quaternary @click="duplicate(task)">
             {{ t('workflows.actions.duplicate') }}
           </n-button>
-          <n-button size="tiny" quaternary @click="emit('view-runs', task.name)">
+          <n-button size="tiny" quaternary @click="emit('view-runs', task.id)">
             {{ t('tasks.actions.viewRuns') }}
           </n-button>
           <AppButton variant="danger-ghost" size="tiny" @click="remove(task)">
@@ -112,8 +112,8 @@ import { log } from '@utils/logger'
 /** S3.1: the task-definition list. */
 const emit = defineEmits<{
   (e: 'new-task'): void
-  (e: 'edit-task', name: string): void
-  (e: 'view-runs', taskName: string): void
+  (e: 'edit-task', id: string): void
+  (e: 'view-runs', taskRef: string): void
 }>()
 
 const { t } = useI18n()
@@ -125,7 +125,7 @@ const tasks = ref<TaskDefinitionSummary[]>([])
 const loading = ref(false)
 const loadError = ref('')
 const query = ref('')
-const runningName = ref<string | null>(null)
+const runningId = ref<string | null>(null)
 /** 用于区分两种空态：有工作流 / 一个都没有。 */
 const workflowCount = ref(0)
 
@@ -143,12 +143,12 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [taskResult, templateResult] = await Promise.all([
+    const [taskResult, workflowResult] = await Promise.all([
       unifiedApi.call<{ tasks?: TaskDefinitionSummary[] }>('task.list'),
-      unifiedApi.call<{ templates?: unknown[] }>('template.list', {}),
+      unifiedApi.call<{ workflows?: unknown[] }>('workflow.list', {}),
     ])
     tasks.value = Array.isArray(taskResult?.tasks) ? taskResult.tasks : []
-    workflowCount.value = Array.isArray(templateResult?.templates) ? templateResult.templates.length : 0
+    workflowCount.value = Array.isArray(workflowResult?.workflows) ? workflowResult.workflows.length : 0
   } catch (error) {
     log.error('[TaskListView] task.list failed:', error)
     loadError.value = errMsg(error)
@@ -177,34 +177,42 @@ function goWorkflows() {
 
 /** 运行 = 用保存的入参直接执行；执行后由页面切到运行记录并预置任务筛选。 */
 async function runTask(task: TaskDefinitionSummary) {
-  runningName.value = task.name
+  runningId.value = task.id
   try {
     await unifiedApi.call('task.execute', {
-      name: task.name,
+      // 按 id 跑：任务名可以重复，按名字跑可能命中同名的那一个。
+      id: task.id,
       task_id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       // 「跟随系统」的节点用设置里的默认行为（见 nodeDefaults.ts）
       ...(await nodeDefaultsParams()),
     })
     showSuccess(t('tasks.runStarted', { name: task.name }))
-    emit('view-runs', task.name)
+    emit('view-runs', task.id)
   } catch (error) {
     showError(t('tasks.runFailed', { error: errMsg(error) }))
   } finally {
-    runningName.value = null
+    runningId.value = null
   }
 }
 
 async function duplicate(task: TaskDefinitionSummary) {
   const newName = `${task.name}-copy`
   try {
-    const loaded = await unifiedApi.call<{ task?: { workflow?: string; inputs?: Record<string, unknown>; work_dir?: string; description?: string } }>(
-      'task.get',
-      { name: task.name },
-    )
+    const loaded = await unifiedApi.call<{
+      task?: {
+        workflow_id?: string | null
+        workflow?: string
+        inputs?: Record<string, unknown>
+        work_dir?: string
+        description?: string
+      }
+    }>('task.get', { id: task.id })
     const definition = loaded?.task
     if (!definition?.workflow) throw new Error(t('tasks.detail.notFound'))
+    // 不带 id = 新建一份；绑定仍指向同一个工作流。
     await unifiedApi.call('task.save', {
       name: newName,
+      workflow_id: definition.workflow_id ?? undefined,
       workflow: definition.workflow,
       inputs: definition.inputs ?? {},
       work_dir: definition.work_dir || undefined,
@@ -212,7 +220,6 @@ async function duplicate(task: TaskDefinitionSummary) {
     })
     showSuccess(t('tasks.duplicated', { name: newName }))
     await load()
-    emit('edit-task', newName)
   } catch (error) {
     showError(t('tasks.duplicateFailed', { error: errMsg(error) }))
   }
@@ -226,7 +233,7 @@ function remove(task: TaskDefinitionSummary) {
     negativeText: t('common.cancel'),
     onPositiveClick: async () => {
       try {
-        await unifiedApi.call('task.delete', { name: task.name })
+        await unifiedApi.call('task.delete', { id: task.id })
         await load()
       } catch (error) {
         showError(t('tasks.deleteFailed', { error: errMsg(error) }))

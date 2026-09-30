@@ -33,19 +33,19 @@ class ToolContext:
             key :meth:`cancelled` queries.  ``None`` outside a workflow run.
         run_dir: Per-run artifact directory (``<output_dir>/runs/<run_id>``);
             tools that persist engine-level files write here, never into
-            ``work_dir`` (which may be a source tree or the template store).
+            ``work_dir`` (which may be a source tree or the workflow store).
             Empty string when it could not be prepared.
         env: Environment variables for the tool execution.
         stream_handler: Optional callback receiving ``{"type": ..., ...}``
             dicts for streaming output (e.g. logcat lines, progress).
-        template_store: Optional template store for resolving sub-workflow
-            template names (used by ``workflow.run``).
+        workflow_store: Optional workflow store for resolving sub-workflow
+            ids/names (used by ``workflow.run``).
         engine: Optional reference to the WorkflowEngine for inline child
             workflow execution (used by ``workflow.run``).
         nesting_depth: Current nesting depth in sub-workflow chains (0 for
             top-level, incrementing by 1 per nested ``workflow.run``).
-        in_progress_templates: Immutable set of template names currently
-            on the call stack — a template already in this set when a
+        in_progress_workflow_ids: Immutable set of workflow ids currently
+            on the call stack — a workflow already in this set when a
             ``workflow.run`` node executes signals a recursion cycle.
         current_node_path: Path of the currently executing node from the run
             root (``"a"`` at the top level, ``"sub/a"`` one level down).
@@ -68,10 +68,10 @@ class ToolContext:
     run_dir: str = ""
     env: Dict[str, str] = field(default_factory=dict)
     stream_handler: Optional[Callable[[dict], None]] = None
-    template_store: Optional[Any] = None
+    workflow_store: Optional[Any] = None
     engine: Optional[Any] = None
     nesting_depth: int = 0
-    in_progress_templates: frozenset = field(default_factory=frozenset)
+    in_progress_workflow_ids: frozenset = field(default_factory=frozenset)
     current_node_path: Optional[str] = None
     process_holder: Optional[Dict[str, Any]] = None
     cancel_check: Optional[Callable[[], bool]] = None

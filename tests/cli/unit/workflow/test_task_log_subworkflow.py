@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from app.template.store import FileTemplateStore
+from app.workflow.store import FileWorkflowStore
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.engine import ExecutionContext, WorkflowEngine
 from app.workflow.streaming import WorkflowStreamHandler
@@ -26,8 +26,8 @@ def _node(node_id, tool="flow.log", **overrides) -> WorkflowNode:
     return WorkflowNode(**data)
 
 
-def _save_template(store: FileTemplateStore, name: str, definition: WorkflowDefinition):
-    store.save(name, definition, {"description": f"auto: {name}"})
+def _save_template(store: FileWorkflowStore, name: str, definition: WorkflowDefinition):
+    store.save(definition, {"description": f"auto: {name}"})
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ def test_subworkflow_child_events_namespaced_in_buffer(tasks_tmp, tmp_path):
     events are un-prefixed."""
     store_dir = tmp_path / "templates"
     store_dir.mkdir()
-    store = FileTemplateStore(templates_dir=str(store_dir))
+    store = FileWorkflowStore(workflows_dir=str(store_dir))
 
     # Child: single flow.log node
     child_def = WorkflowDefinition(
@@ -80,7 +80,7 @@ def test_subworkflow_child_events_namespaced_in_buffer(tasks_tmp, tmp_path):
     # Parent stream handler — tees parent events into buffer.
     # callback=None → no IPC; task_log_id="sub1" → tee fires.
     parent_stream = WorkflowStreamHandler(
-        workflow_id="sub1",
+        workflow_name="sub1",
         callback=None,
         task_log_id="sub1",
     )
@@ -88,7 +88,7 @@ def test_subworkflow_child_events_namespaced_in_buffer(tasks_tmp, tmp_path):
     ctx = ExecutionContext(
         work_dir=str(tmp_path),
         task_id="sub1",
-        template_store=store,
+        workflow_store=store,
         workflow_stream=parent_stream,
         stream_handler=None,  # <-- no IPC callback, only task_id set
     )
@@ -132,7 +132,7 @@ def test_missing_child_template_logs_failure_in_buffer(tasks_tmp, tmp_path):
     (no child stream is ever built)."""
     store_dir = tmp_path / "templates"
     store_dir.mkdir()
-    store = FileTemplateStore(templates_dir=str(store_dir))
+    store = FileWorkflowStore(workflows_dir=str(store_dir))
 
     parent_def = WorkflowDefinition(
         name="parent-missing",
@@ -143,7 +143,7 @@ def test_missing_child_template_logs_failure_in_buffer(tasks_tmp, tmp_path):
     )
 
     parent_stream = WorkflowStreamHandler(
-        workflow_id="sub1b",
+        workflow_name="sub1b",
         callback=None,
         task_log_id="sub1b",
     )
@@ -151,7 +151,7 @@ def test_missing_child_template_logs_failure_in_buffer(tasks_tmp, tmp_path):
     ctx = ExecutionContext(
         work_dir=str(tmp_path),
         task_id="sub1b",
-        template_store=store,
+        workflow_store=store,
         workflow_stream=parent_stream,
         stream_handler=None,
     )
@@ -166,7 +166,7 @@ def test_missing_child_template_logs_failure_in_buffer(tasks_tmp, tmp_path):
     # ── the failing node's single terminal event
     assert (
         "[node_completed] run_child status=failed" in buffer_text
-        and "template not found: 'missing-tpl'" in buffer_text
+        and "workflow not found: 'missing-tpl'" in buffer_text
     ), f"expected a failed node_completed in buffer, got:\n{buffer_text}"
 
     # ── workflow_failed

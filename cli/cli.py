@@ -4,22 +4,22 @@
 Headless CLI entry point for the Blanks workflow system.
 
 Provides ten subcommands (``run``, ``list-tools``, ``list-envs``,
-``validate``, ``tool``, ``list-templates``, ``list-tasks``, ``import-pack``,
-``import-templates``, ``history``) that operate independently of the Electron
+``validate``, ``tool``, ``list-workflows``, ``list-tasks``, ``import-pack``,
+``import-workflows``, ``history``) that operate independently of the Electron
 app — no stdin JSON-RPC pipe, no streaming IPC.  The CLI initializes logging
 and config (the same setup ``main.bootstrap`` performs), then invokes the
 workflow engine, validator, tool registry and environment registry directly.
 
-The ``run`` subcommand resolves its target as a workflow JSON file or a
-saved template name, parses ``--input key=value`` pairs (with basic type
-coercion), executes the workflow through the engine while streaming node
-events to the console, and prints the final result as JSON (``--json``) or
-a human-readable summary.
+The ``run`` subcommand resolves its target as a workflow JSON file or a saved
+workflow (``wf-…`` id, or a display name), parses ``--input key=value`` pairs
+(with basic type coercion), executes the workflow through the engine while
+streaming node events to the console, and prints the final result as JSON
+(``--json``) or a human-readable summary.
 
-``run --task <name>`` is the same run driven by a saved **task definition**
-(see ``app.task.store``): a stored workflow name plus the input values to run
-it with.  Saved values act as defaults and ``--input`` overrides them; the run
-records the task in history as ``task_name``.
+``run --task <id|name>`` is the same run driven by a saved **task definition**
+(see ``app.task.store``): a stored workflow plus the input values to run it
+with.  Saved values act as defaults and ``--input`` overrides them; the run
+records the task in history as ``task_name`` / ``task_def_id``.
 
 Cancellation and interruption:
     Every ``run``/``tool`` invocation registers itself with
@@ -40,13 +40,13 @@ Usage (from the ``cli/`` directory):
     python cli.py list-tools
     python cli.py list-envs
     python cli.py validate <workflow.json>
-    python cli.py list-templates
+    python cli.py list-workflows
     python cli.py list-tasks
-    python cli.py run <workflow.json|template-name> --input key=value
-    python cli.py run --task <task-name> --input key=value
+    python cli.py run <workflow.json|workflow-id|workflow-name> --input key=value
+    python cli.py run --task <task-id|task-name> --input key=value
     python cli.py run <workflow.json> --timeout 300 --run-id <32-hex>
     python cli.py import-pack examples/tools/android
-    python cli.py import-templates examples/workflows/android
+    python cli.py import-workflows examples/workflows/android
     python cli.py history [--limit 20]
     python cli.py history <run_id>
 """
@@ -469,30 +469,32 @@ def cmd_import_pack(path: str) -> int:
     return 0 if report["ok"] else 1
 
 
-def cmd_import_templates(path: str) -> int:
-    """Import workflow JSON file(s) into the template store.
+def cmd_import_workflows(path: str) -> int:
+    """Import workflow JSON file(s) into the saved-workflow library.
 
     Accepts a single workflow file or a directory of workflow JSON files
-    (e.g. ``examples/workflows/android``).  Returns 0 when every file
-    imported cleanly, 1 otherwise.
+    (e.g. ``examples/workflows/android``).  Re-importing is idempotent: a file
+    whose display name already names exactly one saved workflow overwrites it
+    in place, keeping its id.  Returns 0 when every file imported cleanly, 1
+    otherwise.
     """
-    from app.handlers.template_handler import import_templates_from_path
+    from app.handlers.workflow_handler import import_workflows_from_path
 
     try:
-        report = import_templates_from_path(path)
+        report = import_workflows_from_path(path)
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     rows = []
     for entry in report["results"]:
-        note = entry.get("reason") or ""
+        note = entry.get("reason") or entry.get("id") or ""
         if entry.get("renamed_from"):
             note = f"name from definition; file stem {entry['renamed_from']!r}"
         rows.append(
             [entry.get("name") or entry["file"], entry["status"], note]
         )
-    _print_table(["name", "status", "note"], rows)
+    _print_table(["name", "status", "id / note"], rows)
     print(f"imported: {report['imported']}, failed: {report['failed']}")
     return 0 if report["ok"] else 1
 
@@ -535,51 +537,68 @@ def cmd_history(run_id: Optional[str], limit: int) -> int:
     return 0
 
 
-def cmd_list_templates() -> int:
-    """List saved workflow templates.
+def cmd_list_workflows() -> int:
+    """List saved workflows as ``<id><TAB><name>`` lines.
 
-    The template store (a later todo) may not exist yet; degrade gracefully
-    with a message instead of crashing.
+    The store may not exist yet on a fresh install; degrade gracefully with a
+    message instead of crashing.
     """
     try:
-        from app.template.store import FileTemplateStore
+        from app.workflow.store import FileWorkflowStore
     except ImportError:
-        print("template system not available")
+        print("workflow system not available")
         return 0
 
     try:
-        store = FileTemplateStore()
-        templates = store.list()
+        store = FileWorkflowStore()
+        workflows = store.list()
     except Exception as exc:
-        print(f"error listing templates: {exc}", file=sys.stderr)
+        print(f"error listing workflows: {exc}", file=sys.stderr)
         return 1
 
-    for template in templates:
-        print(getattr(template, "name", template))
+    for workflow in workflows:
+        print(f"{workflow.id}\t{workflow.name}")
     return 0
 
 
-def cmd_list_tasks() -> int:
-    """List saved task definitions (one ``name<TAB>workflow`` line each).
+def _open_task_store():
+    """Return a task store with the one-time workflow-id backfill applied.
 
-    A task definition is a saved workflow name plus the input values to run it
-    with; ``run --task <name>`` executes one.  Degrades gracefully (like
-    :func:`cmd_list_templates`) when the store cannot be read.
+    The headless CLI must reach the same state the IPC handler does, so tasks
+    saved before ids existed get their ``workflow_id`` filled in here too.
+    """
+    from app.task.store import FileTaskStore
+    from app.workflow.store import FileWorkflowStore
+
+    store = FileTaskStore()
+    try:
+        store.backfill_workflow_ids(FileWorkflowStore().find_id_by_name)
+    except Exception as exc:  # a one-time backfill must never break a command
+        print(f"warning: workflow id backfill skipped: {exc}", file=sys.stderr)
+    return store
+
+
+def cmd_list_tasks() -> int:
+    """List saved task definitions as ``<id><TAB><name><TAB><workflow>`` lines.
+
+    A task definition is a saved workflow plus the input values to run it with;
+    ``run --task <id|name>`` executes one.  Degrades gracefully (like
+    :func:`cmd_list_workflows`) when the store cannot be read.
     """
     try:
-        from app.task.store import FileTaskStore
+        from app.task.store import FileTaskStore  # noqa: F401  (availability probe)
     except ImportError:
         print("task system not available")
         return 0
 
     try:
-        tasks = FileTaskStore().list()
+        tasks = _open_task_store().list()
     except Exception as exc:
         print(f"error listing tasks: {exc}", file=sys.stderr)
         return 1
 
     for task in tasks:
-        print(f"{task.name}\t{task.workflow}")
+        print(f"{task.id}\t{task.name}\t{task.workflow}")
     return 0
 
 
@@ -805,12 +824,17 @@ def _resolve_definition(target: str):
 
     A ``.json`` suffix or an existing file path loads via
     :meth:`WorkflowDefinition.from_json_file`; anything else is treated as a
-    template name resolved through :class:`FileTemplateStore`.
+    saved workflow reference (``wf-…`` id, or a display name) resolved through
+    :class:`FileWorkflowStore`.
 
     Returns:
-        ``(definition, work_dir)`` where *work_dir* is the workflow's own
-        directory — the file's folder, or the template store's folder — or
-        ``(None, None)`` after printing an error to stderr.
+        ``(definition, work_dir, workflow_id)`` where *work_dir* is the
+        workflow's own directory when it is a real source tree (the file's
+        folder) and ``None`` for a saved workflow — that run's working
+        directory falls through to its per-run artifact directory instead of
+        the workflow library.  *workflow_id* is the saved workflow's id, or
+        ``""`` for a file target.  Returns ``(None, None, "")`` after printing
+        an error to stderr.
     """
     if target.endswith(".json") or os.path.isfile(target):
         try:
@@ -819,43 +843,67 @@ def _resolve_definition(target: str):
             definition = WorkflowDefinition.from_json_file(target)
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
-            return None, None
-        return definition, os.path.dirname(os.path.abspath(target))
+            return None, None, ""
+        return definition, os.path.dirname(os.path.abspath(target)), ""
 
     try:
-        from app.template.store import FileTemplateStore, TemplateNotFoundError
+        from app.workflow.store import (
+            AmbiguousWorkflowNameError,
+            FileWorkflowStore,
+            WorkflowNotFoundError,
+        )
 
-        store = FileTemplateStore()
-        return store.load(target), store.templates_dir
-    except (TemplateNotFoundError, ValueError) as exc:
-        print(f"error: template {target!r}: {exc}", file=sys.stderr)
-        return None, None
+        store = FileWorkflowStore()
+        workflow_id = store.resolve(target)
+        if workflow_id is None:
+            print(f"error: workflow not found: {target!r}", file=sys.stderr)
+            return None, None, ""
+        return store.load(workflow_id), None, workflow_id
+    except AmbiguousWorkflowNameError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None, None, ""
+    except (WorkflowNotFoundError, ValueError) as exc:
+        print(f"error: workflow {target!r}: {exc}", file=sys.stderr)
+        return None, None, ""
 
 
-def _resolve_task(name: str) -> Optional[Dict[str, Any]]:
+def _resolve_task(ref: str) -> Optional[Dict[str, Any]]:
     """Load a saved task definition plus the workflow it binds.
 
-    A task definition (``app.task.store``) is a saved template name plus the
-    input values to run it with; ``run --task <name>`` resolves both here.
+    A task definition (``app.task.store``) is a saved workflow plus the input
+    values to run it with; ``run --task <id|name>`` resolves both here.  The
+    binding is the stored ``workflow_id`` when present, else the saved display
+    name.
 
     Returns:
-        ``{"definition", "work_dir", "inputs", "task_name", "workflow"}``, or
-        ``None`` after printing an error to stderr (unknown/corrupt task, or a
-        bound workflow that was renamed or deleted).
+        ``{"definition", "work_dir", "inputs", "task_name", "task_def_id",
+        "workflow_id", "workflow"}``, or ``None`` after printing an error to
+        stderr (unknown/corrupt task, or a bound workflow that was deleted).
     """
     try:
-        from app.task.store import FileTaskStore, TaskNotFoundError
+        from app.task.store import TaskNotFoundError
     except ImportError:
         print("error: task system not available", file=sys.stderr)
         return None
 
+    from app.task.store import AmbiguousTaskNameError
+
     try:
-        info = FileTaskStore().load(name)
+        store = _open_task_store()
+        task_id = store.resolve(ref)
+        if task_id is None:
+            print(f"error: task not found: {ref}", file=sys.stderr)
+            return None
+        info = store.load(task_id)
+    except AmbiguousTaskNameError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None
     except (TaskNotFoundError, ValueError) as exc:
-        print(f"error: task {name!r}: {exc}", file=sys.stderr)
+        print(f"error: task {ref!r}: {exc}", file=sys.stderr)
         return None
 
-    definition, source_dir = _resolve_definition(info.workflow)
+    binding = info.workflow_id or info.workflow
+    definition, source_dir, workflow_id = _resolve_definition(binding)
     if definition is None:
         return None
 
@@ -865,7 +913,9 @@ def _resolve_task(name: str) -> Optional[Dict[str, Any]]:
         "work_dir": info.work_dir or source_dir,
         "inputs": dict(info.inputs),
         "task_name": info.name,
-        "workflow": info.workflow,
+        "task_def_id": info.id,
+        "workflow_id": workflow_id or (info.workflow_id or ""),
+        "workflow": definition.name,
     }
 
 
@@ -881,7 +931,7 @@ def cmd_run(
     timeout: Optional[float] = None,
     interrupt_event: Optional[threading.Event] = None,
 ) -> int:
-    """Run a workflow from a JSON file, a template name, or a saved task.
+    """Run a workflow from a JSON file, a saved workflow, or a saved task.
 
     Resolves *target* (or *task*), parses and coerces ``--input key=value``
     pairs, executes the workflow through :class:`WorkflowEngine`, streams node
@@ -891,18 +941,20 @@ def cmd_run(
     Exactly one of *target* / *task* is given (the parser makes them mutually
     exclusive; ``main`` rejects the "neither" case as a usage error):
 
-    - *target*: a workflow JSON file, or a saved template name;
-    - *task*: a saved task definition — its bound template is executed and its
+    - *target*: a workflow JSON file, or a saved workflow (id or name);
+    - *task*: a saved task definition — its bound workflow is executed and its
       stored inputs act as defaults, overridden per-key by ``--input``.  The
-      run's history record carries the task name as ``task_name``.
+      run's history record carries the task name as ``task_name`` and its id as
+      ``task_def_id``.
 
-    The run's working directory is the workflow's OWN directory (the file's
-    folder, or the template store's folder) — or, for a task, the task's saved
-    ``work_dir`` when it has one — so relative paths and produced artifacts
-    stay next to the workflow instead of landing in the process CWD.
+    The run's working directory is an explicit ``work_dir``, else the workflow
+    FILE's own folder, else the run's artifact directory (``$rundir``) — so a
+    saved workflow's relative outputs never land in the process CWD or in the
+    workflow library.  A task's saved ``work_dir`` takes the second slot when
+    it has one.
 
     Args:
-        task: name of a saved task definition to run (see
+        task: id or name of a saved task definition to run (see
             :func:`_resolve_task`).
         run_id: the run identity (32-char hex).  It names ``$rundir``, is the
             key the run registers for cancellation under, and — when it has
@@ -931,16 +983,23 @@ def cmd_run(
         work_dir = resolved["work_dir"]
         saved_inputs = resolved["inputs"]
         # ``source`` in history stays the WORKFLOW name; the task identity
-        # travels separately as ``task_name``.
+        # travels separately as ``task_name`` / ``task_def_id``.
         history_params: Dict[str, Any] = {"name": resolved["workflow"]}
         task_label = resolved["task_name"]
+        task_def_id = resolved["task_def_id"]
+        workflow_id = resolved["workflow_id"]
     else:
-        definition, work_dir = _resolve_definition(target)
+        definition, work_dir, workflow_id = _resolve_definition(target)
         if definition is None:
             return 1
         saved_inputs = {}
-        history_params = {"path": target}
+        # A saved workflow records its display name as ``source``; a file
+        # target records the path it was loaded from.
+        history_params = (
+            {"name": definition.name} if workflow_id else {"path": target}
+        )
         task_label = ""
+        task_def_id = ""
 
     inputs = {**saved_inputs, **_parse_key_values(raw_inputs or [])}
     started_at = datetime.now().isoformat()
@@ -955,18 +1014,25 @@ def cmd_run(
         if tool_dirs
         else None
     )
+    # The run's artifact directory doubles as the default working directory:
+    # only a file target (a real source tree) overrides it.
+    from app.workflow.rundir import prepare_run_dir
+
+    run_dir = prepare_run_dir(run_id)
 
     with _run_scope(run_id, task_id, interrupt_event) as (cancel_event, token):
         workflow_stream = WorkflowStreamHandler(
-            workflow_id=definition.name,
+            workflow_name=definition.name,
+            workflow_id=workflow_id,
             callback=raw_stream_handler,
             run_id=run_id,
             task_log_id=task_id,
         )
         context = ExecutionContext(
-            work_dir=work_dir or os.getcwd(),
+            work_dir=work_dir or run_dir or os.getcwd(),
             task_id=task_id,
             run_id=run_id,
+            run_dir=run_dir,
             # Keep $env.<name> resolvable on the CLI path too (the IPC path does
             # the same in app/workflow/runner.py): the process environment.
             env=dict(os.environ),
@@ -1032,6 +1098,8 @@ def cmd_run(
                 run_dir=context.run_dir or "",
                 exec_run_id=run_id,
                 task_name=task_label,
+                task_def_id=task_def_id,
+                workflow_id=workflow_id,
             )
 
             if json_output:
@@ -1111,12 +1179,12 @@ def _build_parser() -> argparse.ArgumentParser:
     # run
     run_parser = subparsers.add_parser(
         "run",
-        help="Run a workflow from file, template or saved task",
+        help="Run a workflow from file, saved workflow or saved task",
         description=(
             "Run a workflow and stream node events.\n"
-            "The target is a workflow JSON file, a saved template name, or "
-            "--task <name> for a saved task definition (its stored inputs act "
-            "as defaults, --input overrides them).\n"
+            "The target is a workflow JSON file, a saved workflow (id or name), "
+            "or --task <id|name> for a saved task definition (its stored inputs "
+            "act as defaults, --input overrides them).\n"
             "Exit codes: 0 success, 1 failure, 2 cancelled, 124 timed out, "
             "130 forced exit on a second Ctrl+C (argparse itself also exits 2 "
             "on a usage error)."
@@ -1126,10 +1194,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run_target = run_parser.add_mutually_exclusive_group()
     run_target.add_argument(
         "target", nargs="?", default=None,
-        help="Path to workflow JSON file or template name",
+        help="Path to a workflow JSON file, or a saved workflow id / name",
     )
     run_target.add_argument(
-        "--task", default=None, metavar="NAME",
+        "--task", default=None, metavar="ID|NAME",
         help=(
             "Run a saved task definition: its workflow plus the inputs stored "
             "with it (--input overrides individual saved values)"
@@ -1198,12 +1266,14 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    # list-templates
-    subparsers.add_parser("list-templates", help="List saved workflow templates")
+    # list-workflows
+    subparsers.add_parser(
+        "list-workflows", help="List saved workflows (id, display name)"
+    )
 
     # list-tasks
     subparsers.add_parser(
-        "list-tasks", help="List saved task definitions (name, bound workflow)"
+        "list-tasks", help="List saved task definitions (id, name, bound workflow)"
     )
 
     # import-pack
@@ -1217,12 +1287,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "descriptor, or a *.zip with descriptors in its root",
     )
 
-    # import-templates
-    tpl_parser = subparsers.add_parser(
-        "import-templates",
-        help="Import workflow JSON file(s) into the template store",
+    # import-workflows
+    wf_parser = subparsers.add_parser(
+        "import-workflows",
+        help="Import workflow JSON file(s) into the saved-workflow library",
     )
-    tpl_parser.add_argument(
+    wf_parser.add_argument(
         "path", help="Workflow JSON file or directory of workflow JSON files",
     )
 
@@ -1271,10 +1341,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         "list-tools": cmd_list_tools,
         "list-envs": cmd_list_envs,
         "validate": lambda: cmd_validate(args.path, args.tool_dir),
-        "list-templates": cmd_list_templates,
+        "list-workflows": cmd_list_workflows,
         "list-tasks": cmd_list_tasks,
         "import-pack": lambda: cmd_import_pack(args.path),
-        "import-templates": lambda: cmd_import_templates(args.path),
+        "import-workflows": lambda: cmd_import_workflows(args.path),
         "history": lambda: cmd_history(args.run_id, args.limit),
         "tool": lambda: cmd_tool(
             args.name, args.operation, args.input, args.json, args.tool_dir,

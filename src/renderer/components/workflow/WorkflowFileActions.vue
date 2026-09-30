@@ -4,15 +4,15 @@
       • 保存        —— 以工作流自己的名字/描述落盘（名称与描述在标题后的弹窗里改）
       • 导入工作流  —— 选一个工作流 JSON 读进当前画布
 
-    「加载模板」的入口已删除：打开某个已保存工作流一律走工作流列表页
-    （`/workflows/editor/:name`），编辑器里再挂一份列表只是第二条重复的路。
+    「加载工作流」对话框的入口已删除（2026-09-29）：打开某个已保存工作流一律走工作流列表页
+    （`/workflows/editor/:ref`，`:ref` 是工作流 id），编辑器里再挂一份列表只是第二条重复的路。
   -->
   <div class="wf-actions">
     <n-button size="small" data-test="workflow-save" @click="onSave">
       <template #icon>
         <AppIcon name="save" />
       </template>
-      {{ t('workflow.editor.template.save') }}
+      {{ t('workflow.editor.actions.save') }}
     </n-button>
     <n-button size="small" :loading="importing" data-test="workflow-import" @click="onImport">
       <template #icon>
@@ -74,11 +74,11 @@ function errMsg(err: unknown): string {
 function onSave() {
   const reason = props.blockedReason?.() ?? null
   if (reason) {
-    message.error(`${t('workflow.editor.template.blockedTitle')}: ${reason}`)
+    message.error(`${t('workflow.editor.actions.blockedTitle')}: ${reason}`)
     return
   }
   if (!props.getDefinition()) {
-    message.warning(t('workflow.editor.template.emptyCanvas'))
+    message.warning(t('workflow.editor.actions.emptyCanvas'))
     return
   }
   emit('save')

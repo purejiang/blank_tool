@@ -15,21 +15,30 @@ generic ``streamEvent`` branch.  On the wire the *routing* key is
 
 Event schema (dicts passed to the stream callback)::
 
-    node_started        {type, ts, run_id, workflow_id, node_id, tool}
-    node_completed      {type, ts, run_id, workflow_id, node_id, status,
-                         duration_ms, attempts, error?}
-    log                 {type, ts, run_id?, workflow_id?, level, message, node_id}
-    workflow_completed  {type, ts, run_id, workflow_id, success}
-    workflow_failed     {type, ts, run_id, workflow_id, error}
-    workflow_cancelled  {type, ts, run_id, workflow_id}
+    node_started        {type, ts, run_id, workflow_id, workflow_name, node_id, tool}
+    node_completed      {type, ts, run_id, workflow_id, workflow_name, node_id,
+                         status, duration_ms, attempts, error?}
+    log                 {type, ts, run_id?, workflow_id?, workflow_name?, level,
+                         message, node_id}
+    workflow_completed  {type, ts, run_id, workflow_id, workflow_name, success}
+    workflow_failed     {type, ts, run_id, workflow_id, workflow_name, error}
+    workflow_cancelled  {type, ts, run_id, workflow_id, workflow_name}
 
 Field semantics:
     ``run_id``
         Identifier of the TOP-LEVEL run.  Never rewritten by nesting, so a
         consumer can group every event of one run.
     ``workflow_id``
-        Name of the workflow definition that emitted the event — the child
-        template's name inside a nested execution.
+        Storage id of the saved workflow that emitted the event
+        (``wf-…``), or ``""`` when the definition did not come from the store
+        (an inline definition, a bare ``.json`` file, a CLI file target).
+        Inside a nested execution it identifies the CHILD workflow.  This is
+        NOT a run identity — use ``run_id`` (or ``task_id`` on the renderer
+        side) for that.
+    ``workflow_name``
+        Display name of the workflow definition that emitted the event (the
+        child's name when nested).  Always present, so it is what log lines
+        and node-path namespacing use.
     ``node_id``
         Path of the node from the run root (``"convert"`` at the top level,
         ``"loop/0/step"`` inside a ``flow.foreach`` body).  Path segments are
@@ -156,25 +165,31 @@ class WorkflowStreamHandler:
     reuse this handler unchanged.
 
     Args:
-        workflow_id: name of the workflow definition emitting the events.
+        workflow_name: display name of the workflow definition emitting the
+            events (the child's name inside a nested execution).
         callback: downstream callable receiving each event dict; typically
             the IPC ``stream_handler``.  ``None`` disables emission.
+        workflow_id: storage id of the saved workflow emitting the events, or
+            ``""`` when the definition did not come from the store.
         run_id: identifier of the top-level run carrying these events;
-            defaults to ``workflow_id`` for a top-level run.
+            defaults to ``workflow_id``, else ``workflow_name``, for a
+            top-level run.
         task_log_id: when set, the handler tees event lines into the per-task
             log via :func:`append_task_log`.  Defaults to ``None``.
     """
 
     def __init__(
         self,
-        workflow_id: str,
+        workflow_name: str,
         callback: Optional[Callable[[dict], None]] = None,
         *,
+        workflow_id: str = "",
         run_id: Optional[str] = None,
         task_log_id: Optional[str] = None,
     ) -> None:
+        self.workflow_name = workflow_name
         self.workflow_id = workflow_id
-        self.run_id = run_id or workflow_id
+        self.run_id = run_id or workflow_id or workflow_name
         self._callback = callback
         self.task_log_id = task_log_id
 
@@ -190,6 +205,7 @@ class WorkflowStreamHandler:
             "ts": now_time_str(),
             "run_id": self.run_id,
             "workflow_id": self.workflow_id,
+            "workflow_name": self.workflow_name,
         }
         event.update(fields)
 

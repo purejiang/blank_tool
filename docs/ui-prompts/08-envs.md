@@ -4,7 +4,7 @@
 - **前置**：先跑 [`00-shell.md`](./00-shell.md) 并在 Edit Theme 里锁定主题
 - **功能元素来源**：[08 §3 · S6.2 环境](../08-前端页面与功能清单.md)
 - **本屏产出**：常规态（含"有环境未配置"的告警带）；浅 / 深两态
-- **说明**：环境是**工具的前置**。这一页有两个方向的信息，都要有：**环境 → 缺了会怎样**（未配置时的告警带）与**环境 ← 谁在依赖**（每行的"被 N 个工具依赖"）。反向依赖由 `workflow.list_tools[].env_deps` 在**渲染层聚合**得出，不需要新后端方法。
+- **说明**：环境是**工具的前置**。这一页有两个方向的信息，都要有：**环境 → 缺了会怎样**（未配置时的告警带）与**环境 ← 谁在依赖**（每行的"被 N 个工具依赖"）。反向依赖由 `tool.list[].env_deps` 在**渲染层聚合**得出，不需要新后端方法。
 
 ## 提示词（逐字粘贴，不要改写）
 
@@ -36,9 +36,9 @@
 | 状态徽章 已检测 / 未配置 | `env.list[].is_valid` |
 | 内置 vs 用户导入（决定「删除」是否禁用） | `env.list[].source`：`bundled`（受保护，删不掉）/ `overlay` |
 | 环境变量覆盖 / 路径覆盖是否生效 | `env_var_override` / `path_override` |
-| **被 N 个工具依赖** | 渲染层聚合：遍历 `workflow.list_tools[].env_deps`，按环境 `name` 计数；再按 `env.list[].is_valid` 判断这些工具是否因此不可用 |
+| **被 N 个工具依赖** | 渲染层聚合：遍历 `tool.list[].env_deps`，按环境 `name` 计数；再按 `env.list[].is_valid` 判断这些工具是否因此不可用 |
 
-- `env.list` 与 `workflow.list_envs` **返回形状相同，只选一个调用**。
+- 环境页**只调 `env.list`**（`workflow.list_envs` 已删除，不再存在"两个方法形状相同、二选一"的说法）。
 - 「更改路径」→ `env.set_path {name, path}`（+ 文件/目录选择），重置 → `env.reset_path {name}`；覆盖持久化在 `<output>/registry/overrides.json` 的 `env_paths` 段（解析优先级仅次于 `env_var_override`），**变更后必须重新拉 `env.list` 与工具列表**（工具的 `is_valid` 会跟着变）。
 - 「导入自定义环境」→ `env.add {descriptor}`（收整份描述符，需要表单或 JSON 编辑器）；删除 → `env.delete {name}`，内置环境受保护会抛错（界面据 `source === "bundled"` 预先禁用）。
 - 解析优先级（4 级）：`env_var_override` → 路径覆盖 → runtime `search_paths` → 系统环境变量 → `PATH`。

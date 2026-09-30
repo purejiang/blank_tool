@@ -12,7 +12,8 @@ import tempfile
 
 import pytest
 
-from app.template.store import FileTemplateStore
+from app.ids import WORKFLOW_ID_RE
+from app.workflow.store import FileWorkflowStore
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
 from app.workflow.engine import ExecutionContext, WorkflowEngine
 from app.workflow.streaming import WorkflowStreamHandler
@@ -73,9 +74,9 @@ def _context(tmp_path, **overrides) -> ExecutionContext:
     return ExecutionContext(**data)
 
 
-def _save_template(store: FileTemplateStore, name: str, definition: WorkflowDefinition):
+def _save_template(store: FileWorkflowStore, name: str, definition: WorkflowDefinition):
     """Save a workflow definition into the store so workflow.run can load it."""
-    store.save(name, definition, {"description": f"auto: {name}"})
+    store.save(definition, {"description": f"auto: {name}"})
 
 
 def _make_child_definition(name: str = "child") -> WorkflowDefinition:
@@ -98,7 +99,7 @@ def test_parent_invokes_child_returns_child_outputs(tmp_path):
     workflow whose single node is workflow.run pointing at the child,
     When the engine executes the parent, Then the workflow.run node outputs
     contain the child's outputs, and overall success is True."""
-    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path))
     child_def = _make_child_definition("child")
     _save_template(store, "child", child_def)
 
@@ -110,7 +111,7 @@ def test_parent_invokes_child_returns_child_outputs(tmp_path):
         ],
     )
 
-    ctx = _context(tmp_path, template_store=store)
+    ctx = _context(tmp_path, workflow_store=store)
     result = _engine().execute(parent_def, {}, ctx)
 
     assert result.success is True, f"workflow failed: {result.error}"
@@ -128,7 +129,7 @@ def test_downstream_node_resolves_child_output_via_expression(tmp_path):
     """Given parent: workflow.run → flow.log that reads
     $nodes.sub.outputs.outputs, When executed, Then flow.log logs
     the child's content value (the child outputs dict)."""
-    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path))
     child_def = _make_child_definition("child-downstream")
     _save_template(store, "child-downstream", child_def)
 
@@ -142,7 +143,7 @@ def test_downstream_node_resolves_child_output_via_expression(tmp_path):
         ],
     )
 
-    ctx = _context(tmp_path, template_store=store)
+    ctx = _context(tmp_path, workflow_store=store)
     result = _engine().execute(parent_def, {}, ctx)
 
     assert result.success is True, f"workflow failed: {result.error}"
@@ -161,7 +162,7 @@ def test_self_referencing_template_raises_recursion_error(tmp_path):
     """Given a template whose only node is workflow.run pointing at itself,
     When executed, Then the engine raises a ToolException with a 'recursion'
     message — and does NOT hang."""
-    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path))
     # For a direct self-ref, the template definition must exist in the store
     # so workflow.run can load it.  Build it as a raw dict that survives
     # to/from_dict.
@@ -174,7 +175,7 @@ def test_self_referencing_template_raises_recursion_error(tmp_path):
     )
     _save_template(store, "self-ref", self_def)
 
-    ctx = _context(tmp_path, template_store=store)
+    ctx = _context(tmp_path, workflow_store=store)
     result = _engine().execute(self_def, {}, ctx)
 
     assert result.success is False, "self-referencing workflow should fail"
@@ -185,7 +186,7 @@ def test_self_referencing_template_raises_recursion_error(tmp_path):
 
 # ── (c) depth limit: chain deeper than 10 → clear error ──────────────────
 
-def _save_depth_chain(store: FileTemplateStore, name: str, depth: int):
+def _save_depth_chain(store: FileWorkflowStore, name: str, depth: int):
     """Save a chain of templates: T<N> calls T<N+1>, up to the given depth.
     The last template (depth stop) is a simple write node."""
     for i in range(depth):
@@ -205,7 +206,7 @@ def test_depth_limit_exceeded_returns_clear_error(tmp_path):
     """Given a chain of 12 templates (depth 12 > max 10), When the top-level
     template is executed, Then the engine fails with a clear 'maximum nesting
     depth' error — and does NOT hang."""
-    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path))
     _save_depth_chain(store, "deep", 12)
 
     tpl_def = WorkflowDefinition(
@@ -217,7 +218,7 @@ def test_depth_limit_exceeded_returns_clear_error(tmp_path):
     )
     _save_template(store, "deep-0", tpl_def)
 
-    ctx = _context(tmp_path, template_store=store)
+    ctx = _context(tmp_path, workflow_store=store)
     result = _engine().execute(tpl_def, {}, ctx)
 
     assert result.success is False, "depth-exceeding workflow should fail"
@@ -235,7 +236,7 @@ def test_nested_events_carry_a_single_node_path_prefix(tmp_path):
     ``workflow_id`` names the emitting workflow (the child template), and
     ``run_id`` is the top-level run — never prefixed.
     """
-    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path))
     child_def = _make_child_definition("ns-child")
     _save_template(store, "ns-child", child_def)
 
@@ -255,12 +256,12 @@ def test_nested_events_carry_a_single_node_path_prefix(tmp_path):
     shared_callback = lambda event: recorder.events.append(dict(event))
 
     stream = WorkflowStreamHandler(
-        workflow_id="ns-parent",
+        workflow_name="ns-parent",
         callback=shared_callback,
         run_id="RUN-1",
     )
 
-    ctx = _context(tmp_path, run_id="RUN-1", template_store=store,
+    ctx = _context(tmp_path, run_id="RUN-1", workflow_store=store,
                    workflow_stream=stream, stream_handler=shared_callback)
     result = _engine().execute(parent_def, {}, ctx)
 
@@ -268,12 +269,15 @@ def test_nested_events_carry_a_single_node_path_prefix(tmp_path):
 
     child_events = [
         e for e in recorder.events
-        if e.get("workflow_id") == "ns-child"
+        if e.get("workflow_name") == "ns-child"
     ]
     assert child_events, (
-        f"expected child events naming workflow_id='ns-child', "
+        f"expected child events naming workflow_name='ns-child', "
         f"got events: {json.dumps(recorder.events, indent=2)}"
     )
+    # The child's storage id rides along so a consumer can key on identity
+    # rather than on a display name.
+    assert all(WORKFLOW_ID_RE.match(e["workflow_id"]) for e in child_events)
 
     # Exactly one level of prefixing, and the path is parent-node/child-node.
     child_node_ids = sorted(
@@ -284,8 +288,12 @@ def test_nested_events_carry_a_single_node_path_prefix(tmp_path):
     # run_id identifies the top-level run everywhere.
     assert all(e.get("run_id") == "RUN-1" for e in recorder.events)
 
-    # Parent events keep their own workflow_id and bare node ids.
-    parent_events = [e for e in recorder.events if e.get("workflow_id") == "ns-parent"]
+    # Parent events keep their own identity and bare node ids; the parent was
+    # not loaded from the store, so its workflow_id is "".
+    parent_events = [
+        e for e in recorder.events if e.get("workflow_name") == "ns-parent"
+    ]
+    assert all(e.get("workflow_id") == "" for e in parent_events)
     assert all(e.get("node_id") in (None, "sub") for e in parent_events)
 
 
@@ -295,7 +303,7 @@ def test_unknown_template_name_returns_clean_error(tmp_path):
     """Given a workflow.run node referencing a template that doesn't exist,
     When executed, Then the node fails with an error mentioning 'not found'
     (no crash)."""
-    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path))
 
     parent_def = WorkflowDefinition(
         name="bad-ref",
@@ -305,7 +313,7 @@ def test_unknown_template_name_returns_clean_error(tmp_path):
         ],
     )
 
-    ctx = _context(tmp_path, template_store=store)
+    ctx = _context(tmp_path, workflow_store=store)
     result = _engine().execute(parent_def, {}, ctx)
 
     assert result.success is False, "unknown-template workflow should fail"

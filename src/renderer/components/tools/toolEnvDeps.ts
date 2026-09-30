@@ -1,7 +1,7 @@
 /**
  * 工具 ↔ 环境依赖的本地聚合（docs/08 §3-S6.1 / S6.2）。
  *
- * 后端只在一处给出依赖关系：`workflow.list_tools[].env_deps`（**仅描述符工具**
+ * 后端只在一处给出依赖关系：`tool.list[].env_deps`（**仅描述符工具**
  * 有该字段，WP3 #14）。环境就绪状态来自 `env.list[]`。两边都是既有接口，
  * 渲染层本地 join 即可，不需要新后端方法。
  *
@@ -102,7 +102,7 @@ export function envLabel(env: EnvLike | null | undefined): string {
 /** 工具来源徽章语义（内置 / 已导入 / 插件）。 */
 export type ToolSourceKey = 'builtin' | 'descriptor' | 'plugin' | 'unknown'
 
-/** 由 `workflow.list_tools[].kind` 得出来源徽章语义。 */
+/** 由 `tool.list[].kind` 得出来源徽章语义。 */
 export function toolSourceOf(kind: unknown): ToolSourceKey {
   if (kind === 'shipped-native') return 'builtin'
   if (kind === 'descriptor') return 'descriptor'

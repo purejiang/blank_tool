@@ -2,7 +2,7 @@
   <!--
     版式逐字取自 docs/ui-prompts/ui-preview.html 的 S2 屏：
       .screen.editor  顶栏横跨整宽，下面才是三列
-        .ed-top       返回 / 工作流名 / 状态 / 模板 / 问题 / 试运行
+        .ed-top       返回 / 工作流名 / 状态 / 节点数 / 问题 / 试运行
         .warn-bar     线性模型守卫（多余出边）
         .ed-body      .ed-left(240) ｜ .canvas ｜ .ed-right(320)
     三列都是**贴边的整高面板**（只有 1px 分隔线），不是三张浮起的圆角卡片——
@@ -141,7 +141,7 @@
 
         <div v-if="realNodes.length === 0" class="we-empty">
           <AppIcon name="wf" :size="44" />
-          <p class="we-empty-title">{{ t('workflow.editor.emptyCanvas') }}</p>
+          <p class="we-empty-title">{{ t('workflow.editor.actions.emptyCanvas') }}</p>
           <p class="we-empty-hint">{{ t('workflow.editor.emptyCanvasHint') }}</p>
         </div>
 
@@ -242,6 +242,7 @@
     <WorkflowInfoDialog
       v-model:show="showInfoDialog"
       :meta="meta"
+      :workflow-id="workflowId"
       :node-count="realNodes.length"
       :edge-count="realEdgeCount"
       @update:meta="meta = $event"
@@ -795,7 +796,7 @@ function saveBlockedReason(): string | null {
   }
   const structural = validateOnDeserialize(definition)
   if (structural.length === 0) return null
-  return t('workflow.editor.template.notChained', { count: structural.length })
+  return t('workflow.editor.actions.notChained', { count: structural.length })
 }
 
 /**
@@ -834,7 +835,7 @@ const stateLabel = computed(() =>
     ? t('workflow.editor.running')
     : dirty.value
       ? t('workflow.editor.dirty')
-      : t('workflow.editor.saved'),
+      : t('workflow.editor.actions.saved'),
 )
 
 /**
@@ -850,7 +851,7 @@ function serializeCanvas(): WorkflowDefinitionJSON | null {
   return serializeWorkflow(nodes.value, edges.value, meta.value)
 }
 
-// Cached workflow.list_tools payload: tool ports hydrate loaded templates and
+// Cached tool.list payload: tool ports hydrate loaded templates and
 // operation outputs feed the binding picker; the right column's `.cd` line also
 // reads the tool description from here, so it is a ref rather than a plain let
 // (a non-reactive cache would leave the header stale until the next render).
@@ -859,11 +860,11 @@ const toolsCache = ref<WorkflowToolInfo[] | null>(null)
 async function fetchWorkflowTools(): Promise<WorkflowToolInfo[]> {
   if (toolsCache.value) return toolsCache.value
   try {
-    const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('workflow.list_tools', {})
+    const result = await unifiedApi.call<{ tools?: WorkflowToolInfo[] }>('tool.list', {})
     toolsCache.value = Array.isArray(result?.tools) ? result.tools : []
     return toolsCache.value
   } catch (err) {
-    log.warn('[WorkflowEditorPage] workflow.list_tools unavailable, loaded nodes render without ports', err)
+    log.warn('[WorkflowEditorPage] tool.list unavailable, loaded nodes render without ports', err)
     return []
   }
 }
@@ -881,7 +882,7 @@ async function fetchToolPorts(): Promise<Record<string, ToolPorts>> {
  * Apply a loaded workflow (route load OR 导入工作流) to the canvas. The
  * serializer emits generic nodes with `{tool, params, label}` data; that is
  * hydrated into ToolNode shape here (type 'tool', status 'idle', ports from
- * workflow.list_tools) before replacing the whole canvas state. Positions come
+ * tool.list) before replacing the whole canvas state. Positions come
  * from the serializer's horizontal auto-layout, shifted one slot to the right
  * so 开始 gets its own column, and the two endpoints are then added around the
  * chain (virtualNodes.ts).
@@ -941,34 +942,48 @@ function requestFitView() {
   if (measured) onNodesInitialized()
 }
 
-/** 保存（顶栏）：名称/描述就是 `meta` —— 空名字先让用户去信息弹窗填。 */
+/**
+ * 保存（顶栏）：名称/描述就是 `meta` —— 空名字先让用户去信息弹窗填。
+ *
+ * 首次保存由后端分配 id（不带 `id` = 新建），拿到后立即采纳并把地址换成
+ * `/workflows/editor/<id>`，之后每次保存都带上它 —— 于是"保存"永远是覆盖**这一个**
+ * 工作流，改名也不会产生第二份。
+ */
 async function onSaveClick() {
   const name = (meta.value.name ?? '').trim()
   if (!name) {
-    message.warning(t('workflow.editor.template.nameRequired'))
+    message.warning(t('workflow.editor.actions.nameRequired'))
     showInfoDialog.value = true
     return
   }
   const definition = serializeCanvas()
   if (!definition) {
-    message.warning(t('workflow.editor.template.emptyCanvas'))
+    message.warning(t('workflow.editor.actions.emptyCanvas'))
     return
   }
   try {
-    await unifiedApi.call('template.save', {
+    const saved = await unifiedApi.call<{ id?: string }>('workflow.save', {
+      id: workflowId.value || undefined,
       name,
-      // Definition name/description mirror the template identity so the stored
+      // Definition name/description mirror the stored identity so the
       // WorkflowDefinition is self-consistent (name must be non-empty).
       definition: { ...definition, name, description: meta.value.description ?? '' },
       description: meta.value.description ?? '',
       tags: [],
     })
     savedSnapshot.value = canvasSnapshot()
-    message.success(t('workflow.editor.template.saved', { name }))
+    message.success(t('workflow.editor.actions.saved', { name }))
+    if (saved?.id && saved.id !== workflowId.value) {
+      workflowId.value = saved.id
+      // 地址跟着换成 id：刷新后仍指向这一份，而且显示名之后随便改都不影响它。
+      // 这次 `replace` 不会触发重新加载（守卫见下方 route watcher）。
+      skipNextRouteLoad.value = true
+      void router.replace(`/workflows/editor/${saved.id}`)
+    }
   } catch (error) {
     log.error(`[WorkflowEditorPage] failed to save workflow “${name}”:`, error)
     message.error(
-      t('workflow.editor.template.saveFailed', {
+      t('workflow.editor.actions.saveFailed', {
         error: error instanceof Error ? error.message : String(error),
       }),
     )
@@ -979,9 +994,13 @@ async function onSaveClick() {
  * 导入工作流：把一份工作流 JSON 读进画布（替换当前画布）。
  *
  * 有未保存改动时先确认——导入是**整块替换**，不是合并，未保存的节点会消失。
+ *
+ * ⚠️ 导入必须**清空 workflowId**：画布内容已经不是原来那一份了，若还带着旧 id，
+ * 下一次保存会把导入的内容覆盖到此前编辑的工作流上。
  */
 function onImportPayload(payload: WorkflowImportPayload, sourcePath: string) {
   const apply = async () => {
+    workflowId.value = ''
     await applyCanvasPayload(payload)
     message.success(
       t('workflow.editor.import.imported', {
@@ -1005,24 +1024,35 @@ function onImportPayload(payload: WorkflowImportPayload, sourcePath: string) {
 }
 
 // ---------------------------------------------------------------------------
-// 二级页路由（docs/08 §2.1）：`/workflows/editor/:name?`
-// —— 带 name 时进页面即加载该模板；不带 name 是新建空定义。
+// 二级页路由（docs/08 §2.1）：`/workflows/editor/:ref?`
+// —— 带 ref（工作流 id，或旧书签里的显示名）时进页面即加载那一份；
+//    不带 ref 是新建空定义。
 // ---------------------------------------------------------------------------
 
 const route = useRoute()
 const router = useRouter()
 
-async function loadByName(name: string) {
+/** 当前画布对应的已保存工作流 id；空串 = 还没有保存过（新建 / 刚导入）。 */
+const workflowId = ref('')
+
+/** 保存后 `router.replace(id)` 会再触发一次 route watcher —— 跳过那一次。 */
+const skipNextRouteLoad = ref(false)
+
+async function loadByRef(ref: string) {
   try {
-    const result = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('template.load', {
-      name,
-    })
+    // id 优先、名字兜底：老书签/文档里的中文名链接仍然能打开。
+    const params = WORKFLOW_ID_RE.test(ref) ? { id: ref } : { name: ref }
+    const result = await unifiedApi.call<{
+      id?: string
+      definition?: WorkflowDefinitionJSON
+    }>('workflow.load', params)
     if (!result?.definition || typeof result.definition !== 'object') {
-      throw new Error(`template “${name}” returned no definition`)
+      throw new Error(`workflow “${ref}” returned no definition`)
     }
+    workflowId.value = result.id ?? (WORKFLOW_ID_RE.test(ref) ? ref : '')
     await applyCanvasPayload(deserializeWorkflow(result.definition))
   } catch (error) {
-    log.error(`[WorkflowEditorPage] failed to load template “${name}”:`, error)
+    log.error(`[WorkflowEditorPage] failed to load workflow “${ref}”:`, error)
     message.error(
       t('workflows.loadFailed', {
         error: error instanceof Error ? error.message : String(error),
@@ -1031,15 +1061,27 @@ async function loadByName(name: string) {
   }
 }
 
+/** 与后端 `app.ids` 的 `wf-<12 hex>` 保持一致的形状判断。 */
+const WORKFLOW_ID_RE = /^wf-[0-9a-f]{12}$/
+
 watch(
-  () => route.params.name,
-  (name) => {
-    const target = typeof name === 'string' && name ? decodeURIComponent(name) : ''
+  () => route.params.ref,
+  (ref) => {
+    const target = typeof ref === 'string' && ref ? decodeURIComponent(ref) : ''
     if (target) {
-      void loadByName(target)
+      // 保存后我们把地址换成同一个工作流的 id：这次不需要（也不该）重新加载，
+      // 否则会白跑一次 load 并把 fitView / 选中态重置掉。
+      if (skipNextRouteLoad.value && target === workflowId.value) {
+        skipNextRouteLoad.value = false
+        return
+      }
+      skipNextRouteLoad.value = false
+      void loadByRef(target)
       return
     }
-    // 新建（无 name）：只为**首次进入**的空画布补上 开始 / 结束。已有的画布不动
+    skipNextRouteLoad.value = false
+    workflowId.value = ''
+    // 新建（无 ref）：只为**首次进入**的空画布补上 开始 / 结束。已有的画布不动
     // ——从「编辑 foo」跳到「新建」时旧画布原样留着，与本页一直以来的行为一致。
     if (nodes.value.length === 0) {
       const graph = ensureEndpointGraph([], [])
@@ -1515,8 +1557,8 @@ function handleStreamRaw(raw: unknown) {
     if (!activeWorkflowId) return // nothing started from this page
 
     // Correlation: api_handler injects the caller's task_id on every streamed
-    // event (the event's own `workflow_id` is the DEFINITION name, not a run
-    // id). Once a matching event revealed its run_id, match on that.
+    // event (the event's own `workflow_id` is the workflow's STORAGE id, not a
+    // run id). Once a matching event revealed its run_id, match on that.
     if (typeof event.task_id === 'string' && event.task_id && event.task_id !== activeWorkflowId) return
     if (activeRunId && typeof event.run_id === 'string' && event.run_id !== activeRunId) return
     if (!activeRunId && typeof event.run_id === 'string' && event.run_id) activeRunId = event.run_id

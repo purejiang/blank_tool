@@ -96,7 +96,7 @@
       <template #footer>
         <AppDialogFooter>
           <AppButton variant="outline" :disabled="adding" @click="addDialog.show = false">
-            {{ t('workflow.editor.template.cancel') }}
+            {{ t('workflow.editor.actions.cancel') }}
           </AppButton>
           <AppButton
             variant="primary"
@@ -195,7 +195,7 @@ async function reload() {
   try {
     await pluginStore.reloadPlugins()
     if (pluginStore.error) throw new Error(pluginStore.error)
-    await unifiedApi.call('workflow.list_tools', {})
+    await unifiedApi.call('tool.list', {})
     showSuccess(t('plugins.reloaded'))
     await fetchPlugins()
   } catch (error) {

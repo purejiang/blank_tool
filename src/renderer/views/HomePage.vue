@@ -1,6 +1,6 @@
 <template>
   <!-- 首页（新）：概览数字 → 快捷入口 + 系统状态 → 最近运行。
-       数据源：template.list / task.list / history.list / workflow.list_tools / env.list
+       数据源：workflow.list / task.list / history.list / tool.list / env.list
        与后端健康探针；任一接口失败不影响其它卡片（allSettled + 局部错误提示）。 -->
   <div class="screen home">
     <PageHeader :title="t('home.title')" :description="t('home.subtitle')" />
@@ -16,7 +16,7 @@
     <section class="home-stats" :aria-label="t('home.stats.title')">
       <StatCard
         :label="t('home.stats.workflows')"
-        :value="loading && !loaded ? '—' : templates.length"
+        :value="loading && !loaded ? '—' : workflows.length"
         tone="primary"
       >
         <template #icon><AppIcon name="wf" size="lg" /></template>
@@ -140,7 +140,7 @@ const router = useRouter()
 const health = useBackendHealthStore()
 const { isHealthy } = storeToRefs(health)
 
-const templates = ref<Array<{ name: string }>>([])
+const workflows = ref<Array<{ name: string }>>([])
 const tasks = ref<TaskDefinitionSummary[]>([])
 const runs = ref<RunSummary[]>([])
 const tools = ref<ToolEntry[]>([])
@@ -205,23 +205,23 @@ async function load() {
   loading.value = true
   loadError.value = ''
   const results = await Promise.allSettled([
-    unifiedApi.call<{ templates?: Array<{ name: string }> }>('template.list', {}),
+    unifiedApi.call<{ workflows?: Array<{ name: string }> }>('workflow.list', {}),
     unifiedApi.call<{ tasks?: TaskDefinitionSummary[] }>('task.list'),
     unifiedApi.call<{ runs?: RunSummary[] }>('history.list', { limit: 100, offset: 0 }),
-    unifiedApi.call<{ tools?: ToolEntry[] }>('workflow.list_tools', {}),
+    unifiedApi.call<{ tools?: ToolEntry[] }>('tool.list', {}),
     unifiedApi.call<{ environments?: EnvEntry[] }>('env.list'),
   ])
 
-  const [templateRes, taskRes, runRes, toolRes, envRes] = results
+  const [workflowRes, taskRes, runRes, toolRes, envRes] = results
   const failures: string[] = []
-  if (templateRes.status === 'fulfilled') templates.value = templateRes.value?.templates ?? []
-  else failures.push('template.list')
+  if (workflowRes.status === 'fulfilled') workflows.value = workflowRes.value?.workflows ?? []
+  else failures.push('workflow.list')
   if (taskRes.status === 'fulfilled') tasks.value = taskRes.value?.tasks ?? []
   else failures.push('task.list')
   if (runRes.status === 'fulfilled') runs.value = runRes.value?.runs ?? []
   else failures.push('history.list')
   if (toolRes.status === 'fulfilled') tools.value = toolRes.value?.tools ?? []
-  else failures.push('workflow.list_tools')
+  else failures.push('tool.list')
   if (envRes.status === 'fulfilled') envs.value = envRes.value?.environments ?? []
   else failures.push('env.list')
 

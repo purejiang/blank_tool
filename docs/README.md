@@ -16,30 +16,31 @@ Blanks（本地工作流编排应用）的工程文档入口。旧文档（`BACK
 | [08-前端页面与功能清单](./08-前端页面与功能清单.md) | 逐屏功能元素、字段、数据来源（后端方法）、状态与缺口，含逐屏 UI 生成提示词索引 | 做 UI 设计/前端实现的人、验收的人 |
 | [ui-prompts](./ui-prompts/README.md) | 逐屏 UI 生成提示词（一屏一文件：通用外壳 + 01～12，直接粘贴到 Stitch） | 做 UI 设计的人 |
 | [design](./design.md) | 视觉设计手册：现有色板与分级实况全表、分级缺口、改颜色/圆角/字体的操作步骤与验证清单 | 要改配色的人、做 UI 实现的人 |
-| [09-后端缺口修复与优化方案](./09-后端缺口修复与优化方案.md) | 08 第 7 节 19 项缺口的实现方案，按 WP0–WP10 拆包（改动文件/接口/测试/验收/风险；WP10 已落地，WP9 待实现） | 实现后端与 preload 的工程师、排期的人 |
+| [09-后端缺口修复与优化方案](./09-后端缺口修复与优化方案.md) | 08 第 7 节 19 项缺口的实现方案，按 WP0–WP11 拆包（改动文件/接口/测试/验收/风险；WP10 已落地，WP9 待实现，WP11 是 id 化重构留下的延后候选） | 实现后端与 preload 的工程师、排期的人 |
 
 > 说明：01~09、design.md 与 ui-prompts/ 均为当前有效文档，导航表链接均可直接打开（专题文档如 `状态与取消链路整改方案.md`、`plugin-architecture.md`、`ts-migration-path.md` 未列入本表）。旧文档已删除，需要时从 git 历史恢复。
 
 ## 一句话概览
 
-Blanks 是本地工作流编排桌面应用（Electron + Vue3 + Python 三进程）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的模板，在任务中心或无头 CLI 中执行；模型通用、领域无关，后端同时是一个**无状态 CLI**（`cli/cli.py`），可脱离 Electron 单独跑工作流。**应用本体零领域内容**：工作流、工具描述符与二进制均不内置；仓库 `examples/` 提供可导入示例包：通用示例工作流（`examples/workflows/generic/`，仅内置原子工具、零外部依赖、导入即跑）与 Android 示例包（工作流 + 工具描述符），经工作流/工具导入功能引入，二进制由用户自备。该调整**已完成**（T21，2026-08-04）。
+Blanks 是本地工作流编排桌面应用（Electron + Vue3 + Python 三进程）：把本地命令行工具、脚本与运行时封装为**带类型化出入参的工具**，用**线性工作流**编排成可保存、可复用的工作流定义，在任务中心或无头 CLI 中执行；模型通用、领域无关，后端同时是一个**无状态 CLI**（`cli/cli.py`），可脱离 Electron 单独跑工作流。**应用本体零领域内容**：工作流、工具描述符与二进制均不内置；仓库 `examples/` 提供可导入示例包：通用示例工作流（`examples/workflows/generic/`，仅内置原子工具、零外部依赖、导入即跑）与 Android 示例包（工作流 + 工具描述符），经工作流/工具导入功能引入，二进制由用户自备。该调整**已完成**（T21，2026-08-04）。
 
 ## 当前状态速览
 
 ### 已具备
 
 - **工作流引擎**：`cli/app/workflow/`，线性执行（`node.next` 驱动），内置 23 个原子工具 + 描述符工具，支持 `on_failure`（fail / skip）+ `retry`、可中断正在跑的子进程的取消、节点级流式事件。
-- **运行历史**：每次顶层运行落盘到 `<output_dir>/history/`（条数 + 总字节双上限；`history.list/get/delete/clear`，`history.get_config`/`set_config` 可读写保留策略）；`history.list` 摘要含 `status`/`cancelled`/`run_dir`/`task_name`（13 键），`history.get` 记录含 `run_dir`、`exec_run_id` 与 `task_name`。
-- **界面前置接口（WP0–WP8，2026-09 / 09-28 完成）**：前端重构开工前按 [09-后端缺口修复与优化方案](./09-后端缺口修复与优化方案.md) 处理 19 项缺口（15 项已修、3 项延后、1 项待实现 #18）——`protocol.ts`/`electronApi.ts` 类型与后端实际形状对齐；`tool.*`/`env.*` 弱失败改为抛错（不再把失败当成功）；主进程新增 `show-save-dialog`/`write-text-file`/`read-text-file` 三条通道；`env.list` 补 `display_name`/`type`/`env_var_override`/`path_override`/`source` 并新增 `env.set_path`/`env.reset_path`；`workflow.list_tools` 返回 `env_deps`（**当前仅描述符工具；内置/插件工具的依赖元数据是待实现的 #18 / WP9**）；插件加载失败可见（`loaded=false` + `error`）；`template.load` 附带描述/标签/时间戳；`storage.clear` 默认不再删除 `templates/`、`task_defs/`、`history/`、`runs/`、`registry/`；系统通知默认关（v6→v7 迁移）；**任务定义实体**（见下）；工作流列表去运行状态徽章，工具/环境/插件拆成三个页面；设置页路径组收敛为「`runtime`（工具链与运行时）+ `server`（后端目录）」两行可改，并删掉 `output.output` / `javaPath` 两个死键（#19 / WP10，已落地，含 7→8 迁移）。
-- **模板 CRUD + 执行**：`template.save / load / list / delete / execute`，落盘到 `<output_dir>/templates`（可被 `BT_TEMPLATES_DIR` 覆盖）。
-- **任务定义（WP7，2026-09-28）**：**任务 = 可持久化的执行配置**（绑定的工作流 + 保存的入参 + 可选工作目录），落盘 `<output_dir>/task_defs/`（`BT_TASK_DEFS_DIR` 可覆盖），API 为 `task.list / get / save / delete / execute`；同一工作流可挂多个任务，任务定义**不受运行历史保留策略裁剪**。**在跑运行列表**由原 `task.list` 改名 **`run.list`**。无头 CLI：`python cli/cli.py list-tasks`、`python cli/cli.py run --task <名称> [--input k=v]`。口径：**工作流列表页不展示运行状态**（只回答"有哪些工作流"）。见 [03-数据模型 §6.3](./03-数据模型.md)、[09 §4b](./09-后端缺口修复与优化方案.md)。
+- **运行历史**：每次顶层运行落盘到 `<output_dir>/history/`（条数 + 总字节双上限；`history.list/get/delete/clear`，`history.get_config`/`set_config` 可读写保留策略）；`history.list` 摘要含 `status`/`cancelled`/`run_dir`/`task_name`（13 键，2026-09-30 起再加 `task_def_id`/`workflow_id` → **15 键**），`history.get` 记录含 `run_dir`、`exec_run_id` 与 `task_name`。
+- **界面前置接口（WP0–WP8，2026-09 / 09-28 完成）**：前端重构开工前按 [09-后端缺口修复与优化方案](./09-后端缺口修复与优化方案.md) 处理 19 项缺口（15 项已修、3 项延后、1 项待实现 #18）——`protocol.ts`/`electronApi.ts` 类型与后端实际形状对齐；`tool.*`/`env.*` 弱失败改为抛错（不再把失败当成功）；主进程新增 `show-save-dialog`/`write-text-file`/`read-text-file` 三条通道；`env.list` 补 `display_name`/`type`/`env_var_override`/`path_override`/`source` 并新增 `env.set_path`/`env.reset_path`；`tool.list` 返回 `env_deps`（**当前仅描述符工具；内置/插件工具的依赖元数据是待实现的 #18 / WP9**；该键 2026-09-30 前名为 `workflow.list_tools`）；插件加载失败可见（`loaded=false` + `error`）；`workflow.load` 附带描述/标签/时间戳（2026-09-30 前为 `template.load`）；`storage.clear` 默认不再删除 `workflows/`、`task_defs/`、`history/`、`runs/`、`registry/`；系统通知默认关（v6→v7 迁移）；**任务定义实体**（见下）；工作流列表去运行状态徽章，工具/环境/插件拆成三个页面；设置页路径组收敛为「`runtime`（工具链与运行时）+ `server`（后端目录）」两行可改，并删掉 `output.output` / `javaPath` 两个死键（#19 / WP10，已落地，含 7→8 迁移）。
+- **工作流库（id 化存储）**：`workflow.save / load / list / delete / execute / validate / import_path`，落盘到 `<output_dir>/workflows/wf-<12 位小写 hex>.json`（目录可被 `BT_WORKFLOWS_DIR` 覆盖，legacy `BT_TEMPLATES_DIR` 仍读；legacy `<output_dir>/templates/` 在构造时被采纳）。**文件名 stem 就是 id**（文件内没有 `id` 字段），显示名自由填写、可重复且存在文件里；按 id 或名称解析（id 优先，重名报错）。
+- **id 化重构（2026-09-30）**：工作流与任务定义的存储身份从显示名改为自动生成的 `wf-` / `tk-` id，文件名因此是纯 ASCII；老库首启做**一次性幂等迁移**（`<中文名>.json` → `<id>.json`；工作流**只改文件名、不重写内容**，因为显示名本来就在文件里的 `definition.name`——任务多一步，旧 stem 原本就是名字、文件里没存，所以先写回 `name` 再改名；两者都把不可解析的文件留在原地）；改名只换 name（同 id、文件名不变），所以**任务绑定与子工作流引用不会断**；后端 API 键 **55 → 53**（`template.*` → `workflow.*`、`workflow.list_tools` → `tool.list`、删 `workflow.list_envs`、`template.execute` 并入 `workflow.execute`）；保存工作流的相对路径默认改为在自己的 **run 目录**（`$rundir`）里解析，而不再相对工作流库。延后候选见 [09 §4e WP11](./09-后端缺口修复与优化方案.md)。
+- **任务定义（WP7，2026-09-28；2026-09-30 改 id 身份）**：**任务 = 可持久化的执行配置**（绑定的工作流 + 保存的入参 + 可选工作目录），落盘 `<output_dir>/task_defs/tk-<12 位小写 hex>.json`（`BT_TASK_DEFS_DIR` 可覆盖；文件名 stem 就是 id，显示名存在文件里且可重复），API 为 `task.list / get / save / delete / execute`；任务按 `workflow_id` 绑定（`task.save` 省略 `id` = 新建、传 `id` = 覆盖或改名），同一工作流可挂多个任务，任务定义**不受运行历史保留策略裁剪**。**在跑运行列表**由原 `task.list` 改名 **`run.list`**。无头 CLI：`python cli/cli.py list-tasks`（每行 `id<TAB>名称<TAB>工作流`）、`python cli/cli.py run --task <id|名称> [--input k=v]`。口径：**工作流列表页不展示运行状态**（只回答"有哪些工作流"）。见 [03-数据模型 §6.3](./03-数据模型.md)、[09 §4b](./09-后端缺口修复与优化方案.md)。
 - **工具/环境描述符发现**：工具描述符不再内置，`cli/registry/tools/` 已清空（仅 README）；Android 描述符（12 个）已迁至 `examples/tools/android/`，经工具管理导入后进入可写注册表（T15/T21）；`cli/registry/environments/*.json`（java / python / node 3 个环境，保持内置）自动加载。
 - **统一工具「操作」模型（T3-T5）**：描述符增加 `operations[]`，每个操作带类型化 inputs/outputs + args 映射；引擎按 operation 校验输入、拼命令、返回类型化输出（`engine.py` 的 `_execute_tool`）；APK 链路工具（apktool / adb / bundletool）已迁移为范例。
 - **单选/多选入参（T2）**：`Port` 已支持 `options`（单选下拉）与 `multi`（多选）字段，贯穿 schema、序列化与校验。
 - **脚本作为工具（T17）**：脚本可经 `*_script` 类型封装为"可导入的依赖环境的工具/节点"（如 `examples/tools/android/apk-audit.json`）；CLI 新增 `tool <name>` 子命令（T18）。
 - **遗留模块退役（T22/T23）**：Android 专属页面（PackagePage / DevicePage / APK 工具）与其服务/store/组件、签名配置区，以及对应后端 handler（apk./aab./device./install./download 等）与契约测试均已删除。
 - **任务中心**：`taskStore` + `TaskStreamService`，任务本地持久化、流式日志、取消。
-- **工作流编辑器**：`/workflow-editor`（vue-flow 画布），节点拖拽、连边、序列化/反序列化、模板保存。
+- **工作流编辑器**：`/workflows/editor/:ref?`（vue-flow 画布；`:ref` 是工作流 id，显示名仍可解析，旧路由 `/workflow-editor` 保留重定向），节点拖拽、连边、序列化/反序列化、工作流保存。
 
 ### 已解决
 
@@ -47,9 +48,9 @@ Blanks 是本地工作流编排桌面应用（Electron + Vue3 + Python 三进程
 
 ### 规划中
 
-- **新四模块 IA（模块与界面重设计，部分完成）**：Android 遗留模块已退役删除（T22/T23，见上）；新 IA 的目标形态为 工作流 `/workflows`、任务 `/tasks`、工具 `/tools`、设置 `/settings` 四个一级模块——其中 设置 `/settings`、关于 `/about`、诊断 `/diagnostics` 与工作流编辑器 `/workflow-editor` 已就位，工作流列表页、任务页、工具页仍**规划中**（结构/交互重设计；视觉以用户确认的 Stitch 设计稿为准，见 [01-产品概述](./01-产品概述.md#6-现状-vs-规划)）。
-- 工作流模块 `/workflows`（管理列表 + 二级编辑器 `/workflows/editor/:name?`；导入/导出；**列表不展示运行状态**）。
-- 任务模块 `/tasks`（默认 tab 任务列表 + 二级任务编辑 `/tasks/editor/:name?`；`?tab=runs` 运行记录）——**后端与 CLI 已就位（WP7）**，剩下的只是页面实现（T24）。
+- **新四模块 IA（模块与界面重设计，部分完成）**：Android 遗留模块已退役删除（T22/T23，见上）；新 IA 的目标形态为 工作流 `/workflows`、任务 `/tasks`、工具 `/tools`、设置 `/settings` 四个一级模块——其中 设置 `/settings`、关于 `/about`、诊断 `/diagnostics` 与工作流编辑器 `/workflows/editor/:ref?`（旧 `/workflow-editor` 重定向）已就位，工作流列表页、任务页、工具页仍**规划中**（结构/交互重设计；视觉以用户确认的 Stitch 设计稿为准，见 [01-产品概述](./01-产品概述.md#6-现状-vs-规划)）。
+- 工作流模块 `/workflows`（管理列表 + 二级编辑器 `/workflows/editor/:ref?`；导入/导出；**列表不展示运行状态**）。
+- 任务模块 `/tasks`（默认 tab 任务列表 + 二级任务编辑 `/tasks/editor/:ref?`；`?tab=runs` 运行记录）——**后端与 CLI 已就位（WP7）**，剩下的只是页面实现（T24）。
 - 工具模块 `/tools`（**三个页面**：工具 `/tools` 工具包（.zip）导入/删除 + 卡片上的环境依赖；环境 `/tools/env` 路径检测/更改 + 被依赖数；插件 `/tools/plugins` 加载状态与失败原因；共用一个导航项）。
 - **冷启动与 UX 基调（部分完成）**：通用示例工作流 `examples/workflows/generic/` 已随外部化落地；新模块空状态引导（工作流空 → 导入示例/新建，任务空 → 分"无任务/无工作流"两种文案，工具空 → 从 examples/ 导入描述符）、运行记录状态/任务名筛选、任务完成/失败应用内提示 + 可选系统通知仍**规划中**。
 

@@ -3,9 +3,9 @@
 """
 Sub-workflow composition builtin (workflow.run).
 
-Provides the ``workflow.run`` node that loads and executes another workflow
-template inline, acting as a composition primitive.  The child workflow's
-outputs are returned as the node's outputs, making the underlying template
+Provides the ``workflow.run`` node that loads and executes another saved
+workflow inline, acting as a composition primitive.  The child workflow's
+outputs are returned as the node's outputs, making the underlying workflow
 usable as a reusable sub-flow.
 
 Recursion guard (CRITICAL):
@@ -15,28 +15,35 @@ Recursion guard (CRITICAL):
     * ``MAX_NESTING_DEPTH`` (10) — the engine tracks nesting depth in the
       execution context; a ``workflow.run`` call at the limit raises a
       ``ToolException`` with a clear error message.
-    * ``in_progress_templates`` — a frozenset of template names currently on
-      the call stack, propagated through the execution context.  A
-      ``workflow.run`` call referencing a template already in this set (direct
-      self-reference or mutual cycle A↔B) raises a ``ToolException`` naming
-      the cycle.
+    * ``in_progress_workflow_ids`` — a frozenset of workflow **ids** currently
+      on the call stack, propagated through the execution context.  A
+      ``workflow.run`` call referencing a workflow already in this set (direct
+      self-reference or mutual cycle A↔B) raises a ``ToolException`` naming the
+      cycle.  The guard keys on the storage id rather than on the display name
+      because names are free-form and may repeat: two distinct workflows can
+      share a name, and a name-keyed guard would report a bogus cycle (or miss
+      a real one) for them.
 
     Both guards travel through ``ExecutionContext`` → ``ToolContext``, not
     module-level globals, so concurrent workflows are isolated.
 
 Nested events:
     A child execution inherits the parent's ``run_id`` and emits its own
-    ``workflow_id`` (the child template's name) and its nodes under the
-    parent node's path (``<parent_node_path>/<child_node_id>``), so the top
-    level can attribute every event without parsing prefixes out of
-    ``workflow_id``.  With no stream callback available, child events are
-    silently dropped.
+    ``workflow_id`` (the child's storage id) / ``workflow_name`` (its display
+    name) and its nodes under the parent node's path
+    (``<parent_node_path>/<child_node_id>``), so the top level can attribute
+    every event without parsing prefixes out of the workflow name.  With no
+    stream callback available, child events are silently dropped.
 """
 
 from app.common.exceptions import ToolException, WorkflowCancelled
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
-from app.template.store import TemplateNotFoundError, TemplateStore
+from app.workflow.store import (
+    AmbiguousWorkflowNameError,
+    WorkflowNotFoundError,
+    WorkflowStore,
+)
 from app.workflow.streaming import WorkflowStreamHandler
 
 _TEXT = TypeAnnotation(BaseType.TEXT)
@@ -47,46 +54,43 @@ _JSON = TypeAnnotation(BaseType.JSON)
 MAX_NESTING_DEPTH = 10
 
 
-def run_child_template(
-    template_name,
+def run_child_workflow(
+    workflow_ref,
     child_inputs,
     context,
     node_path_prefix,
     child_definition=None,
+    workflow_id=None,
 ):
     """Shared child-workflow execution for workflow.run / flow.foreach / flow.branch.
 
-    Applies the two recursion guards (cycle via ``in_progress_templates``,
-    depth via ``MAX_NESTING_DEPTH``), resolves the template store and engine
+    Applies the two recursion guards (cycle via ``in_progress_workflow_ids``,
+    depth via ``MAX_NESTING_DEPTH``), resolves the workflow store and engine
     from *context*, loads the definition (unless *child_definition* is
-    supplied — ``flow.foreach`` pre-loads once so an unknown template fails
+    supplied — ``flow.foreach`` pre-loads once so an unknown workflow fails
     fast before its loop), builds the child stream and the child
     :class:`ExecutionContext`, and runs the child through the same engine.
 
     Args:
-        template_name: template name (used for guards, loading and events).
+        workflow_ref: a workflow id, or a display name to resolve.  Resolved
+            to an id up front so the cycle guard keys on identity.
         child_inputs: input dict passed to the child as ``$inputs.*``.
         context: the current :class:`ToolContext`.
         node_path_prefix: path under which the child's nodes are reported
             (``<parent_node_path>`` for ``workflow.run``/``flow.branch``,
             ``<parent_node_path>/<index>`` per ``flow.foreach`` item).
         child_definition: optional pre-loaded definition; when given, the
-            template store lookup is skipped.
+            store lookup is skipped.
+        workflow_id: optional pre-resolved id, so a caller that already
+            resolved the reference does not pay for a second directory scan.
 
     Returns:
         The child's ``WorkflowResult``.
 
     Raises:
         ToolException: on guard violation, missing store/engine, or an
-            unknown template.
+            unknown/ambiguous workflow reference.
     """
-    # ── recursion guard: cycle detection ─────────────────────────────
-    if template_name in context.in_progress_templates:
-        raise ToolException(
-            f"recursion detected: template {template_name!r} is "
-            f"already executing (cycle in workflow composition)"
-        )
-
     # ── recursion guard: depth limit ─────────────────────────────────
     if context.nesting_depth >= MAX_NESTING_DEPTH:
         raise ToolException(
@@ -94,12 +98,28 @@ def run_child_template(
             f"sub-workflow chain is too deep"
         )
 
-    # ── resolve the template store ───────────────────────────────────
-    template_store: TemplateStore | None = context.template_store
-    if template_store is None:
+    # ── resolve the workflow store ───────────────────────────────────
+    workflow_store: WorkflowStore | None = context.workflow_store
+    if workflow_store is None:
         raise ToolException(
-            "template_store not available in execution context — "
-            "cannot resolve sub-workflow template"
+            "workflow_store not available in execution context — "
+            "cannot resolve sub-workflow"
+        )
+
+    # ── resolve the reference to a stable id (cycle guard identity) ───
+    if workflow_id is None:
+        try:
+            workflow_id = workflow_store.resolve(workflow_ref)
+        except AmbiguousWorkflowNameError as exc:
+            raise ToolException(str(exc)) from None
+        if workflow_id is None:
+            raise ToolException(f"workflow not found: {workflow_ref!r}")
+
+    # ── recursion guard: cycle detection ─────────────────────────────
+    if workflow_id in context.in_progress_workflow_ids:
+        raise ToolException(
+            f"recursion detected: workflow {workflow_id!r} is "
+            f"already executing (cycle in workflow composition)"
         )
 
     # ── resolve the engine ───────────────────────────────────────────
@@ -113,16 +133,18 @@ def run_child_template(
     # ── load the child definition (unless pre-loaded) ────────────────
     if child_definition is None:
         try:
-            child_definition = template_store.load(template_name)
-        except TemplateNotFoundError:
+            child_definition = workflow_store.load(workflow_id)
+        except WorkflowNotFoundError:
             raise ToolException(
-                f"template not found: {template_name!r}"
+                f"workflow not found: {workflow_ref!r}"
             ) from None
 
     # ── build the child stream (node ids are already absolute paths) ──
+    child_name = getattr(child_definition, "name", None) or workflow_ref
     child_stream = (
         WorkflowStreamHandler(
-            workflow_id=getattr(child_definition, "name", template_name),
+            workflow_name=child_name,
+            workflow_id=workflow_id,
             callback=context.stream_handler,
             run_id=context.run_id,
             task_log_id=context.task_id,
@@ -143,11 +165,11 @@ def run_child_template(
         env=dict(context.env),
         stream_handler=context.stream_handler,
         workflow_stream=child_stream,
-        template_store=template_store,
+        workflow_store=workflow_store,
         engine=engine,
         nesting_depth=context.nesting_depth + 1,
-        in_progress_templates=(
-            context.in_progress_templates | frozenset([template_name])
+        in_progress_workflow_ids=(
+            context.in_progress_workflow_ids | frozenset([workflow_id])
         ),
         node_path_prefix=node_path_prefix or "",
         # Behaviour defaults travel with the run: a sub-workflow's nodes that
@@ -161,13 +183,14 @@ def run_child_template(
 
 
 class WorkflowRun(BuiltinTool):
-    """Execute another workflow template inline and return its outputs.
+    """Execute another saved workflow inline and return its outputs.
 
-    The builtin reads ``template`` (name) from resolved inputs, loads the
-    definition from the template store carried in the execution context,
-    executes it through the same ``WorkflowEngine`` instance with a child
-    ``ExecutionContext`` that inherits the work dir, env, and nesting guards,
-    and returns ``{"outputs": child_result.outputs}``.
+    The builtin reads the ``template`` input (a workflow id, or a display
+    name to resolve) from resolved inputs, loads the definition from the
+    workflow store carried in the execution context, executes it through the
+    same ``WorkflowEngine`` instance with a child ``ExecutionContext`` that
+    inherits the work dir, env, and nesting guards, and returns
+    ``{"outputs": child_result.outputs}``.
 
     On success the node's ``outputs`` key holds a dict of the child
     workflow's declared outputs.  A cancelled child raises
@@ -179,18 +202,22 @@ class WorkflowRun(BuiltinTool):
 
     name = "workflow.run"
     description = (
-        "Execute another workflow template inline and return its outputs "
+        "Execute another saved workflow inline and return its outputs "
         "as the node outputs.  Bounded nesting depth and cycle detection "
         "prevent unbounded recursion."
     )
 
     ports = PortSet(
         inputs=[
+            # The port is named ``template`` for backward compatibility with
+            # every workflow graph saved before the vocabulary cleanup —
+            # renaming it would invalidate their ``params``.  It now takes a
+            # workflow id, or a display name to resolve.
             Port(
                 "template",
                 _TEXT,
                 required=True,
-                description="Name of the workflow template to execute (loaded from the template store).",
+                description="Workflow to execute, by id or name (resolved from the saved workflow library).",
             ),
             Port(
                 "inputs",
@@ -215,8 +242,8 @@ class WorkflowRun(BuiltinTool):
         Args:
             inputs: resolved params — ``template`` (str, required) and
                 ``inputs`` (dict, default {}).
-            context: the extended ToolContext carrying the template store,
-                engine reference, nesting depth, in-progress set, and
+            context: the extended ToolContext carrying the workflow store,
+                engine reference, nesting depth, in-progress id set, and
                 stream handler.
 
         Returns:
@@ -224,23 +251,23 @@ class WorkflowRun(BuiltinTool):
 
         Raises:
             WorkflowCancelled: when the child run was cancelled.
-            ToolException: on any guard violation, template not found, or
+            ToolException: on any guard violation, unknown workflow, or
                 child workflow failure.
         """
-        template_name: str = inputs["template"]
+        workflow_ref: str = inputs["template"]
         child_workflow_inputs: dict = inputs.get("inputs") or {}
 
         node_path_prefix = context.current_node_path or "unknown"
 
-        child_result = run_child_template(
-            template_name, child_workflow_inputs, context, node_path_prefix
+        child_result = run_child_workflow(
+            workflow_ref, child_workflow_inputs, context, node_path_prefix
         )
 
         if child_result.cancelled:
             raise WorkflowCancelled()
         if not child_result.success:
             raise ToolException(
-                f"child workflow {template_name!r} failed: "
+                f"child workflow {workflow_ref!r} failed: "
                 f"{child_result.error or 'unknown error'}"
             )
 

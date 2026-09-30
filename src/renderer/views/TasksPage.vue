@@ -65,20 +65,22 @@ function goNewTask() {
   void router.push('/tasks/editor')
 }
 
-function goEditTask(name: string) {
-  void router.push(`/tasks/editor/${encodeURIComponent(name)}`)
+function goEditTask(id: string) {
+  // 路由上是任务 id（显示名可以重复，按名字打开会认错任务）。
+  void router.push(`/tasks/editor/${encodeURIComponent(id)}`)
 }
 
-function goRuns(taskName: string) {
-  void router.push({ path: '/tasks', query: { tab: 'runs', task: taskName } })
+function goRuns(taskRef: string) {
+  void router.push({ path: '/tasks', query: { tab: 'runs', task: taskRef } })
 }
 
-/** S5「存为任务」：把工作流名与本次入参预填到任务编辑页。 */
+/** S5「存为任务」：把工作流与本次入参预填到任务编辑页。 */
 function goSaveAsTask(run: RunRecord) {
   void router.push({
     path: '/tasks/editor',
     query: {
-      workflow: run.workflow_name ?? '',
+      // 优先用工作流 id（按名字绑定在改名/重名后会失联）。
+      workflow: run.workflow_id || run.workflow_name || '',
       inputs: JSON.stringify(run.inputs ?? {}),
     },
   })

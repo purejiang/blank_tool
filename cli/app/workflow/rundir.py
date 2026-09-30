@@ -19,10 +19,13 @@ The run's *working* directory (``$workdir``) keeps its own meaning — it is
 where relative input paths resolve.
 """
 
+import logging
 import os
 import re
 
 from app.env import get_output_dir
+
+logger = logging.getLogger(__name__)
 
 #: Characters kept when turning a run id into a directory name.
 _UNSAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9_-]+")
@@ -56,3 +59,22 @@ def run_dir_for(run_id) -> str:
     path = os.path.join(runs_root(), safe_slug(run_id))
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def prepare_run_dir(identity) -> str:
+    """Create the per-run artifact directory for *identity*.
+
+    The single place that turns "an unwritable output dir" into a usable
+    value: returns ``""`` instead of raising, so ``$rundir`` simply resolves to
+    an empty string and the run continues.  Both the runner (which needs the
+    directory *before* building the execution context, because it is the
+    default working directory) and the engine (which prepares it for callers
+    that hand it a bare context) go through here.
+    """
+    try:
+        return run_dir_for(identity or FALLBACK_SLUG)
+    except Exception as exc:  # noqa: BLE001 — any failure degrades to "no dir"
+        logger.warning(
+            "run artifact dir unavailable (%s); $rundir is empty", exc
+        )
+        return ""

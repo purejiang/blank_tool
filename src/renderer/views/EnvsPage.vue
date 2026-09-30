@@ -28,7 +28,7 @@
     <n-alert v-else-if="loadError" type="error" :show-icon="true">
       <div class="envs-status-row">
         <span>{{ t('envs.loadFailed', { error: loadError }) }}</span>
-        <n-button size="tiny" @click="load(true)">{{ t('workflows.retry') }}</n-button>
+        <n-button size="tiny" @click="load()">{{ t('workflows.retry') }}</n-button>
       </div>
     </n-alert>
     <div v-else-if="environments.length === 0" class="envs-empty">
@@ -124,7 +124,7 @@
       <template #footer>
         <AppDialogFooter>
           <AppButton variant="outline" :disabled="adding" @click="addDialog.show = false">
-            {{ t('workflow.editor.template.cancel') }}
+            {{ t('workflow.editor.actions.cancel') }}
           </AppButton>
           <AppButton variant="primary" :loading="adding" @click="submitAdd">
             {{ t('envs.add') }}
@@ -157,7 +157,7 @@ import { log } from '@utils/logger'
 /**
  * S6.2 — 运行环境。
  *
- * 环境与工具的依赖关系在渲染层 join：`workflow.list_tools[].env_deps` 按环境
+ * 环境与工具的依赖关系在渲染层 join：`tool.list[].env_deps` 按环境
  * `name` 计数即得「被 N 个工具依赖」与告警带，无需新后端方法。
  */
 const { t } = useI18n()
@@ -193,14 +193,14 @@ const blockedEnvs = computed(() =>
     .sort((a, b) => b.count - a.count),
 )
 
-async function load(refreshEnvs = false) {
+async function load() {
   loading.value = true
   loadError.value = ''
   try {
     // 运行时与工具必须一起重取：set_path 会同时改变两侧（docs/08 §3-S6.2）
     const [envList, toolList] = await Promise.all([
-      unifiedApi.call<{ environments?: EnvEntry[] }>(refreshEnvs ? 'workflow.list_envs' : 'env.list'),
-      unifiedApi.call<{ tools?: ToolEntry[] }>('workflow.list_tools', {}),
+      unifiedApi.call<{ environments?: EnvEntry[] }>('env.list'),
+      unifiedApi.call<{ tools?: ToolEntry[] }>('tool.list', {}),
     ])
     environments.value = Array.isArray(envList?.environments) ? envList.environments : []
     tools.value = Array.isArray(toolList?.tools) ? toolList.tools : []
@@ -234,7 +234,7 @@ async function changePath(env: EnvEntry, asDirectory: boolean) {
     busy.value = `${asDirectory ? 'dir' : 'file'}-${env.name}`
     await unifiedApi.call('env.set_path', { name: env.name, path })
     showSuccess(t('envs.pathSaved', { env: envLabel(env) }))
-    await load(true)
+    await load()
   } catch (error) {
     showError(t('envs.pathFailed', { error: errMsg(error) }))
   } finally {
@@ -247,7 +247,7 @@ async function resetPath(env: EnvEntry) {
   try {
     await unifiedApi.call('env.reset_path', { name: env.name })
     showSuccess(t('envs.pathReset', { env: envLabel(env) }))
-    await load(true)
+    await load()
   } catch (error) {
     showError(t('envs.pathFailed', { error: errMsg(error) }))
   } finally {
@@ -300,7 +300,7 @@ async function submitAdd() {
     await unifiedApi.call('env.add', { descriptor })
     showSuccess(t('envs.added', { name: String(descriptor.name ?? '') }))
     addDialog.show = false
-    await load(true)
+    await load()
   } catch (error) {
     addDialog.error = errMsg(error)
   } finally {
@@ -319,7 +319,7 @@ function confirmDelete(env: EnvEntry) {
       try {
         await unifiedApi.call('env.delete', { name: env.name })
         showSuccess(t('envs.deleted', { env: envLabel(env) }))
-        await load(true)
+        await load()
       } catch (error) {
         showError(t('envs.deleteFailed', { error: errMsg(error) }))
       } finally {

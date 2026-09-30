@@ -14,11 +14,11 @@ contract and a stdlib-only ``execute`` implementation:
 - ``flow.log`` writes a message through the standard :mod:`logging` framework
   (child loggers inherit the handlers configured by the ``main.py`` bootstrap)
   and, when a task context is present, also appends a line to the per-task log.
-- ``flow.foreach`` executes a sub-workflow template once per list item.
+- ``flow.foreach`` executes a saved sub-workflow once per list item.
 - ``flow.branch`` is the if/else primitive: a truthy ``condition`` runs
   ``true_template``, a falsy one runs ``false_template`` (optional; absent
   means no-op).  Branching is realized through sub-workflow composition (the
-  shared :func:`app.tools.builtin.workflow_tools.run_child_template` helper).
+  shared :func:`app.tools.builtin.workflow_tools.run_child_workflow` helper).
 - ``flow.compare`` produces the booleans branches consume: ``{a, b, op}`` →
   ``{"result": bool}`` (numbers compare numerically, everything else as
   strings).
@@ -40,8 +40,11 @@ from app.common.exceptions import (
 )
 from app.protocol import BaseType, Port, PortSet, TypeAnnotation
 from app.tools.builtin.base import BuiltinTool, ToolContext
-from app.template.store import TemplateNotFoundError
-from app.tools.builtin.workflow_tools import run_child_template
+from app.workflow.store import (
+    AmbiguousWorkflowNameError,
+    WorkflowNotFoundError,
+)
+from app.tools.builtin.workflow_tools import run_child_workflow
 from app.utils.task_log_writer import append_task_log
 from app.workflow.rundir import safe_slug
 from app.workflow.streaming import LOG as LOG_EVENT
@@ -158,13 +161,14 @@ class FlowLog(BuiltinTool):
 
 
 class FlowForeach(BuiltinTool):
-    """Execute a sub-workflow template once per item, collecting results.
+    """Execute a saved sub-workflow once per item, collecting results.
 
     The loop primitive: ``items`` (a list) is iterated in order, and for each
-    item the ``template`` is executed inline through the same engine, mirroring
-    ``workflow.run`` (shared ``TemplateStore``, ``ExecutionContext`` inheritance,
-    ``MAX_NESTING_DEPTH``/``in_progress_templates`` recursion guards, and
-    per-iteration node paths ``<this node>/<index>/<child node>``).
+    item the ``template`` workflow is executed inline through the same engine,
+    mirroring ``workflow.run`` (shared ``WorkflowStore``,
+    ``ExecutionContext`` inheritance, ``MAX_NESTING_DEPTH`` /
+    ``in_progress_workflow_ids`` recursion guards, and per-iteration node paths
+    ``<this node>/<index>/<child node>``).
 
     Child input construction:
         * ``inputs`` (dict) is merged as the base for every child run.
@@ -187,7 +191,7 @@ class FlowForeach(BuiltinTool):
 
     name = "flow.foreach"
     description = (
-        "Execute a sub-workflow template once per list item, collecting "
+        "Execute a saved sub-workflow once per list item, collecting "
         "per-item results; single-item failures are recorded and do not stop "
         "the loop."
     )
@@ -204,7 +208,7 @@ class FlowForeach(BuiltinTool):
                 "template",
                 _TEXT,
                 required=True,
-                description="Name of the sub-workflow template to run per item.",
+                description="Workflow to run per item, by id or name (resolved from the saved workflow library).",
             ),
             Port(
                 "item_key",
@@ -282,29 +286,35 @@ class FlowForeach(BuiltinTool):
                 f"foreach 'items' must be a list, got {type(items).__name__}"
             )
 
-        template_name = inputs.get("template")
-        if not template_name:
-            raise ToolException("foreach requires a 'template' name")
+        workflow_ref = inputs.get("template")
+        if not workflow_ref:
+            raise ToolException("foreach requires a 'template' workflow")
         item_key = inputs.get("item_key") or "item"
         extra = inputs.get("inputs") or {}
         if not isinstance(extra, dict):
             raise ToolException("foreach 'inputs' must be a dict")
 
-        # ── resolve the template ONCE, before any item runs ───────────
-        # An unknown template must fail fast instead of once per item; the
-        # cycle/depth guards stay in run_child_template (per child).
-        template_store = context.template_store
-        if template_store is None:
+        # ── resolve the child ONCE, before any item runs ──────────────
+        # An unknown workflow must fail fast instead of once per item; the
+        # cycle/depth guards stay in run_child_workflow (per child).
+        workflow_store = context.workflow_store
+        if workflow_store is None:
             raise ToolException(
-                "template_store not available in execution context — "
-                "cannot resolve sub-workflow template"
+                "workflow_store not available in execution context — "
+                "cannot resolve sub-workflow"
             )
 
         try:
-            child_definition = template_store.load(template_name)
-        except TemplateNotFoundError:
+            child_workflow_id = workflow_store.resolve(workflow_ref)
+        except AmbiguousWorkflowNameError as exc:
+            raise ToolException(str(exc)) from None
+        if child_workflow_id is None:
+            raise ToolException(f"workflow not found: {workflow_ref!r}")
+        try:
+            child_definition = workflow_store.load(child_workflow_id)
+        except WorkflowNotFoundError:
             raise ToolException(
-                f"template not found: {template_name!r}"
+                f"workflow not found: {workflow_ref!r}"
             ) from None
 
         node_path = context.current_node_path or "unknown"
@@ -325,12 +335,13 @@ class FlowForeach(BuiltinTool):
             child_inputs[item_key] = item
 
             try:
-                child_result = run_child_template(
-                    template_name,
+                child_result = run_child_workflow(
+                    workflow_ref,
                     child_inputs,
                     context,
                     f"{node_path}/{index}",
                     child_definition=child_definition,
+                    workflow_id=child_workflow_id,
                 )
             except WorkflowCancelled:
                 raise
@@ -371,7 +382,7 @@ class FlowForeach(BuiltinTool):
         # ``args_map`` (values are ``str()``-ified, not JSON-serialized), so
         # the loop also writes them to a JSON file and exposes its path.  The
         # file goes into the RUN's artifact directory (never the workflow's own
-        # directory, which may be a source tree or the template store), and its
+        # directory, which may be a source tree or the workflow store), and its
         # name carries the run id and the node path so concurrent runs (or two
         # same-named nodes in different workflows) cannot overwrite each other.
         results_file = ""
@@ -411,13 +422,13 @@ class FlowForeach(BuiltinTool):
 
 
 class FlowBranch(BuiltinTool):
-    """Conditionally execute one of two sub-workflow templates (if/else).
+    """Conditionally execute one of two saved sub-workflows (if/else).
 
     A truthy ``condition`` runs ``true_template``; a falsy one runs
     ``false_template`` when given, otherwise the node is a successful no-op
     (``executed=False``) — which doubles as a "conditional skip".  The chosen
-    template is executed inline through the shared
-    :func:`~app.tools.builtin.workflow_tools.run_child_template` helper, so
+    workflow is executed inline through the shared
+    :func:`~app.tools.builtin.workflow_tools.run_child_workflow` helper, so
     recursion guards (cycle + ``MAX_NESTING_DEPTH``) and nested event paths
     behave exactly like ``workflow.run`` / ``flow.foreach``.
 
@@ -432,7 +443,7 @@ class FlowBranch(BuiltinTool):
 
     name = "flow.branch"
     description = (
-        "Conditionally execute one of two sub-workflow templates: truthy "
+        "Conditionally execute one of two saved sub-workflows: truthy "
         "condition runs true_template, falsy runs false_template (optional; "
         "absent means no-op)."
     )
@@ -449,13 +460,13 @@ class FlowBranch(BuiltinTool):
                 "true_template",
                 _TEXT,
                 required=True,
-                description="Sub-workflow template to run when condition is truthy.",
+                description="Workflow to run when condition is truthy (id or name).",
             ),
             Port(
                 "false_template",
                 _TEXT,
                 required=False,
-                description="Sub-workflow template to run when condition is falsy (omit for no-op).",
+                description="Workflow to run when condition is falsy (id or name; omit for no-op).",
             ),
             Port(
                 "inputs",
@@ -469,13 +480,13 @@ class FlowBranch(BuiltinTool):
                 "executed",
                 _BOOLEAN,
                 required=True,
-                description="True when a branch template actually ran.",
+                description="True when a branch workflow actually ran.",
             ),
             Port(
                 "template",
                 _TEXT,
                 required=True,
-                description="Name of the template that ran (empty string when no-op).",
+                description="Workflow that ran, as referenced (empty string when no-op).",
             ),
             Port(
                 "outputs",
@@ -497,7 +508,7 @@ class FlowBranch(BuiltinTool):
 
         node_path_prefix = context.current_node_path or "unknown"
 
-        child_result = run_child_template(
+        child_result = run_child_workflow(
             chosen, inputs.get("inputs") or {}, context, node_path_prefix
         )
 
@@ -505,7 +516,7 @@ class FlowBranch(BuiltinTool):
             raise WorkflowCancelled()
         if not child_result.success:
             raise ToolException(
-                f"branch template {chosen!r} failed: "
+                f"branch workflow {chosen!r} failed: "
                 f"{child_result.error or 'unknown error'}"
             )
 

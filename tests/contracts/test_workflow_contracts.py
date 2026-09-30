@@ -1,6 +1,6 @@
 """Wave 3 contract tests: workflow API_MAP handlers.
 
-Calls the four workflow handlers directly with their (params, stream_handler)
+Calls the workflow-domain handlers directly with their (params, stream_handler)
 signature — the same contract ApiHandler uses for JSON-RPC dispatch — and
 asserts on their return shapes against the real ToolManager / EnvironmentRegistry.
 
@@ -9,6 +9,12 @@ error}`` with ``status`` one of ``succeeded`` / ``failed`` / ``cancelled``, and
 the streamed event schema is exactly the five workflow lifecycle events
 documented in ``app/workflow/streaming.py`` — ``node_failed`` and
 ``node_output`` no longer exist.
+
+``workflow.execute`` covers both an inline definition and a saved workflow; the
+saved-workflow CRUD surface (``workflow.save/load/list/delete``) lives in
+``test_workflow_store_contracts.py``.  The tool catalog handler moved to the
+``tool.*`` domain (``tool.list``) and is exercised in ``test_tool_handler.py``;
+``workflow.list_envs`` was a verbatim duplicate of ``env.list`` and is gone.
 """
 
 import json
@@ -18,29 +24,36 @@ import pytest
 
 from app.common.exceptions import ToolException
 from app.common.task_manager import TaskManager
+from app.handlers.tool_handler import handle_tool_list
 from app.handlers.workflow_handler import (
     API_MAP,
     handle_execute,
-    handle_list_envs,
-    handle_list_tools,
     handle_validate,
 )
 from app.workflow.output_limit import MAX_STRING_CHARS
 
-WORKFLOW_METHODS = {"workflow.execute", "workflow.validate", "workflow.list_tools", "workflow.list_envs"}
+WORKFLOW_METHODS = {"workflow.execute", "workflow.validate"}
 
 #: Exactly the keys each event type carries (``error`` is optional on
 #: ``node_completed`` and only present when the node failed/skipped).
 #: Every event also carries ``ts`` — the local ``HH:MM:SS`` emission time.
 _EVENT_KEYS = {
-    "node_started": {"type", "ts", "run_id", "workflow_id", "node_id", "tool"},
-    "node_completed": {
-        "type", "ts", "run_id", "workflow_id", "node_id", "status", "duration_ms",
-        "attempts",
+    "node_started": {
+        "type", "ts", "run_id", "workflow_id", "workflow_name", "node_id", "tool",
     },
-    "workflow_completed": {"type", "ts", "run_id", "workflow_id", "success"},
-    "workflow_failed": {"type", "ts", "run_id", "workflow_id", "error"},
-    "workflow_cancelled": {"type", "ts", "run_id", "workflow_id"},
+    "node_completed": {
+        "type", "ts", "run_id", "workflow_id", "workflow_name", "node_id",
+        "status", "duration_ms", "attempts",
+    },
+    "workflow_completed": {
+        "type", "ts", "run_id", "workflow_id", "workflow_name", "success",
+    },
+    "workflow_failed": {
+        "type", "ts", "run_id", "workflow_id", "workflow_name", "error",
+    },
+    "workflow_cancelled": {
+        "type", "ts", "run_id", "workflow_id", "workflow_name",
+    },
 }
 
 #: ``ts`` shape only — the value is the wall clock at emission.
@@ -103,7 +116,7 @@ def _completed_for(events, node_id):
     return matches[0]
 
 
-def _assert_event_schema(event, run_id, workflow_id):
+def _assert_event_schema(event, run_id, workflow_name, workflow_id=""):
     """Assert *event* matches the documented schema for its type."""
     event_type = event["type"]
     assert event_type in _EVENT_KEYS, f"undocumented event type: {event_type!r}"
@@ -115,6 +128,9 @@ def _assert_event_schema(event, run_id, workflow_id):
     assert _TS_RE.match(event["ts"]), f"bad ts: {event['ts']!r}"
 
     assert event["run_id"] == run_id
+    # ``workflow_name`` is the definition's display name; ``workflow_id`` is the
+    # saved workflow's storage id ("" for an inline definition or a bare file).
+    assert event["workflow_name"] == workflow_name
     assert event["workflow_id"] == workflow_id
 
     if event_type in ("node_started", "node_completed"):
@@ -148,7 +164,7 @@ def _clean_task_manager():
 # API_MAP surface
 # ---------------------------------------------------------------------------
 
-def test_api_map_contains_four_workflow_methods():
+def test_api_map_contains_the_workflow_methods():
     assert WORKFLOW_METHODS <= set(API_MAP)
 
 
@@ -223,11 +239,11 @@ def test_workflow_validate_without_definition_returns_structure_finding():
 
 
 # ---------------------------------------------------------------------------
-# workflow.list_tools / workflow.list_envs
+# tool.list
 # ---------------------------------------------------------------------------
 
-def test_workflow_list_tools_non_empty_with_builtin_and_registered():
-    result = handle_list_tools({}, None)
+def test_tool_list_non_empty_with_builtin_and_registered():
+    result = handle_tool_list({}, None)
     tools = result["tools"]
     assert tools
     names = {entry["name"] for entry in tools}
@@ -269,28 +285,16 @@ def test_workflow_list_tools_non_empty_with_builtin_and_registered():
             assert entry.get("builtin") is False
 
 
-def test_workflow_list_envs_returns_java_python_node():
-    result = handle_list_envs({}, None)
-    names = {entry["name"] for entry in result["environments"]}
-    assert {"java", "python", "node"} <= names
-    for entry in result["environments"]:
-        assert set(entry) == {
-            "name", "is_valid", "binary_path", "version", "root_path",
-            "display_name", "type", "env_var_override", "path_override",
-            "source",
-        }
+def test_tool_list_reports_java_python_node_env_metadata():
+    """The tool catalog is the only source of descriptor ``env_deps``."""
+    result = handle_tool_list({}, None)
+    assert result["tools"]
+    # Every entry carries the fields the editor/工具页 read.
+    for entry in result["tools"]:
+        assert {"name", "kind", "is_valid", "description"} <= set(entry)
 
 
-def test_workflow_list_envs_shape_matches_env_list(monkeypatch):
-    """docs/08: ``env.list`` and ``workflow.list_envs`` stay interchangeable."""
-    from app.handlers.env_handler import handle_env_list
-
-    listed = handle_env_list({}, None)["environments"]
-    workflow_listed = handle_list_envs({}, None)["environments"]
-    assert workflow_listed == listed
-
-
-def test_workflow_list_tools_reports_descriptor_env_deps(tmp_path, monkeypatch):
+def test_tool_list_reports_descriptor_env_deps(tmp_path, monkeypatch):
     """WP3 #14: a descriptor tool's declared env_deps reach the editor."""
     from app.env.registry import get_env_registry
     from app.tools.descriptor_tool import DescriptorTool, load_descriptor
@@ -323,7 +327,7 @@ def test_workflow_list_tools_reports_descriptor_env_deps(tmp_path, monkeypatch):
     monkeypatch.setitem(registry._descriptor_tools, "envdepstool", tool)
     monkeypatch.setitem(registry._kinds, "envdepstool", "descriptor")
 
-    result = handle_list_tools({}, None)
+    result = handle_tool_list({}, None)
     entry = next(e for e in result["tools"] if e["name"] == "envdepstool")
     assert entry["kind"] == "descriptor"
     assert entry["env_deps"] == ["java"]
@@ -357,7 +361,8 @@ def test_workflow_execute_with_inline_definition_runs(tmp_path):
 
     # Event contract: one node_started + exactly one node_completed per node,
     # then a single workflow_completed.  task_id doubles as the run id here
-    # (no ``_run_id`` was supplied) while workflow_id is the definition name.
+    # (no ``_run_id`` was supplied) while workflow_name is the definition name
+    # and workflow_id is "" (an inline definition has no storage identity).
     assert _types(events) == [
         "node_started",
         "node_completed",
@@ -373,7 +378,8 @@ def test_workflow_execute_with_inline_definition_runs(tmp_path):
         {
             "type": "workflow_completed",
             "run_id": "contract-inline-1",
-            "workflow_id": "contract-exec",
+            "workflow_id": "",
+            "workflow_name": "contract-exec",
             "success": True,
         }
     ]
@@ -548,5 +554,5 @@ def test_workflow_execute_truncates_oversized_recorded_outputs(tmp_path):
 
 
 def test_workflow_execute_with_missing_definition_raises():
-    with pytest.raises(ToolException, match="missing definition or path"):
+    with pytest.raises(ToolException, match="missing workflow reference"):
         handle_execute({"task_id": "x"}, None)

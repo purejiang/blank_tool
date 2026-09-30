@@ -68,8 +68,9 @@ import { toJsonPayload } from '@utils/jsonPayload'
  * M1: collect a workflow's declared inputs before running it.
  *
  * The dialog owns validation (required + JSON parse) and emits a ready-to-send
- * `inputs` object; the caller owns the actual run (so the list page can use
- * `template.execute` while the editor uses `workflow.execute`).
+ * `inputs` object; the caller owns the actual run (the list page and the editor
+ * both go through `workflow.execute` now, differing only in whether they send a
+ * saved `id`/`name` or an inline `definition`).
  */
 const props = defineProps<{
   show: boolean

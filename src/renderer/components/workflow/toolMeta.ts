@@ -3,7 +3,7 @@
  * (ToolNode, WorkflowNodePalette, WorkflowEditorPage).
  *
  * Tool categories and status values are deliberately local to the renderer:
- * the backend `workflow.list_tools` payload (see
+ * the backend `tool.list` payload (see
  * cli/app/handlers/workflow_handler.py) only carries name/is_valid/
  * version/tool_path/ports/builtin (+ kind since todo 8), so the category
  * is derived from the dotted tool-name prefix.
@@ -14,7 +14,7 @@ export type ToolStatus = 'idle' | 'running' | 'success' | 'error' | 'skipped' | 
 export type ToolCategory = 'file' | 'net' | 'exec' | 'flow' | 'tool'
 
 /**
- * Provenance of a tool, as emitted by backend `workflow.list_tools`
+ * Provenance of a tool, as emitted by backend `tool.list`
  * (todo 8/16): 'shipped-native' = built-in workflow primitives,
  * 'native' = Tier-1 native plugin, 'descriptor' = Tier-2 descriptor tool.
  * Optional — older backends omit it, in which case callers fall back to
@@ -42,7 +42,7 @@ export interface ToolPort {
 
 /**
  * One named operation of a descriptor tool (T7), as exposed additively by
- * `workflow.list_tools` for descriptor tools that declare operations
+ * `tool.list` for descriptor tools that declare operations
  * (cli/app/handlers/workflow_handler.py). Ports are PortJSON-compatible.
  */
 export interface ToolOperation {
@@ -83,7 +83,7 @@ export interface UpstreamNodeRef {
   paramKeys: string[]
 }
 
-/** One entry of the `workflow.list_tools` response `tools` array. */
+/** One entry of the `tool.list` response `tools` array. */
 export interface WorkflowToolInfo {
   name: string
   is_valid: boolean

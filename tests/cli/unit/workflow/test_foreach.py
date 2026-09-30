@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.common.exceptions import ToolException
-from app.template.store import FileTemplateStore
+from app.workflow.store import FileWorkflowStore
 from app.tools.builtin.base import ToolContext
 from app.tools.builtin.flow_tools import FlowForeach
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
@@ -24,15 +24,30 @@ def _definition(name="wf", nodes=None) -> WorkflowDefinition:
     return WorkflowDefinition(name=name, nodes=nodes or [])
 
 
-def _save(store: FileTemplateStore, name: str, nodes):
-    store.save(name, _definition(name, nodes), {"description": f"auto: {name}"})
+def _save(store: FileWorkflowStore, name: str, nodes):
+    store.save(_definition(name, nodes), {"description": f"auto: {name}"})
 
 
 # ── direct unit tests (stub engine + stub store) ──────────────────────────
 
 class _StubStore:
-    def load(self, name):
-        return _definition(name)
+    """A minimal store: every reference resolves to a stable synthetic id."""
+
+    def __init__(self):
+        self._by_ref = {}
+        self._by_id = {}
+
+    def resolve(self, ref):
+        if not ref:
+            return None
+        if ref not in self._by_ref:
+            workflow_id = f"wf-{len(self._by_ref):012d}"
+            self._by_ref[ref] = workflow_id
+            self._by_id[workflow_id] = ref
+        return self._by_ref[ref]
+
+    def load(self, workflow_id):
+        return _definition(self._by_id[workflow_id])
 
 
 class _StubEngine:
@@ -48,7 +63,7 @@ class _StubEngine:
 
 
 def _foreach_ctx(tmp_path, engine, store):
-    return ToolContext(work_dir=str(tmp_path), template_store=store, engine=engine)
+    return ToolContext(work_dir=str(tmp_path), workflow_store=store, engine=engine)
 
 
 def test_foreach_flattens_dict_items_and_counts_pass_rule(tmp_path):
@@ -203,16 +218,16 @@ def test_foreach_non_list_json_string_still_raises(tmp_path):
 
 def test_foreach_missing_template_raises(tmp_path):
     ctx = ToolContext(
-        work_dir=str(tmp_path), template_store=None, engine=_StubEngine(lambda i: None)
+        work_dir=str(tmp_path), workflow_store=None, engine=_StubEngine(lambda i: None)
     )
-    with pytest.raises(ToolException, match="template_store"):
+    with pytest.raises(ToolException, match="workflow_store"):
         FlowForeach().execute({"items": [], "template": "child"}, ctx)
 
 
 # ── engine integration (real TemplateStore + real engine + core file.write) ─
 
 def test_foreach_runs_child_through_engine(tmp_path):
-    store = FileTemplateStore(templates_dir=str(tmp_path))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path))
     _save(
         store,
         "child",
@@ -231,7 +246,7 @@ def test_foreach_runs_child_through_engine(tmp_path):
             )
         ],
     )
-    ctx = ExecutionContext(work_dir=str(tmp_path), template_store=store)
+    ctx = ExecutionContext(work_dir=str(tmp_path), workflow_store=store)
     result = WorkflowEngine().execute(parent, {}, ctx)
 
     assert result.success is True

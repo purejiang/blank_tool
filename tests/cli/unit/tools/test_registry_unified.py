@@ -314,22 +314,19 @@ def test_builtin_status_surface_reports_available(monkeypatch):
     declared no ``is_valid`` at all, so the handler's
     ``getattr(tool, "is_valid", False)`` flagged all ten builtins
     "unavailable" and the Tools page painted every card red — while
-    ``workflow.list_tools`` (the surface the editor palette reads) hardcodes
+    ``tool.list`` (the surface the editor palette reads) hardcodes
     True for those very instances, so the contradiction never failed loudly.
 
     A builtin is an in-process Python primitive: no binary to resolve, no
     environment dep to satisfy — valid by construction.
 
-    ``tool_handler.manager`` is rebound to the real singleton on purpose: it
-    is a module-level global bound at import time, and
-    ``tests/contracts/conftest.py`` patches ``ToolManager.instance`` while
-    importing the handler, so in a whole-suite run the global can already be
-    a MagicMock (empty ``get_all_tools()``) — an order-dependent flake.
+    The handler resolves ``ToolManager.instance()`` per call, so this test sees
+    the real singleton even when an earlier test patched it: no module global
+    can be left holding a MagicMock from another test's import order.
     """
     from app.handlers import tool_handler
 
     tm = ToolManager.instance()
-    monkeypatch.setattr(tool_handler, "manager", tm)
 
     report = tool_handler.get_tools({}, None)
     for name in _BUILTIN_NAMES:

@@ -5,7 +5,7 @@ WorkflowEngine with the four real python_script descriptor tools
 (apk-resolve / apk-signature / validate-entry / validate-report) executing
 as genuine subprocesses under the current interpreter.  The per-item
 sub-workflow (``apk-validate-entry``) is pre-seeded into a throwaway
-FileTemplateStore, mirroring the GUI requirement that both templates must
+FileWorkflowStore, mirroring the GUI requirement that both templates must
 be imported before the main workflow can run.
 """
 
@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.template.store import FileTemplateStore
+from app.workflow.store import FileWorkflowStore
 from app.tools.descriptor_tool import DescriptorTool, load_descriptor
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition
@@ -71,12 +71,12 @@ def fixture_apk(tmp_path):
 
 
 @pytest.fixture
-def template_store(tmp_path):
-    store = FileTemplateStore(templates_dir=str(tmp_path / "templates"))
+def workflow_store(tmp_path):
+    store = FileWorkflowStore(workflows_dir=str(tmp_path / "templates"))
     entry_definition = WorkflowDefinition.from_json_file(
         str(WORKFLOWS_DIR / "apk-validate-entry.json")
     )
-    store.save("apk-validate-entry", entry_definition, {})
+    store.save(entry_definition, {})
     return store
 
 
@@ -111,7 +111,7 @@ def _run_workflow(engine, store, tmp_path, apk_path, mapping):
     output_path = tmp_path / "report.md"
     work_dir = tmp_path / "work"
     work_dir.mkdir()  # the executor uses work_dir as subprocess cwd
-    context = ExecutionContext(work_dir=str(work_dir), template_store=store)
+    context = ExecutionContext(work_dir=str(work_dir), workflow_store=store)
     result = engine.execute(
         definition,
         {
@@ -124,12 +124,12 @@ def _run_workflow(engine, store, tmp_path, apk_path, mapping):
     return result, output_path
 
 
-def test_apk_validate_all_entries_pass(fixture_apk, template_store, tmp_path):
+def test_apk_validate_all_entries_pass(fixture_apk, workflow_store, tmp_path):
     engine = _make_engine()
     mapping = _mapping(fixture_apk, hashlib.md5(LOGIN_BYTES).hexdigest())
 
     result, output_path = _run_workflow(
-        engine, template_store, tmp_path, fixture_apk, mapping
+        engine, workflow_store, tmp_path, fixture_apk, mapping
     )
 
     assert result.success is True, result.error
@@ -142,14 +142,14 @@ def test_apk_validate_all_entries_pass(fixture_apk, template_store, tmp_path):
 
 
 def test_apk_validate_tampered_entry_fails_assert(
-    fixture_apk, template_store, tmp_path
+    fixture_apk, workflow_store, tmp_path
 ):
     engine = _make_engine()
     # Correct md5 for everything except the in-APK file (tampered expected).
     mapping = _mapping(fixture_apk, "0" * 32)
 
     result, output_path = _run_workflow(
-        engine, template_store, tmp_path, fixture_apk, mapping
+        engine, workflow_store, tmp_path, fixture_apk, mapping
     )
 
     # flow.assert gates the run: a failed entry fails the whole workflow.
@@ -163,7 +163,7 @@ def test_apk_validate_tampered_entry_fails_assert(
 
 
 def test_apk_validate_foreach_string_mapping_accepted(
-    fixture_apk, template_store, tmp_path
+    fixture_apk, workflow_store, tmp_path
 ):
     """A JSON-string mapping (undocumented entry point) parses via the
     flow.foreach string fallback instead of crashing the loop."""
@@ -175,7 +175,7 @@ def test_apk_validate_foreach_string_mapping_accepted(
     )
     work_dir = tmp_path / "work"
     work_dir.mkdir()  # the executor uses work_dir as subprocess cwd
-    context = ExecutionContext(work_dir=str(work_dir), template_store=template_store)
+    context = ExecutionContext(work_dir=str(work_dir), workflow_store=workflow_store)
     result = engine.execute(
         definition,
         {

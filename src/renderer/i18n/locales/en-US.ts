@@ -172,7 +172,7 @@ export default {
         save: 'Save',
         name: 'Name',
         nameRequired: 'Workflow name is required',
-        nameHint: 'Used as the template name on save — avoid path characters (\\, /, :)',
+        nameHint: 'Display only — rename it freely; the workflow itself has a stable id',
         namePlaceholder: 'e.g. release-check',
         version: 'Version',
         versionPlaceholder: '1.0',
@@ -198,7 +198,9 @@ export default {
         dragHintInvalid: 'Tool unavailable (runtime or binary missing)',
         genericTool: 'workflow tool',
       },
-      template: {
+      // Top-bar "save workflow" action + its feedback (its own namespace: the
+      // editor itself already has cancel/saved/emptyCanvas with other meanings).
+      actions: {
         nameRequired: 'Give the workflow a name first',
         save: 'Save',
         cancel: 'Cancel',
@@ -209,6 +211,8 @@ export default {
         blockedTitle: 'Cannot save',
         notChained: 'The nodes are not a single linear chain yet ({count} issue(s)). Open Problems, fix them, then save.',
       },
+      idLabel: 'Workflow id (read-only, click to copy)',
+      idCopied: 'Workflow id copied',
       import: {
         label: 'Import Workflow',
         title: 'Import a workflow JSON',
@@ -474,12 +478,11 @@ export default {
       renameTitle: 'Rename Workflow',
       name: 'New name',
       nameRequired: 'A name is required',
-      invalid: 'The name must not contain path characters such as \\ / :',
-      // The template name IS the identity (<name>.json, one file per template):
-      // saving under an existing name overwrites it wholesale.
-      overwriteTitle: 'Overwrite the existing workflow?',
-      overwriteContent: 'A workflow named “{name}” already exists. Continuing overwrites it entirely (nodes and parameters) and cannot be undone.',
-      overwriteConfirm: 'Overwrite',
+      // The id is the identity: a duplicate name no longer overwrites anything,
+      // so this is an informational prompt rather than a data-loss warning.
+      duplicateNameTitle: 'A workflow with that name exists',
+      duplicateNameContent: 'A workflow named “{name}” already exists. Workflows are told apart by id, so neither overwrites the other — continue anyway?',
+      duplicateNameConfirm: 'Continue',
       confirm: 'OK',
     },
     delete: {
@@ -555,7 +558,6 @@ export default {
       name: 'Task name',
       namePlaceholder: 'e.g. nightly release check',
       nameRequired: 'A task name is required',
-      nameInvalid: 'The name must not contain \\ / or ..',
       description: 'Description',
       descriptionPlaceholder: 'What this task is for (optional)',
       workflow: 'Workflow',

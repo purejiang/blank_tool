@@ -1,24 +1,26 @@
-"""The run's working directory is the workflow's OWN directory.
+"""Where a run's working directory comes from.
 
-An explicit ``work_dir`` always wins; otherwise a run is anchored to where the
-workflow came from — the folder holding the workflow JSON file, or the
-template store's folder — so relative paths resolve predictably and produced
-artifacts stay next to the workflow instead of landing in the process CWD.
+Precedence: an explicit ``work_dir`` always wins; then the folder holding the
+workflow JSON file (a real source tree); otherwise the run's own artifact
+directory (``$rundir``), so a saved workflow — which has no source tree of its
+own — never writes relative outputs into the workflow library or into the
+process CWD.
 """
 
 import importlib.util
 import io
 import json
+import os
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
 
-import app.handlers.template_handler as template_handler
-from app.handlers.template_handler import handle_execute as template_execute
-from app.handlers.template_handler import handle_save as template_save
+import app.handlers.workflow_handler as workflow_handler
 from app.handlers.workflow_handler import handle_execute as workflow_execute
+from app.handlers.workflow_handler import handle_save as workflow_save
+from app.ids import WORKFLOW_ID_RE
 from app.tools.builtin.base import ToolContext
 from app.tools.builtin.text_tools import TextGrep
 from app.workflow.definition import WorkflowDefinition, WorkflowNode
@@ -123,9 +125,12 @@ def test_workflow_execute_anchors_to_the_workflow_file(tmp_path):
     assert not (tmp_path / "file-artifact.txt").exists()
 
 
-def test_inline_definition_still_falls_back_to_the_process_cwd(tmp_path, monkeypatch):
-    """An inline definition has no own directory; the CWD stays the anchor."""
+def test_inline_definition_falls_back_to_the_run_dir(tmp_path, monkeypatch):
+    """An inline definition has no source tree; ``$rundir`` is the anchor."""
+    output = tmp_path / "output"
+    monkeypatch.setenv("BT_OUTPUT_DIR", str(output))
     monkeypatch.chdir(tmp_path)
+
     payload = workflow_execute(
         {
             "definition": {
@@ -140,32 +145,39 @@ def test_inline_definition_still_falls_back_to_the_process_cwd(tmp_path, monkeyp
                 ],
             },
             "inputs": {},
+            "_run_id": "run-inline",
         },
         None,
     )
+
     assert payload["success"] is True, payload["error"]
-    assert (tmp_path / "cwd-artifact.txt").is_file()
+    assert (output / "runs" / "run-inline" / "cwd-artifact.txt").is_file()
+    # Neither the process CWD nor the workflow library collects the artifact.
+    assert not (tmp_path / "cwd-artifact.txt").exists()
 
 
 # ---------------------------------------------------------------------------
-# template.execute: the template store's folder
+# workflow.execute with a saved workflow: the run's artifact directory
 # ---------------------------------------------------------------------------
 
-def test_template_execute_anchors_to_the_template_store(tmp_path, monkeypatch):
-    templates = tmp_path / "tpls"
-    monkeypatch.setenv("BT_TEMPLATES_DIR", str(templates))
-    monkeypatch.setattr(template_handler, "_store", None)
+def test_saved_workflow_anchors_to_the_run_dir(tmp_path, monkeypatch):
+    """A saved workflow must not write relative outputs into the library."""
+    store_dir = tmp_path / "workflows"
+    output = tmp_path / "output"
+    monkeypatch.setenv("BT_WORKFLOWS_DIR", str(store_dir))
+    monkeypatch.setenv("BT_OUTPUT_DIR", str(output))
+    monkeypatch.setattr(workflow_handler, "_store", None)
 
-    template_save(
+    workflow_save(
         {
-            "name": "tpl-anchored",
+            "name": "saved-anchored",
             "definition": {
-                "name": "tpl-anchored",
+                "name": "saved-anchored",
                 "nodes": [
                     {
                         "id": "write",
                         "tool": "file.write",
-                        "params": {"path": "tpl-artifact.txt", "content": "ok"},
+                        "params": {"path": "saved-artifact.txt", "content": "ok"},
                         "next": None,
                     }
                 ],
@@ -174,10 +186,17 @@ def test_template_execute_anchors_to_the_template_store(tmp_path, monkeypatch):
         None,
     )
 
-    payload = template_execute({"name": "tpl-anchored", "inputs": {}}, None)
+    payload = workflow_execute(
+        {"name": "saved-anchored", "inputs": {}, "_run_id": "run-saved"}, None
+    )
 
     assert payload["success"] is True, payload["error"]
-    assert (templates / "tpl-artifact.txt").is_file()
+    assert (output / "runs" / "run-saved" / "saved-artifact.txt").is_file()
+    # The workflow library holds workflow files only.
+    assert not (store_dir / "saved-artifact.txt").exists()
+    assert [p.name for p in store_dir.iterdir() if p.is_file()] == [
+        p.name for p in store_dir.iterdir() if WORKFLOW_ID_RE.match(p.stem)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -209,18 +228,21 @@ def test_cli_run_uses_the_workflow_folder(tmp_path, monkeypatch):
 def test_cli_run_reports_engine_artifacts_in_the_run_dir(tmp_path, monkeypatch):
     """Engine-produced files go to ``<output_dir>/runs/<run_id>/``.
 
-    The workflow's own directory (here the template store, since the child is
-    loaded from it) must stay free of run artifacts.
+    Neither the workflow's own directory (here the folder holding the parent
+    JSON file) nor the workflow library (where the child comes from) may
+    collect run artifacts.
     """
     graphs = tmp_path / "cli-foreach"
     graphs.mkdir()
+    store_dir = tmp_path / "cli-foreach-workflows"
+    store_dir.mkdir()
     child = {
         "name": "child",
         "nodes": [
             {"id": "log", "tool": "flow.log", "params": {"message": "x"}, "next": None}
         ],
     }
-    (graphs / "child.json").write_text(json.dumps(child), encoding="utf-8")
+    (store_dir / "child.json").write_text(json.dumps(child), encoding="utf-8")
     parent = {
         "name": "parent",
         "inputs": [
@@ -239,9 +261,9 @@ def test_cli_run_reports_engine_artifacts_in_the_run_dir(tmp_path, monkeypatch):
     parent_path = graphs / "parent.json"
     parent_path.write_text(json.dumps(parent), encoding="utf-8")
 
-    # The child template must be importable from the template store.
-    monkeypatch.setenv("BT_TEMPLATES_DIR", str(graphs))
-    monkeypatch.setattr(template_handler, "_store", None)
+    # The child workflow must be importable from the workflow library.
+    monkeypatch.setenv("BT_WORKFLOWS_DIR", str(store_dir))
+    monkeypatch.setattr(workflow_handler, "_store", None)
     monkeypatch.setenv("BT_OUTPUT_DIR", str(tmp_path / "output"))
 
     cli = _load_cli()
@@ -258,8 +280,13 @@ def test_cli_run_reports_engine_artifacts_in_the_run_dir(tmp_path, monkeypatch):
     # Named after the run and the node, inside the run's artifact directory.
     assert results_file.name == "foreach_cli_loop.json"
     assert results_file.parent == tmp_path / "output" / "runs" / "cli"
-    # The workflow's own directory (the template store) stayed clean.
-    assert sorted(p.name for p in graphs.iterdir()) == ["child.json", "parent.json"]
+    # The parent's own folder kept only its JSON file.
+    assert sorted(p.name for p in graphs.iterdir()) == ["parent.json"]
+    # The workflow library holds the migrated child (an id-named file) and
+    # nothing else — no run artifacts leaked into it.
+    stored = sorted(p.name for p in store_dir.iterdir())
+    assert len(stored) == 1
+    assert WORKFLOW_ID_RE.match(stored[0][: -len(".json")])
 
 
 def test_expressions_expose_the_run_dir(tmp_path, monkeypatch):

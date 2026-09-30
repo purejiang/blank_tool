@@ -42,7 +42,7 @@ Tool dispatch:
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from app.common.exceptions import (
     NonRetryableToolError,
@@ -84,14 +84,16 @@ def _instrument_stream_handler(
     callback: Optional[Callable[[dict], None]],
     run_id: Optional[str],
     workflow_id: str,
+    workflow_name: str,
     node_path: Optional[str],
 ) -> Optional[Callable[[dict], None]]:
     """Wrap a raw tool stream callback so nested output stays attributable.
 
     Tool-level streaming payloads are tool-specific dicts; the wrapper only
-    *fills in* ``run_id`` / ``workflow_id`` / ``node_id`` when the payload is
-    a dict and does not already carry them, so nested tool output can be
-    traced back to the node that produced it.
+    *fills in* ``run_id`` / ``workflow_id`` / ``workflow_name`` / ``node_id``
+    when the payload is a dict and does not already carry them, so nested tool
+    output can be traced back to the node (and the workflow layer) that
+    produced it.
     """
     if callback is None:
         return None
@@ -101,6 +103,7 @@ def _instrument_stream_handler(
             event = dict(event)
             event.setdefault("run_id", run_id)
             event.setdefault("workflow_id", workflow_id)
+            event.setdefault("workflow_name", workflow_name)
             if node_path is not None:
                 event.setdefault("node_id", node_path)
         callback(event)
@@ -123,14 +126,14 @@ class ExecutionContext:
             forwarded to builtin tools for streaming output.
         workflow_stream: optional ``WorkflowStreamHandler`` for emitting node
             lifecycle events.
-        template_store: optional ``TemplateStore`` for resolving sub-workflow
-            template names (used by ``workflow.run``).  Defaults to
-            ``FileTemplateStore`` when not injected.
+        workflow_store: optional ``WorkflowStore`` for resolving sub-workflow
+            ids/names (used by ``workflow.run``).  Defaults to
+            ``FileWorkflowStore`` when not injected.
         engine: reference to the ``WorkflowEngine`` executing this workflow;
             set automatically at the top of ``execute()`` so nested
             ``workflow.run`` calls can pass it to child executions.
         nesting_depth: current depth in sub-workflow chains (0 for top-level).
-        in_progress_templates: immutable set of template names currently on
+        in_progress_workflow_ids: immutable set of workflow ids currently on
             the execution call stack for cycle detection.
         node_path_prefix: path of the parent node from the run root; child
             node paths are prefixed with it (empty for a top-level run).
@@ -154,10 +157,10 @@ class ExecutionContext:
     env: Dict[str, str] = field(default_factory=dict)
     stream_handler: Optional[Callable[[dict], None]] = None
     workflow_stream: Optional[WorkflowStreamHandler] = None
-    template_store: Optional[Any] = None
+    workflow_store: Optional[Any] = None
     engine: Optional[Any] = None
     nesting_depth: int = 0
-    in_progress_templates: frozenset = field(default_factory=frozenset)
+    in_progress_workflow_ids: frozenset = field(default_factory=frozenset)
     node_path_prefix: str = ""
     current_node_path: Optional[str] = None
     node_defaults: Dict[str, Any] = field(default_factory=dict)
@@ -255,12 +258,12 @@ class WorkflowEngine:
             NotImplementedError: if a node references a tool with no usable
                 ``execute(inputs, context)`` contract.
         """
-        # Ensure template_store and engine are available for nested
-        # workflow.run calls.  A template store that cannot be prepared
+        # Ensure workflow_store and engine are available for nested
+        # workflow.run calls.  A workflow store that cannot be prepared
         # (unwritable dir) only disables sub-workflow nodes — it must not
         # fail the whole run.
-        if context.template_store is None:
-            context.template_store = self._make_template_store()
+        if context.workflow_store is None:
+            context.workflow_store = self._make_workflow_store()
         if context.engine is None:
             context.engine = self
         if context.run_dir is None:
@@ -426,21 +429,21 @@ class WorkflowEngine:
         return max(0, default)
 
     @staticmethod
-    def _make_template_store() -> Optional[Any]:
-        """Build the default template store, or None when unavailable.
+    def _make_workflow_store() -> Optional[Any]:
+        """Build the default workflow store, or None when unavailable.
 
         The store creates its directory on construction; a read-only or
-        missing output dir must not abort a run that never touches a template.
-        Sub-workflow nodes then fail with the engine's existing clear
-        ``template_store not available`` error.
+        missing output dir must not abort a run that never touches a saved
+        workflow.  Sub-workflow nodes then fail with the engine's existing
+        clear ``workflow store not available`` error.
         """
         try:
-            from app.template.store import FileTemplateStore
+            from app.workflow.store import FileWorkflowStore
 
-            return FileTemplateStore()
+            return FileWorkflowStore()
         except Exception as exc:
             logger.warning(
-                "template store unavailable (%s); sub-workflow nodes will fail",
+                "workflow store unavailable (%s); sub-workflow nodes will fail",
                 exc,
             )
             return None
@@ -453,15 +456,9 @@ class WorkflowEngine:
         output dir must not fail the run; ``$rundir`` then resolves to an empty
         string and tools fall back to their own behaviour.
         """
-        try:
-            from app.workflow.rundir import run_dir_for
+        from app.workflow.rundir import prepare_run_dir
 
-            return run_dir_for(context.cancel_key() or "adhoc")
-        except Exception as exc:
-            logger.warning(
-                "run artifact dir unavailable (%s); $rundir is empty", exc
-            )
-            return ""
+        return prepare_run_dir(context.cancel_key())
 
     def _cancel_result(
         self,
@@ -722,7 +719,7 @@ class WorkflowEngine:
         if run_id:
             self._attach_process(run_id, holder)
 
-        workflow_id = self._workflow_id(context)
+        workflow_id, workflow_name = self._workflow_identity(context)
         tool_context = ToolContext(
             work_dir=context.work_dir,
             task_id=context.task_id,
@@ -733,12 +730,13 @@ class WorkflowEngine:
                 context.stream_handler,
                 context.run_id,
                 workflow_id,
+                workflow_name,
                 context.current_node_path,
             ),
-            template_store=context.template_store,
+            workflow_store=context.workflow_store,
             engine=context.engine or self,
             nesting_depth=context.nesting_depth,
-            in_progress_templates=context.in_progress_templates,
+            in_progress_workflow_ids=context.in_progress_workflow_ids,
             current_node_path=context.current_node_path,
             process_holder=holder,
             cancel_check=context.cancelled,
@@ -789,10 +787,16 @@ class WorkflowEngine:
             logger.debug("failed to attach process holder", exc_info=True)
 
     @staticmethod
-    def _workflow_id(context: ExecutionContext) -> str:
-        """Return the workflow name stamped on this layer's tool stream events.
+    def _workflow_identity(context: ExecutionContext) -> Tuple[str, str]:
+        """Return ``(workflow_id, workflow_name)`` for this layer's events.
 
-        Duck-typed on purpose: any stream handler object without a
-        ``workflow_id`` still works, it just cannot name the layer.
+        ``workflow_id`` is the storage id of the saved workflow this layer is
+        running (``""`` for an inline definition or a bare file), while
+        ``workflow_name`` is its display name.  Duck-typed on purpose: any
+        stream handler object without those attributes still works, it just
+        cannot name the layer.
         """
-        return getattr(context.workflow_stream, "workflow_id", "root") or "root"
+        stream = context.workflow_stream
+        workflow_id = getattr(stream, "workflow_id", "") or ""
+        workflow_name = getattr(stream, "workflow_name", "") or "root"
+        return workflow_id, workflow_name

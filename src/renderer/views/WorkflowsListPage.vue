@@ -15,14 +15,14 @@
         {{ t('workflows.importLabel') }}
       </n-button>
       <!-- 设计稿的工具栏导出是普通按钮、卡片上没有勾选框：这里用名称下拉选定目标，
-           卡片 ⋯ 菜单里也有单卡导出。 -->
+           卡片 ⋯ 菜单里也有单卡导出。下拉的 value 是工作流 id（显示名可重复）。 -->
       <n-dropdown
         trigger="click"
         :options="exportOptions"
-        :disabled="templates.length === 0"
-        @select="(name: string) => exportTemplate(name)"
+        :disabled="workflows.length === 0"
+        @select="(id: string) => exportById(id)"
       >
-        <n-button size="small" :disabled="templates.length === 0" :title="t('workflows.export.empty')">
+        <n-button size="small" :disabled="workflows.length === 0" :title="t('workflows.export.empty')">
           <template #icon><AppIcon name="download" size="sm" /></template>
           {{ t('workflows.exportLabel') }}
         </n-button>
@@ -46,14 +46,14 @@
     </div>
 
     <!-- 加载中：骨架卡片 -->
-    <div v-if="loading && templates.length === 0" class="wf-grid">
+    <div v-if="loading && workflows.length === 0" class="wf-grid">
       <div v-for="n in 6" :key="n" class="card wf-card">
         <n-skeleton text :repeat="3" />
       </div>
     </div>
 
     <!-- 空态：无工作流 -->
-    <div v-else-if="templates.length === 0" class="empty">
+    <div v-else-if="workflows.length === 0" class="empty">
       <div class="art"><AppIcon name="wf" :size="34" /></div>
       <h3>{{ t('workflows.empty.title') }}</h3>
       <p>{{ t('workflows.empty.hint') }}</p>
@@ -76,27 +76,27 @@
 
     <div v-else class="wf-grid">
       <div
-        v-for="template in filtered"
-        :key="template.name"
+        v-for="workflow in filtered"
+        :key="workflow.id"
         class="card wf-card"
-        @click="openEditor(template.name)"
+        @click="openEditor(workflow.id)"
       >
-        <h3 :title="template.name">{{ template.name }}</h3>
-        <p class="desc">{{ template.description || t('workflows.card.noDescription') }}</p>
+        <h3 :title="workflow.name">{{ workflow.name }}</h3>
+        <p class="desc">{{ workflow.description || t('workflows.card.noDescription') }}</p>
         <div class="meta">
-          {{ t('workflows.card.nodes', { count: template.node_count }) }} ·
-          {{ t('workflows.card.updated', { time: formatTime(template.updated_at) }) }}
+          {{ t('workflows.card.nodes', { count: workflow.node_count }) }} ·
+          {{ t('workflows.card.updated', { time: formatTime(workflow.updated_at) }) }}
         </div>
         <div class="foot">
           <div class="chips">
-            <span v-for="tag in template.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
+            <span v-for="tag in workflow.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
           </div>
         </div>
         <span class="iconbtn wf-more" :title="t('workflows.card.menu')" @click.stop>
           <n-dropdown
             trigger="click"
-            :options="cardMenu(template)"
-            @select="(key: string) => onCardAction(key, template)"
+            :options="cardMenu(workflow)"
+            @select="(key: string) => onCardAction(key, workflow)"
           >
             <AppIcon name="more" />
           </n-dropdown>
@@ -125,7 +125,7 @@
       <template #footer>
         <div class="wf-dialog-footer">
           <n-button size="small" :disabled="nameDialog.busy" @click="nameDialog.show = false">
-            {{ t('workflow.editor.template.cancel') }}
+            {{ t('workflow.editor.actions.cancel') }}
           </n-button>
           <n-button size="small" type="primary" :loading="nameDialog.busy" @click="submitNameDialog">
             {{ t('workflows.nameDialog.confirm') }}
@@ -175,12 +175,18 @@ import serviceManager from '@services/ServiceManager'
 import unifiedApi from '@/api/unifiedApi'
 import { log } from '@utils/logger'
 
-/** One `template.list` entry. */
-interface TemplateInfo {
+/**
+ * One `workflow.list` entry.
+ *
+ * `id` is the storage identity (also the `<id>.json` file name) and the key
+ * every action uses; `name` is the free-form display name, which may repeat.
+ */
+interface WorkflowInfo {
+  id: string
   name: string
   description: string
-  created_at: string
-  updated_at: string
+  created_at: string | null
+  updated_at: string | null
   tags: string[]
   node_count: number
 }
@@ -193,7 +199,7 @@ const health = useBackendHealthStore()
 const { isHealthy } = storeToRefs(health)
 const { isRunning: runInFlight, start: startWorkflowRun } = useWorkflowRun()
 
-const templates = ref<TemplateInfo[]>([])
+const workflows = ref<WorkflowInfo[]>([])
 const loading = ref(false)
 const loadError = ref('')
 const importing = ref(false)
@@ -209,12 +215,12 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await unifiedApi.call<{ templates?: TemplateInfo[] }>('template.list', {})
-    templates.value = Array.isArray(result?.templates) ? result.templates : []
+    const result = await unifiedApi.call<{ workflows?: WorkflowInfo[] }>('workflow.list', {})
+    workflows.value = Array.isArray(result?.workflows) ? result.workflows : []
   } catch (error) {
-    log.error('[WorkflowsListPage] template.list failed:', error)
+    log.error('[WorkflowsListPage] workflow.list failed:', error)
     loadError.value = errMsg(error)
-    templates.value = []
+    workflows.value = []
   } finally {
     loading.value = false
   }
@@ -225,20 +231,21 @@ onMounted(() => {
   if (isHealthy.value === null) void health.check()
 })
 
-// ---- 搜索（前端过滤 name / description / tags） ---------------------------
+// ---- 搜索（前端过滤 id / name / description / tags） ----------------------
 
 const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
-  if (!needle) return templates.value
-  return templates.value.filter(
-    (template) =>
-      template.name.toLowerCase().includes(needle) ||
-      (template.description ?? '').toLowerCase().includes(needle) ||
-      (template.tags ?? []).some((tag) => String(tag).toLowerCase().includes(needle)),
+  if (!needle) return workflows.value
+  return workflows.value.filter(
+    (workflow) =>
+      workflow.id.toLowerCase().includes(needle) ||
+      workflow.name.toLowerCase().includes(needle) ||
+      (workflow.description ?? '').toLowerCase().includes(needle) ||
+      (workflow.tags ?? []).some((tag) => String(tag).toLowerCase().includes(needle)),
   )
 })
 
-function formatTime(iso: string): string {
+function formatTime(iso: string | null): string {
   if (!iso) return '—'
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
@@ -246,7 +253,7 @@ function formatTime(iso: string): string {
 
 // ---- 卡片菜单 / 工具栏导出 --------------------------------------------------
 
-function cardMenu(template: TemplateInfo) {
+function cardMenu(workflow: WorkflowInfo) {
   return [
     { label: t('workflows.actions.edit'), key: 'edit' },
     { label: t('workflows.actions.run'), key: 'run' },
@@ -258,29 +265,30 @@ function cardMenu(template: TemplateInfo) {
   ]
 }
 
+// 下拉的 key 必须是 id：显示名可以重复，用名字当下拉键会选错目标。
 const exportOptions = computed(() =>
-  templates.value.map((template) => ({ label: template.name, key: template.name })),
+  workflows.value.map((workflow) => ({ label: workflow.name, key: workflow.id })),
 )
 
-function onCardAction(key: string, template: TemplateInfo) {
-  if (key === 'edit') return openEditor(template.name)
-  if (key === 'run') return openRunDialog(template)
-  if (key === 'duplicate') return openNameDialog('duplicate', template)
-  if (key === 'rename') return openNameDialog('rename', template)
-  if (key === 'export') return void exportTemplate(template.name)
-  if (key === 'delete') return confirmDelete(template)
+function onCardAction(key: string, workflow: WorkflowInfo) {
+  if (key === 'edit') return openEditor(workflow.id)
+  if (key === 'run') return openRunDialog(workflow)
+  if (key === 'duplicate') return openNameDialog('duplicate', workflow)
+  if (key === 'rename') return openNameDialog('rename', workflow)
+  if (key === 'export') return void exportWorkflow(workflow.id, workflow.name)
+  if (key === 'delete') return confirmDelete(workflow)
 }
 
-function openEditor(name?: string) {
-  router.push(name ? `/workflows/editor/${encodeURIComponent(name)}` : '/workflows/editor')
+function openEditor(id?: string) {
+  router.push(id ? `/workflows/editor/${encodeURIComponent(id)}` : '/workflows/editor')
 }
 
 // ---- 导入（M2 报告） --------------------------------------------------------
 
 /**
- * 只按 JSON 文件导入（可多选）→ `template.import_path`（逐路径调用后合并报告）。
+ * 只按 JSON 文件导入（可多选）→ `workflow.import_path`（逐路径调用后合并报告）。
  *
- * 后端 `template.import_path` 另外还认目录（CLI `import-templates` 在用），
+ * 后端 `workflow.import_path` 另外还认目录（CLI `import-workflows` 在用），
  * 界面不暴露那条路；取消文件对话框就是取消，不再接着弹一个目录选择器。
  */
 async function handleImport() {
@@ -312,7 +320,7 @@ async function handleImport() {
   try {
     for (const path of paths) {
       try {
-        const report = await unifiedApi.call<Partial<ImportReport>>('template.import_path', { path })
+        const report = await unifiedApi.call<Partial<ImportReport>>('workflow.import_path', { path })
         const entries = Array.isArray(report?.results) ? (report.results as ImportReportEntry[]) : []
         results.push(...entries)
         imported += report?.imported ?? entries.filter((entry) => entry.status === 'imported').length
@@ -334,15 +342,20 @@ async function handleImport() {
 
 // ---- 导出（M3：showSave + writeTextFile） -----------------------------------
 
-async function exportTemplate(name: string) {
+/**
+ * 导出的是**可移植的纯定义**（不含存储 id）：导入时按显示名匹配、重新分配 id，
+ * 所以中文名只会出现在用户自己选的文件名里。
+ */
+async function exportWorkflow(id: string, displayName: string) {
   try {
-    const loaded = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('template.load', { name })
+    const loaded = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('workflow.load', { id })
     const definition = loaded?.definition
-    if (!definition) throw new Error(`template “${name}” returned no definition`)
+    if (!definition) throw new Error(`workflow “${id}” returned no definition`)
     const svc = (await serviceManager.getService('system')) as any
     const picked = await svc.showSave({
       title: t('workflows.export.saveTitle'),
-      defaultPath: `${name}.json`,
+      // 显示名现在可以是任意字符（含 \ / :），导出文件名单独清洗一次。
+      defaultPath: `${safeFileName(displayName) || id}.json`,
       filters: [{ name: 'JSON', extensions: ['json'] }],
     })
     if (!picked || picked.canceled) return
@@ -357,84 +370,102 @@ async function exportTemplate(name: string) {
   }
 }
 
+/** 把显示名压成一个可作文件名的字符串（仅用于导出对话框的默认名）。 */
+function safeFileName(name: string): string {
+  return String(name ?? '')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
+/** 工具栏下拉只回传 id；显示名从当前列表取，仅用于导出默认文件名。 */
+function exportById(id: string) {
+  const workflow = workflows.value.find((item) => item.id === id)
+  return exportWorkflow(id, workflow?.name ?? id)
+}
+
 // ---- 复制 / 重命名 ----------------------------------------------------------
 
 const nameDialog = reactive({
   show: false,
   mode: 'duplicate' as 'duplicate' | 'rename',
-  target: null as TemplateInfo | null,
+  target: null as WorkflowInfo | null,
   value: '',
   error: null as string | null,
   busy: false,
 })
 
-function openNameDialog(mode: 'duplicate' | 'rename', template: TemplateInfo) {
+function openNameDialog(mode: 'duplicate' | 'rename', workflow: WorkflowInfo) {
   nameDialog.mode = mode
-  nameDialog.target = template
-  nameDialog.value = mode === 'duplicate' ? `${template.name}-copy` : template.name
+  nameDialog.target = workflow
+  nameDialog.value = mode === 'duplicate' ? `${workflow.name}-copy` : workflow.name
   nameDialog.error = null
   nameDialog.busy = false
   nameDialog.show = true
 }
 
+/**
+ * 名字不再是身份、也不再是文件名，所以这里只要求"非空"——`/`、`:`、emoji、
+ * Windows 保留字都能用（写进的是定义内部，不落盘成文件名）。
+ */
 function validateName(value: string): string | null {
   const name = value.trim()
   if (!name) return t('workflows.nameDialog.nameRequired')
-  if (/[\\/:]/.test(name)) return t('workflows.nameDialog.invalid')
   return null
 }
 
 async function submitNameDialog() {
-  const template = nameDialog.target
-  if (!template || nameDialog.busy) return
+  const workflow = nameDialog.target
+  if (!workflow || nameDialog.busy) return
   const error = validateName(nameDialog.value)
   if (error) {
     nameDialog.error = error
     return
   }
   const newName = nameDialog.value.trim()
-  // 模板名就是身份：存储是 `<name>.json` 一文件一模板，`template.save` 是
-  // create-or-overwrite，所以撞名 = 整份覆盖（rename 还会顺手删掉旧名，等于一次
-  // 点掉两份里的一个）。先查重再确认。按小写比较：Windows/macOS 文件系统大小写不
-  // 敏感，`Foo` 与 `foo` 落到同一个文件。
-  const clash = templates.value.find(
-    (item) => item.name.toLowerCase() === newName.toLowerCase(),
+  // id 才是身份，所以撞名不再是"整份覆盖"：两个工作流可以同名，只提示一下。
+  const clash = workflows.value.find(
+    (item) => item.id !== workflow.id && item.name.toLowerCase() === newName.toLowerCase(),
   )
-  if (clash && clash.name !== template.name) {
+  if (clash) {
     dialog.warning({
-      title: t('workflows.nameDialog.overwriteTitle'),
-      content: t('workflows.nameDialog.overwriteContent', { name: clash.name }),
-      positiveText: t('workflows.nameDialog.overwriteConfirm'),
+      title: t('workflows.nameDialog.duplicateNameTitle'),
+      content: t('workflows.nameDialog.duplicateNameContent', { name: clash.name }),
+      positiveText: t('workflows.nameDialog.duplicateNameConfirm'),
       negativeText: t('common.cancel'),
-      onPositiveClick: () => void applyNameDialog(newName, template),
+      onPositiveClick: () => void applyNameDialog(newName, workflow),
     })
     return
   }
-  await applyNameDialog(newName, template)
+  await applyNameDialog(newName, workflow)
 }
 
-/** 真正落盘：存新名（+ 删除旧名）后刷新列表。确认框「覆盖」也走这里。 */
-async function applyNameDialog(newName: string, template: TemplateInfo) {
+/**
+ * 真正落盘。
+ *
+ * - 复制：不带 id 保存 → 后端分配一个新 id（新工作流），原名那份原封不动。
+ * - 重命名：带**同一个 id** 保存 → 只改文件里的显示名，文件名（id）不变，
+ *   因此绑定的任务与子工作流引用都不会断。
+ */
+async function applyNameDialog(newName: string, workflow: WorkflowInfo) {
   nameDialog.busy = true
   try {
     const loaded = await unifiedApi.call<{
       definition?: WorkflowDefinitionJSON
       description?: string
       tags?: string[]
-    }>('template.load', { name: template.name })
+    }>('workflow.load', { id: workflow.id })
     const definition = loaded?.definition
-    if (!definition) throw new Error(`template “${template.name}” returned no definition`)
+    if (!definition) throw new Error(`workflow “${workflow.id}” returned no definition`)
 
-    await unifiedApi.call('template.save', {
+    await unifiedApi.call('workflow.save', {
+      id: nameDialog.mode === 'rename' ? workflow.id : undefined,
       name: newName,
       definition: { ...definition, name: newName },
-      description: loaded?.description ?? template.description ?? '',
-      tags: Array.isArray(loaded?.tags) ? loaded.tags : (template.tags ?? []),
+      description: loaded?.description ?? workflow.description ?? '',
+      tags: Array.isArray(loaded?.tags) ? loaded.tags : (workflow.tags ?? []),
     })
-    if (nameDialog.mode === 'rename' && newName !== template.name) {
-      // 重命名 = 存新名 + 删旧名（docs/08 §3-S1 交互）
-      await unifiedApi.call('template.delete', { name: template.name })
-    }
     nameDialog.show = false
     await load()
   } catch (err) {
@@ -447,15 +478,15 @@ async function applyNameDialog(newName: string, template: TemplateInfo) {
 
 // ---- 删除（M4 确认） --------------------------------------------------------
 
-function confirmDelete(template: TemplateInfo) {
+function confirmDelete(workflow: WorkflowInfo) {
   dialog.warning({
     title: t('workflows.delete.title'),
-    content: t('workflows.delete.content', { name: template.name }),
+    content: t('workflows.delete.content', { name: workflow.name }),
     positiveText: t('workflows.actions.delete'),
-    negativeText: t('workflow.editor.template.cancel'),
+    negativeText: t('workflow.editor.actions.cancel'),
     onPositiveClick: async () => {
       try {
-        await unifiedApi.call('template.delete', { name: template.name })
+        await unifiedApi.call('workflow.delete', { id: workflow.id })
         await load()
       } catch (error) {
         showError(t('workflows.delete.failed', { error: errMsg(error) }))
@@ -464,23 +495,25 @@ function confirmDelete(template: TemplateInfo) {
   })
 }
 
-// ---- 试运行（M1 + template.execute 一次性） ---------------------------------
+// ---- 试运行（一次性 workflow.execute） --------------------------------------
 
 const runDialog = reactive({
   show: false,
   title: '',
+  id: '',
   name: '',
   definition: null as WorkflowDefinitionJSON | null,
 })
 
-async function openRunDialog(template: TemplateInfo) {
+async function openRunDialog(workflow: WorkflowInfo) {
   try {
-    const loaded = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('template.load', {
-      name: template.name,
+    const loaded = await unifiedApi.call<{ definition?: WorkflowDefinitionJSON }>('workflow.load', {
+      id: workflow.id,
     })
     runDialog.definition = loaded?.definition ?? null
-    runDialog.name = template.name
-    runDialog.title = `${template.name} · ${t('workflows.actions.run')}`
+    runDialog.id = workflow.id
+    runDialog.name = workflow.name
+    runDialog.title = `${workflow.name} · ${t('workflows.actions.run')}`
     runDialog.show = true
   } catch (error) {
     showError(t('workflows.run.launchFailed', { error: errMsg(error) }))
@@ -488,12 +521,14 @@ async function openRunDialog(template: TemplateInfo) {
 }
 
 async function startDryRun(inputs: Record<string, unknown>) {
+  const id = runDialog.id
   const name = runDialog.name
   runDialog.show = false
   try {
     const outcome = await startWorkflowRun({
-      method: 'template.execute',
-      params: { name, inputs },
+      method: 'workflow.execute',
+      // 按 id 跑：显示名可以重复，按名字跑可能命中另一个工作流。
+      params: { id, inputs },
     })
     if (!outcome) {
       // 事件通道不可用时无法关联终态：不谎报结果，只提示已启动

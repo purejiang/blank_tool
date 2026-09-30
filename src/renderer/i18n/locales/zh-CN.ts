@@ -171,7 +171,7 @@ export default {
         save: '保存',
         name: '名称',
         nameRequired: '请输入工作流名称',
-        nameHint: '保存时作为模板名；避免 \\ / : 等路径字符',
+        nameHint: '仅用于显示，可随意修改；工作流本身另有不会变的 id',
         namePlaceholder: '例如：release-check',
         version: '版本',
         versionPlaceholder: '1.0',
@@ -197,7 +197,9 @@ export default {
         dragHintInvalid: '工具不可用（缺少运行时或二进制）',
         genericTool: '工作流工具',
       },
-      template: {
+      // 顶部「保存工作流」动作及其反馈（独立命名空间：editor 自己有 cancel/saved/
+      // emptyCanvas 等同名键，含义不同，不能合并）
+      actions: {
         nameRequired: '请先给工作流起个名字',
         save: '保存',
         cancel: '取消',
@@ -208,6 +210,8 @@ export default {
         blockedTitle: '无法保存',
         notChained: '画布上的节点还没有连成一条线性链（{count} 处问题）。点「问题」查看并修好后再保存。',
       },
+      idLabel: '工作流 id（只读，点击复制）',
+      idCopied: '已复制工作流 id',
       import: {
         label: '导入工作流',
         title: '导入工作流 JSON',
@@ -471,11 +475,10 @@ export default {
       renameTitle: '重命名工作流',
       name: '新名称',
       nameRequired: '请输入名称',
-      invalid: '名称不能包含 \\ / : 等路径字符',
-      // 模板名就是身份（<name>.json 一文件一模板），同名保存=覆盖整份
-      overwriteTitle: '覆盖同名工作流？',
-      overwriteContent: '已经有名为「{name}」的工作流。继续会把它整份覆盖（含节点与参数），且无法撤销。',
-      overwriteConfirm: '覆盖',
+      // id 才是身份：重名不再是"整份覆盖"，只提示一下，两份都留着。
+      duplicateNameTitle: '已有同名工作流',
+      duplicateNameContent: '已经有一个名为「{name}」的工作流。工作流之间靠 id 区分，同名不会互相覆盖——确认要继续吗？',
+      duplicateNameConfirm: '继续',
       confirm: '确定',
     },
     delete: {
@@ -551,7 +554,6 @@ export default {
       name: '任务名',
       namePlaceholder: '例如：夜间发布检查',
       nameRequired: '请输入任务名',
-      nameInvalid: '任务名不能包含 \\ / 或 ..',
       description: '描述',
       descriptionPlaceholder: '这个任务是做什么的（可选）',
       workflow: '工作流',

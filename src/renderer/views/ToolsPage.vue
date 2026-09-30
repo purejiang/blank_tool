@@ -1,6 +1,6 @@
 <template>
   <!-- S6.1 工具页（docs/08 §3-S6.1）：工具描述符列表 + 环境依赖徽章 + 自定义路径。
-       数据是 `workflow.list_tools`（含内置/插件/描述符）与 `tool.get_tools`
+       数据是 `tool.list`（含内置/插件/描述符）与 `tool.get_tools`
        （探测状态、实际路径）的合并。 -->
   <div class="screen tools-page">
     <PageHeader :title="t('tools.title')" :description="t('tools.subtitle')">
@@ -177,7 +177,7 @@ import { log } from '@utils/logger'
 /**
  * S6.1 — 工具描述符列表。
  *
- * 合并两个接口：`workflow.list_tools`（含内置与插件的全量 + 描述符的 `env_deps`
+ * 合并两个接口：`tool.list`（含内置与插件的全量 + 描述符的 `env_deps`
  * 与 ports/operations）与 `tool.get_tools`（探测出的实际路径与可用性），再用
  * `env.list` 本地 join 出依赖就绪状态。内置/插件工具没有 `env_deps`，因此它们
  * **不显示依赖行**（缺口 #18，不猜、不占位）。
@@ -233,7 +233,7 @@ async function load(refresh = false) {
   loadError.value = ''
   try {
     const [toolList, statusList, envList] = await Promise.all([
-      unifiedApi.call<{ tools?: ToolEntry[] }>('workflow.list_tools', {}),
+      unifiedApi.call<{ tools?: ToolEntry[] }>('tool.list', {}),
       unifiedApi.call<Record<string, ToolStatusEntry>>('tool.get_tools', refresh ? { refresh: true } : {}),
       unifiedApi.call<{ environments?: EnvEntry[] }>('env.list'),
     ])

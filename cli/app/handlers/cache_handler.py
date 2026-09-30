@@ -9,14 +9,18 @@ Three top-level directories, each with independent lifecycle:
   - logs/    backend diagnostic logs (3-day rotation)
 
 ``output/`` also hosts five *managed* subdirectories whose contents are user
-data, not cache: ``templates/`` (saved workflows), ``task_defs/`` (saved task
+data, not cache: ``workflows/`` (saved workflows), ``task_defs/`` (saved task
 definitions — a workflow plus the inputs to run it with), ``history/`` (run
 records), ``runs/`` (per-run artifacts) and ``registry/`` (user tool/env
 overrides), plus the ``plugins.json`` user plugin manifest.  Bulk clears
 (``output.clear``, ``storage.clear {target:"all"|"output"}``) skip them by
 default; ``include_managed: true`` restores the old wipe-everything behaviour,
-and ``target:"templates"|"task_defs"|"history"|"runs"|"registry"`` clears
+and ``target:"workflows"|"task_defs"|"history"|"runs"|"registry"`` clears
 exactly one of them on purpose.
+
+The legacy ``target:"templates"`` spelling is still accepted as an alias for
+``"workflows"``, so a caller written before the rename (or a stale renderer
+build) does not silently clear nothing.
 """
 
 import os
@@ -32,7 +36,7 @@ logger = Logger.get_logger("StorageHandler")
 #: ``output/`` subdirectories holding user data — never wiped implicitly.
 #: ``task_defs`` holds saved task definitions (see ``app.task.store``); wiping
 #: it would silently drop every reusable execution configuration.
-_MANAGED_SUBDIRS = ("templates", "task_defs", "history", "runs", "registry")
+_MANAGED_SUBDIRS = ("workflows", "task_defs", "history", "runs", "registry")
 
 #: ``output/`` plain files holding user data — the user plugin manifest lives
 #: there (see ``app.plugins.manifest``); wiping it would silently drop the user
@@ -45,7 +49,11 @@ _PROTECTED_FILES = ("plugins.json",)
 #: stay excluded from bulk clears).  Both are high-risk: ``registry`` drops
 #: custom tool/env paths and imported descriptors, ``task_defs`` drops every
 #: saved task definition.
-_MANAGED_TARGETS = ("templates", "task_defs", "history", "runs", "registry")
+_MANAGED_TARGETS = ("workflows", "task_defs", "history", "runs", "registry")
+
+#: Pre-rename spellings of the managed targets, accepted so an older caller
+#: (or a stale renderer build) still clears the directory it meant to.
+_LEGACY_TARGET_ALIASES = {"templates": "workflows"}
 
 
 def _tasks_root():
@@ -165,6 +173,9 @@ def output_clear(params, stream_handler):
 @logs_errors("StorageHandler")
 def storage_clear(params, stream_handler):
     target = params.get("target", "all")
+    # Accept the pre-rename spelling of a managed target (see the module
+    # docstring) so an older caller still clears the directory it meant to.
+    target = _LEGACY_TARGET_ALIASES.get(target, target)
     # Escape hatch: restore the pre-WP4 wipe-everything behaviour.
     include_managed = params.get("include_managed") is True
     managed_exclude = () if include_managed else (_MANAGED_SUBDIRS + _PROTECTED_FILES)

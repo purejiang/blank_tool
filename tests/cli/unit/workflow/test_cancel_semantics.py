@@ -97,16 +97,22 @@ class _BoomRegistry:
 
 
 class _StubStore:
-    """Template store returning a one-node child workflow."""
+    """Store resolving every reference to a stable id, returning a one-node child."""
 
     def __init__(self, name="child"):
         self.name = name
         self.loads = 0
+        self._ids = {}
 
-    def load(self, template_name):
+    def resolve(self, ref):
+        if not ref:
+            return None
+        return self._ids.setdefault(ref, f"wf-{len(self._ids):012d}")
+
+    def load(self, workflow_id):
         self.loads += 1
         return WorkflowDefinition(
-            name=template_name,
+            name=self.name,
             nodes=[
                 WorkflowNode(id="w", tool="flow.log", params={"message": "hi"})
             ],
@@ -288,7 +294,7 @@ def test_foreach_cancel_stops_the_loop(tmp_path):
     context = ToolContext(
         work_dir=str(tmp_path),
         run_id="run-foreach",
-        template_store=store,
+        workflow_store=store,
         engine=engine,
         current_node_path="loop",
         cancel_check=lambda: True,
@@ -311,7 +317,7 @@ def test_foreach_propagates_a_cancelled_child(tmp_path):
     context = ToolContext(
         work_dir=str(tmp_path),
         run_id="run-foreach2",
-        template_store=store,
+        workflow_store=store,
         engine=engine,
         current_node_path="loop",
         cancel_check=lambda: False,
@@ -331,7 +337,7 @@ def test_branch_propagates_cancellation_not_failure(tmp_path):
     context = ToolContext(
         work_dir=str(tmp_path),
         run_id="run-branch",
-        template_store=_StubStore(),
+        workflow_store=_StubStore(),
         engine=engine,
         current_node_path="choose",
     )
@@ -353,7 +359,7 @@ def test_workflow_run_propagates_cancellation(tmp_path):
     context = ToolContext(
         work_dir=str(tmp_path),
         run_id="run-sub",
-        template_store=_StubStore(),
+        workflow_store=_StubStore(),
         engine=engine,
         current_node_path="sub",
     )

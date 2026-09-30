@@ -62,6 +62,9 @@ def test_run_is_recorded_with_full_shape(output_dir):
     assert summary["source"] == "wf.json"
     assert summary["success"] is True
     assert summary["task_id"] == "task-1"
+    # Storage identities are recorded (``None`` when the run had none).
+    assert summary["workflow_id"] is None
+    assert summary["task_def_id"] is None
 
     full = history_store.get_run(summary["run_id"])
     assert full["inputs"] == {"x": 1}
@@ -116,6 +119,26 @@ def test_task_name_is_recorded_for_task_runs(output_dir):
     assert runs[0]["task_name"] == "nightly-audit"
     full = history_store.get_run(runs[0]["run_id"])
     assert full["task_name"] == "nightly-audit"
+
+
+def test_workflow_and_task_ids_are_recorded(output_dir):
+    """The storage ids ride along so a renamed workflow/task still resolves."""
+    run_workflow(
+        _definition(),
+        {"inputs": {}},
+        None,
+        "task-1",
+        task_name="nightly-audit",
+        task_def_id="tk-0123456789ab",
+        workflow_id="wf-0123456789ab",
+    )
+
+    runs = history_store.list_runs()
+    assert runs[0]["workflow_id"] == "wf-0123456789ab"
+    assert runs[0]["task_def_id"] == "tk-0123456789ab"
+    full = history_store.get_run(runs[0]["run_id"])
+    assert full["workflow_id"] == "wf-0123456789ab"
+    assert full["task_def_id"] == "tk-0123456789ab"
 
 
 def test_source_falls_back_to_inline(output_dir):

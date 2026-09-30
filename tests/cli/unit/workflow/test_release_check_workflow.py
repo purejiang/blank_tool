@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from app.template.store import FileTemplateStore
+from app.workflow.store import FileWorkflowStore
 from app.workflow.definition import WorkflowDefinition
 from app.workflow.engine import ExecutionContext, WorkflowEngine
 from app.workflow.rundir import run_dir_for
@@ -47,10 +47,20 @@ def _load(name: str) -> WorkflowDefinition:
     return WorkflowDefinition.from_json_file(str(FIXTURES / f"{name}.json"))
 
 
-def _store(tmp_path) -> FileTemplateStore:
-    store = FileTemplateStore(templates_dir=str(tmp_path / "templates"))
+def _store(tmp_path) -> FileWorkflowStore:
+    """Register the fixture family, idempotently.
+
+    A workflow is identified by its id, so re-saving the same display name
+    would create a duplicate and make every name-based sub-workflow reference
+    ambiguous.  Resolving the name first (exactly what the import path does)
+    keeps repeated ``_run`` calls in one test pointing at one family.
+    """
+    store = FileWorkflowStore(workflows_dir=str(tmp_path / "templates"))
     for name in STORE_TEMPLATES:
-        store.save(name, _load(name), {"description": f"example: {name}"})
+        existing = store.find_id_by_name(name)
+        store.save(
+            _load(name), {"description": f"example: {name}"}, workflow_id=existing
+        )
     return store
 
 
@@ -65,12 +75,12 @@ def _run(inputs: dict, tmp_path, run_id: str = None):
     definition = _load("release-check")
     events: list = []
     stream = WorkflowStreamHandler(
-        workflow_id=definition.name, callback=events.append, run_id=run_id
+        workflow_name=definition.name, callback=events.append, run_id=run_id
     )
     context = ExecutionContext(
         work_dir=str(tmp_path),
         run_id=run_id,
-        template_store=_store(tmp_path),
+        workflow_store=_store(tmp_path),
         stream_handler=events.append,
         workflow_stream=stream,
     )
@@ -115,12 +125,12 @@ def _base_inputs(targets, report_path, max_failures=0) -> dict:
     }
 
 
-def _node_ids(events, workflow_id=None, event_type="node_started"):
+def _node_ids(events, workflow_name=None, event_type="node_started"):
     return [
         event["node_id"]
         for event in events
         if event["type"] == event_type
-        and (workflow_id is None or event["workflow_id"] == workflow_id)
+        and (workflow_name is None or event["workflow_name"] == workflow_name)
     ]
 
 
@@ -193,17 +203,17 @@ def test_nested_node_paths_span_three_template_layers(tmp_path):
     )
 
     # Layer 1 (loop body): scan_all/0/<node>
-    assert _node_ids(events, workflow_id="release-check-item")[:2] == [
+    assert _node_ids(events, workflow_name="release-check-item")[:2] == [
         "scan_all/0/read",
         "scan_all/0/todos",
     ]
     # Layer 2 (workflow.run inside the loop body): scan_all/0/evidence/<node>
-    assert _node_ids(events, workflow_id="release-evidence") == [
+    assert _node_ids(events, workflow_name="release-evidence") == [
         "scan_all/0/evidence/write",
         "scan_all/0/evidence/confirm",
     ]
     # Layer 3 (branch target): route/<node>
-    assert _node_ids(events, workflow_id="release-report-ok") == [
+    assert _node_ids(events, workflow_name="release-report-ok") == [
         "route/write",
         "route/confirm",
     ]

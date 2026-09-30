@@ -5,7 +5,7 @@ CLI subcommands are exercised as real subprocesses (``python cli.py ...`` with
 stdout/stderr contract.  ``BT_LOG_LEVEL=ERROR`` keeps the boot log off stderr
 so stderr assertions are precise.
 
-Also validates the 5 Android workflow templates (now externalized to
+Also validates the 5 Android example workflows (now externalized to
 ``examples/workflows/android/``) load via ``WorkflowDefinition.from_json_file``
 without error and expose the expected node/input counts.
 """
@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from app.ids import TASK_ID_RE
 from app.workflow.definition import WorkflowDefinition
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -106,7 +107,7 @@ def test_help_exits_zero_and_lists_all_ten_subcommands():
     assert result.returncode == 0
     for subcommand in (
         "run", "list-tools", "list-envs", "validate", "tool",
-        "list-templates", "list-tasks", "import-pack", "import-templates",
+        "list-workflows", "list-tasks", "import-pack", "import-workflows",
         "history",
     ):
         assert subcommand in result.stdout
@@ -130,9 +131,9 @@ def test_list_envs_exits_zero_and_prints_environment_names():
     assert "java" in result.stdout
 
 
-def test_list_templates_exits_zero_with_no_saved_templates():
-    # No templates saved in the default writable dir -> empty listing, exit 0.
-    result = run_cli("list-templates")
+def test_list_workflows_exits_zero_with_no_saved_workflows():
+    # No workflows saved in the default writable dir -> empty listing, exit 0.
+    result = run_cli("list-workflows")
     assert result.returncode == 0
 
 
@@ -243,10 +244,10 @@ def test_run_nonexistent_json_file_exits_one(tmp_path):
     assert "error" in result.stderr
 
 
-def test_run_missing_template_name_exits_one():
-    result = run_cli("run", "no-such-template", "--json")
+def test_run_missing_workflow_name_exits_one():
+    result = run_cli("run", "no-such-workflow", "--json")
     assert result.returncode == 1
-    assert "error: template" in result.stderr
+    assert "workflow not found: 'no-such-workflow'" in result.stderr
 
 
 def test_run_rejects_a_non_hex_run_id(tmp_path):
@@ -276,23 +277,26 @@ def _task_env(tmp_path) -> dict:
     """Isolated task/template/output dirs for a ``run --task`` invocation."""
     return {
         "BT_OUTPUT_DIR": str(tmp_path / "out"),
-        "BT_TEMPLATES_DIR": str(tmp_path / "templates"),
+        "BT_WORKFLOWS_DIR": str(tmp_path / "workflows"),
         "BT_TASK_DEFS_DIR": str(tmp_path / "task_defs"),
     }
 
 
 def _seed_task(tmp_path, task_name="nightly", workflow="cli-task-wf",
                inputs=None, work_dir=""):
-    """Write a raw workflow template file + a task definition file.
+    """Write a raw workflow file + a pre-id task definition file.
 
     Raw (no ``definition`` wrapper) is the documented import format the
-    template store accepts, so no helper process is needed to seed it.
+    workflow store accepts, so no helper process is needed to seed it.  Both
+    files are written with their pre-id (name-based) names on purpose: the
+    store migrates them to ids on construction, which is what the CLI has to
+    cope with.
     """
-    templates = tmp_path / "templates"
-    templates.mkdir(parents=True, exist_ok=True)
+    workflows = tmp_path / "workflows"
+    workflows.mkdir(parents=True, exist_ok=True)
     workflow_doc = _write_read_workflow(tmp_path / "task-out.txt")
     workflow_doc["name"] = workflow
-    (templates / f"{workflow}.json").write_text(
+    (workflows / f"{workflow}.json").write_text(
         json.dumps(workflow_doc), encoding="utf-8"
     )
 
@@ -314,13 +318,15 @@ def _seed_task(tmp_path, task_name="nightly", workflow="cli-task-wf",
     )
 
 
-def test_list_tasks_prints_name_and_workflow(tmp_path):
+def test_list_tasks_prints_id_name_and_workflow(tmp_path):
     _seed_task(tmp_path, task_name="nightly", workflow="cli-task-wf")
 
     result = run_cli("list-tasks", env=_task_env(tmp_path))
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "nightly\tcli-task-wf"
+    task_id, name, workflow = result.stdout.strip().split("\t")
+    assert TASK_ID_RE.match(task_id)
+    assert (name, workflow) == ("nightly", "cli-task-wf")
 
 
 def test_run_task_uses_the_saved_inputs(tmp_path):
@@ -363,12 +369,12 @@ def test_run_task_unknown_task_exits_one(tmp_path):
     result = run_cli("run", "--task", "ghost", "--json", env=_task_env(tmp_path))
 
     assert result.returncode == 1
-    assert "task 'ghost'" in result.stderr
+    assert "task not found: ghost" in result.stderr
 
 
 def test_run_task_with_a_missing_workflow_exits_one(tmp_path):
     _seed_task(tmp_path, task_name="dangling", workflow="cli-task-wf")
-    (tmp_path / "templates" / "cli-task-wf.json").unlink()
+    (tmp_path / "workflows" / "cli-task-wf.json").unlink()
 
     result = run_cli("run", "--task", "dangling", "--json", env=_task_env(tmp_path))
 
@@ -453,7 +459,7 @@ def test_sigint_cancels_the_run_and_exits_two(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Android workflow templates (externalized to examples/workflows/android/)
+# Android example workflows (externalized to examples/workflows/android/)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", sorted(WORKFLOW_TEMPLATES))
@@ -627,7 +633,7 @@ def test_tool_no_operation_on_descriptor_with_ops_lists_them(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# import-pack / import-templates (domain pack bulk import)
+# import-pack / import-workflows (domain pack bulk import)
 # ---------------------------------------------------------------------------
 
 def _minimal_descriptor(name: str) -> dict:
@@ -677,8 +683,8 @@ def test_import_pack_bad_dir_exits_one(tmp_path):
     assert "error" in result.stderr.lower()
 
 
-def test_import_templates_imports_workflow_dir(tmp_path):
-    """``cli.py import-templates <dir>`` imports workflows into the store."""
+def test_import_workflows_imports_workflow_dir(tmp_path):
+    """``cli.py import-workflows <dir>`` imports workflows into the store."""
     pack = tmp_path / "wfpack"
     pack.mkdir()
     (pack / "solo.json").write_text(
@@ -694,8 +700,8 @@ def test_import_templates_imports_workflow_dir(tmp_path):
     )
 
     result = run_cli(
-        "import-templates", str(pack),
-        env={"BT_TEMPLATES_DIR": str(tmp_path / "templates")},
+        "import-workflows", str(pack),
+        env={"BT_WORKFLOWS_DIR": str(tmp_path / "workflows")},
     )
 
     assert result.returncode == 0, (

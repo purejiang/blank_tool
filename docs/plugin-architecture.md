@@ -14,9 +14,9 @@
 | 执行边界 | **进程内**：与后端同一 Python 解释器，直接注册实例进共享注册表 | **进程边界**：经 `CommandExecutor` 以子进程方式运行，后端进程不执行工具代码 |
 | 语言 | 仅 Python | 任意：由 `type` 字段决定运行器（binary / java_jar / python_script / node_script / shell_script） |
 | 注册方式 | `apply(ctx, config)` → `PluginContext.register_tool` → `ToolRegistry.register_plugin_tool(name, tool, kind)` | 扫描 bundled/overlay 工具目录 → `self._descriptor_tools[name] = DescriptorTool(...)`（`tool_manager.py:175`） |
-| 注册 kind | `"shipped-native"`（内置 23 个原子工具）或 `"native"`（用户插件） | `"descriptor"`（`workflow_handler.py:139-143`：非前两种 kind 且为 `DescriptorTool`/带 `_descriptor` 属性时归入） |
+| 注册 kind | `"shipped-native"`（内置 23 个原子工具）或 `"native"`（用户插件） | `"descriptor"`（`tool_handler.py` 的 `handle_list`：非前两种 kind 且为 `DescriptorTool`/带 `_descriptor` 属性时归入） |
 | 生命周期 | 由 `app.plugins.loader.PluginLoader` 管理（config list + importlib + load/unmount）；`unmount_all` 只卸载 `native`，`shipped-native` 常驻 | 与注册表同生命周期：`refresh`/`_rediscover_descriptors` 重建，`add_descriptor_file` / `delete_descriptor`（T15）增删 |
-| 对工作流上下文 | 可访问完整 `ToolContext`（`stream_handler`、`engine`、`template_store`） | 只能拿到 inputs 绑定值与 `ToolContext` 转成的 `CommandExecutionContext`（cwd/task_id/env） |
+| 对工作流上下文 | 可访问完整 `ToolContext`（`stream_handler`、`engine`、`workflow_store`） | 只能拿到 inputs 绑定值与 `ToolContext` 转成的 `CommandExecutionContext`（cwd/task_id/env） |
 
 ### 解析流程
 
@@ -52,9 +52,9 @@
 
 ### 设计含义
 
-- **native = 在进程内写 Python**：可以触碰工作流引擎、模板库、流式回调等后端对象，代价是"零安装、但语言锁定 Python、且运行在后端进程里"。它适合编排逻辑、需要访问上下文的能力。
+- **native = 在进程内写 Python**：可以触碰工作流引擎、工作流库、流式回调等后端对象，代价是"零安装、但语言锁定 Python、且运行在后端进程里"。它适合编排逻辑、需要访问上下文的能力。
 - **descriptor = 在进程边界外声明任意命令**：不写一行可执行代码，`type` 决定运行器，语言可以是 Java / Python / Node / shell / 任意二进制，后端只是拼命令、起子进程、按声明校验与取版本。它适合封装外部工具与脚本，缺点是无法访问后端对象，只能通过类型化 ports 交换数据。
-- 两者共存于同一注册表、同一套 `list_tools` kind 体系（shipped-native / native / descriptor），工作流引擎对它们统一按 `get_tool` 解析、按 ports 校验、按 `execute(inputs, context)` 调用。
+- 两者共存于同一注册表、同一套 `tool.list` kind 体系（shipped-native / native / descriptor），工作流引擎对它们统一按 `get_tool` 解析、按 ports 校验、按 `execute(inputs, context)` 调用。
 
 ## 内核边界
 

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from app.template.store import FileTemplateStore
+from app.workflow.store import FileWorkflowStore
 from app.tools.tool_manager import ToolManager
 from app.workflow.definition import WorkflowDefinition
 from app.workflow.engine import ExecutionContext, WorkflowEngine
@@ -54,11 +54,11 @@ def _load(name: str) -> WorkflowDefinition:
     return WorkflowDefinition.from_json_file(str(FIXTURES / f"{name}.json"))
 
 
-def _store(tmp_path) -> FileTemplateStore:
+def _store(tmp_path) -> FileWorkflowStore:
     """A store holding the sub-workflows the parent fixtures call."""
-    store = FileTemplateStore(templates_dir=str(tmp_path / "templates"))
+    store = FileWorkflowStore(workflows_dir=str(tmp_path / "templates"))
     for name in CHILD_TEMPLATES:
-        store.save(name, _load(name), {"description": f"fixture: {name}"})
+        store.save(_load(name), {"description": f"fixture: {name}"})
     return store
 
 
@@ -66,12 +66,12 @@ def _run(definition: WorkflowDefinition, inputs: dict, tmp_path):
     """Execute *definition* in-process, returning (result, events)."""
     events: list = []
     stream = WorkflowStreamHandler(
-        workflow_id=definition.name, callback=events.append, run_id=RUN_ID
+        workflow_name=definition.name, callback=events.append, run_id=RUN_ID
     )
     context = ExecutionContext(
         work_dir=str(tmp_path),
         run_id=RUN_ID,
-        template_store=_store(tmp_path),
+        workflow_store=_store(tmp_path),
         stream_handler=events.append,
         workflow_stream=stream,
     )
@@ -87,12 +87,12 @@ def _audit_file(tmp_path, name: str, hits: int) -> str:
     return str(path)
 
 
-def _node_ids(events, workflow_id=None, event_type="node_started"):
+def _node_ids(events, workflow_name=None, event_type="node_started"):
     return [
         event["node_id"]
         for event in events
         if event["type"] == event_type
-        and (workflow_id is None or event["workflow_id"] == workflow_id)
+        and (workflow_name is None or event["workflow_name"] == workflow_name)
     ]
 
 
@@ -219,7 +219,7 @@ def test_branch_demo_takes_the_high_branch(tmp_path):
     assert result.node_results["route"]["outputs"]["executed"] is True
 
     # Nested events carry the parent node's path and the CHILD definition name.
-    assert _node_ids(events, workflow_id="branch-high") == ["route/log", "route/confirm"]
+    assert _node_ids(events, workflow_name="branch-high") == ["route/log", "route/confirm"]
     # The top-level run id is never rewritten by nesting.
     assert {event["run_id"] for event in events} == {RUN_ID}
 
@@ -233,8 +233,8 @@ def test_branch_demo_takes_the_low_branch(tmp_path):
 
     assert result.success is True, result.error
     assert result.node_results["route"]["outputs"]["template"] == "branch-low"
-    assert _node_ids(events, workflow_id="branch-low") == ["route/log", "route/confirm"]
-    assert not _node_ids(events, workflow_id="branch-high")
+    assert _node_ids(events, workflow_name="branch-low") == ["route/log", "route/confirm"]
+    assert not _node_ids(events, workflow_name="branch-high")
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +263,7 @@ def test_foreach_audit_passes_when_every_target_matches(tmp_path):
     assert loop["all_passed"] is True
 
     # Per-item node paths are indexed under the loop node.
-    assert _node_ids(events, workflow_id="foreach-item") == [
+    assert _node_ids(events, workflow_name="foreach-item") == [
         "loop/0/scan",
         "loop/0/enough",
         "loop/0/gate",

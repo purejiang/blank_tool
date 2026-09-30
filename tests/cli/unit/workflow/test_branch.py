@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.common.exceptions import ToolException
-from app.template.store import TemplateNotFoundError
+from app.workflow.store import WorkflowNotFoundError
 from app.tools.builtin.base import ToolContext
 from app.tools.builtin.flow_tools import FlowBranch
 from app.tools.builtin.workflow_tools import MAX_NESTING_DEPTH
@@ -21,15 +21,33 @@ from app.workflow.definition import WorkflowDefinition
 
 
 class _StubStore:
-    """Returns a definition named after the requested template."""
+    """A minimal store: every reference resolves to a stable synthetic id."""
 
-    def load(self, name):
-        return WorkflowDefinition(name=name, nodes=[])
+    def __init__(self):
+        self._ids = {}
+        self._definitions = {}
+
+    def resolve(self, ref):
+        if not ref:
+            return None
+        if ref not in self._ids:
+            workflow_id = f"wf-{len(self._ids):012d}"
+            self._ids[ref] = workflow_id
+            self._definitions[workflow_id] = WorkflowDefinition(name=ref, nodes=[])
+        return self._ids[ref]
+
+    def load(self, workflow_id):
+        return self._definitions[workflow_id]
 
 
 class _MissingStore:
-    def load(self, name):
-        raise TemplateNotFoundError(name)
+    """Resolves nothing — the reference genuinely does not exist."""
+
+    def resolve(self, ref):
+        return None
+
+    def load(self, workflow_id):  # pragma: no cover - never reached
+        raise WorkflowNotFoundError(workflow_id)
 
 
 class _StubEngine:
@@ -53,7 +71,7 @@ class _StubEngine:
 
 
 def _ctx(tmp_path, engine, store, **overrides):
-    kwargs = dict(work_dir=str(tmp_path), template_store=store, engine=engine)
+    kwargs = dict(work_dir=str(tmp_path), workflow_store=store, engine=engine)
     kwargs.update(overrides)
     return ToolContext(**kwargs)
 
@@ -115,9 +133,10 @@ def test_child_failure_raises_tool_exception(tmp_path):
 
 def test_recursion_guard_raises(tmp_path):
     engine = _StubEngine()
+    store = _StubStore()
     ctx = _ctx(
-        tmp_path, engine, _StubStore(),
-        in_progress_templates=frozenset({"on-true"}),
+        tmp_path, engine, store,
+        in_progress_workflow_ids=frozenset({store.resolve("on-true")}),
     )
     with pytest.raises(ToolException, match="recursion detected"):
         FlowBranch().execute(
@@ -136,17 +155,17 @@ def test_depth_guard_raises(tmp_path):
         )
 
 
-def test_unknown_template_raises(tmp_path):
+def test_unknown_workflow_raises(tmp_path):
     engine = _StubEngine()
-    with pytest.raises(ToolException, match="template not found"):
+    with pytest.raises(ToolException, match="workflow not found"):
         FlowBranch().execute(
             {"condition": True, "true_template": "ghost"},
             _ctx(tmp_path, engine, _MissingStore()),
         )
 
 
-def test_missing_template_store_raises(tmp_path):
-    with pytest.raises(ToolException, match="template_store not available"):
+def test_missing_workflow_store_raises(tmp_path):
+    with pytest.raises(ToolException, match="workflow_store not available"):
         FlowBranch().execute(
             {"condition": True, "true_template": "on-true"},
             _ctx(tmp_path, _StubEngine(), None),
