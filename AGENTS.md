@@ -129,7 +129,7 @@ Python Backend (cli/main.py)
 | 位置 | 摩擦 | 影响 |
 |---|---|---|
 | `PortSet.validate_inputs` | 手工 presence-only 校验 | 错误信息粗糙，定位慢 |
-| 节点级超时 | 引擎没有节点级 timeout；CLI 有整轮 `run --timeout`，单节点只能靠各工具的 `timeout` 输入 | 加节点字段需要 schema + 渲染层序列化配合（见 `engine.py` 关于高级字段过不了画布的注释）；卡死的节点现在能靠取消真正终止（进程组 / `taskkill /T`） |
+| 节点级超时 | 引擎没有节点级 timeout；CLI 有整轮 `run --timeout`，单节点只能靠各工具的 `timeout` 输入 | 加节点字段需要 schema + 渲染层序列化配合（见 `engine.py` 关于高级字段过不了画布的注释）；卡死的节点现在能靠取消真正终止（进程组 / `taskkill /T`）。**失败策略 / 重试次数已支持「跟随系统」**：节点不写这两个字段（wire 缺省 = 继承）时用设置页「节点」卡片（`appConfig.nodes`，键 `onFailure`/`retry`）的值，由渲染层作为运行参数 `node_defaults` 下发（`components/workflow/nodeDefaults.ts`），引擎在字段为 `None` 时取用（`definition.normalize_node_defaults` / `engine._effective_on_failure|_effective_retry`）。显式值（含显式 `0` / `"fail"`）永远优先，所以旧文件行为不变 |
 | 模型类 `to_dict`/`from_dict` | 手写序列化，字段增删需双改 | 容易遗漏，类型漂移不报错 |
 
 ### 渲染层服务层

@@ -84,6 +84,28 @@ const schema = {
             outputFormat: 'json'
         }
     },
+    // 节点级默认行为：工作流里「跟随系统」的节点用这里的值（渲染层把它作为
+    // execute 请求的 `node_defaults` 下发，见 components/workflow/nodeDefaults.ts）。
+    // 节点「自定义」时把值写进工作流 JSON，永远覆盖这里。
+    nodes: {
+        type: 'object',
+        properties: {
+            onFailure: {
+                type: 'string',
+                enum: ['fail', 'skip'],
+                default: 'fail'
+            },
+            retry: {
+                type: 'number',
+                minimum: 0,
+                default: 0
+            }
+        },
+        default: {
+            onFailure: 'fail',
+            retry: 0
+        }
+    },
     logs: {
         type: 'object',
         properties: {

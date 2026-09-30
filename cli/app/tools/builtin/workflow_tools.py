@@ -150,6 +150,10 @@ def run_child_template(
             context.in_progress_templates | frozenset([template_name])
         ),
         node_path_prefix=node_path_prefix or "",
+        # Behaviour defaults travel with the run: a sub-workflow's nodes that
+        # did not pin their own failure handling inherit the same values the
+        # parent run was started with.
+        node_defaults=dict(context.node_defaults),
     )
 
     # ── execute the child inline ─────────────────────────────────────

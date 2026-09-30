@@ -30,6 +30,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.workflow.definition import normalize_node_defaults
 from app.workflow.engine import ExecutionContext, WorkflowEngine
 from app.workflow.output_limit import shrink_outputs
 from app.workflow.streaming import WorkflowStreamHandler
@@ -45,7 +46,8 @@ def run_workflow(
 
     Params:
         definition: an already-loaded :class:`WorkflowDefinition`.
-        params: handler params; ``inputs`` and ``work_dir`` are consumed here.
+        params: handler params; ``inputs``, ``work_dir`` and ``node_defaults``
+            are consumed here.
         stream_handler: plain callable receiving event dicts (streaming).
         task_id: optional task identifier; used as the history ``task_id``.
         run_id: optional run identifier (the IPC request id) — the
@@ -61,6 +63,12 @@ def run_workflow(
             ``task_name`` so run history can be filtered per task.  Empty for
             template / inline / CLI runs.
 
+    ``params["node_defaults"]`` (``{"on_failure", "retry"}``) is the run-level
+    fallback for nodes that did not pin their own failure handling — see
+    :func:`app.workflow.definition.normalize_node_defaults`.  UI callers send
+    it from the user's node settings; CLI callers omit it and get the built-in
+    ``fail`` / ``0``.
+
     Returns:
         ``{"success", "status", "cancelled", "outputs", "node_results",
         "error", "run_dir"}``.  ``run_dir`` is the per-run artifact directory;
@@ -68,6 +76,10 @@ def run_workflow(
         output dir), so consumers must tolerate the empty string.
     """
     inputs = params.get("inputs") or {}
+    # Nodes that do not pin `on_failure` / `retry` inherit these.  Normalized
+    # here so a malformed UI payload degrades to "no defaults" rather than
+    # reaching the engine.
+    node_defaults = normalize_node_defaults(params.get("node_defaults"))
     engine = WorkflowEngine()
     started_at = datetime.now().isoformat()
     start = time.perf_counter()
@@ -99,6 +111,7 @@ def run_workflow(
         env=dict(os.environ),
         stream_handler=stream_handler,
         workflow_stream=workflow_stream,
+        node_defaults=node_defaults,
     )
 
     result = engine.execute(definition, inputs, context)
@@ -127,6 +140,7 @@ def run_workflow(
         run_dir=context.run_dir or "",
         exec_run_id=identity,
         task_name=task_name,
+        node_defaults=node_defaults,
     )
     return payload
 
@@ -143,6 +157,7 @@ def record_history(
     run_dir="",
     exec_run_id="",
     task_name="",
+    node_defaults=None,
 ):
     """Best-effort history write — a recording failure never fails the run.
 
@@ -160,6 +175,11 @@ def record_history(
         task_name: saved task definition this run belongs to, or ``""`` for
             template / inline / CLI runs.  Written as ``null`` in that case so
             records read back uniformly (``record.get("task_name") is None``).
+        node_defaults: the run-level node defaults actually applied to nodes
+            that did not pin their own failure handling (``{}`` when none).
+            Recorded so a run can be explained after the fact: with "follow the
+            system defaults" nodes, the saved definition alone does not say
+            which values were in effect.
     """
     try:
         from app.history import store as history_store
@@ -177,6 +197,7 @@ def record_history(
                 "ended_at": datetime.now().isoformat(),
                 "duration_ms": int((time.perf_counter() - start) * 1000),
                 "inputs": inputs,
+                "node_defaults": dict(node_defaults or {}),
                 "node_results": result.node_results,
                 "success": result.success,
                 "status": result.status,

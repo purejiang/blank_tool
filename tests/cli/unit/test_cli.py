@@ -136,8 +136,11 @@ def test_list_templates_exits_zero_with_no_saved_templates():
     assert result.returncode == 0
 
 
-def test_list_tasks_exits_zero_with_no_saved_tasks():
-    result = run_cli("list-tasks")
+def test_list_tasks_exits_zero_with_no_saved_tasks(tmp_path):
+    # Point the writable dir at an empty tmp dir: "no saved tasks" must be
+    # tested against a known-empty store, not against whatever the developer's
+    # default ``cli/output/task_defs`` happens to contain.
+    result = run_cli("list-tasks", env={"BT_OUTPUT_DIR": str(tmp_path)})
     assert result.returncode == 0
     assert result.stdout.strip() == ""
 

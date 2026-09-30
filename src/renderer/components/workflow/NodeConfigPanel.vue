@@ -3,121 +3,199 @@
     <div v-if="!node" class="npc-empty">{{ t('workflow.editor.config.noSelection') }}</div>
     <template v-else>
       <div class="npc-body">
-        <!-- 基本: node identity (the id is what $nodes.<id> bindings embed) -->
-        <div class="npc-section">
-          <div class="npc-section-title">{{ t('workflow.editor.config.sections.basic') }}</div>
-          <div class="npc-field">
-            <label class="npc-field-label" :title="t('workflow.editor.config.fields.idHint')">
-              {{ t('workflow.editor.config.fields.id') }}
-            </label>
+        <!-- 基础：节点名（可改）+ 只读 id。
+             id 是引用身份（`$nodes.<id>.*`）且由画布自动生成，不给改——所以它
+             只是一行可复制的文本，不再是输入框。 -->
+        <section class="npc-sec">
+          <div class="npc-sec-title">{{ t('workflow.editor.config.sections.basic') }}</div>
+          <AppField
+            :label="t('workflow.editor.config.fields.name')"
+            :help="t('workflow.editor.config.fields.nameHint')"
+          >
             <n-input
-              v-model:value="draftId"
+              :value="nodeName"
               size="small"
-              data-test="npc-id"
-              @update:value="saveError = null"
+              :placeholder="toolName"
+              data-test="npc-name"
+              @update:value="onNameChange"
             />
+          </AppField>
+          <div class="npc-id-row">
+            <span class="npc-id-label">{{ t('workflow.editor.config.fields.idLabel') }}</span>
+            <code class="npc-id" data-test="npc-id" :title="t('workflow.editor.config.fields.idReadonlyHint')">
+              {{ nodeId }}
+            </code>
+            <button
+              type="button"
+              class="npc-id-copy"
+              :title="t('workflow.editor.config.fields.copyId')"
+              data-test="npc-copy-id"
+              @click="copyId"
+            >
+              {{ copied ? t('workflow.editor.config.fields.copied') : t('workflow.editor.config.fields.copyId') }}
+            </button>
           </div>
-        </div>
+        </section>
 
-        <!-- 功能: what the node does (tool + operation) -->
-        <div class="npc-section">
-          <div class="npc-section-title">{{ t('workflow.editor.config.sections.capability') }}</div>
-          <div v-if="isOperationMode" class="npc-field">
-            <label class="npc-field-label">{{ t('workflow.editor.config.operation') }}</label>
+        <!-- 功能：这个节点做什么（工具 + 操作 + 描述） -->
+        <section class="npc-sec">
+          <div class="npc-sec-title">{{ t('workflow.editor.config.sections.capability') }}</div>
+          <div class="npc-tool-row">
+            <span class="npc-tool" :title="toolName">{{ toolName }}</span>
+          </div>
+          <AppField
+            v-if="ports.operationMode"
+            class="npc-op-field"
+            :label="t('workflow.editor.config.operation')"
+            :error="fieldError('operation')"
+          >
             <n-select
-              v-model:value="selectedOperation"
+              :value="ports.operation"
               size="small"
               :options="operationOptions"
               :placeholder="t('workflow.editor.config.operationPlaceholder')"
               clearable
+              data-test="npc-operation"
               @update:value="onOperationChange"
             />
-            <div v-if="currentOperation && currentOperation.description" class="npc-op-desc">
-              {{ currentOperation.description }}
-            </div>
-          </div>
-          <div v-else class="npc-empty-inline">{{ toolName }}</div>
-        </div>
+          </AppField>
+          <p v-if="capabilityDescription" class="npc-desc">{{ capabilityDescription }}</p>
+        </section>
 
-        <!-- 参数: typed bindings for the effective input ports -->
-        <div class="npc-section">
-          <div class="npc-section-title">{{ t('workflow.editor.config.parameters') }}</div>
-          <div v-if="isOperationMode && !selectedOperation" class="npc-empty-inline">
+        <!-- 参数：按类型渲染（文本 / 路径 / 布尔 / 数字 / JSON / 单选…），
+             名称旁永远带类型徽标；必填常显，可选参数多时折叠。 -->
+        <section class="npc-sec">
+          <div class="npc-sec-title">
+            {{ t('workflow.editor.config.parameters') }}
+            <span v-if="inputPorts.length > 0" class="npc-sec-count">{{ inputPorts.length }}</span>
+          </div>
+          <div v-if="ports.operationMode && !ports.operation" class="npc-hint">
             {{ t('workflow.editor.config.operationPlaceholder') }}
           </div>
-          <div v-else-if="effectiveInputs.length === 0" class="npc-empty-inline">
+          <div v-else-if="inputPorts.length === 0" class="npc-hint">
             {{ t('workflow.editor.config.noParameters') }}
           </div>
-          <n-form v-else :model="draft" label-placement="top" size="small">
-            <n-form-item
-              v-for="port in effectiveInputs"
+          <template v-else>
+            <div v-if="pendingIssueCount > 0" class="npc-hint npc-hint--pending">
+              {{ t('workflow.editor.config.errors.pendingHint', { count: pendingIssueCount }) }}
+            </div>
+            <AppField
+              v-for="port in visibleInputs"
               :key="port.name"
+              class="npc-param"
               :label="port.name"
               :required="isRequired(port)"
-            >
+              :help="port.description"
+              :error="fieldError(port.name)"
+            >              <template #label>
+                <span class="npc-param-label">
+                  <span class="npc-param-name">
+                    {{ port.name }}<span v-if="isRequired(port)" class="npc-req">*</span>
+                  </span>
+                  <PortTypeBadge :type="port.type" :options="port.options" :multi="port.multi" />
+                </span>
+              </template>
               <PortInput
-                :value="draft[port.name]"
+                :value="values[port.name]"
                 :port="port"
                 :inputs="workflowInputs"
                 :upstream-nodes="upstreamNodes"
-                @update:value="(value: any) => (draft[port.name] = value)"
+                @update:value="(value: any) => onValueChange(port, value)"
               />
-              <template v-if="port.description" #feedback>
-                <span class="npc-port-desc">{{ port.description }}</span>
-              </template>
-            </n-form-item>
-          </n-form>
-        </div>
+            </AppField>
+            <button
+              v-if="collapsibleOptional"
+              type="button"
+              class="npc-more"
+              data-test="npc-optional-toggle"
+              @click="optionalExpanded = !optionalExpanded"
+            >
+              {{
+                optionalExpanded
+                  ? t('workflow.editor.config.optional.collapse')
+                  : t('workflow.editor.config.optional.expand', { count: optionalCount })
+              }}
+            </button>
+          </template>
+        </section>
 
-        <!-- 输出: read-only, so authors can reference them downstream -->
-        <div class="npc-section">
-          <div class="npc-section-title">{{ t('workflow.editor.config.sections.outputs') }}</div>
-          <div v-if="effectiveOutputs.length === 0" class="npc-empty-inline">
+        <!-- 输出：只读，供下游引用 -->
+        <section class="npc-sec">
+          <div class="npc-sec-title">{{ t('workflow.editor.config.sections.outputs') }}</div>
+          <div v-if="outputPorts.length === 0" class="npc-hint">
             {{ t('workflow.editor.config.noOutputs') }}
           </div>
           <div v-else class="npc-outputs">
             <div
-              v-for="port in effectiveOutputs"
+              v-for="port in outputPorts"
               :key="port.name"
               class="npc-output-row"
               :title="port.description || ''"
             >
-              <span class="npc-dot" :class="`npc-dot--${portTypeOf(port)}`" />
               <span class="npc-output-name">{{ port.name }}</span>
-              <span class="npc-output-type">{{ typeLabel(port) }}</span>
+              <PortTypeBadge :type="port.type" :options="port.options" :multi="port.multi" />
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- 行为: failure handling (配置, distinct from 功能/参数) -->
-        <div class="npc-section">
-          <div class="npc-section-title">{{ t('workflow.editor.config.sections.behavior') }}</div>
-          <div class="npc-field">
-            <label class="npc-field-label">{{ t('workflow.editor.config.fields.onFailure') }}</label>
-            <n-select v-model:value="draftOnFailure" size="small" :options="failureOptions" />
-          </div>
-          <div class="npc-field" :title="t('workflow.editor.config.fields.retryHint')">
-            <label class="npc-field-label">{{ t('workflow.editor.config.fields.retry') }}</label>
-            <n-input-number
-              v-model:value="draftRetry"
-              class="npc-full"
-              size="small"
-              :min="0"
-              :show-button="false"
-            />
-          </div>
-          <div class="npc-hint">{{ t('workflow.editor.config.fields.retryHint') }}</div>
-        </div>
+        <!-- 行为：跟随系统（用设置里的节点默认值）或自定义（把值写进这份工作流） -->
+        <section class="npc-sec">
+          <div class="npc-sec-title">{{ t('workflow.editor.config.sections.behavior') }}</div>
+          <n-radio-group
+            :value="behaviorMode"
+            size="small"
+            data-test="npc-behavior-mode"
+            @update:value="onBehaviorModeChange"
+          >
+            <n-radio-button value="inherit">
+              {{ t('workflow.editor.config.behavior.inherit') }}
+            </n-radio-button>
+            <n-radio-button value="custom">
+              {{ t('workflow.editor.config.behavior.custom') }}
+            </n-radio-button>
+          </n-radio-group>
+
+          <template v-if="behaviorMode === 'inherit'">
+            <div class="npc-hint npc-behavior-summary">
+              {{ t('workflow.editor.config.behavior.inheritSummary', { summary: defaultsSummary }) }}
+              <button type="button" class="npc-link" data-test="npc-behavior-settings" @click="emit('open-settings')">
+                {{ t('workflow.editor.config.behavior.goSettings') }}
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <AppField class="npc-behavior-field" :label="t('workflow.editor.config.fields.onFailure')">
+              <n-select
+                :value="draftOnFailure"
+                size="small"
+                :options="failureOptions"
+                data-test="npc-on-failure"
+                @update:value="onFailureChange"
+              />
+            </AppField>
+            <AppField
+              class="npc-behavior-field"
+              :label="t('workflow.editor.config.fields.retry')"
+              :help="t('workflow.editor.config.fields.retryHint')"
+            >
+              <n-input-number
+                :value="draftRetry"
+                class="npc-full"
+                size="small"
+                :min="0"
+                :show-button="false"
+                data-test="npc-retry"
+                @update:value="onRetryChange"
+              />
+            </AppField>
+          </template>
+        </section>
       </div>
 
-      <!-- Commit draft values to node.data (params or operation/inputs) -->
+      <!-- 字段即时生效，所以这里没有「保存」——落盘只有一个动作：顶栏的保存。 -->
       <div class="npc-footer">
-        <div v-if="saveError" class="npc-error">{{ saveError }}</div>
         <AppButton variant="danger-ghost" data-test="npc-delete" @click="requestDelete">
           {{ t('workflow.editor.config.delete') }}
-        </AppButton>
-        <AppButton variant="primary" :disabled="!dirty" data-test="npc-save" @click="save">
-          {{ t('workflow.editor.config.save') }}
         </AppButton>
       </div>
     </template>
@@ -125,33 +203,49 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+/**
+ * 节点检查器（右栏）。
+ *
+ * 三条设计约束（见 docs/07 / docs/08 §3-S2）：
+ *  1. **字段即时生效**：编辑直接写进 `node.data`，没有节点级「保存」。落盘只有
+ *     顶栏那一个保存动作，画布 dirty 指示器随之亮起；切换节点不会丢草稿。
+ *  2. **id 只读**：节点身份是画布自动生成的 id（引用 `$nodes.<id>.*` 用它），
+ *     人可读的名字走 `data.label`。
+ *  3. **一处校验**：必填/操作缺失由 `nodeValidation` 判定，面板做字段级提示，
+ *     页面用它挡住顶栏保存——两边不会漂移。
+ */
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NForm, NFormItem, NInput, NInputNumber, NButton, NSelect } from 'naive-ui'
+import { NInput, NInputNumber, NRadioButton, NRadioGroup, NSelect } from 'naive-ui'
 import type { Node } from '@vue-flow/core'
+
 import unifiedApi from '../../api/unifiedApi'
 import { log } from '@utils/logger'
-import PortInput from './PortInput.vue'
 import AppButton from '@components/ui/AppButton.vue'
-import { portJsonToTypeKey, type PortTypeKey } from './ioAuthoring'
-import type { ToolNodeData, ToolOperation, ToolPorts, UpstreamNodeRef, WorkflowToolInfo } from './toolMeta'
+import AppField from '@components/ui/AppField.vue'
+import PortInput from './PortInput.vue'
+import PortTypeBadge from './PortTypeBadge.vue'
+import {
+  boundValues,
+  effectivePorts,
+  isEmptyValue,
+  isRequiredPort,
+  issueForField,
+  validateNodeEditable,
+  type EffectivePortShape,
+} from './nodeValidation'
+import {
+  loadNodeDefaults,
+  NODE_BEHAVIOR_FALLBACK,
+  type NodeBehaviorDefaults,
+} from './nodeDefaults'
+import type { ToolOperation, UpstreamNodeRef, WorkflowToolInfo } from './toolMeta'
 import type { PortJSON } from './serializer'
 
 const { t } = useI18n()
 
-/**
- * Loose port shape accepted by this panel. `ToolPort` (toolMeta.ts) is
- * structurally assignable; the looser form also tolerates bare base-name type
- * strings or missing fields (e.g. nodes rebuilt by the deserializer).
- */
-interface LoosePort {
-  name: string
-  type?: string | { base?: string; subtype?: string | null }
-  required?: boolean
-  description?: string
-  options?: unknown
-  multi?: unknown
-}
+/** 可选参数超过这个数量才折叠（少的时候全展开更好找）。 */
+const OPTIONAL_COLLAPSE_THRESHOLD = 3
 
 const props = defineProps<{
   /** Selected vue-flow node; null/undefined when nothing is selected. */
@@ -160,51 +254,30 @@ const props = defineProps<{
   workflowInputs?: PortJSON[]
   /** Nodes that run before this one, offered as `$nodes.<id>.*` candidates. */
   upstreamNodes?: UpstreamNodeRef[]
-  /** Every node id on the canvas (node-id uniqueness validation). */
-  nodeIds?: string[]
 }>()
 
 const emit = defineEmits<{
   (e: 'delete', nodeId: string): void
-  (e: 'rename', payload: { oldId: string; newId: string }): void
+  /** 跳到设置页配置节点默认值（路由动作由页面负责）。 */
+  (e: 'open-settings'): void
 }>()
 
-// ---- node data accessors ---------------------------------------------
-// Node payload contract is toolMeta.ts `ToolNodeData`:
-//   { tool, status?, ports?: { inputs, outputs }, params? (legacy mode),
-//     operation?, inputs? (operation mode, T7), on_failure?, retry? }
+// ---- node data ---------------------------------------------------------
 
 const nodeData = computed<Record<string, any>>(() => (props.node?.data ?? {}) as Record<string, any>)
-
+const nodeId = computed(() => String(props.node?.id ?? ''))
 const toolName = computed<string>(() => {
-  const d = nodeData.value
-  return String(d.tool || d.toolName || d.label || props.node?.id || '')
+  const data = nodeData.value
+  return String(data.tool || data.toolName || props.node?.id || '')
+})
+const nodeName = computed(() => {
+  const label = nodeData.value.label
+  return typeof label === 'string' && label.length > 0 ? label : toolName.value
 })
 
-function toPorts(raw: unknown): LoosePort[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter(
-    (p): p is LoosePort => !!p && typeof p === 'object' && typeof (p as LoosePort).name === 'string',
-  )
-}
-
-/** Prefer nested data.ports; tolerate flat data.inputs/outputs. */
-const ports = computed<ToolPorts | null>(() => {
-  const d = nodeData.value
-  if (d.ports && typeof d.ports === 'object') return d.ports as ToolPorts
-  if (Array.isArray(d.inputs) || Array.isArray(d.outputs)) {
-    return { inputs: d.inputs, outputs: d.outputs } as ToolPorts
-  }
-  return null
-})
-
-const inputPorts = computed<LoosePort[]>(() => toPorts(ports.value?.inputs))
-const outputPorts = computed<LoosePort[]>(() => toPorts(ports.value?.outputs))
-
-// ---- tool metadata (operation mode, T7) --------------------------------
-// The panel fetches workflow.list_tools independently so it stays
-// self-contained (no parent prop). On failure it degrades to the legacy
-// free-form params UI.
+// ---- tool metadata (operation mode) ------------------------------------
+// The panel fetches workflow.list_tools itself so it stays self-contained (no
+// parent prop); on failure it degrades to the legacy free-form params UI.
 
 const toolList = ref<WorkflowToolInfo[]>([])
 let toolsFetched = false
@@ -218,282 +291,220 @@ async function fetchToolList() {
   } catch (err) {
     log.warn('[NodeConfigPanel] workflow.list_tools unavailable; operation mode disabled', err)
   }
-  // Mode (operation vs legacy) may have changed — rehydrate the draft.
-  resetDraft()
 }
 
-onMounted(fetchToolList)
-
-const currentToolMeta = computed<WorkflowToolInfo | null>(() => {
+const toolInfo = computed<WorkflowToolInfo | null>(() => {
   const name = nodeData.value.tool
   if (typeof name !== 'string') return null
   return toolList.value.find((tool) => tool?.name === name) ?? null
 })
 
-const operations = computed<ToolOperation[]>(() => {
-  const ops = currentToolMeta.value?.operations
-  return Array.isArray(ops) ? ops : []
-})
+/** 生效端口 + 操作（与页面保存门禁共用同一份解析）。 */
+const ports = computed(() => effectivePorts(nodeData.value, toolInfo.value))
+const inputPorts = computed<EffectivePortShape[]>(() => ports.value.inputs)
+const outputPorts = computed<EffectivePortShape[]>(() => ports.value.outputs)
 
-/** Operation mode iff the selected tool declares operations (T7). */
-const isOperationMode = computed(() => operations.value.length > 0)
+/** 当前存值容器（operation 模式看 inputs，否则看 params）。 */
+const values = computed<Record<string, any>>(() =>
+  boundValues(nodeData.value, ports.value.operationMode),
+)
 
 const operationOptions = computed(() =>
-  operations.value.map((op) => ({ label: op.name, value: op.name })),
+  (toolInfo.value?.operations ?? []).map((operation: ToolOperation) => ({
+    label: operation.name,
+    value: operation.name,
+  })),
 )
 
-const selectedOperation = ref<string | null>(null)
-
-const currentOperation = computed<ToolOperation | null>(() => {
-  if (!selectedOperation.value) return null
-  return operations.value.find((op) => op.name === selectedOperation.value) ?? null
+/** 功能描述：优先选中的操作描述，其次工具描述。 */
+const capabilityDescription = computed(() => {
+  const operation = ports.value.currentOperation
+  if (operation?.description) return operation.description
+  const description = toolInfo.value?.description
+  return typeof description === 'string' ? description : ''
 })
 
-const operationInputPorts = computed<LoosePort[]>(() => toPorts(currentOperation.value?.inputs))
-const operationOutputPorts = computed<LoosePort[]>(() => toPorts(currentOperation.value?.outputs))
+// ---- field-level validation --------------------------------------------
 
-/** Inputs the parameters section edits: operation inputs, else tool inputs. */
-const effectiveInputs = computed<LoosePort[]>(() =>
-  isOperationMode.value ? operationInputPorts.value : inputPorts.value,
-)
-
-/** Outputs shown read-only: operation outputs when one is selected. */
-const effectiveOutputs = computed<LoosePort[]>(() =>
-  isOperationMode.value && currentOperation.value ? operationOutputPorts.value : outputPorts.value,
-)
-
-function selectOptions(port: LoosePort) {
-  const options = Array.isArray(port.options) ? port.options : []
-  return options.map((value) => ({ label: String(value), value: String(value) }))
-}
-
-// ---- port type helpers -------------------------------------------------
-
-const KNOWN_BASE_TYPES = ['file', 'directory', 'text', 'number', 'boolean', 'json']
-
-function portTypeOf(port: LoosePort): string {
-  const raw = port.type
-  let base = ''
-  if (typeof raw === 'string') base = raw
-  else if (raw && typeof raw === 'object' && typeof raw.base === 'string') base = raw.base
-  base = base.toLowerCase()
-  // Unknown/missing types degrade to a plain text field (advisory typing, D7).
-  return KNOWN_BASE_TYPES.includes(base) ? base : 'text'
-}
+const issues = computed(() => validateNodeEditable(nodeData.value, toolInfo.value))
 
 /**
- * Widget kind for an input port — reuses the T6 reverse mapping:
- * text base + options (+multi) → single_select / multi_select; bare bases
- * map 1:1; unknown degrades to text.
+ * 出错字段集合：只对"用户碰过"的字段立刻标红。
+ *
+ * 刚拖上画布的节点每个必填都是空的，一进来满屏红色是在骂人；未触碰的问题用
+ * 参数区顶部一句灰字汇总，顶栏保存同样会被挡住（页面用同一份 issues）。
  */
-function portKindOf(port: LoosePort): PortTypeKey {
-  return portJsonToTypeKey({
-    name: port.name,
-    type: { base: portTypeOf(port) },
-    options: Array.isArray(port.options) ? (port.options as string[]) : [],
-    multi: port.multi === true,
-  })
+const touched = ref<Set<string>>(new Set())
+
+function markTouched(field: string) {
+  if (touched.value.has(field)) return
+  const next = new Set(touched.value)
+  next.add(field)
+  touched.value = next
 }
 
-function typeLabel(port: LoosePort): string {
-  const base = portTypeOf(port)
-  const raw = port.type
-  if (raw && typeof raw === 'object' && typeof raw.subtype === 'string' && raw.subtype) {
-    return `${base}/${raw.subtype}`
+/** 可选参数的展开状态（会话内记一次；换节点回到折叠）。 */
+const optionalExpanded = ref(false)
+
+// 切换节点：清空触碰记录与折叠状态
+watch(
+  () => props.node?.id,
+  () => {
+    touched.value = new Set()
+    optionalExpanded.value = false
+  },
+)
+
+function fieldError(field: string): string | null {
+  if (!touched.value.has(field)) return null
+  const issue = issueForField(issues.value, field)
+  return issue ? t(issue.messageKey, issue.params ?? {}) : null
+}
+
+const pendingIssueCount = computed(
+  () => issues.value.filter((issue) => !touched.value.has(issue.field)).length,
+)
+
+// ---- immediate edits ---------------------------------------------------
+
+function onNameChange(value: string) {
+  const data = nodeData.value
+  const name = String(value ?? '').trim()
+  // 名字等于工具名（或为空）就等于"没名字"：删掉这个键，工具名自然兜底。
+  if (!name || name === toolName.value) delete data.label
+  else data.label = name
+}
+
+const copied = ref(false)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+async function copyId() {
+  try {
+    await navigator.clipboard?.writeText(nodeId.value)
+    copied.value = true
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => {
+      copied.value = false
+    }, 1200)
+  } catch (error) {
+    log.warn('[NodeConfigPanel] clipboard unavailable', error)
   }
-  return base
 }
 
-function isRequired(port: LoosePort): boolean {
-  // Backend Port defaults to required=True when the flag is absent.
-  return port.required !== false
+function onOperationChange(name: string | null) {
+  markTouched('operation')
+  const data = nodeData.value
+  if (!name) {
+    delete data.operation
+    delete data.inputs
+    return
+  }
+  const next = (toolInfo.value?.operations ?? []).find((operation) => operation?.name === name)
+  const nextPorts = Array.isArray(next?.inputs) ? next.inputs : []
+  const previous = (data.inputs ?? {}) as Record<string, unknown>
+  // 换操作时只保留"新操作同样有这个名字"的已填值：既不会把上一条命令的
+  // 绑定带错地方，也不会因为误点一下就把填好的参数清空。
+  const carried: Record<string, unknown> = {}
+  for (const port of nextPorts) {
+    if (port?.name && previous[port.name] !== undefined) carried[port.name] = previous[port.name]
+  }
+  data.operation = name
+  data.inputs = carried
+  delete data.params
 }
 
-// ---- draft editing + save ----------------------------------------------
+function onValueChange(port: EffectivePortShape, value: unknown) {
+  markTouched(port.name)
+  const data = nodeData.value
+  const container = ports.value.operationMode
+    ? { ...((data.inputs ?? {}) as Record<string, unknown>) }
+    : { ...((data.params ?? {}) as Record<string, unknown>) }
+  // 空值删键：未填的参数不该在工作流 JSON 里留下空串/空数组。
+  if (isEmptyValue(value)) delete container[port.name]
+  else container[port.name] = value
+  if (ports.value.operationMode) data.inputs = container
+  else data.params = container
+}
 
-const draft = reactive<Record<string, any>>({})
-const draftId = ref('')
-const draftOnFailure = ref<'fail' | 'skip'>('fail')
-const draftRetry = ref<number>(0)
-const snapshot = ref('')
-const saveError = ref<string | null>(null)
+// ---- optional parameter disclosure -------------------------------------
+
+const optionalCount = computed(() => inputPorts.value.filter((port) => !isRequiredPort(port)).length)
+const collapsibleOptional = computed(() => optionalCount.value > OPTIONAL_COLLAPSE_THRESHOLD)
+const visibleInputs = computed<EffectivePortShape[]>(() =>
+  collapsibleOptional.value && !optionalExpanded.value
+    ? inputPorts.value.filter((port) => isRequiredPort(port))
+    : inputPorts.value,
+)
+
+function isRequired(port: EffectivePortShape): boolean {
+  return isRequiredPort(port)
+}
+
+// ---- behaviour (跟随系统 / 自定义) -------------------------------------
+
+const defaults = ref<NodeBehaviorDefaults>({ ...NODE_BEHAVIOR_FALLBACK })
+
+onMounted(async () => {
+  void fetchToolList()
+  defaults.value = await loadNodeDefaults()
+})
+
+/**
+ * 自定义 = 节点自己写死了行为字段。判定标准就是字段存在与否——wire 上"缺省"
+ * 正是"继承"，两边用同一个约定，不需要额外的模式标记。
+ */
+const behaviorMode = computed<'inherit' | 'custom'>(() => {
+  const data = nodeData.value
+  return typeof data.on_failure === 'string' || typeof data.retry === 'number'
+    ? 'custom'
+    : 'inherit'
+})
+
+const draftOnFailure = computed<'fail' | 'skip'>(() =>
+  nodeData.value.on_failure === 'skip' ? 'skip' : 'fail',
+)
+const draftRetry = computed<number>(() =>
+  typeof nodeData.value.retry === 'number' ? nodeData.value.retry : 0,
+)
 
 const failureOptions = computed(() => [
   { label: t('workflow.editor.config.onFailure.fail'), value: 'fail' },
   { label: t('workflow.editor.config.onFailure.skip'), value: 'skip' },
 ])
 
-function emptyValueFor(kind: string): unknown {
-  if (kind === 'boolean') return false
-  if (kind === 'number') return null
-  if (kind === 'multi_select') return []
-  if (kind === 'single_select') return null
-  return ''
-}
-
-function isEmptyValue(value: unknown): boolean {
-  if (value === undefined || value === null || value === '') return true
-  return Array.isArray(value) && value.length === 0
-}
-
-/** Fill the draft from stored bindings; objects become JSON text, multi-select arrays stay arrays. */
-function fillDraftFrom(
-  stored: Record<string, any> | undefined,
-  portList: LoosePort[],
-  kindOf: (port: LoosePort) => string,
-) {
-  for (const port of portList) {
-    let value = stored ? stored[port.name] : undefined
-    if (value === undefined || value === null) {
-      value = emptyValueFor(kindOf(port))
-    } else if (typeof value === 'object') {
-      value = Array.isArray(value) ? [...value] : JSON.stringify(value, null, 2)
-    }
-    draft[port.name] = value
-  }
-}
-
-/** Snapshot shape includes every editable field so any change flips dirty. */
-function snapshotShape(): string {
-  return JSON.stringify({
-    id: draftId.value,
-    op: isOperationMode.value ? selectedOperation.value : null,
-    onFailure: draftOnFailure.value,
-    retry: draftRetry.value,
-    draft,
+const defaultsSummary = computed(() => {
+  const mode =
+    defaults.value.onFailure === 'skip'
+      ? t('workflow.editor.config.onFailure.skip')
+      : t('workflow.editor.config.onFailure.fail')
+  return t('workflow.editor.config.behavior.summary', {
+    mode,
+    retry: defaults.value.retry,
   })
-}
+})
 
-/** Reload the draft whenever another node is selected. */
-function resetDraft() {
-  for (const key of Object.keys(draft)) delete draft[key]
-  saveError.value = null
+function onBehaviorModeChange(mode: 'inherit' | 'custom') {
   const data = nodeData.value
-  draftId.value = String(props.node?.id ?? '')
-  draftOnFailure.value = data.on_failure === 'skip' ? 'skip' : 'fail'
-  draftRetry.value = typeof data.retry === 'number' && data.retry > 0 ? data.retry : 0
-  const storedOp = typeof data.operation === 'string' && data.operation ? data.operation : null
-  selectedOperation.value = isOperationMode.value ? storedOp : null
-  if (isOperationMode.value && currentOperation.value) {
-    fillDraftFrom(data.inputs as Record<string, any> | undefined, operationInputPorts.value, portKindOf)
-  } else if (!isOperationMode.value) {
-    fillDraftFrom(data.params as Record<string, any> | undefined, inputPorts.value, portTypeOf)
-  }
-  // Stored op the tool no longer declares: selector shows it, draft empty.
-  snapshot.value = snapshotShape()
-}
-
-watch(() => props.node?.id, resetDraft, { immediate: true })
-// The tool list arrives asynchronously and can flip operation mode.
-watch(operations, resetDraft)
-
-const dirty = computed(() => snapshotShape() !== snapshot.value)
-
-/** User picked/cleared an operation in the selector. */
-function onOperationChange(name: string | null) {
-  selectedOperation.value = name
-  for (const key of Object.keys(draft)) delete draft[key]
-  saveError.value = null
-  if (currentOperation.value) {
-    const data = nodeData.value
-    // Restoring the already-saved operation reloads its saved bindings.
-    const stored = data.operation === name ? (data.inputs as Record<string, any> | undefined) : undefined
-    fillDraftFrom(stored, operationInputPorts.value, portKindOf)
-  }
-}
-
-/** Node-id validation (empty / duplicate / contains the reference separator). */
-function validateId(): string | null {
-  const id = draftId.value.trim()
-  if (!id) return t('workflow.editor.config.errors.idRequired')
-  if (id.includes('.')) return t('workflow.editor.config.errors.idDot')
-  const siblings = props.nodeIds ?? []
-  if (id !== props.node?.id && siblings.includes(id)) {
-    return t('workflow.editor.config.errors.idDuplicate', { id })
-  }
-  return null
-}
-
-/** Commit the draft into node.data (operation mode or legacy params). */
-function save() {
-  const node = props.node
-  if (!node || !dirty.value) return
-
-  const idError = validateId()
-  if (idError) {
-    saveError.value = idError
+  if (mode === 'custom') {
+    // 预填当前生效的默认值：用户从"现在会发生什么"开始改，而不是从空白开始。
+    if (typeof data.on_failure !== 'string') data.on_failure = defaults.value.onFailure
+    if (typeof data.retry !== 'number') data.retry = defaults.value.retry
     return
   }
-
-  const data = node.data as ToolNodeData
-  if (isOperationMode.value) {
-    if (!saveOperation(data)) return
-  } else {
-    saveLegacy(data)
-  }
-
-  data.on_failure = draftOnFailure.value
-  data.retry = draftRetry.value > 0 ? draftRetry.value : 0
-  saveError.value = null
-  snapshot.value = snapshotShape()
-
-  const newId = draftId.value.trim()
-  if (newId && newId !== node.id) emit('rename', { oldId: node.id, newId })
+  delete data.on_failure
+  delete data.retry
 }
 
-/** @returns false when the draft could not be committed (error already set). */
-function saveLegacy(data: ToolNodeData): boolean {
-  const params: Record<string, unknown> = {}
-  for (const port of inputPorts.value) {
-    const value = draft[port.name]
-    // Skip empty values so unset params stay absent in the workflow JSON.
-    if (value === undefined || value === null || value === '') continue
-    params[port.name] = value
-  }
-  data.params = params
-  // Operation state is mutually exclusive with legacy params; drop leftovers
-  // (e.g. a transient metadata-fetch failure fell back to the legacy UI).
-  delete data.operation
-  delete data.inputs
-  return true
+function onFailureChange(value: string | null) {
+  nodeData.value.on_failure = value === 'skip' ? 'skip' : 'fail'
 }
 
-/** @returns false when the draft could not be committed (error already set). */
-function saveOperation(data: ToolNodeData): boolean {
-  const op = selectedOperation.value
-  if (!op) {
-    saveError.value = t('workflow.editor.config.errors.noOperation')
-    return false
-  }
-  const missing: string[] = []
-  for (const port of operationInputPorts.value) {
-    const kind = portKindOf(port)
-    const isSelect = kind === 'single_select' || kind === 'multi_select'
-    if (isSelect && isRequired(port) && selectOptions(port).length === 0) {
-      saveError.value = t('workflow.editor.config.errors.noOptions', { name: port.name })
-      return false
-    }
-    if (!isRequired(port)) continue
-    // boolean is always satisfiable (false is a valid bound value).
-    if (kind === 'boolean') continue
-    if (isEmptyValue(draft[port.name])) missing.push(port.name)
-  }
-  if (missing.length > 0) {
-    saveError.value = t('workflow.editor.config.errors.missingRequired', { names: missing.join(', ') })
-    return false
-  }
-  const inputs: Record<string, unknown> = {}
-  for (const port of operationInputPorts.value) {
-    const value = draft[port.name]
-    // Skip empty values so unset inputs stay absent in the workflow JSON.
-    if (isEmptyValue(value)) continue
-    inputs[port.name] = value
-  }
-  data.operation = op
-  data.inputs = inputs
-  delete data.params
-  return true
+function onRetryChange(value: number | null) {
+  const retry = typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0
+  nodeData.value.retry = retry
 }
+
+// ---- deletion ----------------------------------------------------------
 
 /** Deletion goes through the page, which owns the confirmation dialog. */
 function requestDelete() {
@@ -502,8 +513,7 @@ function requestDelete() {
 </script>
 
 <style scoped>
-/* Fills the editor's `.ed-right` below the page-owned `.cfg-hd`; the panel's own
-   scrolling body + pinned footer mirror the preview's `.cfg-bd` / `.cfg-ft`. */
+/* 面板填满编辑器右栏 `.ed-right`（其标题/副标题由页面渲染，`.cfg-hd`）。 */
 .node-config-panel {
   display: flex;
   flex: 1;
@@ -521,69 +531,169 @@ function requestDelete() {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 14px;
   min-height: 0;
-  padding: 14px;
+  padding: 12px 14px 14px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-/* Section boxes: 功能 / 参数 / 配置 视觉分区（preview `.section-box` 的观感） */
-.npc-section {
-  padding: 10px 12px;
-  background: var(--app-input-bg, transparent);
-  border: 1px solid var(--app-card-border);
-  border-radius: var(--radius-control);
-}
-
-.npc-section-title {
-  margin-bottom: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--app-text-secondary);
-  text-transform: uppercase;
-}
-
-.npc-field {
+/* 分区之间只用一条细线，不做嵌套卡片——三层边框正是之前"很挤"的主因。 */
+.npc-sec {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--app-card-border);
 }
 
-.npc-field-label {
+.npc-sec + .npc-sec {
+  padding-top: 12px;
+}
+
+.npc-sec:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.npc-sec-title {
+  display: flex;
+  gap: 6px;
+  align-items: center;
   font-size: 12px;
+  font-weight: 600;
   color: var(--app-text-secondary);
+}
+
+.npc-sec-count {
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 15px;
+  color: var(--app-text-dim);
+  background: var(--app-storage-bg);
+  border-radius: var(--radius-chip);
 }
 
 .npc-hint {
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--app-text-dim);
 }
 
-.npc-empty-inline {
-  font-size: 12px;
+.npc-hint--pending {
   color: var(--app-text-muted);
 }
 
-.npc-op-desc {
-  margin-top: 6px;
+.npc-desc {
+  margin: 0;
   font-size: 11px;
   line-height: 1.5;
   color: var(--app-text-dim);
+}
+
+/* 基础区：只读 id 一行 */
+.npc-id-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.npc-id-label {
+  flex: none;
+  font-family: var(--font-family-monospace);
+  font-size: 11px;
+  color: var(--app-text-dim);
+}
+
+.npc-id {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-family-monospace);
+  font-size: 11.5px;
+  color: var(--app-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npc-id-copy {
+  flex: none;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.npc-id-copy:hover {
+  color: var(--app-blue);
+}
+
+.npc-tool-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.npc-tool {
+  overflow: hidden;
+  font-family: var(--font-family-monospace);
+  font-size: 12px;
+  color: var(--app-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 参数行 */
+.npc-param-label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+/* 行为字段用同一套 AppField，只是不参与"参数行"选择器 */
+.npc-behavior-field {
+  margin-top: 2px;
+}
+
+.npc-param-name {
+  overflow: hidden;
+  font-family: var(--font-family-monospace);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npc-req {
+  margin-left: 2px;
+  color: var(--danger-text, var(--app-red));
+}
+
+.npc-more {
+  padding: 2px 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--app-text-muted);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.npc-more:hover {
+  color: var(--app-blue);
 }
 
 .npc-full {
   width: 100%;
 }
 
-.npc-port-desc {
-  font-size: 11px;
-  color: var(--app-text-dim);
-}
-
+/* 输出列表 */
 .npc-outputs {
   display: flex;
   flex-direction: column;
@@ -591,62 +701,51 @@ function requestDelete() {
 
 .npc-output-row {
   display: flex;
-  align-items: center;
   gap: 8px;
-  padding: 5px 0;
-}
-
-.npc-dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--app-text-muted);
-}
-
-.npc-dot--file {
-  background: var(--app-blue);
-}
-
-.npc-dot--text {
-  background: var(--app-green);
-}
-
-.npc-dot--json {
-  background: var(--app-orange, var(--app-yellow));
-}
-
-.npc-dot--number {
-  background: var(--app-purple, var(--app-text-muted));
+  align-items: center;
+  padding: 4px 0;
 }
 
 .npc-output-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   font-family: var(--font-family-monospace);
   font-size: 12px;
   color: var(--app-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.npc-output-type {
-  margin-left: auto;
+/* 行为：跟随系统摘要 + 「去设置」 */
+.npc-behavior-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.npc-link {
+  padding: 0;
+  font: inherit;
   font-size: 11px;
-  color: var(--app-text-muted);
+  color: var(--app-blue);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
 }
 
-/* preview `.cfg-ft`: 固定在面板底部的一条操作栏 */
+.npc-link:hover {
+  text-decoration: underline;
+}
+
+/* 页脚：只留删除（保存统一在顶栏） */
 .npc-footer {
   display: flex;
   flex: none;
-  align-items: center;
   gap: 8px;
-  padding: 12px 14px;
+  align-items: center;
+  padding: 10px 14px;
   border-top: 1px solid var(--app-card-border);
-}
-
-.npc-error {
-  flex: 1;
-  margin-right: auto;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--app-red);
 }
 </style>

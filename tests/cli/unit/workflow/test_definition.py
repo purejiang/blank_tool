@@ -2,9 +2,10 @@
 
 Covers the schema validation rules (unique ids, `next` references, single
 entry node, cycle detection), to_dict / from_dict and JSON-file roundtrips,
-the `on_failure` / `retry` failure-handling fields, and the tolerant
-`from_dict` that drops unknown keys left over from older schema revisions
-(`condition` / `on_success` / `edges`).
+the optional `on_failure` / `retry` failure-handling fields (``None`` = inherit
+the run-level default, see test_node_defaults.py), the cosmetic `label`, and
+the tolerant `from_dict` that drops unknown keys left over from older schema
+revisions (`condition` / `on_success` / `edges`).
 """
 
 import json
@@ -120,6 +121,80 @@ def test_retry_roundtrips_as_int():
     assert restored.nodes[0].retry == 3
     assert isinstance(restored.nodes[0].retry, int)
     assert wf.to_dict()["nodes"][0]["retry"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Optional behaviour fields (None = inherit the run-level default)
+# ---------------------------------------------------------------------------
+
+def test_unset_behaviour_fields_default_to_none():
+    node = _node("a")
+    assert node.on_failure is None
+    assert node.retry is None
+
+
+def test_missing_or_null_behaviour_fields_parse_as_none():
+    # A missing key and an explicit null both mean "not pinned" — the editor
+    # writes null for a node that follows the system defaults.
+    for payload in (
+        {"id": "a", "tool": "file.read"},
+        {"id": "a", "tool": "file.read", "on_failure": None, "retry": None},
+    ):
+        node = WorkflowNode.from_dict(payload)
+        assert node.on_failure is None
+        assert node.retry is None
+
+
+def test_explicit_values_survive_the_optional_field_change():
+    # Files written before the fields became optional always carried explicit
+    # values; they must keep their behaviour (and stay explicit, not inherit).
+    node = WorkflowNode.from_dict(
+        {"id": "a", "tool": "file.read", "on_failure": "fail", "retry": 0}
+    )
+    assert node.on_failure == "fail"
+    assert node.retry == 0
+    assert node.to_dict()["on_failure"] == "fail"
+    assert node.to_dict()["retry"] == 0
+
+
+def test_optional_behaviour_fields_roundtrip():
+    node = _node("a", on_failure=None, retry=None)
+    restored = WorkflowNode.from_dict(node.to_dict())
+    assert restored.on_failure is None
+    assert restored.retry is None
+
+
+def test_invalid_retry_values_raise():
+    for bad in (-1, True, "many", 1.5):
+        with pytest.raises(ValueError, match="invalid retry"):
+            WorkflowNode(id="a", tool="file.read", retry=bad)
+
+
+def test_invalid_retry_on_the_wire_raises_with_the_node_id():
+    with pytest.raises(ValueError, match="node 'a': invalid retry"):
+        WorkflowNode.from_dict({"id": "a", "tool": "file.read", "retry": "many"})
+
+
+# ---------------------------------------------------------------------------
+# Node label (display name)
+# ---------------------------------------------------------------------------
+
+def test_label_roundtrips_and_is_trimmed():
+    node = _node("a", label="  解压 APK  ")
+    assert node.label == "解压 APK"
+    assert WorkflowNode.from_dict(node.to_dict()).label == "解压 APK"
+
+
+def test_blank_or_non_string_labels_normalize_to_none():
+    assert _node("a", label="   ").label is None
+    assert _node("a", label=None).label is None
+    assert WorkflowNode.from_dict({"id": "a", "tool": "file.read", "label": 42}).label is None
+
+
+def test_label_is_cosmetic_and_not_required():
+    node = _node("a")
+    assert node.label is None
+    assert node.to_dict()["label"] is None
 
 
 # ---------------------------------------------------------------------------

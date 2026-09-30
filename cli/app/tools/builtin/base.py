@@ -55,6 +55,11 @@ class ToolContext:
             so cancellation can terminate a running subprocess.
         cancel_check: Zero-argument callable returning True once the run has
             been cancelled; long-running tools poll it.
+        node_defaults: Run-level node behaviour defaults
+            (``{"on_failure", "retry"}``) the enclosing run was started with.
+            Composition tools (``workflow.run`` / ``flow.foreach``) pass them on
+            to the child execution so a sub-workflow's unset nodes inherit the
+            same values.
     """
 
     work_dir: str
@@ -70,6 +75,7 @@ class ToolContext:
     current_node_path: Optional[str] = None
     process_holder: Optional[Dict[str, Any]] = None
     cancel_check: Optional[Callable[[], bool]] = None
+    node_defaults: Dict[str, Any] = field(default_factory=dict)
 
     def cancelled(self) -> bool:
         """Return True when the enclosing run has been cancelled."""

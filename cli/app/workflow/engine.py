@@ -12,6 +12,12 @@ node up to N extra times, backing off exponentially — before retry ``n`` the
 engine waits ``min(2^(n-1), 30)`` seconds, slept in short cancellation-aware
 slices.
 
+Both behaviour fields may be *unset* on a node (``None``), in which case the
+run-level ``ExecutionContext.node_defaults`` supplies the value and the
+built-in ``fail`` / ``0`` is the last resort — see
+:meth:`WorkflowEngine._effective_on_failure` /
+:meth:`WorkflowEngine._effective_retry`.
+
 Cancellation:
     A run is cancelled through :class:`~app.common.task_manager.TaskManager`
     (keyed by the run id the IPC layer registered).  The engine checks it
@@ -47,7 +53,12 @@ from app.protocol import BaseType
 from app.tools.builtin.base import BuiltinTool, ToolContext
 from app.tools.result_normalizer import normalize_result
 from app.tools.tool_manager import ToolManager
-from app.workflow.definition import WorkflowDefinition, WorkflowNode
+from app.workflow.definition import (
+    DEFAULT_ON_FAILURE,
+    DEFAULT_RETRY,
+    WorkflowDefinition,
+    WorkflowNode,
+)
 from app.workflow.expression import ExpressionEngine, ExpressionError, WorkflowContext
 from app.workflow.output_limit import shrink_outputs
 from app.workflow.streaming import WorkflowStreamHandler, is_cancelled
@@ -129,6 +140,11 @@ class ExecutionContext:
             created once at the top of ``execute()`` and inherited unchanged by
             nested executions.  Exposed to params as ``$rundir``; engines never
             write run artifacts into ``work_dir``.
+        node_defaults: run-level defaults applied to nodes that did NOT pin a
+            value (``node.on_failure`` / ``node.retry`` are ``None``).  Shape:
+            ``{"on_failure": "fail"|"skip", "retry": <int>}``; missing keys
+            fall back to the built-in ``fail`` / ``0``.  Inherited unchanged by
+            nested executions, so sub-workflows see the same defaults.
     """
 
     work_dir: str
@@ -144,6 +160,7 @@ class ExecutionContext:
     in_progress_templates: frozenset = field(default_factory=frozenset)
     node_path_prefix: str = ""
     current_node_path: Optional[str] = None
+    node_defaults: Dict[str, Any] = field(default_factory=dict)
 
     def cancel_key(self) -> str:
         """Return the identity cancellation is queried by."""
@@ -272,6 +289,11 @@ class WorkflowEngine:
             node_path = _join_path(context.node_path_prefix, current.id)
             context.current_node_path = node_path
 
+            # Behaviour fields are resolved ONCE per node: an explicit node
+            # value (including an explicit 0 / "fail") wins over the run-level
+            # default, which in turn falls back to the built-in behaviour.
+            on_failure = self._effective_on_failure(current, context)
+
             if context.workflow_stream is not None:
                 context.workflow_stream.emit_node_started(node_path, current.tool)
 
@@ -301,7 +323,7 @@ class WorkflowEngine:
 
             # Terminal failure: on_failure "fail" (default) or an exhausted
             # retry budget.  Record the node then stop the workflow.
-            if outcome.error is not None and current.on_failure != "skip":
+            if outcome.error is not None and on_failure != "skip":
                 node_results[node_path] = {
                     "outputs": {},
                     "error": outcome.error,
@@ -372,6 +394,36 @@ class WorkflowEngine:
     # ------------------------------------------------------------------
     # Node execution helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _effective_on_failure(node: WorkflowNode, context: ExecutionContext) -> str:
+        """Return the failure mode actually applied to *node*.
+
+        Precedence: the node's explicit value > the run-level default > the
+        built-in ``"fail"``.  An unknown/invalid run default is ignored rather
+        than trusted (the run parameter is UI-supplied).
+        """
+        if node.on_failure is not None:
+            return node.on_failure
+        default = context.node_defaults.get("on_failure")
+        if default in ("fail", "skip"):
+            return default
+        return DEFAULT_ON_FAILURE
+
+    @staticmethod
+    def _effective_retry(node: WorkflowNode, context: ExecutionContext) -> int:
+        """Return the retry budget applied to *node*.
+
+        Precedence: the node's explicit value (an explicit ``0`` means "no
+        retry" and must NOT inherit) > the run-level default > the built-in
+        ``0``.
+        """
+        if node.retry is not None:
+            return max(0, node.retry)
+        default = context.node_defaults.get("retry")
+        if isinstance(default, bool) or not isinstance(default, int):
+            return DEFAULT_RETRY
+        return max(0, default)
 
     @staticmethod
     def _make_template_store() -> Optional[Any]:
@@ -451,17 +503,18 @@ class WorkflowEngine:
     ) -> _NodeRun:
         """Execute one node with retry semantics.
 
-        The retry budget is ``node.retry`` (extra attempts after the first).
-        A non-retryable failure returns immediately without consuming it, and
-        so does a cancellation — checked before the first attempt, before
-        every retry, after every backoff sleep, and again before a terminal
-        failure is reported (a killed tool surfaces as a plain non-zero exit,
-        which must not be mistaken for a real failure).  Only the LAST
-        attempt's outputs are ever reported: a failed attempt's partial
-        outputs are discarded so a retry cannot leak half-finished state
-        downstream.
+        The retry budget is the node's EFFECTIVE ``retry``: its own explicit
+        value, else the run-level default, else the built-in ``0`` — see
+        :meth:`_effective_retry`.  A non-retryable failure returns immediately
+        without consuming it, and so does a cancellation — checked before the
+        first attempt, before every retry, after every backoff sleep, and again
+        before a terminal failure is reported (a killed tool surfaces as a
+        plain non-zero exit, which must not be mistaken for a real failure).
+        Only the LAST attempt's outputs are ever reported: a failed attempt's
+        partial outputs are discarded so a retry cannot leak half-finished
+        state downstream.
         """
-        max_retries = node.retry if node.retry > 0 else 0
+        max_retries = self._effective_retry(node, context)
         tool = self._lookup_tool(node.tool)
 
         if tool is not None:
@@ -689,6 +742,7 @@ class WorkflowEngine:
             current_node_path=context.current_node_path,
             process_holder=holder,
             cancel_check=context.cancelled,
+            node_defaults=dict(context.node_defaults),
         )
         try:
             result = tool.execute(resolved_params, tool_context)

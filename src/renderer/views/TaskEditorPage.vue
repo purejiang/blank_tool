@@ -147,6 +147,7 @@ import AppNotice from '@components/ui/AppNotice.vue'
 import PageHeader from '@components/ui/PageHeader.vue'
 
 import PortInput from '@components/workflow/PortInput.vue'
+import { nodeDefaultsParams } from '@components/workflow/nodeDefaults'
 import type { PortJSON, WorkflowDefinitionJSON } from '@components/workflow/serializer'
 import type { TaskGetResult } from '../../shared/ipc/protocol'
 import unifiedApi from '@/api/unifiedApi'
@@ -410,6 +411,8 @@ async function save(thenRun: boolean) {
       await unifiedApi.call('task.execute', {
         name: form.name.trim(),
         task_id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        // 「跟随系统」的节点用设置里的默认行为（见 nodeDefaults.ts）
+        ...(await nodeDefaultsParams()),
       })
       showSuccess(t('tasks.editor.savedAndRun', { name: form.name.trim() }))
       await router.push({ path: '/tasks', query: { tab: 'runs', task: form.name.trim() } })

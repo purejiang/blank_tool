@@ -42,14 +42,36 @@
         </n-form>
       </n-card>
 
-      <!-- Nodes：节点级默认设置。删除任务时清理输出文件已是默认行为（不再可配），
-           节点超时等默认值后续落在这里。 -->
+      <!-- Nodes：节点级默认设置。节点在「行为」里选「跟随系统」时用这里的值；
+           选「自定义」的节点把值写进工作流本身，不受这里影响。 -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
           <AppIcon name="layers" size="lg" style="color: var(--primary)" />
           <span class="section-title">{{ t('settings.nodes') }}</span>
         </div>
-        <div class="form-hint" style="margin-top:12px">{{ t('settings.nodesEmpty') }}</div>
+        <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
+          <n-form-item :label="t('settings.nodesOnFailure')">
+            <n-select
+              v-model:value="nodeDefaults.onFailure"
+              :options="onFailureOptions"
+              style="width: 220px"
+              data-test="settings-node-on-failure"
+              @update:value="saveNodeDefaults"
+            />
+          </n-form-item>
+          <n-form-item :label="t('settings.nodesRetry')">
+            <n-input-number
+              v-model:value="nodeDefaults.retry"
+              :min="0"
+              :show-button="false"
+              style="width: 220px"
+              data-test="settings-node-retry"
+              @update:value="saveNodeDefaults"
+            />
+            <span class="nodes-unit">{{ t('settings.nodesUnit') }}</span>
+          </n-form-item>
+          <div class="form-hint">{{ t('settings.nodesHint') }}</div>
+        </n-form>
       </n-card>
 
       <!-- Logging -->
@@ -66,23 +88,14 @@
         </n-form>
       </n-card>
 
-      <!-- Paths -->
+      <!-- 服务：CLI（Python 后端）路径与版本。路径改动需重启后端生效。 -->
       <n-card :bordered="false" class="settings-card">
         <div class="section-header">
-          <AppIcon name="folder" size="lg" style="color: var(--warning-text)" />
-          <span class="section-title">{{ t('settings.environmentPaths') }}</span>
+          <AppIcon name="archive" size="lg" style="color: var(--warning-text)" />
+          <span class="section-title">{{ t('settings.service') }}</span>
         </div>
         <n-form label-placement="left" label-width="120" size="small" style="margin-top:12px">
-          <n-form-item :label="t('settings.runtime')">
-            <div class="environ-path-input">
-              <n-input :value="displayPaths.runtime" readonly class="environ-path-field" placeholder=".\runtime" />
-              <n-button size="small" @click="handleBrowseDirectory('runtime')">
-                <template #icon><AppIcon name="folder" /></template>
-                {{ t('settings.browse') }}
-              </n-button>
-            </div>
-          </n-form-item>
-          <n-form-item :label="t('settings.backend')">
+          <n-form-item :label="t('settings.cli')">
             <div class="environ-path-input">
               <n-input :value="displayPaths.server" readonly class="environ-path-field" placeholder=".\cli" />
               <n-button size="small" @click="handleBrowseDirectory('server')">
@@ -91,23 +104,11 @@
               </n-button>
             </div>
           </n-form-item>
+          <n-form-item :label="t('settings.version')">
+            <span class="service-version">{{ cliVersion }}</span>
+          </n-form-item>
           <div class="form-hint" style="margin-bottom:8px">{{ t('settings.pathsRestartHint') }}</div>
         </n-form>
-      </n-card>
-
-      <!-- 工具路径已收敛到 /tools（docs/07 §2-7 / docs/08 缺口 #19）：这里只留跳转入口 -->
-      <n-card :bordered="false" class="settings-card">
-        <div class="section-header">
-          <AppIcon name="tool" size="lg" style="color: var(--success-text)" />
-          <span class="section-title">{{ t('settings.toolPaths') }}</span>
-        </div>
-        <div class="more-links">
-          <n-button size="small" @click="router.push('/tools')">
-            <template #icon><AppIcon name="tool" /></template>
-            {{ t('settings.toolPathsGo') }}
-          </n-button>
-          <span class="more-hint">{{ t('settings.toolPathsMoved') }}</span>
-        </div>
       </n-card>
 
       <!-- Storage -->
@@ -202,10 +203,16 @@ import AppIcon from '@components/ui/AppIcon.vue'
 import AppBadge from '@components/ui/AppBadge.vue'
 import AppButton from '@components/ui/AppButton.vue'
 import PageHeader from '@components/ui/PageHeader.vue'
+import {
+  NODE_BEHAVIOR_FALLBACK,
+  normalizeNodeDefaults,
+  type NodeBehaviorDefaults,
+} from '@components/workflow/nodeDefaults'
 import serviceManager from '@services/ServiceManager'
+import unifiedApi from '../api/unifiedApi'
 import { log, setLogLevel } from '@utils/logger'
 import { useNotification } from '@composables/useNotification'
-import { useSystemStore, useToolStore } from '@stores/index'
+import { useSystemStore } from '@stores/index'
 import { storeToRefs } from 'pinia'
 
 const { t } = useI18n()
@@ -215,23 +222,6 @@ const dialog = useDialog()
 const setLocale = inject<(lang: string) => void>('setLocale', () => {})
 const setTheme = inject<(mode: string) => Promise<void>>('setTheme', async () => {})
 const systemStore = useSystemStore()
-const toolStore = useToolStore()
-
-const validatingTool = ref<string | null>(null)
-const resettingTool = ref<string | null>(null)
-const customPathOverrides = reactive<Record<string, string>>({})
-const toolPaths = reactive<Record<string, string>>({})
-
-const toolList = computed(() => {
-  const toolsArr = toolStore.tools
-  return []
-})
-
-const openAddSignature = () => {}
-
-const handleSignatureSave = async (data: any) => {}
-
-const deleteSignature = async (id: string) => {}
 
 const showSaved = ref(false)
 let savedTimer: ReturnType<typeof setTimeout> | null = null
@@ -242,6 +232,15 @@ const triggerSaved = () => {
 }
 
 const general = reactive({ language: 'zh-CN', theme: 'auto', enableNotifications: false })
+/**
+ * 节点默认行为（设置里的「节点」卡片）。未保存前是表单草稿，保存后与
+ * appConfig 的 `nodes` 组一致；归一化逻辑与节点面板共用 nodeDefaults.ts。
+ */
+const nodeDefaults = reactive<NodeBehaviorDefaults>({ ...NODE_BEHAVIOR_FALLBACK })
+const onFailureOptions = computed(() => [
+  { label: t('workflow.editor.config.onFailure.fail'), value: 'fail' },
+  { label: t('workflow.editor.config.onFailure.skip'), value: 'skip' },
+])
 const logLevel = ref('info')
 const logLevelOptions = [
   { label: 'Debug', value: 'debug' },
@@ -249,8 +248,10 @@ const logLevelOptions = [
   { label: 'Warn', value: 'warn' },
   { label: 'Error', value: 'error' },
 ]
-const pathSettings = reactive({ runtime: '.\\runtime', server: '.\\cli' })
-const displayPaths = reactive({ runtime: '', server: '' })
+const pathSettings = reactive({ server: '.\\cli' })
+const displayPaths = reactive({ server: '' })
+/** CLI（Python 后端）版本：app.info 运行时拉取，后端离线显示 —。 */
+const cliVersion = ref('—')
 const cacheInfo = ref({
   tasks: { size: 0, files: 0 },
   output: { size: 0, files: 0 },
@@ -305,13 +306,13 @@ const loadSettings = async () => {
       for (const key of Object.keys(general)) {
         if (Object.prototype.hasOwnProperty.call(s, key)) (general as any)[key] = s[key]
       }
-      if (s.runtime) pathSettings.runtime = s.runtime as string
       if (s.server) pathSettings.server = s.server as string
     }
     if (model?.displayPaths) {
-      displayPaths.runtime = model.displayPaths.runtime || ''
       displayPaths.server = model.displayPaths.server || ''
     }
+    // 节点默认行为（appConfig 的 `nodes` 组）
+    Object.assign(nodeDefaults, normalizeNodeDefaults((model?.settings as Record<string, unknown>)?.nodes))
     // Load log level from appConfig (logs.level)
     try {
       const logsConfig = await window.electronAPI.appConfig.get('logs')
@@ -343,17 +344,28 @@ const saveLogLevel = async (value: string) => {
   } catch (e) { log.error('Failed to save log level:', e) }
 }
 
+/** 保存节点默认行为：整组写入 `nodes`（校验/回落由 nodeDefaults 负责）。 */
+const saveNodeDefaults = async () => {
+  const normalized = normalizeNodeDefaults({ ...nodeDefaults })
+  Object.assign(nodeDefaults, normalized)
+  try {
+    const svc = await serviceManager.getService('settings')
+    await svc.saveSettings({ nodes: { onFailure: normalized.onFailure, retry: normalized.retry } })
+    triggerSaved()
+  } catch (e) { showError(t('settings.saveFailed'), (e as Error).message) }
+}
+
 // 写 `commands.timeout`（毫秒）的界面入口已移除：请求超时是内部实现细节
 // （主进程启动时读一次），设置页不再暴露；节点级超时后续挪到「节点」卡片。
 const savePaths = async () => {
   try {
     const svc = await serviceManager.getService('settings')
-    await svc.saveSettings({ runtime: pathSettings.runtime, server: pathSettings.server })
+    await svc.saveSettings({ server: pathSettings.server })
     triggerSaved()
   } catch (e: any) { showError(t('settings.pathsFailed'), e.message) }
 }
 
-const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
+const handleBrowseDirectory = async (target: 'server') => {
   try {
     const svc = await serviceManager.getService('system')
     const result = await svc.selectDirectory({ title: t('settings.selectDir') })
@@ -361,11 +373,18 @@ const handleBrowseDirectory = async (target: 'runtime' | 'server') => {
       pathSettings[target] = result.directoryPath
       const settingsSvc = await serviceManager.getService('settings')
       const paths = await settingsSvc.resolveDisplayPaths(pathSettings)
-      displayPaths.runtime = paths.runtime || ''
       displayPaths.server = paths.server || ''
       await savePaths()
     }
   } catch (e) { showError(t('settings.selectDirFailed')) }
+}
+
+/** 拉 CLI（Python 后端）版本；后端离线时保持 —。 */
+const loadCliVersion = async () => {
+  try {
+    const result = await unifiedApi.call<{ version?: string }>('app.info', {})
+    if (result?.version) cliVersion.value = result.version
+  } catch (e) { log.warn('[SettingsPage] app.info unavailable; CLI version stays unknown', e) }
 }
 
 const refreshCache = async () => {
@@ -405,55 +424,11 @@ const confirmClear = (target: string) => {
   })
 }
 
-const handleToolPathChange = async (toolName: string, path: string) => {
-  if (!path.trim()) return
-  validatingTool.value = toolName
-  try {
-    const result = await toolStore.setCustomPath(toolName, path.trim())
-    if (result) {
-      toolPaths[toolName] = path.trim()
-      customPathOverrides[toolName] = path.trim()
-    }
-  } catch (e: any) {
-    showError(t('settings.toolPathFailed'), e.message)
-  } finally {
-    validatingTool.value = null
-  }
-}
-
-const handleBrowseToolPath = async (toolName: string) => {
-  try {
-    const svc = await serviceManager.getService('system')
-    const result = await svc.selectFile({ title: `${t('settings.selectToolPath')} - ${toolName}` })
-    if (result?.filePaths?.length) {
-      const filePath = result.filePaths[0]
-      toolPaths[toolName] = filePath
-      await handleToolPathChange(toolName, filePath)
-    }
-  } catch (e) { /* user cancelled */ }
-}
-
-const handleResetToolPath = async (toolName: string) => {
-  resettingTool.value = toolName
-  try {
-    await toolStore.resetCustomPath(toolName)
-    delete customPathOverrides[toolName]
-    toolPaths[toolName] = ''
-  } catch (e: any) {
-    showError(t('settings.toolPathFailed'), e.message)
-  } finally {
-    resettingTool.value = null
-  }
-}
-
 onMounted(() => {
   log.debug('设置页面已挂载')
   loadSettings()
   refreshCache()
-  toolStore.fetchCustomPaths().then(() => {
-    Object.assign(customPathOverrides, toolStore.customPaths)
-    Object.assign(toolPaths, toolStore.customPaths)
-  })
+  loadCliVersion()
 })
 </script>
 
@@ -493,8 +468,11 @@ onMounted(() => {
 .storage-row-sub { font-size: 11px; color: var(--app-text-muted); margin-top: 1px; }
 .more-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .more-hint { font-size: 11px; color: var(--app-text-dim); }
+/* 节点默认值：数字输入后面的单位 */
+.nodes-unit { margin-left: 8px; font-size: 12px; color: var(--app-text-muted); }
 
-/* 工具路径已收敛到 /tools，这里只剩跳转入口 */
+/* 服务卡片：CLI 路径行 + 版本行 */
+.service-version { font-variant-numeric: tabular-nums; color: var(--app-text-muted); }
 .environ-path-input { display: flex; align-items: center; gap: 8px; }
 .environ-path-field { flex: 1 1 auto; min-width: 0; max-width: 420px; }
 .environ-path-input :deep(.n-input .n-input__input-el) { color: var(--app-text-muted); }

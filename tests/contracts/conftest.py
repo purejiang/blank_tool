@@ -21,6 +21,32 @@ if backend_dir not in sys.path:
 
 
 # ---------------------------------------------------------------------------
+# Hermetic plugin config
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session", autouse=True)
+def _lean_core_plugin_config():
+    """Pin plugin discovery to the lean core for the whole suite.
+
+    ``cli/server.config.json`` is git-ignored developer config; it opts into the
+    opt-in atomic extensions (``tools.atomic_extensions``) and therefore changes
+    the shipped-native tool set the contracts pin.  Pointing
+    ``BT_SERVER_CONFIG`` at a nonexistent file makes ``shipped_manifest_with_
+    extensions()`` resolve to :data:`SHIPPED_MANIFEST` only, so contract
+    results do not depend on whose machine runs them.
+
+    ``ToolManager`` is a process-wide singleton, so this has to be in place
+    before the *first* test that builds it — a session-scoped fixture runs
+    early enough (the registry is built inside test bodies, never at import).
+
+    Tests that care about a specific config set their own path via
+    ``monkeypatch.setenv("BT_SERVER_CONFIG", ...)``, which overrides this.
+    """
+    os.environ.setdefault("BT_SERVER_CONFIG", os.path.join(backend_dir, "_absent-config.json"))
+    yield
+
+
+# ---------------------------------------------------------------------------
 # Tool mocks
 # ---------------------------------------------------------------------------
 

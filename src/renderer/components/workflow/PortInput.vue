@@ -2,7 +2,7 @@
   <!-- Single typed control for a port + expression-binding affordances.
        Used by the node config panel and the run-inputs dialog, so the typed
        widget matrix lives in exactly one place. -->
-  <div class="port-input">
+  <div ref="rootRef" class="port-input">
     <!-- file / directory: text input + native picker -->
     <div v-if="isPath" class="pi-path-row">
       <n-input
@@ -12,6 +12,8 @@
         :disabled="disabled"
         :placeholder="resolvedPlaceholder"
         @update:value="emit('update:value', $event)"
+        @keyup="rememberSelection"
+        @click="rememberSelection"
       />
       <n-button size="small" :disabled="disabled" @click="browsePath">
         {{ t('workflow.editor.dialog.browse') }}
@@ -70,6 +72,8 @@
       :disabled="disabled"
       :placeholder="resolvedPlaceholder"
       @update:value="emit('update:value', $event)"
+      @keyup="rememberSelection"
+      @click="rememberSelection"
     />
 
     <!-- text, or a typed port currently holding a binding (edited as text) -->
@@ -83,9 +87,11 @@
       :disabled="disabled"
       :placeholder="resolvedPlaceholder"
       @update:value="emit('update:value', $event)"
+      @keyup="rememberSelection"
+      @click="rememberSelection"
     />
 
-    <!-- Binding row: chips + insert picker + inline validation -->
+    <!-- Binding row: friendly chips + insert picker + inline validation -->
     <div v-if="bindingsEnabled" class="pi-bind">
       <div class="pi-bind-head">
         <ExpressionPicker
@@ -93,22 +99,30 @@
           :inputs="inputs"
           :upstream-nodes="upstreamNodes"
           :trigger="trigger"
+          :target-base="baseOf(props.port) || null"
           :disabled="disabled"
           @pick="onPick"
         />
-        <div v-if="tokens.length > 0" class="pi-chips">
-          <span v-for="token in tokens" :key="`${token.start}-${token.raw}`" class="pi-chip">
-            <code>{{ token.raw }}</code>
+        <div v-if="chips.length > 0" class="pi-chips">
+          <span
+            v-for="chip in chips"
+            :key="`${chip.token.start}-${chip.token.raw}`"
+            class="pi-chip"
+            :title="chip.label.raw"
+          >
+            <code>{{ chip.text }}</code>
             <button
               type="button"
               class="pi-chip-remove"
               :title="t('workflow.editor.binding.remove')"
-              @click="removeToken(token)"
+              @click="removeToken(chip.token)"
             >
               ×
             </button>
           </span>
         </div>
+        <!-- 只在真的有绑定时说明这是整值表达式还是文本插值：不让用户去猜 `$` 的语义 -->
+        <span v-else-if="bindingMode" class="pi-mode">{{ t(`workflow.editor.binding.mode.${bindingMode}`) }}</span>
       </div>
       <div v-for="(item, index) in issues" :key="`${item.code}-${index}`" class="pi-issue" :class="`pi-issue--${item.severity}`">
         {{ t(item.messageKey, item.params ?? {}) }}
@@ -118,21 +132,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NInput, NInputNumber, NSelect, NSwitch } from 'naive-ui'
 
 import ExpressionPicker from './ExpressionPicker.vue'
 import {
   collectBindings,
+  describeBindingToken,
   findTrigger,
-  insertBinding,
+  insertBindingAt,
   removeBinding,
   validateValue,
   type BindingContext,
   type BindingIssue,
   type BindingToken,
   type BindingTrigger,
+  type InsertSelection,
 } from './expressionBinding'
 import { portJsonToTypeKey, type PortTypeKey } from './ioAuthoring'
 import type { UpstreamNodeRef } from './toolMeta'
@@ -227,7 +243,25 @@ const bindingsEnabled = computed(
 )
 
 const bindings = computed<BindingToken[]>(() => (bindingsEnabled.value ? collectBindings(props.value) : []))
-const tokens = bindings
+
+/** 每个已插入引用的友好名（`解压 APK · apk_path`），title 保留原始表达式。 */
+const chips = computed(() =>
+  bindings.value.map((token) => {
+    const label = describeBindingToken(token, { nodes: referenceContext.value.nodes, inputs: referenceContext.value.inputNames })
+    const text = label.messageKey ? t(label.messageKey, label.params) : label.raw
+    return { token, label, text }
+  }),
+)
+
+/**
+ * 值的绑定形态：整值表达式（引擎保留原类型）还是文本插值（按文本拼接）。
+ * 只在字段里真的有引用时显示 —— 这是"看不懂 `$` 语义"的最小补救。
+ */
+const bindingMode = computed<'whole' | 'interpolation' | null>(() => {
+  if (bindings.value.length === 0) return null
+  if (bindings.value.some((token) => !token.wholeValue)) return 'interpolation'
+  return bindings.value[0].wholeValue ? 'whole' : null
+})
 
 const trigger = computed<BindingTrigger | null>(() =>
   bindingsEnabled.value ? findTrigger(props.value) : null,
@@ -258,10 +292,18 @@ const issues = computed<BindingIssue[]>(() =>
 )
 
 /** Typing `$` (or `${`) at the tail opens the candidate picker. */
+let programmaticInsert = false
+
 watch(
   () => props.value,
   (next) => {
     if (!bindingsEnabled.value) return
+    // 刚插入的引用本身就以 `$` 开头，不该被当成"用户正在敲 $"，否则选完一个
+    // 候选弹层会立刻又弹回来。
+    if (programmaticInsert) {
+      programmaticInsert = false
+      return
+    }
     if (findTrigger(next)) pickerOpen.value = true
   },
 )
@@ -269,10 +311,44 @@ watch(
 function onPick(path: string, pipes: string[]) {
   const tail = pipes && pipes.length > 0 ? pipes : null
   const current = typeof props.value === 'string' ? props.value : ''
-  // insertBinding completes a typed `$`/`${` trigger and otherwise appends —
-  // the whole-value vs interpolation rule lives in expressionBinding.
-  emit('update:value', insertBinding(current, path, tail))
+  // 有光标信息就插在光标处（长命令模板中间补路径是常见操作）；否则沿用
+  // "空字段插整值、已有文本插插值"的默认规则。
+  const result = insertBindingAt(current, path, tail, lastSelection.value)
+  programmaticInsert = true
+  emit('update:value', result.value)
+  pickerOpen.value = false
+  // 让光标停在插入内容之后：用户接着敲下一段文本时不会跳到开头。
+  pendingCaret.value = result.caret
 }
+
+/** 文本控件的最后一次选区（点「插入引用」时读它决定插入位置）。 */
+const lastSelection = ref<InsertSelection | null>(null)
+const pendingCaret = ref<number | null>(null)
+const rootRef = ref<HTMLElement | null>(null)
+
+function rememberSelection(event: Event) {
+  const el = event.target as HTMLInputElement | HTMLTextAreaElement | null
+  if (!el || typeof el.selectionStart !== 'number') return
+  lastSelection.value = { start: el.selectionStart, end: el.selectionEnd ?? el.selectionStart }
+}
+
+watch(pendingCaret, async (caret) => {
+  if (caret === null) return
+  pendingCaret.value = null
+  // 值更新后把光标放回插入点（DOM 更新在下一个 tick）。
+  await nextTick()
+  const el = rootRef.value?.querySelector('input, textarea') as
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | null
+  if (!el || typeof el.setSelectionRange !== 'function') return
+  try {
+    el.focus()
+    el.setSelectionRange(caret, caret)
+  } catch {
+    /* 控件可能已被替换（例如 switch → textarea），忽略 */
+  }
+})
 
 function removeToken(token: BindingToken) {
   emit('update:value', removeBinding(props.value, token))
@@ -339,6 +415,15 @@ async function browsePath() {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+/* 绑定形态提示（整值表达式 / 文本插值）：只在字段里真的有引用时出现 */
+.pi-mode {
+  overflow: hidden;
+  font-size: 10px;
+  color: var(--app-text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pi-chips {

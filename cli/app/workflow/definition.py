@@ -17,6 +17,19 @@ Control flow:
 Failure handling:
     ``on_failure`` is ``"fail"`` (stop the workflow) or ``"skip"`` (continue
     past the node); ``retry`` is the number of extra attempts.
+
+    Both fields are OPTIONAL and default to ``None``, which means "inherit the
+    run-level default" (``node_defaults`` on the execute request, see
+    :func:`normalize_node_defaults`).  An explicit value — including the
+    explicit ``"fail"`` / ``0`` that older files always carried — always wins
+    over the inherited default, so pre-existing workflows keep their exact
+    behaviour.  Keeping "unset" distinguishable from "explicitly fail" is what
+    lets the editor store a node that follows the user's global defaults
+    without pinning today's values into the file.
+
+Display name:
+    ``label`` is a purely cosmetic node name.  It is never used for control
+    flow (that is ``id``), never referenced by expressions, and may be absent.
 """
 
 import json
@@ -30,6 +43,79 @@ from app.protocol import Port
 # "skip" continues past the failed node.
 _VALID_FAILURE_MODES = frozenset({"fail", "skip"})
 
+#: Built-in fallbacks used when neither the node nor the run defaults say
+#: anything.  Equal to the historical hard-coded behaviour.
+DEFAULT_ON_FAILURE = "fail"
+DEFAULT_RETRY = 0
+
+
+def normalize_label(raw: Any) -> Optional[str]:
+    """Return *raw* as a trimmed non-empty node label, or ``None``.
+
+    Non-strings, blanks and whitespace-only values all mean "no label" — the
+    consumers then fall back to the tool name.
+    """
+    if not isinstance(raw, str):
+        return None
+    label = raw.strip()
+    return label or None
+
+
+def normalize_node_defaults(raw: Any) -> Dict[str, Any]:
+    """Normalize a ``node_defaults`` run parameter into a clean dict.
+
+    Accepts ``{"on_failure": "fail"|"skip", "retry": <non-negative int>}`` and
+    silently drops anything else (unknown keys, wrong types, invalid modes,
+    negative or boolean retry counts).  A malformed payload therefore degrades
+    to "no defaults" instead of failing the run — the caller is a UI layer, not
+    a trusted schema validator.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    defaults: Dict[str, Any] = {}
+    mode = raw.get("on_failure")
+    if isinstance(mode, str) and mode in _VALID_FAILURE_MODES:
+        defaults["on_failure"] = mode
+    retry = raw.get("retry")
+    if retry is not None and not isinstance(retry, bool):
+        try:
+            parsed = int(retry)
+        except (TypeError, ValueError):
+            parsed = -1
+        if parsed >= 0:
+            defaults["retry"] = parsed
+    return defaults
+
+
+def _parse_optional_retry(raw: Any, node_id: Any) -> Optional[int]:
+    """Parse a wire ``retry`` value into ``None`` or a non-negative int.
+
+    ``None``/absent means "inherit".  Bools are rejected explicitly (``bool``
+    is an ``int`` subclass, so ``True`` would otherwise become ``1``), and
+    non-integral or negative values raise the same descriptive ``ValueError``
+    the dataclass raises for hand-built nodes.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError(
+            f"node {node_id!r}: invalid retry {raw!r}: "
+            f"must be a non-negative integer or None (inherit)"
+        )
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"node {node_id!r}: invalid retry {raw!r}: "
+            f"must be a non-negative integer or None (inherit)"
+        ) from None
+    if isinstance(raw, float) and not raw.is_integer():
+        raise ValueError(
+            f"node {node_id!r}: invalid retry {raw!r}: "
+            f"must be a non-negative integer or None (inherit)"
+        )
+    return parsed
+
 
 @dataclass
 class WorkflowNode:
@@ -42,9 +128,12 @@ class WorkflowNode:
         params: parameters passed to the tool when the node executes.
         next: id of the next node in the linear chain; None means this is
             the last node.
-        on_failure: failure handling: "fail" (default, stops the workflow)
-            or "skip" (continue with the next node).
-        retry: number of EXTRA attempts on failure (0 = no retry).
+        label: optional display name (cosmetic only; never referenced).
+        on_failure: failure handling — "fail" (stop the workflow), "skip"
+            (continue with the next node), or None to inherit the run-level
+            default.
+        retry: number of EXTRA attempts on failure (0 = no retry); None to
+            inherit the run-level default.
     """
 
     id: str
@@ -52,8 +141,9 @@ class WorkflowNode:
     tool: str = ""
     params: Dict[str, Any] = field(default_factory=dict)
     next: Optional[str] = None
-    on_failure: str = "fail"
-    retry: int = 0
+    label: Optional[str] = None
+    on_failure: Optional[str] = None
+    retry: Optional[int] = None
 
     def __post_init__(self) -> None:
         """Validate the node after construction."""
@@ -61,11 +151,24 @@ class WorkflowNode:
             raise ValueError("node id must be a non-empty string")
         if not isinstance(self.tool, str) or not self.tool:
             raise ValueError(f"node {self.id!r}: tool must be a non-empty string")
-        if self.on_failure not in _VALID_FAILURE_MODES:
+        self.label = normalize_label(self.label)
+        if self.on_failure is not None and self.on_failure not in _VALID_FAILURE_MODES:
             raise ValueError(
                 f"node {self.id!r}: invalid on_failure {self.on_failure!r}: "
-                f"must be 'fail' or 'skip'"
+                f"must be 'fail', 'skip' or None (inherit)"
             )
+        if self.retry is not None:
+            # bool is a subclass of int: True must not sneak in as retry=1.
+            if isinstance(self.retry, bool) or not isinstance(self.retry, int):
+                raise ValueError(
+                    f"node {self.id!r}: invalid retry {self.retry!r}: "
+                    f"must be a non-negative integer or None (inherit)"
+                )
+            if self.retry < 0:
+                raise ValueError(
+                    f"node {self.id!r}: invalid retry {self.retry!r}: "
+                    f"must be a non-negative integer or None (inherit)"
+                )
 
     def to_dict(self) -> dict:
         """Serialize this node to a JSON-able dict."""
@@ -75,21 +178,28 @@ class WorkflowNode:
             "tool": self.tool,
             "params": dict(self.params),
             "next": self.next,
+            "label": self.label,
             "on_failure": self.on_failure,
             "retry": self.retry,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "WorkflowNode":
-        """Reconstruct a WorkflowNode from a dict produced by :meth:`to_dict`."""
+        """Reconstruct a WorkflowNode from a dict produced by :meth:`to_dict`.
+
+        A missing OR ``null`` ``on_failure``/``retry`` means "inherit the
+        run-level default".  Files written before those fields became optional
+        always carried explicit values, so they keep their behaviour.
+        """
         return cls(
             id=data["id"],
             type=data.get("type", "step"),
             tool=data.get("tool", ""),
             params=dict(data.get("params", {})),
             next=data.get("next"),
-            on_failure=data.get("on_failure", "fail"),
-            retry=int(data.get("retry", 0)),
+            label=data.get("label"),
+            on_failure=data.get("on_failure"),
+            retry=_parse_optional_retry(data.get("retry"), data.get("id")),
         )
 
 

@@ -240,7 +240,11 @@ def test_workflow_list_tools_non_empty_with_builtin_and_registered():
     # Every entry carries a ``kind`` (todo 8).
     assert all("kind" in entry for entry in tools)
 
-    # The shipped-native (builtin) set is exactly the 10 core primitives.
+    # The shipped-native (builtin) set is exactly the 10 core primitives.  The
+    # suite pins plugin discovery to the lean core (see the
+    # ``_lean_core_plugin_config`` fixture in conftest), so this holds
+    # regardless of any local, git-ignored ``cli/server.config.json`` opting
+    # into the extended atomic tools.
     shipped_native = {entry["name"] for entry in tools if entry["kind"] == "shipped-native"}
     expected_builtins = {
         "file.read", "file.write", "text.grep", "exec.shell",
@@ -373,6 +377,41 @@ def test_workflow_execute_with_inline_definition_runs(tmp_path):
             "success": True,
         }
     ]
+
+
+def test_workflow_execute_applies_node_defaults_to_unset_nodes(tmp_path):
+    """A node without explicit `on_failure` inherits the run's node defaults.
+
+    This is the "follow the system defaults" contract the editor uses: the
+    saved definition keeps the node unset (so the file stays self-describing as
+    "inherit"), and the run-level `node_defaults` parameter decides the actual
+    behaviour.  An explicit value on the node must still win.
+    """
+    definition = {
+        "name": "defaults-contract",
+        "nodes": [
+            # No on_failure/retry → the run defaults decide (skip).
+            {
+                "id": "gate",
+                "tool": "flow.assert",
+                "params": {"condition": False, "message": "gate-boom"},
+            }
+        ],
+    }
+    events = []
+    result = handle_execute(
+        {
+            "definition": definition,
+            "task_id": "contract-defaults-1",
+            "work_dir": str(tmp_path),
+            "node_defaults": {"on_failure": "skip", "retry": 0},
+        },
+        events.append,
+    )
+
+    assert result["success"] is True
+    assert result["node_results"]["gate"]["status"] == "skipped"
+    assert _completed_for(events, "gate")["status"] == "skipped"
 
 
 def test_workflow_execute_emits_no_legacy_event_types(tmp_path):

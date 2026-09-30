@@ -114,6 +114,7 @@ import AppButton from '@components/ui/AppButton.vue'
 import AppNotice from '@components/ui/AppNotice.vue'
 
 import StatusBadge from '@components/ui/StatusBadge.vue'
+import { nodeDefaultsParams } from '@components/workflow/nodeDefaults'
 import RunDetailDrawer from './RunDetailDrawer.vue'
 import { formatMs, runStatusOf, type RunStatusKey } from './runFormat'
 import type { RunListItem, RunRecord, RunSummary } from '../../../shared/ipc/protocol'
@@ -331,8 +332,14 @@ async function cancel(row: RunRow) {
 async function rerun(row: RunRow) {
   busyKey.value = row.key
   try {
+    // 「跟随系统」的节点用设置里的默认行为（见 nodeDefaults.ts）
+    const defaults = await nodeDefaultsParams()
     if (row.taskName) {
-      await unifiedApi.call('task.execute', { name: row.taskName, task_id: `rerun-${Date.now().toString(36)}` })
+      await unifiedApi.call('task.execute', {
+        name: row.taskName,
+        task_id: `rerun-${Date.now().toString(36)}`,
+        ...defaults,
+      })
     } else if (row.record) {
       const full = await unifiedApi.call<{ run: RunRecord }>('history.get', { run_id: row.runId })
       const record = full?.run
@@ -342,6 +349,7 @@ async function rerun(row: RunRow) {
         name: record.workflow_name,
         inputs: record.inputs ?? {},
         task_id: `rerun-${Date.now().toString(36)}`,
+        ...defaults,
       })
     }
     showSuccess(t('tasks.runs.rerunStarted'))

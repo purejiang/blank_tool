@@ -14,9 +14,14 @@
       <n-form-item
         v-for="port in ports"
         :key="port.name"
-        :label="port.name"
         :required="port.required !== false"
       >
+        <template #label>
+          <span class="rid-label">
+            {{ port.name }}<span v-if="port.required !== false" class="rid-req">*</span>
+            <PortTypeBadge :type="port.type" :options="port.options" :multi="port.multi" />
+          </span>
+        </template>
         <!-- 运行期入参是字面量：不提供表达式绑定入口 -->
         <PortInput
           :value="draft[port.name]"
@@ -52,6 +57,7 @@ import { useI18n } from 'vue-i18n'
 import { NAlert, NButton, NForm, NFormItem, NModal } from 'naive-ui'
 
 import PortInput from './PortInput.vue'
+import PortTypeBadge from './PortTypeBadge.vue'
 import AppButton from '@components/ui/AppButton.vue'
 import AppDialogFooter from '@components/ui/AppDialogFooter.vue'
 import AppNotice from '@components/ui/AppNotice.vue'
@@ -163,6 +169,19 @@ function submit() {
 .rid-port-desc {
   font-size: 11px;
   color: var(--app-text-dim);
+}
+
+/* 参数名 + 类型徽标：与节点面板同一套类型口径 */
+.rid-label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-family: var(--font-family-monospace);
+}
+
+.rid-req {
+  margin-left: 2px;
+  color: var(--danger-text, var(--app-red));
 }
 
 .rid-footer {

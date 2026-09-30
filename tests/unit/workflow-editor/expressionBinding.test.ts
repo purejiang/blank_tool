@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  baseOfTypeKey,
+  buildReferenceGroups,
   collectBindings,
   completeTrigger,
+  describeBindingToken,
   findTrigger,
   hasBlockingIssue,
   insertBinding,
+  insertBindingAt,
   inputPath,
   matchesTrigger,
   nodeOutputPath,
   nodeParamPath,
   removeBinding,
+  sortByCompatibility,
   splitPipes,
   toInterpolationRef,
   toWholeValueRef,
@@ -231,5 +236,180 @@ describe('validateValue', () => {
     expect(errors[0].messageKey).toBe('workflow.editor.binding.errors.unknownRoot')
     expect(hasBlockingIssue(errors)).toBe(true)
     expect(hasBlockingIssue(validateValue('$inputs.nope', CTX))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Candidate discovery (the picker's data source)
+// ---------------------------------------------------------------------------
+
+const UPSTREAM = [
+  {
+    id: 'node-a',
+    label: '解压 APK',
+    tool: 'apktool',
+    outputs: [
+      { name: 'apk_path', type: { base: 'file', subtype: 'apk' } },
+      { name: 'force', type: { base: 'boolean', subtype: null } },
+    ],
+    paramKeys: ['sdk', 'sdk'],
+  },
+]
+
+describe('buildReferenceGroups', () => {
+  it('groups workflow inputs, one group per upstream node, and runtime', () => {
+    const groups = buildReferenceGroups(
+      [
+        { name: 'target', type: { base: 'file', subtype: null } },
+        { name: 'mode', type: { base: 'text', subtype: null }, options: ['a', 'b'] } as never,
+      ],
+      UPSTREAM,
+    )
+
+    expect(groups.map((g) => g.key)).toEqual(['inputs', 'node:node-a', 'runtime'])
+    expect(groups[0].items.map((i) => i.path)).toEqual(['inputs.target', 'inputs.mode'])
+    // Select-like ports are recognized by the same reverse mapping the panel uses.
+    expect(groups[0].items[1].typeKey).toBe('single_select')
+
+    const nodeGroup = groups[1]
+    expect(nodeGroup.nodeLabel).toBe('解压 APK')
+    expect(nodeGroup.nodeTool).toBe('apktool')
+    expect(nodeGroup.items.map((i) => i.kind)).toEqual(['output', 'output', 'param', 'param'])
+    expect(nodeGroup.items[0].path).toBe('nodes.node-a.outputs.apk_path')
+    expect(nodeGroup.items[0].typeKey).toBe('file')
+    expect(nodeGroup.items[0].subtype).toBe('apk')
+    expect(nodeGroup.items[0].detail).toBe('file/apk')
+    expect(nodeGroup.items[2].path).toBe('nodes.node-a.params.sdk')
+
+    // Runtime group: two real candidates plus the "type an env name" entry.
+    expect(groups[2].items.map((i) => i.kind)).toEqual(['runtime', 'runtime', 'env'])
+    expect(groups[2].items[0].runtimeKey).toBe('workdir')
+  })
+
+  it('omits empty groups', () => {
+    expect(buildReferenceGroups([], []).map((g) => g.key)).toEqual(['runtime'])
+  })
+
+  it('skips malformed ports and nodes', () => {
+    const groups = buildReferenceGroups(
+      [{ name: '' } as never, null as never],
+      [{ id: '', outputs: [] } as never, { id: 'b', outputs: [{ name: '' } as never] }],
+    )
+    expect(groups.map((g) => g.key)).toEqual(['runtime'])
+  })
+})
+
+describe('sortByCompatibility', () => {
+  const items = [
+    { path: 'nodes.a.outputs.count', label: 'count', group: 'nodes', kind: 'output', typeKey: 'number' },
+    { path: 'nodes.a.outputs.path', label: 'path', group: 'nodes', kind: 'output', typeKey: 'file' },
+  ]
+
+  it('puts compatible candidates first', () => {
+    const sorted = sortByCompatibility(items as never, 'file')
+    expect(sorted.map((i) => i.path)).toEqual(['nodes.a.outputs.path', 'nodes.a.outputs.count'])
+  })
+
+  it('keeps the input order when the target type is unknown', () => {
+    expect(sortByCompatibility(items as never, null).map((i) => i.path)).toEqual(
+      items.map((i) => i.path),
+    )
+  })
+
+  it('orders compatible first, unknown-type next, incompatible last', () => {
+    const mixed = [
+      ...items,
+      { path: 'nodes.a.params.sdk', label: 'sdk', group: 'nodes', kind: 'param' },
+    ]
+    const sorted = sortByCompatibility(mixed as never, 'file')
+    expect(sorted.map((i) => i.path)).toEqual([
+      'nodes.a.outputs.path', // compatible (file)
+      'nodes.a.params.sdk', // unknown type: neither promoted nor demoted
+      'nodes.a.outputs.count', // incompatible (number)
+    ])
+  })
+})
+
+describe('baseOfTypeKey', () => {
+  it('maps both select kinds back onto text', () => {
+    expect(baseOfTypeKey('single_select')).toBe('text')
+    expect(baseOfTypeKey('multi_select')).toBe('text')
+    expect(baseOfTypeKey('file')).toBe('file')
+  })
+})
+
+describe('describeBindingToken', () => {
+  const ctx = { nodes: { 'node-a': { label: '解压 APK' } }, inputs: ['target'] }
+
+  it('describes workflow inputs, env vars and runtime roots', () => {
+    expect(describeBindingToken({ path: 'inputs.target', pipes: [] }, ctx)).toMatchObject({
+      messageKey: 'workflow.editor.binding.chip.input',
+      params: { name: 'target' },
+    })
+    expect(describeBindingToken({ path: 'env.PATH', pipes: [] }, ctx).messageKey).toBe(
+      'workflow.editor.binding.chip.env',
+    )
+    expect(describeBindingToken({ path: 'workdir', pipes: [] }, ctx).messageKey).toBe(
+      'workflow.editor.binding.chip.workdir',
+    )
+    expect(describeBindingToken({ path: 'rundir', pipes: [] }, ctx).messageKey).toBe(
+      'workflow.editor.binding.chip.rundir',
+    )
+  })
+
+  it('uses the node display name for node references', () => {
+    const label = describeBindingToken({ path: 'nodes.node-a.outputs.apk_path', pipes: [] }, ctx)
+    expect(label.messageKey).toBe('workflow.editor.binding.chip.output')
+    expect(label.params).toMatchObject({ node: '解压 APK', name: 'apk_path' })
+
+    const param = describeBindingToken({ path: 'nodes.node-a.params.sdk', pipes: [] }, ctx)
+    expect(param.messageKey).toBe('workflow.editor.binding.chip.param')
+  })
+
+  it('falls back to the raw expression for unknown shapes and keeps pipes visible', () => {
+    // Unknown node → the id stands in for the display name (still readable).
+    const unknownNode = describeBindingToken({ path: 'nodes.x.outputs.y', pipes: [] }, { nodes: {} })
+    expect(unknownNode.messageKey).toBe('workflow.editor.binding.chip.output')
+    expect(unknownNode.params.node).toBe('x')
+
+    // A shape the engine accepts but this helper does not know → raw text.
+    const unknownShape = describeBindingToken({ path: 'something.else', pipes: [] }, { nodes: {} })
+    expect(unknownShape.messageKey).toBe('')
+    expect(unknownShape.raw).toBe('$something.else')
+
+    const piped = describeBindingToken({ path: 'workdir', pipes: ['basename'] }, ctx)
+    expect(piped.params.pipes).toBe(' · basename')
+  })
+})
+
+describe('insertBindingAt', () => {
+  it('inserts at the caret inside existing text as an interpolation', () => {
+    const result = insertBindingAt('echo  > log.txt', 'inputs.target', null, { start: 5, end: 5 })
+    expect(result.value).toBe('echo ${inputs.target} > log.txt')
+    expect(result.caret).toBe('echo ${inputs.target}'.length)
+  })
+
+  it('replaces the selection', () => {
+    const result = insertBindingAt('echo OLD', 'inputs.target', [], { start: 5, end: 8 })
+    expect(result.value).toBe('echo ${inputs.target}')
+  })
+
+  it('keeps the whole-value form for an effectively empty field', () => {
+    expect(insertBindingAt('   ', 'inputs.target', null, { start: 3, end: 3 }).value).toBe(
+      '$inputs.target',
+    )
+  })
+
+  it('completes a `$` trigger typed right before the caret', () => {
+    const result = insertBindingAt('$inp', 'inputs.target', null, { start: 4, end: 4 })
+    expect(result.value).toBe('$inputs.target')
+    expect(result.caret).toBe(result.value.length)
+  })
+
+  it('falls back to insertBinding without a selection', () => {
+    expect(insertBindingAt('', 'inputs.target', null, null).value).toBe('$inputs.target')
+    expect(insertBindingAt('echo', 'inputs.target', null, null).value).toBe(
+      'echo ${inputs.target}',
+    )
   })
 })

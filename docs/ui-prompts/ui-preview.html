@@ -726,49 +726,82 @@ textarea.input{height:auto;padding:7px 9px;font-family:"Fira Code",Consolas,mono
         <div class="minimap"><i></i><i></i><i class="on"></i><i></i></div>
       </div>
 
-      <!-- 右栏：节点设置 320 -->
+      <!-- 右栏：节点设置 320（2026-09-29 改造：基础/功能/参数/输出/行为，字段即时生效） -->
       <div class="ed-right">
         <div class="cfg-hd">
           <div class="cn">shell.exec</div>
-          <div class="cd">执行命令并捕获输出 · 节点「执行校验」</div>
+          <div class="cd">id: tool-exec-shell-2</div>
         </div>
         <div class="cfg-bd">
+          <!-- 基础：节点名（可改）+ 只读 id -->
           <div class="field">
-            <label>操作</label>
-            <div class="select"><span>run — 执行并等待退出</span><span class="dim">▾</span></div>
+            <label>节点名</label>
+            <input class="input" value="执行校验" />
+            <div class="help">显示在画布节点上；留空则用工具名</div>
           </div>
-          <div class="field">
-            <label>命令模板 <span class="req">*</span></label>
-            <input class="input mono" value="python -m compileall -q {{ $inputs.target_dir }}" />
-            <div class="chips"><span class="tagcode">$inputs.target_dir</span><span class="tagcode">$nodes.scan.outputs.count</span></div>
+          <div class="row-inline" style="align-items:center;gap:6px;margin:-8px 0 14px">
+            <span class="mono" style="font-size:11px;color:var(--app-text-dim)">id</span>
+            <span class="mono" style="flex:1;min-width:0;font-size:11.5px;color:var(--app-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">tool-exec-shell-2</span>
+            <span class="tag">复制</span>
           </div>
-          <div class="field">
-            <label>工作目录</label>
-            <div class="row-inline"><span class="input mono" style="font-size:11.5px;color:var(--app-text-secondary)">D:\projects\demo</span><button class="btn"><svg class="i sm"><use href="#i-folder"/></svg>浏览</button></div>
+
+          <!-- 功能 -->
+          <div style="border-top:1px solid var(--app-card-border);padding-top:12px;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--app-text-secondary);margin-bottom:8px">功能</div>
+            <div class="mono" style="font-size:12px;color:var(--app-text-primary);margin-bottom:10px">shell.exec</div>
+            <div class="field">
+              <label>操作</label>
+              <div class="select"><span>run — 执行并等待退出</span><span class="dim">▾</span></div>
+            </div>
+            <div class="help">执行命令并捕获输出；命令模板支持 $ 引用。</div>
           </div>
-          <div class="section-box">
-            <div class="adv"><span>失败即中断</span><span class="switch on"></span></div>
-          </div>
-          <div class="field">
-            <label>环境变量（JSON）</label>
-            <textarea class="input" rows="4">{
+
+          <!-- 参数：类型徽标 + 类型化控件；绑定 chips 显示友好名 -->
+          <div style="border-top:1px solid var(--app-card-border);padding-top:12px;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--app-text-secondary);margin-bottom:8px">参数 <span class="tag">3</span></div>
+            <div class="field">
+              <label>命令模板 <span class="req">*</span> <span class="tag">文本</span></label>
+              <input class="input mono" value="python -m compileall -q ${inputs.target_dir}" />
+              <div class="chips">
+                <span class="tagcode" title="$inputs.target_dir">入参 · target_dir</span>
+                <span class="tagcode" title="$nodes.scan.outputs.count">解压 APK · count</span>
+              </div>
+              <div class="help">文本插值：整段按文本拼接</div>
+            </div>
+            <div class="field">
+              <label>工作目录 <span class="tag">目录</span></label>
+              <div class="row-inline"><span class="input mono" style="font-size:11.5px;color:var(--app-text-secondary)">D:\projects\demo</span><button class="btn"><svg class="i sm"><use href="#i-folder"/></svg>浏览</button></div>
+            </div>
+            <div class="field">
+              <label>dry_run <span class="tag">布尔</span></label>
+              <span class="switch on"></span>
+            </div>
+            <div class="field">
+              <label>环境变量 <span class="tag">JSON</span></label>
+              <textarea class="input" rows="3">{
   "PYTHONIOENCODING": "utf-8",
   "NO_COLOR": "1"
 }</textarea>
+            </div>
+            <span class="tag">显示可选参数（2）</span>
           </div>
-          <div class="field">
-            <label>表达式绑定</label>
-            <div class="chips"><span class="tagcode">$nodes.scan.outputs.count</span><span class="tagcode">$inputs.min_matches</span></div>
-            <div class="help">在任意输入框内输入 $ 即可引用上游输出。</div>
+
+          <!-- 输出：只读 -->
+          <div style="border-top:1px solid var(--app-card-border);padding-top:12px;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--app-text-secondary);margin-bottom:6px">输出</div>
+            <div class="row-inline" style="gap:8px;padding:4px 0"><span class="mono" style="flex:1;font-size:12px">stdout</span><span class="tag">文本</span></div>
+            <div class="row-inline" style="gap:8px;padding:4px 0"><span class="mono" style="flex:1;font-size:12px">artifact_path</span><span class="tag">文件 · apk</span></div>
           </div>
-          <div class="row-inline" style="gap:10px;align-items:flex-start">
-            <div class="field" style="flex:1"><label>失败策略</label><div class="select"><span>终止整个运行</span><span class="dim">▾</span></div></div>
-            <div class="field" style="width:92px;flex:none"><label>重试次数</label><input class="input" value="3" style="text-align:center" /></div>
+
+          <!-- 行为：跟随系统 / 自定义 -->
+          <div style="border-top:1px solid var(--app-card-border);padding-top:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--app-text-secondary);margin-bottom:8px">行为</div>
+            <div class="seg"><span class="on">跟随系统</span><span>自定义</span></div>
+            <div class="help" style="margin-top:6px">使用设置里的节点默认值：终止整个运行 · 重试 0 次 <span style="color:var(--app-blue)">去设置</span></div>
           </div>
-          <div class="err-line"><svg class="i sm" style="margin-top:2px"><use href="#i-alert"/></svg><span>上一轮运行失败：目标目录不可写（EACCES）</span></div>
         </div>
+        <!-- 字段即时生效：面板里没有「保存」，落盘只有顶栏那一个动作 -->
         <div class="cfg-ft">
-          <button class="btn primary" data-save style="flex:1;justify-content:center">保存</button>
           <button class="btn danger" style="flex:none"><svg class="i sm"><use href="#i-trash"/></svg>删除节点</button>
         </div>
       </div>
@@ -1221,6 +1254,20 @@ textarea.input{height:auto;padding:7px 9px;font-family:"Fira Code",Consolas,mono
           </div>
           <div class="frow"><div class="fl"><div class="ft">系统通知</div><div class="fh">运行结束或失败时发送系统通知。</div></div><span class="switch"></span></div>
           <div class="frow"><div class="fl"><div class="ft">删除任务时清理输出文件</div><div class="fh">默认关闭，只删除记录、保留产物。</div></div><span class="switch on"></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><svg class="i sm sec"><use href="#i-layers"/></svg><h3>节点</h3></div>
+        <div class="card-bd">
+          <div class="frow">
+            <div class="fl"><div class="ft">失败策略</div><div class="fh">工作流里选「跟随系统」的节点用这个值。</div></div>
+            <div class="select" style="width:180px;flex:none"><span>终止整个运行</span><span class="dim">▾</span></div>
+          </div>
+          <div class="frow">
+            <div class="fl"><div class="ft">重试次数</div><div class="fh">额外尝试次数，退避 min(2^(n-1), 30s)。</div></div>
+            <div class="row-inline" style="width:160px"><span class="input" style="width:120px;justify-content:flex-end"><span class="mono" style="font-size:12px">0</span><span class="dim" style="margin-left:8px">次</span></span></div>
+          </div>
+          <div class="help" style="margin-top:6px">选「自定义」的节点把值写在工作流本身，不受这里影响；节点级执行超时暂未实现。</div>
         </div>
       </div>
       <div class="card">

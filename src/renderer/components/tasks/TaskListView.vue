@@ -105,6 +105,7 @@ import AppNotice from '@components/ui/AppNotice.vue'
 
 import type { TaskDefinitionSummary } from '../../../shared/ipc/protocol'
 import unifiedApi from '@/api/unifiedApi'
+import { nodeDefaultsParams } from '@components/workflow/nodeDefaults'
 import { useNotification } from '@composables/useNotification'
 import { log } from '@utils/logger'
 
@@ -181,6 +182,8 @@ async function runTask(task: TaskDefinitionSummary) {
     await unifiedApi.call('task.execute', {
       name: task.name,
       task_id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      // 「跟随系统」的节点用设置里的默认行为（见 nodeDefaults.ts）
+      ...(await nodeDefaultsParams()),
     })
     showSuccess(t('tasks.runStarted', { name: task.name }))
     emit('view-runs', task.name)

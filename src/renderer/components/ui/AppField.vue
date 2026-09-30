@@ -12,9 +12,13 @@
        「不在 form 里的独立字段」与「需要完全自定义排版的字段」。 -->
   <div class="app-field" :class="{ 'app-field--error': !!error }">
     <label :for="controlId" class="app-field-label">
-      {{ label }}
-      <span v-if="required" class="app-field-req" aria-hidden="true">*</span>
-      <span v-if="required" class="sr-only">{{ t('common.required') }}</span>
+      <!-- 默认渲染 label 文本；需要并排徽标/按钮的调用方用 #label 插槽接管
+           （必填星由插槽自己决定是否再画，这里不再叠加）。 -->
+      <slot name="label">
+        {{ label }}
+        <span v-if="required" class="app-field-req" aria-hidden="true">*</span>
+        <span v-if="required" class="sr-only">{{ t('common.required') }}</span>
+      </slot>
     </label>
     <div class="app-field-control">
       <slot :id="controlId" :invalid="!!error" />

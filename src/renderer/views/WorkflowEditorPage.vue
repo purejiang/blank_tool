@@ -195,9 +195,8 @@
           :node="selectedNode"
           :workflow-inputs="meta.inputs ?? []"
           :upstream-nodes="upstreamNodes"
-          :node-ids="nodeIds"
           @delete="onDeleteNode"
-          @rename="onRenameNode"
+          @open-settings="openNodeSettings"
         />
       </div>
     </div>
@@ -329,7 +328,11 @@ import {
   extraOutgoingEdges,
   upstreamNodeIds,
 } from '@components/workflow/graphLayout'
-import { renameNodeId } from '@components/workflow/nodeRename'
+import {
+  effectivePorts,
+  validateNodeEditable,
+} from '@components/workflow/nodeValidation'
+import { withNodeDefaults } from '@components/workflow/nodeDefaults'
 import {
   VIRTUAL_END_ID,
   VIRTUAL_START_ID,
@@ -429,14 +432,25 @@ const meta = ref<WorkflowMeta>({
 // Monotonic counter keeps dropped node ids unique within the session.
 let nodeCounter = 0
 
-function makeNodeId(toolName: string): string {
-  nodeCounter += 1
-  return `tool-${toolName.replace(/[^a-z0-9]+/gi, '-')}-${nodeCounter}`
+/**
+ * Node ids are auto-generated and NOT user-editable, so the generator itself
+ * has to guarantee uniqueness: a loaded template can already contain
+ * `tool-apktool-1`, and a duplicate id would make the canvas unsavable with no
+ * way for the user to fix it. The name is cosmetic (`data.label`).
+ */
+function makeNodeId(toolName: string, taken: Set<string>): string {
+  const slug = toolName.replace(/[^a-z0-9]+/gi, '-')
+  let candidate = ''
+  do {
+    nodeCounter += 1
+    candidate = `tool-${slug}-${nodeCounter}`
+  } while (taken.has(candidate))
+  return candidate
 }
 
 /** Shared node-creation path for drag-drop and click-to-append. Returns the new node id. */
 function addToolNode(tool: WorkflowToolInfo, position: { x: number; y: number }): string {
-  const id = makeNodeId(tool.name)
+  const id = makeNodeId(tool.name, new Set(nodes.value.map((node) => node.id)))
   const data: ToolNodeData = {
     tool: tool.name,
     status: 'idle',
@@ -536,11 +550,12 @@ const selectedNode = computed(() => nodes.value.find((n) => n.selected) ?? null)
 const selectedToolName = computed(() => String(selectedNode.value?.data?.tool ?? ''))
 
 /**
- * `.cd` line for the node inspector: tool description · node「id」.
+ * `.cd` line for the node inspector: the node's **id**.
  *
- * The node's identity IS its id — that is what `$nodes.<id>.outputs…` bindings
- * embed — while `label` is currently always the tool name (the backend schema
- * has no node label), so repeating it next to `.cn` would carry no information.
+ * The id is the node's identity — it is what `$nodes.<id>.outputs…` bindings
+ * embed — and it is auto-generated/read-only. The human-readable name and the
+ * tool description now live inside the panel (基础 / 功能 sections), so repeating
+ * them here would only duplicate content.
  */
 const selectedNodeSubtitle = computed(() => {
   const node = selectedNode.value
@@ -551,9 +566,7 @@ const selectedNodeSubtitle = computed(() => {
       ? t('workflow.editor.virtual.endIo')
       : t('workflow.editor.virtual.startIo')
   }
-  const description = toolsCache.value?.find((tool) => tool?.name === selectedToolName.value)?.description
-  const context = t('workflow.editor.dock.nodeContext', { label: node.id })
-  return description ? `${description} · ${context}` : context
+  return t('workflow.editor.dock.nodeContext', { label: node.id })
 })
 
 /** Real (non-endpoint) connections — the number the saved definition carries. */
@@ -589,6 +602,10 @@ const nodeIds = computed(() => nodes.value.map((node) => node.id))
  * in the engine's `$nodes.<id>` context when the node resolves its params.
  * The canvas-only endpoints are filtered out — they produce no results, so
  * offering them in the binding picker would only create broken references.
+ *
+ * Ports come from the shared `effectivePorts` helper (operation ports when an
+ * operation is selected, else the tool's own), so the picker offers exactly
+ * what the panel edits and what the engine validates.
  */
 const upstreamNodes = computed<UpstreamNodeRef[]>(() => {
   const selected = selectedNode.value
@@ -601,19 +618,13 @@ const upstreamNodes = computed<UpstreamNodeRef[]>(() => {
       const node = findNode(id)
       const data = (node?.data ?? {}) as ToolNodeData & { operation?: string; inputs?: Record<string, unknown> }
       const toolInfo = toolsCache.value?.find((tool) => tool?.name === data.tool)
-      const operation = typeof data.operation === 'string' ? data.operation : ''
-      const operationOutputs = operation
-        ? toolInfo?.operations?.find((op) => op?.name === operation)?.outputs
-        : undefined
-      const outputs = (operationOutputs && operationOutputs.length > 0
-        ? operationOutputs
-        : data.ports?.outputs) as ToolPort[] | undefined
+      const ports = effectivePorts(data, toolInfo)
       const stored = (data.inputs ?? (data as any).params ?? {}) as Record<string, unknown>
       return {
         id,
         label: String((data as any).label || data.tool || id),
         tool: String(data.tool ?? ''),
-        outputs: outputs ?? [],
+        outputs: ports.outputs as unknown as ToolPort[],
         paramKeys: Object.keys(stored),
       }
     })
@@ -647,10 +658,13 @@ function endpointProblems(): string[] {
 /**
  * Reason string handed to TemplateManager; null means saving is allowed.
  *
- * Three independent blockers, checked in order:
+ * Four independent blockers, checked in order:
  *  1. extra outgoing edges — the canvas shows its own banner for that;
  *  2. 开始 not wired to the chain entry (see endpointProblems);
- *  3. a structurally invalid chain (several entry nodes / a cycle / orphans),
+ *  3. a node that is not runnable yet (operation not picked / required input
+ *     missing / select port without options) — the panel marks the same fields
+ *     red as you touch them, so the block always has a visible counterpart;
+ *  4. a structurally invalid chain (several entry nodes / a cycle / orphans),
  *     which the backend rejects with a raw English message. Validating here with
  *     the SAME rules the loader uses (`validateOnDeserialize`) turns it into a
  *     pointer at the 问题 panel instead of a backend error toast.
@@ -661,10 +675,31 @@ function saveBlockedReason(): string | null {
   }
   const endpoints = endpointProblems()
   if (endpoints.length > 0) return endpoints[0]
+  // 序列化一次，节点校验与结构校验共用同一份文档（这个函数在每次渲染时被读）。
   const definition = serializeCanvas()
-  const structural = definition ? validateOnDeserialize(definition) : []
+  if (!definition) return null
+  const invalidNode = firstInvalidNode(definition)
+  if (invalidNode) {
+    return t('workflow.editor.config.errors.nodeInvalid', { id: invalidNode })
+  }
+  const structural = validateOnDeserialize(definition)
   if (structural.length === 0) return null
   return t('workflow.editor.template.notChained', { count: structural.length })
+}
+
+/**
+ * First node that cannot run as configured (see nodeValidation), or null.
+ *
+ * Operates on the already-serialized document so the ids match exactly what the
+ * wire document (and the error message) will name.
+ */
+function firstInvalidNode(definition: WorkflowDefinitionJSON): string | null {
+  const tools = new Map((toolsCache.value ?? []).map((tool) => [tool?.name, tool]))
+  for (const node of definition.nodes) {
+    const data = (findNode(node.id)?.data ?? {}) as Record<string, unknown>
+    if (validateNodeEditable(data, tools.get(node.tool)).length > 0) return node.id
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -998,29 +1033,11 @@ function onDeleteNode(nodeId: string) {
 }
 
 /**
- * Rename a node id: rewrites the node, its edges and every `$nodes.<oldId>.*`
- * binding in one pass (see nodeRename.ts), then re-selects the node.
+ * 「去设置」：节点行为默认值配在设置页（节点卡片），面板只负责发起跳转 ——
+ * 组件本身不依赖路由，测试里也不需要 router。
  */
-function onRenameNode(payload: { oldId: string; newId: string }) {
-  const result = renameNodeId(nodes.value, edges.value, payload.oldId, payload.newId)
-  if (!result.ok) {
-    const key =
-      result.error === 'duplicate'
-        ? 'workflow.editor.config.errors.idDuplicate'
-        : result.error === 'dot'
-          ? 'workflow.editor.config.errors.idDot'
-          : 'workflow.editor.config.errors.idRequired'
-    message.error(t(key, { id: payload.newId }))
-    return
-  }
-  const nextNodes = result.nodes.map((node) =>
-    node.id === payload.newId ? { ...node, selected: true } : node,
-  )
-  setNodes(nextNodes)
-  setEdges(result.edges)
-  if (result.bindingsChanged > 0) {
-    message.info(t('workflow.editor.renameRebound', { count: result.bindingsChanged }))
-  }
+function openNodeSettings() {
+  void router.push('/settings')
 }
 
 // ---------------------------------------------------------------------------
@@ -1294,9 +1311,15 @@ async function startExecution(
     // the payload itself: `inputs` comes from the run dialog and can still hold
     // Vue reactive proxies (e.g. the array of a 多选 input), which contextBridge
     // refuses to clone — "An object could not be cloned."
+    //
+    // `node_defaults` carries the settings page's node behaviour defaults: the
+    // nodes that did not pin their own failure handling (「跟随系统」) resolve to
+    // these values inside the engine.
     await window.electronAPI.callBackendAPI(
       'workflow.execute',
-      toJsonPayload({ definition, inputs, task_id: activeWorkflowId }),
+      toJsonPayload(
+        await withNodeDefaults({ definition, inputs, task_id: activeWorkflowId }),
+      ),
     )
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)

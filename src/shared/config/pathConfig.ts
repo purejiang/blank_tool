@@ -36,6 +36,9 @@ export const WRITABLE_CONFIG_KEYS = {
   rendererEntry: 'rendererEntry',
   preloadCandidates: 'preloadCandidates',
   commands: 'commands',
+  // 节点级默认行为（失败策略 / 重试次数）：写 `nodes` 整组，
+  // 见 src/main/stores/appStore.ts 的 schema 与 renderer 的 nodeDefaults.ts。
+  nodes: 'nodes',
   logs: 'logs',
   language: 'language',
   theme: 'theme',

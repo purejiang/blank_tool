@@ -15,6 +15,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 import unifiedApi from '@/api/unifiedApi'
+import { withNodeDefaults } from '@components/workflow/nodeDefaults'
 import { log } from '@utils/logger'
 
 /** Terminal outcomes of one run. */
@@ -101,12 +102,15 @@ export function useWorkflowRun() {
    */
   async function start(options: StartRunOptions): Promise<RunOutcome | null> {
     if (isRunning.value) return null
+    // 「跟随系统」的节点在引擎里靠这个参数拿到默认行为；两条运行路径
+    // （workflow.execute / template.execute）都在这里统一注入，避免各调用点各写一份。
+    const params = await withNodeDefaults(options.params)
     const api = window.electronAPI
     if (!api || typeof api.onStreamEvent !== 'function') {
       // No correlation channel: still start the run, but report it as
       // unobservable rather than pretending it finished.
       const runId = makeRunId()
-      await unifiedApi.call(options.method, { ...options.params, task_id: runId })
+      await unifiedApi.call(options.method, { ...params, task_id: runId })
       return null
     }
 
@@ -121,7 +125,7 @@ export function useWorkflowRun() {
     })
 
     try {
-      await unifiedApi.call(options.method, { ...options.params, task_id: runId })
+      await unifiedApi.call(options.method, { ...params, task_id: runId })
     } catch (error) {
       settle = null
       activeRunId = null

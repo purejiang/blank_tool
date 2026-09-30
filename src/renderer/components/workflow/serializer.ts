@@ -10,7 +10,7 @@
  *     name, version, description,
  *     inputs:  [Port.to_dict()],   // {name, type:{base, subtype}, required, description, options, multi}
  *     outputs: [Port.to_dict()],
- *     nodes:   [WorkflowNode.to_dict()]   // {id, type, tool, params, next, on_failure, retry}
+ *     nodes:   [WorkflowNode.to_dict()]   // {id, type, tool, params, next, label, on_failure, retry}
  *   }
  *
  * Retired DAG fields (`edges`, `node.condition`, `node.on_success`) no longer
@@ -66,10 +66,20 @@ export interface WorkflowNodeJSON {
   params: Record<string, any>
   /** Id of the next node in the linear chain; null/absent means last node. */
   next?: string | null
-  /** "fail" (default) or "skip". */
-  on_failure?: string
-  /** Extra attempts on failure (0 = no retry). */
-  retry?: number
+  /**
+   * Cosmetic node name. Omitted while it still equals the tool name (the
+   * backend treats an absent/null label as "no name" and falls back to the
+   * tool name everywhere).
+   */
+  label?: string | null
+  /**
+   * "fail" / "skip" / null.  **null or absent means "inherit the run-level
+   * default"** (the settings page's node defaults), which is the editor's
+   * 「跟随系统」 state — see nodeDefaults.ts.
+   */
+  on_failure?: string | null
+  /** Extra attempts on failure; null/absent means "inherit" (0 = no retry). */
+  retry?: number | null
 }
 
 /** A complete workflow definition (mirrors WorkflowDefinition.to_dict). */
@@ -112,8 +122,13 @@ export interface WorkflowNodeData {
    */
   operation?: string
   inputs?: Record<string, any>
-  // Node behavior — carried through the canvas for roundtrip fidelity. Absent
-  // while they equal their defaults ("fail" / 0).
+  /**
+   * Node behaviour, edited in the panel's 行为 section. **Absent means
+   * 「跟随系统」**: the node does not pin a value and the run-level node
+   * defaults (settings → 节点) decide.  An explicit value — including an
+   * explicit `on_failure: 'fail'` / `retry: 0` — is the 自定义 state and
+   * always wins over the defaults.
+   */
   on_failure?: string
   retry?: number
 }
@@ -128,9 +143,10 @@ export type WorkflowFlowNode = Node<WorkflowNodeData>
 /** Defaults shared with the backend (WorkflowNode dataclass defaults). */
 const NODE_DEFAULTS = {
   type: 'step',
-  on_failure: 'fail',
-  retry: 0,
 } as const
+
+/** Node failure modes accepted by the backend (`_VALID_FAILURE_MODES`). */
+export const FAILURE_MODES = ['fail', 'skip'] as const
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -224,6 +240,22 @@ function collectStructuralErrors(json: any): string[] {
     ids.push(id)
     if (typeof raw.tool !== 'string' || raw.tool.length === 0) {
       errors.push(`node '${id}': tool must be a non-empty string`)
+    }
+    // Behaviour fields mirror the backend's rules: null/absent = inherit,
+    // anything else must be a valid mode / non-negative integer.
+    if (raw.on_failure !== undefined && raw.on_failure !== null) {
+      if (!(FAILURE_MODES as readonly unknown[]).includes(raw.on_failure)) {
+        errors.push(
+          `node '${id}': invalid on_failure '${raw.on_failure}': must be 'fail', 'skip' or null (inherit)`,
+        )
+      }
+    }
+    if (raw.retry !== undefined && raw.retry !== null) {
+      if (typeof raw.retry !== 'number' || !Number.isInteger(raw.retry) || raw.retry < 0) {
+        errors.push(
+          `node '${id}': invalid retry '${raw.retry}': must be a non-negative integer or null (inherit)`,
+        )
+      }
     }
   }
 
@@ -325,8 +357,12 @@ export function validateOnDeserialize(json: WorkflowDefinitionJSON): string[] {
  *  - node id/tool come from `node.data`; params go through nodeParamsToWire
  *    (operation-mode nodes map data.{operation, inputs} to the engine shape
  *    `{operation, <binding>}`; legacy nodes pass data.params through);
- *    node behavior fields — on_failure/retry — are carried through when
- *    present, otherwise backend defaults are emitted;
+ *  - `label` is emitted only when the node name says something the tool name
+ *    does not — an absent label means "use the tool name";
+ *  - behaviour fields (on_failure / retry) are emitted **only when the node
+ *    pins them**. An absent key is the wire encoding of 跟随系统: the engine
+ *    then applies the run-level `node_defaults` (settings → 节点) or its
+ *    built-in `fail` / `0`;
  *  - `next` is derived from the edges: the FIRST outgoing edge of a node
  *    becomes its next pointer (linear mode — extra outgoing edges are
  *    ignored and reported by graphLayout.extraOutgoingEdges, see the canvas
@@ -356,20 +392,27 @@ export function serializeWorkflow(
   const serializedNodes: WorkflowNodeJSON[] = realNodes.map((node) => {
     const data = (node.data ?? {}) as WorkflowNodeData
     const next = nextBySource.get(node.id)
-    return {
+    const tool = typeof data.tool === 'string' ? data.tool : ''
+    const wire: WorkflowNodeJSON = {
       id: node.id,
       type: NODE_DEFAULTS.type,
-      tool: typeof data.tool === 'string' ? data.tool : '',
+      tool,
       params: nodeParamsToWire(data),
       // A `next` pointing at 结束 (or at a node that is gone) is not part of the
       // wire model — absence of `next` IS "the chain ends here".
       next: typeof next === 'string' && realIds.has(next) ? next : null,
-      on_failure:
-        typeof data.on_failure === 'string' && data.on_failure.length > 0
-          ? data.on_failure
-          : NODE_DEFAULTS.on_failure,
-      retry: typeof data.retry === 'number' ? data.retry : NODE_DEFAULTS.retry,
     }
+    // The node name is cosmetic and only worth persisting once it says
+    // something the tool name does not.
+    const label = typeof data.label === 'string' ? data.label.trim() : ''
+    if (label && label !== tool) wire.label = label
+    // Behaviour fields are emitted ONLY when the node pins them; an absent key
+    // is what tells the engine "inherit the run-level default" (跟随系统).
+    if (typeof data.on_failure === 'string' && data.on_failure.length > 0) {
+      wire.on_failure = data.on_failure
+    }
+    if (typeof data.retry === 'number') wire.retry = data.retry
+    return wire
   })
 
   return {
@@ -390,7 +433,10 @@ export function serializeWorkflow(
  *    (horizontal chain: one row, left→right — see graphLayout.horizontalLayout)
  *    with data = { tool, params, label, on_failure?, retry? }; params carrying
  *    an `operation` string additionally hydrate data.operation/data.inputs for
- *    the operation-mode config UI;
+ *    the operation-mode config UI. A `label` equal to the tool name (or
+ *    absent/null) leaves the display name at the tool name, and a null/absent
+ *    `on_failure`/`retry` stays ABSENT on the canvas so the panel shows
+ *    跟随系统 instead of a pinned value;
  *  - each non-null `next` becomes an Edge { id: `${id}->${next}`, source, target };
  *  - meta carries name/version/description/inputs/outputs (backend defaults
  *    applied for absent optional fields).
@@ -428,10 +474,13 @@ export function deserializeWorkflow(json: WorkflowDefinitionJSON): {
 
   const flowNodes: WorkflowFlowNode[] = json.nodes.map((nodeJson) => {
     const params = cloneJson(nodeJson.params ?? {})
+    const customLabel = typeof nodeJson.label === 'string' && nodeJson.label.trim().length > 0
+      ? nodeJson.label.trim()
+      : ''
     const data: WorkflowNodeData = {
       tool: nodeJson.tool,
       params,
-      label: nodeJson.tool,
+      label: customLabel || nodeJson.tool,
     }
     // Operation-node hydration (T7): raw wire params `{operation, <bindings>}`
     // — the T4/T5 engine contract — become the editor's operation-mode state
@@ -447,11 +496,13 @@ export function deserializeWorkflow(json: WorkflowDefinitionJSON): {
       }
       data.inputs = inputs
     }
-    // Behavior fields, stored only when they differ from their defaults.
-    if (typeof nodeJson.on_failure === 'string' && nodeJson.on_failure !== NODE_DEFAULTS.on_failure) {
+    // Behaviour fields: stored ONLY when the wire pins them. `null` (what the
+    // backend emits for an unset field) is "继承" and must stay absent on the
+    // canvas so the panel shows 跟随系统 rather than a pinned "fail".
+    if (typeof nodeJson.on_failure === 'string' && nodeJson.on_failure.length > 0) {
       data.on_failure = nodeJson.on_failure
     }
-    if (typeof nodeJson.retry === 'number' && nodeJson.retry !== NODE_DEFAULTS.retry) {
+    if (typeof nodeJson.retry === 'number') {
       data.retry = nodeJson.retry
     }
 

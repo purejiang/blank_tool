@@ -1,14 +1,18 @@
 /**
  * T7 — Node config driven by operation typed inputs.
  *
- * Covers the NodeConfigPanel operation mode (descriptor tools that expose
+ * Covers the NodeConfigPanel: operation mode (descriptor tools that expose
  * operations via workflow.list_tools), the legacy free-form params fallback
  * (builtin tools / descriptors without operations), native plugin tools
- * (kind "native", todo 20: ports render like builtins, operations trigger
- * operation mode), and the serializer mapping between
- * node.data.{operation, inputs} and the engine wire params
- * `{operation, <input_name>: value}` (T4 contract), including the T5
- * round-trip shape of examples/workflows/android/decompile.json.
+ * (kind "native"), the read-only node id / editable node name, the typed
+ * parameter badges, the optional-parameter disclosure, the 跟随系统 / 自定义
+ * behaviour toggle, and the serializer mapping between node.data.{operation,
+ * inputs} and the engine wire params `{operation, <input_name>: value}` (T4
+ * contract), including the T5 round-trip shape of
+ * examples/workflows/android/decompile.json.
+ *
+ * The panel applies edits IMMEDIATELY (there is no per-node Save button), so
+ * every assertion checks `node.data` right after the interaction.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -22,15 +26,20 @@ import {
 import decompileExample from '../../../examples/workflows/android/decompile.json'
 
 // ---------------------------------------------------------------------------
-// Mocks (hoisted): ServiceManager (path pickers) + unifiedApi (tool metadata)
+// Mocks (hoisted): ServiceManager (path pickers + node defaults) + unifiedApi
 // ---------------------------------------------------------------------------
+
+/** appConfig `nodes` payload the mocked config service returns. */
+let nodeDefaultsConfig: Record<string, unknown> = { onFailure: 'fail', retry: 0 }
 
 vi.mock('@services/ServiceManager', () => ({
   default: {
     register: vi.fn(),
-    getService: vi.fn().mockResolvedValue({
-      selectFile: vi.fn(),
-      selectDirectory: vi.fn(),
+    getService: vi.fn(async (name: string) => {
+      if (name === 'config') {
+        return { getAppConfig: async () => nodeDefaultsConfig }
+      }
+      return { selectFile: vi.fn(), selectDirectory: vi.fn() }
     }),
     getServiceSync: vi.fn(),
   },
@@ -83,7 +92,9 @@ const APKTOOL = {
     {
       name: 'build',
       description: 'Rebuild a decoded tree into an APK.',
-      inputs: [port('source_dir', 'directory'), port('output_apk', 'file')],
+      // Shares `output_dir` with `decode` on purpose: switching operations must
+      // carry a same-named value over instead of wiping the whole form.
+      inputs: [port('source_dir', 'directory'), port('output_dir', 'file')],
       outputs: [port('output_apk', 'file')],
     },
   ],
@@ -114,9 +125,29 @@ const FILEREAD = {
   version: '',
   tool_path: '',
   builtin: true,
+  description: 'Read a text file.',
   ports: {
     inputs: [port('path', 'file')],
     outputs: [port('content', 'text')],
+  },
+}
+
+/** Builtin tool with one required and four optional inputs (collapse case). */
+const SHELLEXEC = {
+  name: 'exec.shell',
+  is_valid: true,
+  version: '',
+  tool_path: '',
+  builtin: true,
+  ports: {
+    inputs: [
+      port('command', 'text'),
+      port('cwd', 'directory', { required: false }),
+      port('timeout', 'number', { required: false }),
+      port('env', 'json', { required: false }),
+      port('shell', 'text', { required: false }),
+    ],
+    outputs: [port('stdout', 'text')],
   },
 }
 
@@ -156,7 +187,7 @@ const NATIVEOP = {
   ],
 }
 
-const TOOL_LIST = { tools: [APKTOOL, SYNTHTOOL, FILEREAD, NATIVEPLUGIN, NATIVEOP] }
+const TOOL_LIST = { tools: [APKTOOL, SYNTHTOOL, FILEREAD, SHELLEXEC, NATIVEPLUGIN, NATIVEOP] }
 
 // ---------------------------------------------------------------------------
 // Naive-ui stubs — plain render functions (no runtime template compilation).
@@ -166,28 +197,6 @@ const TOOL_LIST = { tools: [APKTOOL, SYNTHTOOL, FILEREAD, NATIVEPLUGIN, NATIVEOP
 // ---------------------------------------------------------------------------
 
 const NAIVE_STUBS: Record<string, unknown> = {
-  Form: {
-    name: 'Form',
-    setup(_props: unknown, { slots }: any) {
-      return () => h('form', { class: 'n-form-stub' }, slots.default?.())
-    },
-  },
-  FormItem: {
-    name: 'FormItem',
-    props: { label: String, required: Boolean },
-    setup(props: any, { slots }: any) {
-      return () =>
-        h(
-          'div',
-          {
-            class: 'form-item-stub',
-            'data-label': props.label,
-            'data-required': props.required ? 'true' : 'false',
-          },
-          [...(slots.default?.() ?? []), ...(slots.feedback?.() ?? [])],
-        )
-    },
-  },
   Input: {
     name: 'Input',
     props: { value: null, type: String },
@@ -251,6 +260,7 @@ const NAIVE_STUBS: Record<string, unknown> = {
           {
             class: 'n-select-stub',
             multiple: props.multiple || undefined,
+            value: props.value ?? '',
             onChange: (e: Event) => {
               const el = e.target as HTMLSelectElement
               if (props.multiple) {
@@ -262,6 +272,22 @@ const NAIVE_STUBS: Record<string, unknown> = {
           },
           (props.options ?? []).map((o: any) => h('option', { value: o.value }, o.label)),
         )
+    },
+  },
+  RadioGroup: {
+    name: 'RadioGroup',
+    props: { value: null },
+    emits: ['update:value'],
+    setup(_props: any, { slots }: any) {
+      return () => h('div', { class: 'n-radio-group-stub' }, slots.default?.())
+    },
+  },
+  RadioButton: {
+    name: 'RadioButton',
+    props: { value: null },
+    setup(props: any, { slots }: any) {
+      return () =>
+        h('button', { class: 'n-radio-stub', 'data-value': String(props.value) }, slots.default?.())
     },
   },
 }
@@ -287,26 +313,43 @@ function mountPanel(node: Node | null) {
   })
 }
 
-/** Flush the panel's workflow.list_tools fetch + reactivity. */
+/** Flush the panel's workflow.list_tools + node-defaults fetches. */
 async function settled() {
   await flushPromises()
   await nextTick()
   await nextTick()
 }
 
-function labels(wrapper: ReturnType<typeof mountPanel>): string[] {
-  return wrapper.findAll('.form-item-stub').map((fi) => fi.attributes('data-label') ?? '')
+/** Parameter rows in display order (AppField roots carrying `npc-param`). */
+function paramRows(wrapper: ReturnType<typeof mountPanel>) {
+  return wrapper.findAll('.npc-param')
+}
+
+/** Port names of the rendered parameter rows (the required star is stripped). */
+function paramNames(wrapper: ReturnType<typeof mountPanel>): string[] {
+  return paramRows(wrapper).map((row) => row.find('.npc-param-name').text().replace(/\*+$/, '').trim())
+}
+
+/** Type badge text of the rendered parameter rows (i18n keys here). */
+function paramBadges(wrapper: ReturnType<typeof mountPanel>): string[] {
+  return paramRows(wrapper).map((row) => row.find('[data-test="port-type-badge"]').text())
 }
 
 /** Selects owned by the panel (excludes the binding picker's pipe selector). */
 function panelSelects(wrapper: ReturnType<typeof mountPanel>) {
-  return wrapper.findAll('.n-select-stub:not(.ep-pipe-select)')
+  return wrapper.findAll('.n-select-stub:not(.ep-transform-select)')
 }
 
-async function clickSave(wrapper: ReturnType<typeof mountPanel>) {
-  const save = wrapper.find('[data-test="npc-save"]')
-  expect(save.exists(), 'Save button must be rendered').toBe(true)
-  await save.trigger('click')
+/** Operation selector (`data-test="npc-operation"`). */
+function operationSelect(wrapper: ReturnType<typeof mountPanel>) {
+  return wrapper.find('[data-test="npc-operation"]')
+}
+
+/** Toggle 跟随系统 / 自定义 (radio group stub emits on the group). */
+async function setBehaviorMode(wrapper: ReturnType<typeof mountPanel>, mode: 'inherit' | 'custom') {
+  const group = wrapper.findComponent({ name: 'RadioGroup' })
+  expect(group.exists(), 'behaviour radio group must be rendered').toBe(true)
+  group.vm.$emit('update:value', mode)
   await nextTick()
 }
 
@@ -317,53 +360,63 @@ async function clickSave(wrapper: ReturnType<typeof mountPanel>) {
 describe('NodeConfigPanel operation mode (T7)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    nodeDefaultsConfig = { onFailure: 'fail', retry: 0 }
     vi.mocked(unifiedApi.call).mockResolvedValue(TOOL_LIST)
   })
 
-  it('(a) tool with operations → operation selector lists them, no legacy form', async () => {
+  it('(a) tool with operations → operation selector lists them, no parameter rows yet', async () => {
     const wrapper = mountPanel(makeNode({ tool: 'apktool' }))
     await settled()
 
     const selects = panelSelects(wrapper)
-    expect(selects.length).toBe(2) // operation selector + failure strategy
+    expect(selects.length).toBe(1) // operation selector only (behaviour is a radio group)
     const optionLabels = selects[0].findAll('option').map((o) => o.text())
     expect(optionLabels).toEqual(['decode', 'build'])
     // No operation selected yet → no parameter form rendered.
-    expect(wrapper.findAll('.form-item-stub').length).toBe(0)
+    expect(paramRows(wrapper).length).toBe(0)
   })
 
-  it('(b) selecting an operation renders exactly its input ports', async () => {
+  it('(b) selecting an operation renders exactly its input ports with type badges', async () => {
     const wrapper = mountPanel(makeNode({ tool: 'apktool' }))
     await settled()
 
-    await wrapper.find('.n-select-stub').setValue('decode')
+    await operationSelect(wrapper).setValue('decode')
     await nextTick()
-    expect(labels(wrapper)).toEqual(['apk_path', 'output_dir', 'force'])
+    expect(paramNames(wrapper)).toEqual(['apk_path', 'output_dir', 'force'])
+    // Type badges reuse the shared widget-type vocabulary (file / directory / boolean),
+    // and carry the advisory subtype when the port declares one.
+    const badges = paramBadges(wrapper)
+    expect(badges[0]).toContain('workflow.editor.io.types.file')
+    expect(badges[0]).toContain('apk')
+    expect(badges[1]).toContain('workflow.editor.io.types.directory')
+    expect(badges[2]).toContain('workflow.editor.io.types.boolean')
     // Required-ness comes from the operation's port declaration.
-    const items = wrapper.findAll('.form-item-stub')
-    expect(items[0].attributes('data-required')).toBe('true')
-    expect(items[1].attributes('data-required')).toBe('false')
-    expect(items[2].attributes('data-required')).toBe('false')
+    const rows = paramRows(wrapper)
+    expect(rows[0].find('.npc-req').exists()).toBe(true)
+    expect(rows[1].find('.npc-req').exists()).toBe(false)
+    expect(rows[2].find('.npc-req').exists()).toBe(false)
 
-    // Switching operations swaps the port set.
-    await wrapper.find('.n-select-stub').setValue('build')
+    // Switching operations swaps the port set (and carries same-named values).
+    await operationSelect(wrapper).setValue('build')
     await nextTick()
-    expect(labels(wrapper)).toEqual(['source_dir', 'output_apk'])
+    expect(paramNames(wrapper)).toEqual(['source_dir', 'output_dir'])
   })
 
-  it('(c) save writes node.data.operation/inputs and serializes to exact engine params', async () => {
+  it('(c) editing applies immediately and serializes to exact engine params', async () => {
     const node = makeNode({ tool: 'apktool' })
     const wrapper = mountPanel(node)
     await settled()
 
-    await wrapper.find('.n-select-stub').setValue('decode')
+    await operationSelect(wrapper).setValue('decode')
     await nextTick()
-    const items = wrapper.findAll('.form-item-stub')
-    await items[0].find('.n-input-stub').setValue('app.apk')
-    await items[1].find('.n-input-stub').setValue('out')
-    await items[2].find('.n-switch-stub').setValue(true)
-    await clickSave(wrapper)
+    const rows = paramRows(wrapper)
+    await rows[0].find('.n-input-stub').setValue('app.apk')
+    await rows[1].find('.n-input-stub').setValue('out')
+    await rows[2].find('.n-switch-stub').setValue(true)
+    await nextTick()
 
+    // No Save button exists: the edits are already in node.data.
+    expect(wrapper.find('[data-test="npc-save"]').exists()).toBe(false)
     const data = node.data as Record<string, any>
     expect(data.operation).toBe('decode')
     expect(data.inputs).toEqual({ apk_path: 'app.apk', output_dir: 'out', force: true })
@@ -377,27 +430,48 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     )
   })
 
-  it('(d) missing required operation input blocks save with an error message', async () => {
+  it('(c2) switching operations keeps same-named values and drops the rest', async () => {
+    const node = makeNode({
+      tool: 'apktool',
+      operation: 'decode',
+      inputs: { apk_path: 'app.apk', output_dir: 'out' },
+    })
+    const wrapper = mountPanel(node)
+    await settled()
+
+    expect(paramNames(wrapper)).toEqual(['apk_path', 'output_dir', 'force'])
+    await operationSelect(wrapper).setValue('build')
+    await nextTick()
+
+    const data = node.data as Record<string, any>
+    expect(data.operation).toBe('build')
+    // `output_dir` exists in both operations → carried; `apk_path` does not.
+    expect(data.inputs).toEqual({ output_dir: 'out' })
+  })
+
+  it('(d) missing required inputs are summarised, then flagged on the touched field', async () => {
     const node = makeNode({ tool: 'apktool' })
     const wrapper = mountPanel(node)
     await settled()
 
-    await wrapper.find('.n-select-stub').setValue('decode')
+    await operationSelect(wrapper).setValue('decode')
     await nextTick()
-    // fill only the optional ports; required apk_path stays empty
-    await clickSave(wrapper)
 
+    // Untouched empty form: a quiet summary instead of a wall of red.
+    expect(wrapper.text()).toContain('workflow.editor.config.errors.pendingHint')
+    expect(wrapper.text()).not.toContain('workflow.editor.config.errors.missingRequired')
+
+    // Touching the required field and clearing it surfaces the field-level error.
+    const row = paramRows(wrapper)[0]
+    await row.find('.n-input-stub').setValue('app.apk')
+    await nextTick()
+    await row.find('.n-input-stub').setValue('')
+    await nextTick()
     expect(wrapper.text()).toContain('workflow.editor.config.errors.missingRequired')
-    const data = node.data as Record<string, any>
-    expect(data.operation).toBeUndefined()
-    expect(data.inputs).toBeUndefined()
-    const doc = serializeWorkflow([node], [], { name: 'wf' })
-    expect(doc.nodes[0].params).toEqual({})
+    expect((node.data as Record<string, any>).inputs).toEqual({})
   })
 
-  it('(d2) clearing a saved operation blocks save with noOperation error', async () => {
-    // Node carries a previously saved operation (hydrate path, as after a
-    // template load); the user clears the selector → save must be blocked.
+  it('(d2) clearing the operation drops the operation state', async () => {
     const node = makeNode({
       tool: 'apktool',
       operation: 'decode',
@@ -406,14 +480,14 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    expect(wrapper.find('.n-select-stub').exists()).toBe(true)
-    await wrapper.find('.n-select-stub').setValue('')
+    await operationSelect(wrapper).setValue('')
     await nextTick()
-    await clickSave(wrapper)
 
-    expect(wrapper.text()).toContain('workflow.editor.config.errors.noOperation')
     const data = node.data as Record<string, any>
-    expect(data.operation).toBe('decode') // blocked: previous state untouched
+    expect(data.operation).toBeUndefined()
+    expect(data.inputs).toBeUndefined()
+    // The panel now asks for an operation again (and the page blocks saving).
+    expect(wrapper.text()).toContain('workflow.editor.config.operationPlaceholder')
   })
 
   it('(e) builtin tool keeps the legacy free-form params path and serialization', async () => {
@@ -424,12 +498,12 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    // No operation selector for builtin/legacy tools — only the failure strategy.
-    expect(panelSelects(wrapper).length).toBe(1)
-    expect(labels(wrapper)).toEqual(['path'])
+    // No operation selector for builtin/legacy tools.
+    expect(panelSelects(wrapper).length).toBe(0)
+    expect(paramNames(wrapper)).toEqual(['path'])
 
-    await wrapper.find('.form-item-stub .n-input-stub').setValue('/tmp/x.txt')
-    await clickSave(wrapper)
+    await paramRows(wrapper)[0].find('.n-input-stub').setValue('/tmp/x.txt')
+    await nextTick()
 
     const data = node.data as Record<string, any>
     expect(data.params).toEqual({ path: '/tmp/x.txt' })
@@ -456,12 +530,12 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     await settled()
 
     // Operation selector shows the hydrated operation; bindings are visible.
-    expect(wrapper.find('.n-select-stub').exists()).toBe(true)
-    expect(labels(wrapper)).toEqual(['apk_path', 'output_dir', 'force'])
-    const items = wrapper.findAll('.form-item-stub')
-    expect((items[0].find('.n-input-stub').element as HTMLInputElement).value).toBe('$inputs.apk_path')
-    expect((items[1].find('.n-input-stub').element as HTMLInputElement).value).toBe('$inputs.output_dir')
-    expect((items[2].find('.n-switch-stub').element as HTMLInputElement).checked).toBe(true)
+    expect(operationSelect(wrapper).exists()).toBe(true)
+    expect(paramNames(wrapper)).toEqual(['apk_path', 'output_dir', 'force'])
+    const rows = paramRows(wrapper)
+    expect((rows[0].find('.n-input-stub').element as HTMLInputElement).value).toBe('$inputs.apk_path')
+    expect((rows[1].find('.n-input-stub').element as HTMLInputElement).value).toBe('$inputs.output_dir')
+    expect((rows[2].find('.n-switch-stub').element as HTMLInputElement).checked).toBe(true)
 
     // Re-serialize: byte-identical params shape (key order included).
     const reserialized = serializeWorkflow(doc.nodes, doc.edges, { name: decompileExample.name })
@@ -475,18 +549,17 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    await wrapper.find('.n-select-stub').setValue('configure')
+    await operationSelect(wrapper).setValue('configure')
     await nextTick()
 
     const selects = panelSelects(wrapper)
-    expect(selects.length).toBe(4) // operation selector + mode + tags + failure strategy
+    expect(selects.length).toBe(3) // operation selector + mode + tags
     expect(selects[1].findAll('option').map((o) => o.text())).toEqual(['alpha', 'beta', 'gamma'])
     expect(selects[2].findAll('option').map((o) => o.text())).toEqual(['x', 'y'])
 
     await selects[1].setValue('beta')
     await selects[2].setValue(['x', 'y'])
     await nextTick()
-    await clickSave(wrapper)
 
     const data = node.data as Record<string, any>
     expect(data.operation).toBe('configure')
@@ -501,11 +574,11 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    await wrapper.find('.n-select-stub').setValue('configure')
+    await operationSelect(wrapper).setValue('configure')
     await nextTick()
     const selects = panelSelects(wrapper)
     await selects[1].setValue('alpha') // required single-select filled
-    await clickSave(wrapper)
+    await nextTick()
 
     const doc = serializeWorkflow([node], [], { name: 'wf' })
     expect(doc.nodes[0].params).toEqual({ operation: 'configure', mode: 'alpha' })
@@ -521,11 +594,11 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     const wrapper = mountPanel(node)
     await settled()
 
-    expect(panelSelects(wrapper).length).toBe(1) // no operation selector, only failure strategy
-    expect(labels(wrapper)).toEqual(['input_text', 'count'])
+    expect(panelSelects(wrapper).length).toBe(0) // no operation selector
+    expect(paramNames(wrapper)).toEqual(['input_text', 'count'])
 
-    await wrapper.find('.form-item-stub .n-input-stub').setValue('hello')
-    await clickSave(wrapper)
+    await paramRows(wrapper)[0].find('.n-input-stub').setValue('hello')
+    await nextTick()
 
     const data = node.data as Record<string, any>
     expect(data.params).toEqual({ input_text: 'hello' })
@@ -542,20 +615,138 @@ describe('NodeConfigPanel operation mode (T7)', () => {
     await settled()
 
     const selects = panelSelects(wrapper)
-    expect(selects.length).toBe(2) // operation selector + failure strategy
+    expect(selects.length).toBe(1) // operation selector only
     expect(selects[0].findAll('option').map((o) => o.text())).toEqual(['transform'])
-    expect(wrapper.findAll('.form-item-stub').length).toBe(0) // no op selected yet
+    expect(paramRows(wrapper).length).toBe(0) // no op selected yet
 
     await selects[0].setValue('transform')
     await nextTick()
-    expect(labels(wrapper)).toEqual(['value'])
+    expect(paramNames(wrapper)).toEqual(['value'])
 
-    await wrapper.find('.form-item-stub .n-input-stub').setValue('abc')
-    await clickSave(wrapper)
+    await paramRows(wrapper)[0].find('.n-input-stub').setValue('abc')
+    await nextTick()
 
     const data = node.data as Record<string, any>
     expect(data.operation).toBe('transform')
     expect(data.inputs).toEqual({ value: 'abc' })
     expect(data.params).toBeUndefined()
+  })
+})
+
+describe('NodeConfigPanel identity + behaviour', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    nodeDefaultsConfig = { onFailure: 'fail', retry: 0 }
+    vi.mocked(unifiedApi.call).mockResolvedValue(TOOL_LIST)
+  })
+
+  it('shows the auto-generated id read-only and edits the node name', async () => {
+    const node = makeNode({ tool: 'file.read', ports: FILEREAD.ports }, 'tool-file-read-7')
+    const wrapper = mountPanel(node)
+    await settled()
+
+    // The id is a read-only label, not an input.
+    const id = wrapper.find('[data-test="npc-id"]')
+    expect(id.exists()).toBe(true)
+    expect(id.text()).toBe('tool-file-read-7')
+
+    const name = wrapper.find('[data-test="npc-name"]')
+    expect((name.element as HTMLInputElement).value).toBe('file.read')
+    await name.setValue('读取配置')
+    await nextTick()
+    expect((node.data as Record<string, any>).label).toBe('读取配置')
+
+    // Clearing the name falls back to the tool name (the key is dropped).
+    await name.setValue('  ')
+    await nextTick()
+    expect((node.data as Record<string, any>).label).toBeUndefined()
+  })
+
+  it('defaults to 跟随系统: no behaviour fields, summary shows the settings defaults', async () => {
+    nodeDefaultsConfig = { onFailure: 'skip', retry: 2 }
+    const node = makeNode({ tool: 'file.read', ports: FILEREAD.ports })
+    const wrapper = mountPanel(node)
+    await settled()
+
+    const data = node.data as Record<string, any>
+    expect(data.on_failure).toBeUndefined()
+    expect(data.retry).toBeUndefined()
+    expect(wrapper.text()).toContain('workflow.editor.config.behavior.inheritSummary')
+    // The wire document stays "inherit" (no keys at all).
+    const doc = serializeWorkflow([node], [], { name: 'wf' })
+    expect(doc.nodes[0]).not.toHaveProperty('on_failure')
+    expect(doc.nodes[0]).not.toHaveProperty('retry')
+  })
+
+  it('switching to 自定义 prefills the effective defaults and writes them', async () => {
+    nodeDefaultsConfig = { onFailure: 'skip', retry: 2 }
+    const node = makeNode({ tool: 'file.read', ports: FILEREAD.ports })
+    const wrapper = mountPanel(node)
+    await settled()
+
+    await setBehaviorMode(wrapper, 'custom')
+    const data = node.data as Record<string, any>
+    expect(data.on_failure).toBe('skip')
+    expect(data.retry).toBe(2)
+
+    // Editing either field applies immediately.
+    await wrapper.find('[data-test="npc-on-failure"]').setValue('fail')
+    await wrapper.find('[data-test="npc-retry"]').setValue('5')
+    await nextTick()
+    expect(data.on_failure).toBe('fail')
+    expect(data.retry).toBe(5)
+
+    const doc = serializeWorkflow([node], [], { name: 'wf' })
+    expect(doc.nodes[0].on_failure).toBe('fail')
+    expect(doc.nodes[0].retry).toBe(5)
+
+    // Back to 跟随系统 → the node stops pinning values.
+    await setBehaviorMode(wrapper, 'inherit')
+    expect(data.on_failure).toBeUndefined()
+    expect(data.retry).toBeUndefined()
+  })
+
+  it('a node with pinned behaviour opens in 自定义 mode', async () => {
+    const node = makeNode({
+      tool: 'file.read',
+      ports: FILEREAD.ports,
+      on_failure: 'skip',
+      retry: 3,
+    })
+    const wrapper = mountPanel(node)
+    await settled()
+
+    expect(wrapper.find('[data-test="npc-on-failure"]').exists()).toBe(true)
+    expect((wrapper.find('[data-test="npc-on-failure"]').element as HTMLSelectElement).value).toBe('skip')
+    expect((wrapper.find('[data-test="npc-retry"]').element as HTMLInputElement).value).toBe('3')
+    expect(wrapper.text()).not.toContain('workflow.editor.config.behavior.inheritSummary')
+  })
+
+  it('collapses optional parameters once there are more than three', async () => {
+    const node = makeNode({ tool: 'exec.shell', ports: SHELLEXEC.ports })
+    const wrapper = mountPanel(node)
+    await settled()
+
+    // Required first, optionals hidden behind the toggle.
+    expect(paramNames(wrapper)).toEqual(['command'])
+    const toggle = wrapper.find('[data-test="npc-optional-toggle"]')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.text()).toContain('workflow.editor.config.optional.expand')
+
+    await toggle.trigger('click')
+    await nextTick()
+    expect(paramNames(wrapper)).toEqual(['command', 'cwd', 'timeout', 'env', 'shell'])
+  })
+
+  it('does not render the delete button without a node and emits delete for a node', async () => {
+    const empty = mountPanel(null)
+    await settled()
+    expect(empty.text()).toContain('workflow.editor.config.noSelection')
+
+    const node = makeNode({ tool: 'file.read', ports: FILEREAD.ports })
+    const wrapper = mountPanel(node)
+    await settled()
+    await wrapper.find('[data-test="npc-delete"]').trigger('click')
+    expect(wrapper.emitted('delete')).toEqual([['node-1']])
   })
 })

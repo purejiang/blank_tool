@@ -101,4 +101,15 @@ describe('appStore config defaults', () => {
     expect(appStore.get('autoDeleteOutputOnTaskRemove')).toBeUndefined()
     expect(isWritableConfigKey('autoDeleteOutputOnTaskRemove')).toBe(false)
   })
+
+  it('exposes the node behaviour defaults as a writable group', async () => {
+    const { default: appStore, isWritableConfigKey, getConfigValue } = await import('../../../src/main/stores/appStore')
+
+    // Nodes that follow the system defaults read these; a missing/malformed
+    // value must still resolve to the built-in behaviour on the renderer side.
+    expect(appStore.get('nodes')).toEqual({ onFailure: 'fail', retry: 0 })
+    expect(isWritableConfigKey('nodes')).toBe(true)
+    expect(isWritableConfigKey('nodes.onFailure')).toBe(true)
+    expect(getConfigValue('nodes')).toEqual({ onFailure: 'fail', retry: 0 })
+  })
 })

@@ -108,7 +108,7 @@ describe('serializeWorkflow', () => {
     expect(result.nodes[0].next).toBe('b') // first outgoing edge wins
   })
 
-  it('carries node tool/params and applies backend defaults for absent advanced fields', () => {
+  it('carries node tool/params and OMITS behaviour fields the node does not pin', () => {
     const nodes = [makeNode('a', 'net.download', { params: { url: 'https://example.com/app.apk' } })]
 
     const result = serializeWorkflow(nodes, [], META)
@@ -117,8 +117,9 @@ describe('serializeWorkflow', () => {
     expect(node.tool).toBe('net.download')
     expect(node.params).toEqual({ url: 'https://example.com/app.apk' })
     expect(node.type).toBe('step')
-    expect(node.on_failure).toBe('fail')
-    expect(node.retry).toBe(0)
+    // Absent = 「跟随系统」: the engine then applies the run-level node defaults.
+    expect(node).not.toHaveProperty('on_failure')
+    expect(node).not.toHaveProperty('retry')
     expect(node.next).toBeNull()
   })
 
@@ -232,7 +233,7 @@ describe('deserializeWorkflow', () => {
     expect(() => deserializeWorkflow(json)).toThrowError(/duplicate node id: 'a'/)
   })
 
-  it('preserves node behavior fields and drops retired node fields', () => {
+  it('preserves pinned node behaviour fields and drops retired node fields', () => {
     const nodes = [
       makeNode('a', 'exec.shell', {
         on_failure: 'skip',
@@ -254,9 +255,78 @@ describe('deserializeWorkflow', () => {
     expect(restored.nodes[0].data).not.toHaveProperty('condition')
     expect(restored.nodes[0].data).not.toHaveProperty('on_success')
     expect(restored.nodes[0].data).not.toHaveProperty('type')
-    // Defaults are NOT re-stored on canvas data.
+    // Unpinned nodes stay unpinned on canvas data (「跟随系统」).
     expect(restored.nodes[1].data.on_failure).toBeUndefined()
     expect(restored.nodes[1].data.retry).toBeUndefined()
+  })
+
+  it('treats null behaviour fields as "inherit" instead of a pinned value', () => {
+    // Python's to_dict emits null for an unset field; that must NOT become a
+    // pinned "fail"/0 on the canvas, or the panel would show 自定义.
+    const json: WorkflowDefinitionJSON = {
+      name: 'wf-null-behaviour',
+      nodes: [
+        { id: 'a', type: 'step', tool: 'file.read', params: {}, next: null, label: null, on_failure: null, retry: null },
+      ],
+    }
+
+    const restored = deserializeWorkflow(json)
+    expect(restored.nodes[0].data.on_failure).toBeUndefined()
+    expect(restored.nodes[0].data.retry).toBeUndefined()
+    expect(validateOnDeserialize(json)).toEqual([])
+    // Serializing again keeps the node unpinned (round-trip stable).
+    const again = serializeWorkflow(restored.nodes, restored.edges, restored.meta)
+    expect(again.nodes[0]).not.toHaveProperty('on_failure')
+    expect(again.nodes[0]).not.toHaveProperty('retry')
+  })
+
+  it('rejects invalid behaviour values (same rules as the backend)', () => {
+    const json = validChainJSON() as any
+    json.nodes[0].on_failure = 'explode'
+    json.nodes[1].retry = -1
+    json.nodes[2].retry = 1.5
+
+    const errors = validateOnDeserialize(json)
+    expect(errors.some((e) => e.includes("invalid on_failure 'explode'"))).toBe(true)
+    expect(errors.some((e) => e.includes("invalid retry '-1'"))).toBe(true)
+    expect(errors.some((e) => e.includes("invalid retry '1.5'"))).toBe(true)
+  })
+})
+
+describe('node labels (display names)', () => {
+  it('emits a label only when it says something the tool name does not', () => {
+    const nodes = [
+      makeNode('a', 'file.read'),
+      makeNode('b', 'file.read', { label: 'file.read' }),
+      makeNode('c', 'file.read', { label: '  读取配置  ' }),
+    ]
+
+    const result = serializeWorkflow(nodes, [], META)
+
+    expect(result.nodes[0]).not.toHaveProperty('label')
+    expect(result.nodes[1]).not.toHaveProperty('label')
+    expect(result.nodes[2].label).toBe('读取配置')
+  })
+
+  it('round-trips a custom label and falls back to the tool name', () => {
+    const json: WorkflowDefinitionJSON = {
+      name: 'wf-labels',
+      nodes: [
+        { id: 'a', type: 'step', tool: 'file.read', params: {}, next: 'b', label: '读取配置' },
+        { id: 'b', type: 'step', tool: 'file.write', params: {}, next: 'c' },
+        { id: 'c', type: 'step', tool: 'file.write', params: {}, next: null, label: null },
+      ],
+    }
+
+    const restored = deserializeWorkflow(json)
+    expect(restored.nodes[0].data.label).toBe('读取配置')
+    expect(restored.nodes[1].data.label).toBe('file.write')
+    expect(restored.nodes[2].data.label).toBe('file.write')
+
+    const again = serializeWorkflow(restored.nodes, restored.edges, restored.meta)
+    expect(again.nodes[0].label).toBe('读取配置')
+    expect(again.nodes[1]).not.toHaveProperty('label')
+    expect(again.nodes[2]).not.toHaveProperty('label')
   })
 })
 
