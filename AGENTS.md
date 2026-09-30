@@ -5,7 +5,8 @@
 ## 常用命令
 
 ```bash
-npm run dev          # 启动开发模式（仅运行 vite；vite-plugin-electron 自动拉起 Electron 主进程/preload）
+npm run dev          # 启动开发模式（node scripts/dev.mjs 包装 vite；vite-plugin-electron 自动拉起 Electron 主进程/preload）
+npm run doctor       # 自检 Electron 能否在本机跑起来（--version + 最小探针 App；失败退出码 1）
 npm run lint         # vue-tsc --noEmit --pretty false（非 ESLint，是 Vue 类型检查）
 npm run typecheck    # vue-tsc --noEmit（带详细输出）
 npm run test         # vitest run（仅跑 TS 单测 + 集成测试）
@@ -18,6 +19,8 @@ npm run release     # 一键发版（流程见下方"发版流程"）
 ```
 
 Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。Vite 的 `root` 是 `src/`，不是项目根。
+
+**`npm run dev` 末尾报 `ERROR: The process "NNNN" not found.` 是什么**：那不是 vite 的报错，而是**构建成功、Electron 被拉起后立刻退出**的信号。vite-plugin-electron 在 Electron 退出时用 `process.electronApp.once('exit', process.exit)` 连带结束 vite，随后 `treeKillSync` 用 `taskkill /pid <已死 PID>` 清理，终端里就只剩这行 taskkill 噪音（`node_modules/vite-plugin-electron/dist/index.mjs`，`scripts/dev.mjs` 会在退出时把它解释清楚）。第二种形态是 `App threw an error during load` + `Error: EPERM ... app-config.json.tmp-...` —— Electron 起来了但**进程内写不了** `%APPDATA%\blanks`（`electron-store` 在 `src/main/stores/appStore.ts` 加载期就要写）。这条已实测到根因：在 Electron 进程里**读得到、写不了**，新建/覆盖/追加/mkdir/rename **全部 EPERM 且连 `%TEMP%` 也一样**，而 node.exe / PowerShell 写同一路径正常（连 `ELECTRON_RUN_AS_NODE=1` 的 electron.exe 都写不了）→ 限制挂在 `electron.exe` 这个镜像上，是安全产品在按"只读容器/沙箱"运行它；此时 vite 不会退出、Electron 卡在错误对话框上。**先跑 `npm run doctor`** 区分两种情况：①Electron 本身在这台机器上跑不起来（`electron --version` 都非 0 退出、事件日志里有 electron.exe 的 `0xC0000005`、日志里有 `crashpad ... not connected` —— 安全软件拦截/系统问题，代码改不动，见 `docs/04-开发指南.md`）；②`doctor` 过了但 dev 仍失败，那才是工程侧问题，去读 vite 自己的输出。
 
 ### 无头 CLI（cli/cli.py）
 

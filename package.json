@@ -4,7 +4,8 @@
   "main": "dist/main/main.js",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "doctor": "node scripts/doctor.mjs",
     "lint": "vue-tsc --noEmit --pretty false",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
