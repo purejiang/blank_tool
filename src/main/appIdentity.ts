@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { installDevDataRoot } from './dataRoot'
 
 /**
  * 应用品牌名：同时决定 Electron 的 userData 目录
@@ -26,3 +27,14 @@ export const APP_NAME = 'blanks'
 export const APP_ID = 'com.cyanrain.blanks'
 
 app.setName(APP_NAME)
+
+/**
+ * `app.setName()` 之后、`electron-store` 构造之前，最后一件事：确认默认数据目录
+ * （`%APPDATA%\blanks`）真的写得进去。写不进去时（安全软件/系统策略拦 electron.exe
+ * 写 C: 用户区域）把 userData 整体挪到候选目录，否则 `electron-store` 会在模块加载期
+ * 直接抛 `EPERM ... app-config.json.tmp-...`，App 停在一个截断的模态框上。
+ *
+ * 实测结论、候选顺序与边界都写在 `src/main/dataRoot.ts` 顶部的注释里。
+ * dev 之外（`app.isPackaged`）或没有 dev 标记时本调用什么都不做。
+ */
+installDevDataRoot()

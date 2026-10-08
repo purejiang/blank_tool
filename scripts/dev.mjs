@@ -60,9 +60,15 @@ function printDiagnosis(exitCode, bundleMtime) {
   console.error('[dev] 另一类失败长这样（这时 vite 不会退出，Electron 卡在错误对话框上）：');
   console.error('[dev]   App threw an error during load');
   console.error('[dev]   Error: EPERM: operation not permitted, open ...\\blanks\\app-config.json.tmp-...');
-  console.error('[dev] 那是 Electron 进程写不了 %APPDATA%\\blanks（安全软件的文件保护/防勒索在拦');
-  console.error('[dev] "写 tmp 再 rename"）—— 把该目录加白名单或临时关掉防勒索；`npm run doctor` 的');
-  console.error('[dev] 探针 App 会复现这一项。');
+  console.error('[dev] 那是 Electron 进程写不了数据目录。看应用自己打印的 [blanks] 行分辨三档：');
+  console.error('[dev]   ① 只写不了 %APPDATA%\\blanks（安全软件按 C: 用户区域拦 electron.exe）');
+  console.error('[dev]      → src/main/dataRoot.ts 已自动回退到 <仓库>\\.dev-data，dev 正常起；');
+  console.error('[dev]        想换位置：设 BLANKS_DEV_DATA_DIR=<目录>。');
+  console.error('[dev]   ② 打印「所有候选数据目录都写不进去」→ 当前环境下 Electron 写不了任何文件，代码改不动，');
+  console.error('[dev]      只能机器侧处理：放行 node_modules\\electron\\dist\\electron.exe，或换机器。');
+  console.error('[dev]   ③ 你是在 AI 工具（DSH workspace-write 沙箱）里跑的 dev —— 沙箱只授予工作区与私有临时目录，');
+  console.error('[dev]      %APPDATA% 必被拒。请在自己的终端里跑 npm run dev。');
+  console.error('[dev] 判定命令（必须在**不带沙箱**的终端里跑，否则结论只反映沙箱）：npm run doctor');
   console.error(`[dev] ${line}\n`);
 }
 

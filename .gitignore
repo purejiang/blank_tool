@@ -4,6 +4,8 @@
 /cache/
 /output/
 dist/
+# dev 数据目录回退（默认 userData 写不进去时用，见 src/main/dataRoot.ts）
+/.dev-data/
 package.json.bak
 .codegraph/
 .omo/

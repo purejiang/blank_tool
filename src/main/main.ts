@@ -2,6 +2,7 @@
 // （%APPDATA%\blanks），必须在 electron-store（./stores/index）构造之前生效。
 import './appIdentity';
 import { APP_ID } from './appIdentity';
+import { releaseDevStartupGuard } from './dataRoot';
 import { app, BrowserWindow } from 'electron';
 import { setupAllHandlers } from './ipc/index';
 import { initAutoUpdater, autoCheckForUpdates, isUpdateInstallInProgress } from './updater/updater';
@@ -17,6 +18,10 @@ import { ensurePythonService } from './python/service';
 import { appStore } from './stores/index';
 
 app.whenReady().then(async () => {
+  // 启动期已过：把 dev 的未捕获异常处理交还给 Electron 默认行为（弹窗 + 保活），
+  // 免得运行期一个偶发同步异常变成"悄悄退出"。见 src/main/dataRoot.ts。
+  releaseDevStartupGuard();
+
   const logsConfig = appStore.get('logs') as { level?: string } | undefined;
   const logLevel: LogLevel = (logsConfig?.level as LogLevel) || 'info';
   configureLogging(logLevel);

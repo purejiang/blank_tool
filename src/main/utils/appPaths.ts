@@ -2,6 +2,7 @@ import { app } from 'electron'
 import path from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import { APP_NAME } from '../appIdentity'
+import { getLocalDataOverride } from '../dataRoot'
 
 /**
  * 获取应用本地数据目录 (机器专属，不应随用户账号漫游)
@@ -17,8 +18,15 @@ import { APP_NAME } from '../appIdentity'
  * 由 `app.setName()` 决定，同样在 appIdentity.ts 里收口。
  *
  * 适用于：缓存、输出文件、下载文件等大容量或机器专属数据
+ *
+ * dev 模式例外：默认目录写不进去时 `dataRoot.ts` 会把数据根整体挪到工作区/临时目录，
+ * 这里跟着返回那个覆盖值（非 dev、或默认目录可写时恒为 null，行为与以前一致）。
  */
 export function getAppLocalDataPath(): string {
+  const override = getLocalDataOverride()
+  if (override) {
+    return override
+  }
   if (process.platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local')
     return path.join(localAppData, APP_NAME)
