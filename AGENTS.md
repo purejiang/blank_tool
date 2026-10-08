@@ -2,6 +2,8 @@
 
 本文件为 OpenCode / Claude Code 会话提供本仓库的工作指引。仅记录容易踩坑、文件名看不出来、与默认约定不同的高信号信息。
 
+> **仓库沿革（2026-10 拆分）**：本项目原名 Blank Tool，仓库 `purejiang/blank_tool`（`backend/` 的 Android 设备自动化工具）仍在原仓库维护，发版与自动更新都指向它。Blanks 是 2026-08-03 起在同一仓库 `workflow` 分支上重写的另一条线（后端 `backend/` → `cli/`，能力换成工作流编排），现已拆分为独立仓库 `purejiang/blanks`——本仓库即拆分结果，`main` 是发布基线、`dev` 是日常开发线。两仓库共享 2026-08-03 之前的历史，互相 `cherry-pick` 修 bug 仍可行（对象一致、SHA 不变）；`blank_tool` 仓库里的 "Blank Tool" 字样属于那条线，**不要照抄回本仓库**。
+
 ## 常用命令
 
 ```bash
@@ -162,7 +164,7 @@ Python Backend (cli/main.py)
 
 **数据目录不经 appStore**：`cache/`、`output/`、`tasks/`、`logs/` 固定为 `%LOCALAPPDATA%\blanks\`（macOS `~/Library/Caches/blanks/`、Linux `~/.cache/blanks/`）下的子目录，由 `src/main/python/service.ts` 注入 `BT_CACHE_DIR` / `BT_OUTPUT_DIR` / `BT_TASKS_DIR` / `BT_LOG_DIR`，**不可配置**。目录名收口在 `src/main/appIdentity.ts`（`APP_NAME = 'blanks'`）：同一个常量既喂 `app.setName()`（决定 userData `%APPDATA%\blanks`，放 `app-config.json` 与渲染层 localStorage）又喂 `appPaths.getAppLocalDataPath()`；该模块**必须是 `main.ts` 的第一个 import**（electron-store 模块构造时就定死 userData），改名会同时重置主题/语言与 localStorage。旧的 `blank_tool` 目录**刻意不迁移**、原样保留。`appStore` 里曾有的 `output.output` 与 `javaPath` 是**死键**（可写但无人读），已随 WP10 删除（`APP_CONFIG_VERSION` 7→8 的 `MIGRATIONS[7]` 清理老库残留）；设置页路径组**只支持 `runtime` / `server` 两个键**（`settings.getViewModel` / `settings.resolvePaths`），加键要同时改 schema、`WRITABLE_CONFIG_KEYS` 与 `getSettingsViewModel`/`resolveSettingsPaths`。**dev 例外**：默认数据目录写不进去时，`src/main/dataRoot.ts` 会把 userData 与这个本地数据根一起回退到 `<仓库>\.dev-data\{userData,local}`（见上文 EPERM 段），打包版不参与。
 
-**应用身份三处必须一致（改名时最容易只改一半）**：`APP_NAME`（userData/数据目录名）、`APP_ID`（`appIdentity.ts`，喂 Windows 的 `app.setAppUserModelId`）、`package.json > build.appId`（electron-builder 把它写进快捷方式的 AUMID）。AUMID 是 **Windows 判定"这是哪个应用"的依据**——任务栏分组与固定、通知归属、跳转列表都看它；两边不一致时窗口会挂到**旧 AUMID 那个应用**上（2026-09-29 实测：改名后运行仍与旧的 `Blank Tool` 挤同一任务栏分组，固定新快捷方式也对不上，且不报错）。`main.ts` **必须引用 `APP_ID` 常量，不得写死 `com.cyanrain.*` 字面量**；守卫见 `tests/unit/main/appIdentity.test.ts`（同时核对 `productName` / `artifactName`）。注意 `package.json` 的 `name`/`appId` 目前是**未提交**的工作区改动（HEAD 里仍是 `blank_tool` / `com.cyanrain.blank-tool`）。
+**应用身份三处必须一致（改名时最容易只改一半）**：`APP_NAME`（userData/数据目录名）、`APP_ID`（`appIdentity.ts`，喂 Windows 的 `app.setAppUserModelId`）、`package.json > build.appId`（electron-builder 把它写进快捷方式的 AUMID）。AUMID 是 **Windows 判定"这是哪个应用"的依据**——任务栏分组与固定、通知归属、跳转列表都看它；两边不一致时窗口会挂到**旧 AUMID 那个应用**上（2026-09-29 实测：改名后运行仍与旧的 `Blank Tool` 挤同一任务栏分组，固定新快捷方式也对不上，且不报错）。`main.ts` **必须引用 `APP_ID` 常量，不得写死 `com.cyanrain.*` 字面量**；守卫见 `tests/unit/main/appIdentity.test.ts`（同时核对 `productName` / `artifactName`）。`package.json` 的 `name` / `appId` / `productName` / `artifactName` 已是 `blanks` / `com.cyanrain.blanks` / `Blanks` 口径并已提交，改名时这几处必须一起动。
 
 ### 安全边界（Security boundary / trust model）
 

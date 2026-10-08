@@ -81,7 +81,7 @@ npm run release -- --dry-run   # 仅预览版本号与 release notes，不做修
 ## 项目结构
 
 ```
-blank_tool/
+blanks/
 ├── cli/                        # Python 后端
 │   ├── app/
 │   │   ├── handlers/           # API 处理器 (app, cache, env, log, task, template, tool, workflow)
