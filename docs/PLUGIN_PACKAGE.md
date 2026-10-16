@@ -41,7 +41,8 @@ zip 根目录直接放 `manifest.json`，或所有文件包在**一个**顶层�
 
 **优先级**：模块属性（`DESCRIPTION/VERSION/AUTHOR/PARAMS`）> manifest 同名字段。
 
-本地可导入的实例见 `output/plugin-samples/`（`scrcpy-mirror.zip` / `jadx-gui.zip`，未纳入版本库）；
+本地可导入的实例见 `output/plugin-samples/`（`scrcpy-mirror.zip` / `jadx-gui.zip` /
+`decrypt-sdk.zip`，未纳入版本库）；
 自己写的插件也能用插件页「导出」生成一份带 manifest 的包当模板。
 
 ## 二、导入 / 导出
