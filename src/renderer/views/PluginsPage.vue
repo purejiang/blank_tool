@@ -5,34 +5,35 @@
         <h2 class="app-page-title">{{ t('plugins.title') }}</h2>
         <p class="app-page-sub">{{ t('plugins.subtitle') }}</p>
       </div>
-      <div class="head-actions">
-        <n-button size="small" quaternary @click="onImport">
-          <template #icon><n-icon><Upload /></n-icon></template>
-          {{ t('plugins.import') }}
-        </n-button>
-        <n-button size="small" quaternary :disabled="!selected" @click="onExport">
-          <template #icon><n-icon><Download /></n-icon></template>
-          {{ t('plugins.export') }}
-        </n-button>
-      </div>
     </div>
 
     <div class="pl-cols">
       <!-- LEFT: plugin list -->
       <aside class="pl-col pl-left">
-        <!-- 重新加载是全局动作（重扫内置 + 用户目录），所以只放这里一处，
-             不在每个 item 上重复一个「重新加载」——那样点哪个都刷全部，误导。 -->
+        <!-- 重新加载 / 导入都是全局动作（重扫内置 + 用户目录 / 装入一个新插件包），
+             所以留在列表头右侧一处，不在每个 item 上重复——那样点哪个都刷全部，误导。
+             图标方向按「容器」语义：导入 = 箭头指向列表内（Import），导出 = 箭头指离
+             列表（Upload）。这与设备页/任务页那批「把产物保存到本机」（Download /
+             FileDown）是两套语义，别按字面统一——那批没有容器，方向指本机磁盘。 -->
         <div class="pl-left-head app-subhead app-subhead--sm">
           <span>{{ t('plugins.listLabel') }}</span>
-          <n-button
-            size="tiny"
-            quaternary
-            :loading="reloading"
-            @click="onReload"
-          >
-            <template #icon><n-icon><RotateCcw /></n-icon></template>
-            {{ t('plugins.reload') }}
-          </n-button>
+          <div class="app-subhead-actions">
+            <IconButton
+              :icon="Import"
+              :label="t('plugins.import')"
+              size="tiny"
+              quaternary
+              @click="onImport"
+            />
+            <IconButton
+              :icon="RotateCcw"
+              :label="t('plugins.reload')"
+              :loading="reloading"
+              size="tiny"
+              quaternary
+              @click="onReload"
+            />
+          </div>
         </div>
         <n-scrollbar class="pl-scroll">
           <div v-if="!plugins.length && !loading" class="pl-empty app-empty-note">{{ t('plugins.empty') }}</div>
@@ -47,7 +48,18 @@
               <span class="pl-name" :title="pluginLabel(p)">{{ pluginLabel(p) }}</span>
               <n-tag v-if="p.builtin" size="tiny" :bordered="false" class="pl-kind">{{ t('plugins.builtin') }}</n-tag>
               <n-tag size="tiny" :bordered="false" class="pl-ver">{{ p.version }}</n-tag>
-              <!-- 删除是逐项动作 → 挂在每项右端（刷新/导入/导出是全局或选中态动作，留在页头） -->
+              <!-- 导出 / 删除都是逐项动作 → 挂在每项右端（导入 / 重新加载是列表级动作，
+                   留在列表头），顺序固定为「导出 删除」，删除永远在最右。
+                   导出用 Upload（箭头离开容器），与列表头的 Import 构成进/出一对镜像。 -->
+              <IconButton
+                :icon="Upload"
+                :label="t('plugins.export')"
+                size="tiny"
+                quaternary
+                circle
+                class="pl-act"
+                @click.stop="onExport(p)"
+              />
               <IconButton
                 :icon="Trash2"
                 :label="t('plugins.delete')"
@@ -56,7 +68,7 @@
                 quaternary
                 circle
                 type="error"
-                class="pl-del"
+                class="pl-act"
                 @click.stop="onDelete(p)"
               />
             </div>
@@ -205,7 +217,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NCheckbox, NIcon, NInput, NInputNumber, NScrollbar, NTag, useDialog, useMessage } from 'naive-ui'
-import { Download, FolderOpen, Play, RotateCcw, Square, Trash2, Upload } from 'lucide-vue-next'
+import { FolderOpen, Import, Play, RotateCcw, Square, Trash2, Upload } from 'lucide-vue-next'
 import pluginService, { type PluginInfo } from '@services/PluginService'
 import serviceManager from '@services/ServiceManager'
 import { useDeviceStore } from '@stores/deviceStore'
@@ -571,12 +583,9 @@ async function onImport() {
   }
 }
 
-async function onExport() {
-  const p = selected.value
-  if (!p) {
-    message.warning(t('plugins.exportNeedSelect'))
-    return
-  }
+/** 逐项导出：目标插件由所在行决定，不再依赖右侧选中态（选中态为空时的那条
+ *  「先去左侧选一个」提示因此一并消失），行内点击不再顺带切换选中。 */
+async function onExport(p: PluginInfo) {
   const api = window.electronAPI as any
   const res = await api.showSaveDialog({
     title: t('plugins.export'),
@@ -726,7 +735,6 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
 }
-.head-actions { display: flex; gap: 8px; }
 
 .pl-cols {
   flex: 1;
@@ -765,9 +773,9 @@ onUnmounted(() => {
 .pl-name { flex: 1; min-width: 0; font-size: var(--app-font-size-md); font-weight: 600; color: var(--app-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl-ver { flex: none; font-variant-numeric: tabular-nums; }
 .pl-kind { flex: none; opacity: .75; }
-/* per-item delete: dimmed until the row is hovered/selected */
-.pl-del { flex: none; opacity: .5; transition: opacity .12s ease; }
-.pl-item:hover .pl-del, .pl-item.active .pl-del { opacity: 1; }
+/* per-item actions (导出 / 删除): dimmed until the row is hovered/selected */
+.pl-act { flex: none; opacity: .5; transition: opacity .12s ease; }
+.pl-item:hover .pl-act, .pl-item.active .pl-act { opacity: 1; }
 .pl-desc {
   font-size: var(--app-font-size-sm); color: var(--app-text-muted); margin-top: 2px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

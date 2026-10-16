@@ -94,10 +94,15 @@
                     {{ t('device.screenshot') }}
                   </n-tag>
                   <n-space :size="8">
-                    <n-button size="small" secondary type="success" @click="takeScreenshot">
-                      <template #icon><n-icon><Camera /></n-icon></template>
-                      {{ t('device.screenshot') }}
-                    </n-button>
+                    <!-- 上方 section 标签已经是「截图」，按钮再写一遍就是重复 → 只留图标 -->
+                    <IconButton
+                      :icon="Camera"
+                      :label="t('device.screenshot')"
+                      size="small"
+                      secondary
+                      type="success"
+                      @click="takeScreenshot"
+                    />
                   </n-space>
                 </div>
 
@@ -171,17 +176,16 @@
                     </n-input>
                   </div>
                   <div class="apps-buttons">
-                    <n-button
+                    <IconButton
+                      :icon="RefreshCw"
+                      :label="t('appManager.refresh')"
                       class="apps-action"
                       size="small"
                       secondary
                       type="primary"
                       :loading="appsLoading"
                       @click="refreshAppList"
-                    >
-                      <template #icon><n-icon><RefreshCw /></n-icon></template>
-                      {{ t('appManager.refresh') }}
-                    </n-button>
+                    />
                   </div>
                 </div>
 
@@ -278,33 +282,32 @@
                       <template #icon><n-icon size="12"><Circle /></n-icon></template>
                       {{ t('device.live') }}
                     </n-tag>
-                    <n-button
+                    <!-- 开始/停止用 Play / Square 两个字形区分状态：图标按钮没有文字，
+                         同一个字形配不同配色读不出「现在是开还是关」。 -->
+                    <IconButton
+                      :icon="isLogcatRunning ? Square : Play"
+                      :label="isLogcatRunning ? t('device.stopLogcat') : t('device.startLogcat')"
                       :type="isLogcatRunning ? 'error' : 'success'"
                       size="small"
                       secondary
                       @click="toggleLogcat"
-                    >
-                      <template #icon><n-icon size="14"><Activity /></n-icon></template>
-                      {{ isLogcatRunning ? t('device.stopLogcat') : t('device.startLogcat') }}
-                    </n-button>
-                    <n-button
+                    />
+                    <IconButton
+                      :icon="Trash2"
+                      :label="t('device.clearLogcat')"
                       size="small"
                       secondary
                       :disabled="logcatOutput.length === 0"
                       @click="clearLogcatOutput"
-                    >
-                      <template #icon><n-icon><Trash2 /></n-icon></template>
-                      {{ t('device.clearLogcat') }}
-                    </n-button>
-                    <n-button
+                    />
+                    <IconButton
+                      :icon="FileDown"
+                      :label="t('device.exportLogcat')"
                       size="small"
                       secondary
                       :disabled="logcatOutput.length === 0"
                       @click="exportLogcatOutput"
-                    >
-                      <template #icon><n-icon><FileDown /></n-icon></template>
-                      {{ t('device.exportLogcat') }}
-                    </n-button>
+                    />
                   </n-space>
                 </div>
 
@@ -338,9 +341,9 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, useDialog } from 'naive-ui'
 import {
-  Smartphone, RefreshCw, Activity, Link, Link2Off, Circle,
+  Smartphone, RefreshCw, Link, Link2Off, Circle,
   Terminal, RotateCw, Wrench, Zap,
-  Play, PauseCircle, Trash2, FileDown, Eye, Search, Inbox,
+  Play, Square, PauseCircle, Trash2, FileDown, Eye, Search, Inbox,
   Box, Download, Settings2, Eraser, Camera, PackageSearch
 } from 'lucide-vue-next'
 import { useDeviceStore } from '@stores/deviceStore'

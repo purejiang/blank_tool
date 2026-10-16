@@ -4,7 +4,7 @@
       <span>{{ t('automation.projects') }}</span>
       <div class="app-subhead-actions">
         <IconButton
-          :icon="Upload"
+          :icon="Import"
           :label="t('automation.importMergeHint')"
           :aria-label="t('automation.import')"
           :disabled="running"
@@ -164,7 +164,7 @@ import { h, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NDropdown, NEmpty, NIcon, NScrollbar, useDialog, useMessage } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
-import { Download, FolderPlus, FilePlus, FileText, MoreHorizontal, Pencil, Trash2, Box, ChevronDown, ChevronRight, Upload } from 'lucide-vue-next'
+import { FolderPlus, FilePlus, FileText, MoreHorizontal, Pencil, Trash2, Box, ChevronDown, ChevronRight, Import, Upload } from 'lucide-vue-next'
 import type { AutomationStore } from '@composables/automation/useAutomationStore'
 import { readTextFile } from '@utils/readTextFile'
 import { genId } from '@utils/id'
@@ -211,17 +211,22 @@ watch(
 // ---------------- 行级三点菜单（收敛 hover 按钮） ----------------
 const menuIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
 
+// 导入 / 导出的图标方向按「容器」语义，两个菜单共用同一套：
+//   导入 = Import（箭头指向容器内 —— lucide 唯一有语义命名的方向图标）
+//   导出 = Upload（箭头指离容器）
+// 别按字面去和「导出 APK / 导出报告 / 导出日志」统一：那批是把产物保存到本机，
+// 容器是磁盘、方向朝下，用 Download / FileDown 才是对的。
 const projectMenuOptions: DropdownOption[] = [
   { label: t('automation.edit'), key: 'edit', icon: menuIcon(Pencil) },
-  { label: t('automation.export'), key: 'export', icon: menuIcon(Download) },
-  { label: t('automation.import'), key: 'import', icon: menuIcon(Upload) },
+  { label: t('automation.export'), key: 'export', icon: menuIcon(Upload) },
+  { label: t('automation.import'), key: 'import', icon: menuIcon(Import) },
   { type: 'divider', key: 'd1' },
   { label: t('automation.delete'), key: 'delete', icon: menuIcon(Trash2), props: { style: 'color: var(--app-red)' } },
 ]
 
 const scriptMenuOptions: DropdownOption[] = [
   { label: t('automation.edit'), key: 'edit', icon: menuIcon(Pencil) },
-  { label: t('automation.export'), key: 'export', icon: menuIcon(Download) },
+  { label: t('automation.export'), key: 'export', icon: menuIcon(Upload) },
   { type: 'divider', key: 'd1' },
   { label: t('automation.delete'), key: 'delete', icon: menuIcon(Trash2), props: { style: 'color: var(--app-red)' } },
 ]
