@@ -265,17 +265,27 @@ function askConfirm(prompt) {
 }
 
 /**
- * Get the previous git tag (if any).
- * Falls back to empty string if no tags exist.
+ * Get the previous release tag (the highest vX.Y.Z), or '' if none.
+ *
+ * 不能用 `git describe --tags --abbrev=0`：发布 tag 打在 main 的 merge commit 上，
+ * 而日常开发在 dev 上 —— merge commit 不是 dev 的祖先，describe 只看得见 dev 可达的
+ * 旧 tag（本项目会一路退到 v2.1.4）。那会让 Release Notes 从 v2.1.4 起算（重复已发布
+ * 内容），也会让「新版本号必须大于上一个 tag」的护栏对着错误的基线。
+ * 直接按版本号排序取最高的 vX.Y.Z。
  */
 function getPrevTag() {
   try {
-    return execSync('git describe --tags --abbrev=0', {
+    const out = execSync('git tag -l "v[0-9]*" --sort=-v:refname', {
       encoding: 'utf8',
       cwd: root,
       stdio: 'pipe',
       windowsHide: true,
-    }).trim();
+    });
+    const latest = out
+      .split(/\r?\n/)
+      .map((t) => t.trim())
+      .find((t) => /^v\d+\.\d+\.\d+$/.test(t));
+    return latest || '';
   } catch {
     return '';
   }
