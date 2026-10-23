@@ -240,10 +240,14 @@
       <n-card :bordered="false" class="settings-card">
         <div class="card-toolbar">
           <div class="card-toolbar-actions">
-            <n-button size="tiny" type="primary" secondary @click="openAddSignature">
-              <template #icon><n-icon size="14"><Plus /></n-icon></template>
-              {{ t('signature.add') }}
-            </n-button>
+            <IconButton
+              :icon="Plus"
+              :label="t('signature.add')"
+              size="tiny"
+              type="primary"
+              secondary
+              @click="openAddSignature"
+            />
           </div>
         </div>
         <div v-if="sigConfigs.length === 0" class="app-empty-hint">{{ t('signature.empty') }}</div>

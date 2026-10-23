@@ -14,10 +14,7 @@
         <div class="app-section-header">
           <n-icon size="18" :color="healthColor"><HeartPulse /></n-icon>
           <span class="app-section-title">{{ t('diagnostics.backendHealth') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshHealth">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-            {{ t('diagnostics.refresh') }}
-          </n-button>
+          <IconButton :icon="RefreshCw" :label="t('diagnostics.refresh')" size="tiny" quaternary @click="refreshHealth" />
         </div>
         <div class="health-row">
           <span class="health-dot" :class="healthClass"></span>
@@ -32,10 +29,7 @@
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-text-dim)"><ListChecks /></n-icon>
           <span class="app-section-title">{{ t('diagnostics.runningTasks') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshTasks">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-            {{ t('diagnostics.refresh') }}
-          </n-button>
+          <IconButton :icon="RefreshCw" :label="t('diagnostics.refresh')" size="tiny" quaternary @click="refreshTasks" />
         </div>
         <div v-if="tasks.length === 0" class="app-empty-hint">{{ t('diagnostics.noTasks') }}</div>
         <n-data-table v-else :columns="taskColumns" :data="tasks" :bordered="false" size="small" :row-key="taskRowKey" />
@@ -46,10 +40,7 @@
         <div class="app-section-header">
           <n-icon size="18" color="var(--app-text-dim)"><ScrollText /></n-icon>
           <span class="app-section-title">{{ t('diagnostics.logTail') }}</span>
-          <n-button size="tiny" quaternary class="header-action" @click="refreshLogTail()">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-            {{ t('diagnostics.refresh') }}
-          </n-button>
+          <IconButton :icon="RefreshCw" :label="t('diagnostics.refresh')" size="tiny" quaternary @click="refreshLogTail()" />
         </div>
         <n-tabs type="line" v-model:value="activeLogTab" @update:value="onTabChange">
           <n-tab-pane name="backend" :tab="t('diagnostics.logTailBackend')">
@@ -81,10 +72,16 @@
         <div class="app-section-header">
           <n-icon size="18" :color="selfCheckColor"><ShieldCheck /></n-icon>
           <span class="app-section-title">{{ t('diagnostics.selfCheck') }}</span>
-          <n-button size="tiny" quaternary class="header-action" :loading="selfChecking" @click="runSelfCheck">
-            <template #icon><n-icon><RefreshCw /></n-icon></template>
-            {{ t('diagnostics.selfCheckRun') }}
-          </n-button>
+          <!-- 原来用 RefreshCw 表示「运行自检」，那是「刷新」的语义，配图标按钮会歧义；
+               Play 才是「跑一次」。卡片标题已经写明是系统自检，动作含义由 tooltip 兜底。 -->
+          <IconButton
+            :icon="Play"
+            :label="t('diagnostics.selfCheckRun')"
+            :loading="selfChecking"
+            size="tiny"
+            quaternary
+            @click="runSelfCheck"
+          />
         </div>
 
         <div v-if="selfChecking && selfCheckItems.length === 0" class="app-empty-hint">
@@ -144,9 +141,10 @@ import { ref, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NTag, useDialog, useMessage } from 'naive-ui'
 import {
-  HeartPulse, ListChecks, ScrollText, RefreshCw, ShieldCheck,
+  HeartPulse, ListChecks, ScrollText, RefreshCw, ShieldCheck, Play,
   CheckCircle2, AlertTriangle, XCircle,
 } from 'lucide-vue-next'
+import IconButton from '@components/common/IconButton.vue'
 import { useBackendHealthStore } from '@stores/backendHealthStore'
 import { useRendererLogStore } from '@stores/rendererLogStore'
 import type { TrafficStatus } from '@services/AutomationService'
@@ -634,7 +632,9 @@ onUnmounted(() => {
 .diagnostics-content { display: flex; flex-direction: column; gap: 16px; }
 .diag-card { background: var(--app-card-bg); border-radius: 10px; text-align: left; transition: box-shadow 0.2s ease; }
 .diag-card:hover { box-shadow: var(--app-shadow-md); }
-.header-action { margin-left: auto; }
+/* 卡片头右端的动作：class 落在 IconButton 的包裹层上（$attrs 会下沉重到内部
+   n-button，所以定位要指向 .app-icon-btn 这个 flex 项本身）。 */
+.app-section-header .app-icon-btn { margin-left: auto; }
 
 /* Health */
 .health-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

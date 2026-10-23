@@ -97,50 +97,40 @@
         @update:value="(v: string) => setField(f.key, v)"
       />
 
-      <!-- 动作列：只有需要「从设备/界面取一个值」的行才有按钮 -->
+      <!-- 动作列：只有需要「从设备/界面取一个值」的行才有按钮。
+           三个都是 IconButton（图标即语义，动作文案在 tooltip / aria-label 上）——
+           这一列本来就窄，带文字的按钮会把输入框挤没。 -->
       <div class="form-actions-cell">
-        <n-button
+        <IconButton
           v-if="f.key === 'target.value' && pickable"
+          :icon="Crosshair"
+          :label="t('automation.f.pickElement')"
           size="tiny"
           type="info"
           secondary
-          :title="t('automation.f.pickElement')"
-          :aria-label="t('automation.f.pickElement')"
           @click="$emit('pick', { mode: pickMode })"
-        >
-          <template #icon><n-icon size="14"><Crosshair /></n-icon></template>
-          {{ t('automation.f.pickElementShort') }}
-        </n-button>
-        <n-button
+        />
+        <IconButton
           v-else-if="f.key === 'coord.x' && pickMode === 'screenshot'"
+          :icon="Crosshair"
+          :label="t('automation.f.pickCoord')"
           size="tiny"
           type="info"
           secondary
-          :title="t('automation.f.pickCoord')"
-          :aria-label="t('automation.f.pickCoord')"
           @click="$emit('pick', { mode: pickMode })"
-        >
-          <template #icon><n-icon size="14"><Crosshair /></n-icon></template>
-          {{ t('automation.f.pickCoord') }}
-        </n-button>
-        <n-tooltip v-else-if="f.key === 'activity'" :disabled="canGrab" trigger="hover" placement="top-end">
-          <template #trigger>
-            <span class="grab-btn-wrap">
-              <n-button
-                size="tiny"
-                type="info"
-                secondary
-                :disabled="!canGrab"
-                :aria-label="canGrab ? t('automation.f.grabActivity') : t('automation.f.grabActivityNoDevice')"
-                @click="$emit('grabActivity')"
-              >
-                <template #icon><n-icon size="14"><RefreshCw /></n-icon></template>
-                {{ t('automation.f.grabActivity') }}
-              </n-button>
-            </span>
-          </template>
-          {{ t('automation.f.grabActivityNoDevice') }}
-        </n-tooltip>
+        />
+        <!-- 未连接设备时，「为什么不能点」就是 tooltip 本身 → label 随 canGrab 切换，
+             不再套外层 n-tooltip（会和 IconButton 自带的那个各弹一次）。 -->
+        <IconButton
+          v-else-if="f.key === 'activity'"
+          :icon="RefreshCw"
+          :label="canGrab ? t('automation.f.grabActivity') : t('automation.f.grabActivityNoDevice')"
+          :disabled="!canGrab"
+          size="tiny"
+          type="info"
+          secondary
+          @click="$emit('grabActivity')"
+        />
       </div>
     </div>
 
@@ -196,8 +186,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NInputNumber, NSelect, NTooltip } from 'naive-ui'
+import { NButton, NInput, NInputNumber, NSelect } from 'naive-ui'
 import { Crosshair, RefreshCw } from 'lucide-vue-next'
+import IconButton from '@components/common/IconButton.vue'
 import {
   STEP_FIELDS, getPath, setPath, type Step, type StepAction,
 } from './stepTypes'
@@ -467,7 +458,6 @@ function save() {
 }
 /* 动作列：按钮靠右，与输入框之间由 grid gap 留出固定空隙 */
 .form-actions-cell { display: flex; justify-content: flex-end; align-items: center; }
-.grab-btn-wrap { display: inline-flex; }
 .form-error { font-size: var(--app-font-size-sm); color: var(--app-red); }
 .form-actions {
   display: flex;

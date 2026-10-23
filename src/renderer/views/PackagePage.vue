@@ -49,16 +49,18 @@
           {{ startDisabledHint }}
         </n-tooltip>
 
-        <n-tooltip :disabled="!taskStore.hasActive" trigger="hover">
-          <template #trigger>
-            <n-button size="small" quaternary type="error" @click="confirmClearAll"
-              :disabled="taskStore.tasks.length === 0 || taskStore.hasActive">
-              <template #icon><n-icon><Trash2 /></n-icon></template>
-              {{ t('task.clearAll') }}
-            </n-button>
-          </template>
-          {{ t('task.clearAllDisabledHint') }}
-        </n-tooltip>
+        <!-- 运行中禁用时，「为什么不能点」就是这条 tooltip 的内容 —— IconButton 的
+             label 同时充当悬停提示与可访问名，所以提示词随禁用状态切换，不再套外层
+             n-tooltip（两个 tooltip 会各自弹一次）。 -->
+        <IconButton
+          :icon="Trash2"
+          :label="taskStore.hasActive ? t('task.clearAllDisabledHint') : t('task.clearAll')"
+          size="small"
+          quaternary
+          type="error"
+          :disabled="taskStore.tasks.length === 0 || taskStore.hasActive"
+          @click="confirmClearAll"
+        />
       </div>
 
       <div class="task-bar-opts">
@@ -227,15 +229,14 @@
             <span class="task-output-path">{{ t('task.installedToDevice', { label: task.deviceLabel }) }}</span>
           </div>
           <div v-if="task.result && task.operation === 'analyze'" class="task-result-bar">
-            <n-button
+            <IconButton
+              :icon="FileDown"
+              :label="t('task.exportReport')"
               size="tiny"
               quaternary
               type="info"
               @click.stop="exportReport(task)"
-            >
-              <template #icon><n-icon size="14"><FileDown /></n-icon></template>
-              <span>{{ t('task.exportReport') }}</span>
-            </n-button>
+            />
           </div>
           <div v-if="task.result" class="task-result" v-html="task.result" @click="onResultClick" />
           <!-- Unified task log: file log (terminal) or in-memory log (running) -->

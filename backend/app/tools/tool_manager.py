@@ -9,12 +9,31 @@ import platform
 import pkgutil
 import importlib
 import threading
-from typing import Dict, Optional, Any
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, Optional, Any, Callable, List
 
 from app.tools.base_tool import BaseTool
+from app.tools import probe_cache
 from app.utils.logger import Logger
-from app.utils.env import get_runtime_dir
+from app.utils.env import get_runtime_dir, get_env
 from app.common.exceptions import ToolNotFoundError
+
+# Probing one tool means launching it (up to twice). Serial probing made the
+# first paint wait for the sum of all of them; four at a time keeps the JVM
+# cold-start tools from contending while still cutting the wall clock several
+# fold. Overridable for slow or antivirus-heavy machines.
+DEFAULT_PROBE_WORKERS = 4
+
+
+def _probe_workers() -> int:
+    raw = get_env("BT_TOOL_PROBE_WORKERS")
+    if raw:
+        try:
+            return max(1, int(raw))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_PROBE_WORKERS
 
 
 class ToolRegistry:
@@ -33,6 +52,15 @@ class ToolRegistry:
         self._discovered: Dict[str, type] = {}
         self._discover_lock = threading.Lock()
         self._initialized = False
+        # One lock per tool: a demand probe (a handler asking for adb) and the
+        # startup warm-up must never launch the same binary twice.
+        self._tool_locks: Dict[str, threading.Lock] = {}
+        self._tool_locks_guard = threading.Lock()
+        # Probe verdicts are reused across launches (see app.tools.probe_cache).
+        # RLock: the store path re-enters through _cache_doc().
+        self._cache_document: Optional[Dict[str, Any]] = None
+        self._cache_lock = threading.RLock()
+        self._last_probe_ms: int = 0
 
     # ------------------------------------------------------------------
     # Discovery
@@ -86,18 +114,61 @@ class ToolRegistry:
         if not tool_cls:
             raise ToolNotFoundError(name)
 
-        # Check for custom path override first
-        custom_path = self._custom_paths.get(name)
-        if custom_path:
-            instance = tool_cls(name=name, path=custom_path, search_system=False)
+        with self._lock_for(name):
+            # Another thread may have resolved it while we waited for the lock.
+            if name in self._tools:
+                return self._tools[name]
+            instance = self._build(name, tool_cls)
             self._tools[name] = instance
             return instance
 
+    def _lock_for(self, name: str) -> threading.Lock:
+        with self._tool_locks_guard:
+            lock = self._tool_locks.get(name)
+            if lock is None:
+                lock = threading.Lock()
+                self._tool_locks[name] = lock
+            return lock
+
+    def _cache_doc(self) -> Dict[str, Any]:
+        with self._cache_lock:
+            if self._cache_document is None:
+                self._cache_document = probe_cache.load()
+            return self._cache_document
+
+    def _build(self, name: str, tool_cls: type) -> BaseTool:
+        """Resolve *name* to an instance, reusing a cached verdict when valid.
+
+        The resolution rules below are the historical ones, unchanged — only
+        the ``cached_probe`` shortcut and the cache write are new. A cache hit
+        skips every subprocess the construction would otherwise launch.
+        """
+        custom_path = self._custom_paths.get(name)
         default_path = self._default_tool_path(name)
 
-        # Same construction logic as the original ToolManager for backward
-        # compatibility with BaseTool subclasses.
-        if self.search_system:
+        doc = self._cache_doc()
+        key = probe_cache.make_key(
+            name,
+            search_system=self.search_system,
+            default_path=default_path,
+            custom_path=custom_path,
+        )
+        cached = probe_cache.get_entry(doc, key)
+        if cached is not None:
+            self.logger.debug(
+                f"Tool probe cache hit: {name} -> "
+                f"{cached.get('path') or '(unresolved)'}"
+            )
+            return tool_cls(
+                name=name,
+                path=cached.get("path") or "",
+                search_system=False,
+                cached_probe=cached,
+            )
+
+        if custom_path:
+            instance = tool_cls(name=name, path=custom_path, search_system=False)
+        elif self.search_system:
             instance = tool_cls(name=name, path="", search_system=True)
             if not getattr(instance, "is_valid", False):
                 if default_path and os.path.exists(default_path):
@@ -116,8 +187,83 @@ class ToolRegistry:
             if not getattr(instance, "is_valid", False):
                 instance = tool_cls(name=name, path="", search_system=True)
 
-        self._tools[name] = instance
+        with self._cache_lock:
+            probe_cache.store(
+                doc,
+                key,
+                path=getattr(instance, "tool_path", "") or "",
+                is_valid=bool(getattr(instance, "is_valid", False)),
+                version=getattr(instance, "version", "") or "",
+            )
+            probe_cache.save(doc)
         return instance
+
+    def probe_all(
+        self,
+        progress_cb: Optional[Callable[[str, int, int], None]] = None,
+        workers: Optional[int] = None,
+    ) -> Dict[str, Optional[BaseTool]]:
+        """Resolve every discovered tool concurrently.
+
+        Warm-up entry point: the report shape and the per-tool verdicts are
+        identical to resolving them one by one, but the subprocess launches
+        overlap instead of adding up. ``progress_cb(name, done, total)`` fires
+        as each tool settles. Never raises for a single bad tool.
+        """
+        names = self.list_all()
+        total = len(names)
+        if not total:
+            return {}
+
+        worker_count = max(1, int(workers if workers is not None else _probe_workers()))
+        started = time.time()
+        counter = {"done": 0}
+        counter_lock = threading.Lock()
+        resolved: Dict[str, Optional[BaseTool]] = {}
+
+        def probe_one(tool_name: str) -> None:
+            try:
+                result = self.get(tool_name)
+            except ToolNotFoundError:
+                result = None
+            except Exception as e:  # noqa: BLE001 — warm-up must not fail startup
+                self.logger.warning(f"Probe failed for {tool_name}: {e}")
+                result = None
+            with counter_lock:
+                resolved[tool_name] = result
+                counter["done"] += 1
+                done = counter["done"]
+            if progress_cb:
+                try:
+                    progress_cb(tool_name, done, total)
+                except Exception:  # noqa: BLE001 — a reporter must not break probes
+                    pass
+
+        if worker_count <= 1 or total == 1:
+            for tool_name in names:
+                probe_one(tool_name)
+        else:
+            with ThreadPoolExecutor(max_workers=min(worker_count, total)) as pool:
+                list(pool.map(probe_one, names))
+
+        elapsed_ms = int((time.time() - started) * 1000)
+        self._last_probe_ms = elapsed_ms
+        self.logger.info(
+            f"probe wall time = {elapsed_ms}ms for {total} tools "
+            f"({min(worker_count, total)} workers)"
+        )
+        return resolved
+
+    def ensure_all_probed(self) -> None:
+        """Warm every tool once (idempotent — resolved tools are reused)."""
+        if all(name in self._tools for name in self._discovered):
+            return
+        self.probe_all()
+
+    @property
+    def last_probe_ms(self) -> int:
+        """Wall-clock duration of the last ``probe_all`` (0 if never run)."""
+        return self._last_probe_ms
 
     def list_all(self) -> list[str]:
         """Return names of all discovered tool classes."""
@@ -136,8 +282,20 @@ class ToolRegistry:
         return result
 
     def refresh(self):
-        """Clear cached instances so the next get() re-instantiates."""
+        """Clear cached instances so the next get() re-instantiates.
+
+        Cached probe *verdicts* survive: they are keyed by the resolved path
+        and validated against the file's mtime/size, so an unchanged binary is
+        not re-launched just because someone asked for a refresh.
+        """
         self._tools.clear()
+
+    def _invalidate_cached(self, name: str) -> None:
+        """Drop one tool's cached verdict (its resolution is about to change)."""
+        with self._cache_lock:
+            doc = self._cache_doc()
+            probe_cache.invalidate(doc, name)
+            probe_cache.save(doc)
 
     # ------------------------------------------------------------------
     # Custom path management
@@ -148,6 +306,9 @@ class ToolRegistry:
         self._custom_paths[name] = path
         # Clear cached instance so next get() re-instantiates
         self._tools.pop(name, None)
+        # The override changes how the tool resolves, so any cached verdict
+        # for it is about a different file now.
+        self._invalidate_cached(name)
         # Re-instantiate and validate
         tool = self.get(name)
         return {
@@ -161,6 +322,7 @@ class ToolRegistry:
         """Reset a tool to its default path."""
         self._custom_paths.pop(name, None)
         self._tools.pop(name, None)
+        self._invalidate_cached(name)
         tool = self.get(name)
         return {
             "name": name,
@@ -260,16 +422,24 @@ class ToolManager:
             return None
 
     def get_all_tools(self) -> Dict[str, BaseTool]:
-        result: Dict[str, BaseTool] = {}
-        for name in self._registry.list_all():
-            try:
-                result[name] = self._registry.get(name)
-            except ToolNotFoundError:
-                pass
-        return result
+        """Resolve every tool concurrently (see ``ToolRegistry.probe_all``)."""
+        return {
+            name: tool
+            for name, tool in self._registry.probe_all().items()
+            if tool is not None
+        }
 
     def get_available_tools(self) -> Dict[str, BaseTool]:
         return self._registry.get_available_tools()
+
+    def ensure_all_probed(self):
+        """Warm every tool, reusing anything already resolved."""
+        return self._registry.ensure_all_probed()
+
+    @property
+    def last_probe_ms(self) -> int:
+        """Wall-clock duration of the last full probe (0 if none ran)."""
+        return self._registry.last_probe_ms
 
     def refresh_tools(self):
         self._registry.refresh()

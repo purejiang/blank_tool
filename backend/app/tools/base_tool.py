@@ -1,7 +1,7 @@
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Tuple
 
 from app.common.base_executor import CommandExecutor, CommandExecutionContext
 from app.utils.logger import Logger
@@ -16,6 +16,9 @@ class BaseTool(ABC):
         name: 工具名称
         path: 工具路径
         search_system: 是否在系统PATH中查找工具
+        cached_probe: 已验证过的探测结果（见 app.tools.probe_cache）。
+            非空时直接沿用其中的 path / is_valid / version，跳过本次
+            校验与取版本的全部子进程。
     Attributes:
         name: 工具名称
         tool_path: 工具路径
@@ -23,12 +26,43 @@ class BaseTool(ABC):
         version: 工具版本
     """
 
-    def __init__(self, name: str, path: str, search_system: bool):
+    def __init__(
+        self,
+        name: str,
+        path: str,
+        search_system: bool,
+        cached_probe: Optional[Dict[str, Any]] = None,
+    ):
         self.name = name or self.__class__.__name__
         self._logger = Logger.get_logger(self.__class__.__name__)
+
+        # A cached probe carries the path it was measured against — reuse it
+        # when the caller did not resolve one itself (cache hits are always
+        # for a concrete file, so PATH search must not run again).
+        if not path and cached_probe:
+            path = cached_probe.get("path") or ""
+
         self.tool_path = path or (self._find_tool_path_in_system() if search_system else "")
-        self.is_valid = self._validate_tool()
-        self.version = "" if not self.tool_path or not self.is_valid else self._get_tool_version()
+
+        if cached_probe:
+            self.is_valid = bool(cached_probe.get("is_valid"))
+            self.version = (cached_probe.get("version") or "") if self.is_valid else ""
+        else:
+            self.is_valid, self.version = self.probe()
+
+    def probe(self) -> Tuple[bool, str]:
+        """Validate the tool and read its version as one unit of work.
+
+        Default implementation keeps the historical behaviour: a separate
+        validation command, then a separate version command. Tools whose
+        validation command already yields the version — or whose version
+        command output is discarded — override this to spend one subprocess
+        instead of two. See ``app.tools.tool_manager.ToolRegistry.probe_all``.
+        """
+        is_valid = self._validate_tool()
+        if not self.tool_path or not is_valid:
+            return is_valid, ""
+        return is_valid, self._get_tool_version()
 
     def _find_tool_path_in_system(self) -> str:
         """
@@ -98,10 +132,10 @@ class CommandTool(BaseTool):
         version: 工具版本
     """
 
-    def __init__(self, name: str, path: str, search_system: bool=False):
+    def __init__(self, name: str, path: str, search_system: bool=False, cached_probe: Optional[Dict[str, Any]] = None):
         self._command_executor = CommandExecutor()
         self._running_processes = {}
-        super().__init__(name, path, search_system=search_system)
+        super().__init__(name, path, search_system=search_system, cached_probe=cached_probe)
 
     def is_process_running(self, process_id: str) -> bool:
         """Public wrapper over ``_is_process_running`` (handlers need it)."""

@@ -10,6 +10,11 @@ import { log, setLogLevel, _setRingPusher } from '@utils/logger'
 import { useRendererLogStore } from '@stores/rendererLogStore'
 import { setMaxConcurrent } from '@services/TaskExecutionService'
 
+// Tool probing is worth waiting for — every page needs it — but it is not
+// worth hanging the splash on. Past this point the app opens with whatever the
+// probe has produced so far (the store keeps filling in behind the UI).
+const TOOL_PROBE_MAX_WAIT_MS = 5000
+
 export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
   const { t, locale: i18nLocale } = useI18n()
 
@@ -59,10 +64,12 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
   async function loadApplicationData() {
     const appConfigStore = useAppConfigStore()
     const systemStore = useSystemStore()
+    // `build.info` shells out to `java -version` (a cold JVM, up to ~0.8s) for
+    // the Settings/About card, which refetches it on mount anyway — it has no
+    // business holding up the first paint.
     await Promise.all([
       appConfigStore.initialize(),
       systemStore.fetchSystemInfo(),
-      systemStore.fetchBuildInfo(),
     ])
     // Wire renderer log ring buffer — logger.ts pushes entries here
     // so the Diagnostics panel can show them later.
@@ -83,9 +90,50 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
     }
   }
 
-  async function checkToolsStatus() {
-    const toolStore = useToolStore()
-    await toolStore.fetchTools(true)
+  /**
+   * Kick off the tool probe and never reject.
+   *
+   * Deliberately NOT forced: a forced fetch re-probes every tool, which used to
+   * mean fourteen subprocess launches (eight JVM cold starts) on every single
+   * launch. The backend caches verdicts keyed by the binary's mtime/size, so
+   * the unforced path is both correct and free on warm starts.
+   */
+  function startToolProbe(): Promise<void> {
+    return useToolStore()
+      .fetchTools(false)
+      .then(() => undefined)
+      .catch((e) => {
+        log.error('Tool probe failed:', e)
+      })
+  }
+
+  /** Join the probe, but never wait longer than the guard. */
+  async function awaitToolProbe(probe: Promise<void> | null): Promise<void> {
+    if (!probe) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const guard = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        log.warn(
+          `Tool probe still running after ${TOOL_PROBE_MAX_WAIT_MS}ms — opening with partial results`
+        )
+        resolve()
+      }, TOOL_PROBE_MAX_WAIT_MS)
+    })
+    try {
+      await Promise.race([probe, guard])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+
+  /** Run one splash stage, recording its duration for the startup timeline. */
+  async function runStage(key: string, task: () => unknown): Promise<void> {
+    const startedAt = performance.now()
+    try {
+      await task()
+    } finally {
+      log.debug(`[startup] ${key} ${Math.round(performance.now() - startedAt)}ms`)
+    }
   }
 
   async function loadThemePreference(): Promise<string | null> {
@@ -127,8 +175,8 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
         })
       }
     }
-    const cacheService = await serviceManager.getService('cache')
-    if (cacheService) { await cacheService.getCacheInfo().catch(() => {}) }
+    // The storage card's sizes are fetched by SettingsPage itself on mount,
+    // so walking four directory trees does not belong on the splash path.
 
     // Initialize update service (set up event listeners)
     try {
@@ -157,11 +205,31 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
     try {
       error.value = ''
 
+      // The tool probe starts once services are registered (config stage) and
+      // is joined at the tools stage. Overlapping it with the remaining stages
+      // costs the splash `max(config, probe)` instead of `config + probe`.
+      let probePromise: Promise<void> | null = null
+
       const initTasks = [
-        { name: t('app.loadingServices'), task: initializeServices, weight: 40, critical: true },
-        { name: t('app.loadingConfig'), task: loadApplicationData, weight: 30, critical: true },
-        { name: t('app.loadingTools'), task: checkToolsStatus, weight: 20, critical: false },
-        { name: t('app.loadingUI'), task: prepareUI, weight: 10, critical: true },
+        {
+          key: 'services', name: t('app.loadingServices'),
+          task: initializeServices, weight: 40, critical: true,
+        },
+        {
+          key: 'config', name: t('app.loadingConfig'), weight: 30, critical: true,
+          task: async () => {
+            probePromise = startToolProbe()
+            await loadApplicationData()
+          },
+        },
+        {
+          key: 'tools', name: t('app.loadingTools'), weight: 20, critical: false,
+          task: () => awaitToolProbe(probePromise),
+        },
+        {
+          key: 'ui', name: t('app.loadingUI'),
+          task: prepareUI, weight: 10, critical: true,
+        },
       ]
 
       let completedWeight = 0
@@ -169,7 +237,7 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
         try {
           step.value = taskInfo.name
           progress.value = completedWeight
-          await taskInfo.task()
+          await runStage(taskInfo.key, taskInfo.task)
           completedWeight += taskInfo.weight
           progress.value = completedWeight
         } catch (e) {
@@ -184,7 +252,6 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
       }
 
       progress.value = 100
-      await new Promise(resolve => setTimeout(resolve, 300))
       isLoading.value = false
       stopTimer()
       log.debug('应用初始化完成')
@@ -201,11 +268,16 @@ export function useAppBootstrap(currentTheme: Ref<GlobalTheme | null>) {
     retryCount.value++
     error.value = ''
     isLoading.value = true
-    setTimeout(() => initializeApplication(), 1000)
+    setTimeout(() => {
+      // `initializeApplication` records the failure in `error` for the splash;
+      // nobody awaits it here, so swallow the rejection rather than leaving an
+      // unhandled one behind.
+      initializeApplication().catch(() => {})
+    }, 1000)
   }
 
   onMounted(() => {
-    initializeApplication()
+    initializeApplication().catch(() => {})
   })
 
   onUnmounted(() => {

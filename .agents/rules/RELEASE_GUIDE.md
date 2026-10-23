@@ -25,10 +25,14 @@ npm run release -- --dry-run               # 仅预览：计算版本号并生�
 > **package.json 的当前值**，不是上一个 tag；所以手工把 version 提到 2.5.0 之后再跑不带参数的
 > release，会发出 `v2.5.1`（跳号，changelog 从更早的 tag 起算）。脚本会在版本计算阶段打印双源
 > 一致性告警，并且**在新版本号不大于上一个 tag 时直接阻断** —— 那种版本号一旦发出去，用户端
-> 自更新会判定「已是最新」而永远收不到更新。
+> 自更新会判定「已是最新」而永远收不到更新。（package.json 已经是目标版本时，bump 阶段会跳过
+> 提交，不会以「nothing to commit」中断。）
 >
-> 这不是假想：v2.3.0 / v2.3.1 就是这样发出去的（tag 是 v2.3.x，而 tag 处的 `package.json`
-> 仍是 `"version": "2.2.0"`），产物名、latest.yml 的 version、应用内自报版本全都停在 2.2.0。
+> 这不是假想：v2.3.0 / v2.3.1 的 **tag 树里 `package.json` 至今仍是 `"version": "2.2.0"`**
+> （`git show v2.3.1:package.json`），可这两个 Release 实际传的却是 `Blank-Tool-Setup-2.3.0.exe`
+> / `-2.3.1.exe` —— 说明产物是从「另一个 package.json 已经 bump 过的 dev 工作区」构建出来的。
+> 于是 **tag 与产物对不上**：`git checkout v2.3.1 && npm run build:win` 会打出 2.2.0 的安装包。
+> （产物自身版本是对的，所以那两次的用户端自更新并没有因此失效；坏掉的是可复现性。）
 
 ## 2. 版本号与构建产物
 
@@ -57,7 +61,7 @@ console.log(`[build] Version: ${pkg.version}`);
 **产物名、`latest.yml` 的 `version`、应用内自报版本三者都来自 `package.json.version`**，所以它们必须等于 tag（去掉 `v`）。`npm run release` 已在构建阶段自动校验两项，任一不符即阻断：
 
 1. `path` 与 exe 文件名一致；
-2. `version` 与本次发布的版本号一致（只比对 path 是看不见「tag 与 package.json 脱节」这类事故的 —— 两边都叫 2.2.0 时照样“一致”）。
+2. `version` 与本次发布的版本号一致（只比对 path 看不出这类事故：package.json 没 bump 时，exe 名与 latest.yml 的 `version` 会一起停在旧版本，path 检查照样通过）。
 
 手动发布时用 PowerShell 比对：
 
@@ -80,7 +84,7 @@ Get-ChildItem build/*.exe
 | 2. 版本计算 + notes 生成 | `compute_version` | 计算新版本号（并做双源一致性告警 + "必须比上一个 tag 新"硬校验），从 git log 生成 Release Notes | 无副作用。tag 已存在或版本号没比上一个 tag 大时，换版本号（`--version=`）重跑。`--dry-run` 到此为止。 |
 | 3. 质量门禁 npm run check | `quality_gate` | 运行 lint + typecheck + test | 无副作用。修复 lint/typecheck/test 后重跑。 |
 | 4. 交互确认 | —（输 n 直接退出，不产生错误） | 展示版本号与 Release Notes，等待 y/n 确认 | 无副作用。输 n 取消无任何变更。 |
-| 5. bump package.json + commit | `bump_version` | 更新 version 字段并提交到 dev | 失败自动回滚 package.json。直接重跑。 |
+| 5. bump package.json + commit | `bump_version` | 更新 version 字段并提交到 dev（package.json 已经是目标版本时跳过提交） | 失败自动回滚 package.json。直接重跑。 |
 | 6. merge + tag + push | `merge_and_tag` | 合并 dev→main，打 annotated tag，推送 dev/main/tag 到远程 | merge 冲突时脚本已自动 abort——在 dev 解决冲突并推送后重跑。push main/tag 失败按 nextAction 手动推送（`git push origin main && git push origin vX.Y.Z`）或重跑。 |
 | 7. 构建 build:win + 产物校验 | `build` | 执行 npm run build:win，校验 exe/blockmap/latest.yml 完整性 + latest.yml 的 path/version 一致性 | commit 与 tag 已完成。修复构建错误后重跑，脚本从构建阶段继续。 |
 | 8. 发布 draft → 上传 → publish | `release` / `upload` | 创建 draft Release，上传 exe/blockmap/latest.yml，发布（移除 draft 状态） | draft 可能已创建、部分资产可能已上传。直接重跑：同版本 draft 自动删除重建；三个资产各自上传失败自动重试 3 次（间隔 5 秒）。 |
@@ -111,7 +115,8 @@ gh release create vX.Y.Z "build/Blank-Tool-Setup-X.Y.Z.exe" "build/Blank-Tool-Se
 随后按 [通用发版规范](./RELEASE_GENERAL.md#5-旧版本清理) 清理旧版本资产。
 
 手动路径**没有**脚本的任何自动校验（版本号一致性、latest.yml 的 version/path），所以 §5 清单里的两项
-`latest.yml` 校验必须真的跑一遍 —— v2.3.0 / v2.3.1 两次发版就是绕过脚本时漏掉了这一步。
+`latest.yml` 校验必须真的跑一遍。更要紧的是**别漏掉把 bump 提交进 tag**：v2.3.0 / v2.3.1 的 tag 树里
+`package.json` 至今还是 2.2.0（产物反而是对的），而这正是脚本 bump 阶段要替掉的手工步骤。
 
 ## 5. 检查清单（Electron 特有）
 

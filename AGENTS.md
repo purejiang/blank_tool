@@ -87,6 +87,19 @@ Python Backend (backend/main.py)
 
 打包时会随应用分发，包含：`adb/`、`aapt/`（aapt2）、`apktool/`（.jar）、`bundletool/`（.jar）、`android/`（zipalign、apksigner.jar）、`jre/`（java、jarsigner）、`python/`。所有外部工具都从这里调用，不要假设系统 PATH 里有 `adb`/`java` 等。
 
+**注意**：`runtime/` 不入库（见 `.gitignore`）。本机当前缺 `python/`，dev 下会回退到系统 python（启动日志有 `falling back to system python`）；**打包前必须补齐**，否则安装版在没装 Python 的机器上后端起不来。
+
+
+## 工作区完整性标签（本机开发陷阱，症状极具误导性）
+
+如果 `npm run dev` 在 `starting electron app...` 之后 **Electron 静默秒退**（无窗口、无任何输出、`electron.log` 无新增、`%APPDATA%\<name>` 无写入），或者 esbuild 报 `remove ...\Temp\esbuild-...: Access is denied`（临时文件删不掉，但手动 `Remove-Item` 能删），**先查这一条**：
+
+```powershell
+icacls . | Select-String Mandatory          # 出现 Low Mandatory Level 即中招
+icacls . /setintegritylevel Medium          # 修复：只改根目录，子项自动继承更新
+```
+
+带 Low 完整性标签的镜像会让**由它启动的进程也被降级为 Low**，于是 `node_modules\electron\dist\electron.exe` 的 Chromium 初始化写不了 `%TEMP%`/`%APPDATA%`（Medium）→ `CHECK` fail-fast（退出码 `0x80000003`，零输出）；`@esbuild/esbuild.exe` 同理删不掉系统 `%TEMP%` 里的临时文件。DSH 沙箱再以受限模式在本工作区跑会话时会重新打上该标签，**会复发**。完整复盘、隔离实验与已排除的错误方向见 `docs/TROUBLESHOOTING.md`。
 
 ## 发版流程
 

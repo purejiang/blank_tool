@@ -73,15 +73,23 @@
           </div>
         </n-popover>
         <!-- Report actions live here (status bar, right end) so the tabs row
-             keeps only the log filter + the report-view close button. -->
-        <n-button v-if="src.taskId && !running" size="tiny" :loading="exporting" @click="emit('open-file')">
-          <template #icon><n-icon size="14"><ExternalLink /></n-icon></template>
-          {{ t('automation.openInBrowser') }}
-        </n-button>
-        <n-button v-if="src.taskId && !running" size="tiny" @click="emit('download-report')">
-          <template #icon><n-icon size="14"><Download /></n-icon></template>
-          {{ t('automation.downloadReport') }}
-        </n-button>
+             keeps only the log filter + the report-view close button.
+             两个都是通用动作（外链 / 下载），图标即语义 → 只留图标。 -->
+        <IconButton
+          v-if="src.taskId && !running"
+          :icon="ExternalLink"
+          :label="t('automation.openInBrowser')"
+          :loading="exporting"
+          size="tiny"
+          @click="emit('open-file')"
+        />
+        <IconButton
+          v-if="src.taskId && !running"
+          :icon="Download"
+          :label="t('automation.downloadReport')"
+          size="tiny"
+          @click="emit('download-report')"
+        />
       </div>
     </div>
 

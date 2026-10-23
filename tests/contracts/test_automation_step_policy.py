@@ -219,7 +219,8 @@ class TestSchemaDeclaresThePolicy:
         输入框右边缘对齐。
 
         按钮**只**出现在动作列里：不得再塞进输入框的前缀/后缀（"按钮和输入框别
-        混在一起"）。
+        混在一起"）。动作列本身窄，动作按钮用 icon-only 的 IconButton（图标即
+        语义，文案在 tooltip / aria-label 上），不再用带文字的按钮。
         """
         src = self._read("src/renderer/components/automation/StepEditForm.vue")
         assert "grid-template-columns: 72px minmax(0, 1fr) max-content" in src, (
@@ -228,7 +229,10 @@ class TestSchemaDeclaresThePolicy:
         assert "form-actions-cell" in src
         # 动作列之外的输入框里不许有按钮：只允许 prefix 放 X / Y 文字标记
         assert "#suffix" not in src, "拾取按钮不许再放进输入框后缀"
-        assert "IconButton" not in src, "动作列用的是带文字的按钮，不是输入框内图标"
+        # 动作列用 icon-only 的 IconButton：带文字的按钮会把这一列撑宽、挤掉输入框
+        assert src.count("<IconButton") == 3, (
+            "三个取点动作（元素 / 坐标 / 当前 Activity）应各用一个 IconButton"
+        )
 
     def test_step_list_add_entry_is_pinned_at_the_bottom(self):
         """添加步骤的入口固定在列表底部；顶部「插入到开头」幽灵行已删除。"""

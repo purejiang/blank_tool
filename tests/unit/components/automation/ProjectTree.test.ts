@@ -282,3 +282,21 @@ describe('ProjectTree — id helper sanity', () => {
     expect(genId()).not.toBe(genId())
   })
 })
+
+/**
+ * 导入/导出图标方向：按「容器」语义 —— 导入 = 箭头指向容器内（lucide 的 Import），
+ * 导出 = 箭头指离容器（Upload）。曾一度配成导入=Upload / 导出=Download（即
+ * 「托盘 = 本机磁盘」那套），而列表/菜单里根本没有"本机磁盘"这个容器，箭头就成了
+ * 反的。这里把方向钉住：列表头的导入按钮是 icon-only，错了没有文字兜底。
+ *
+ * 选定这批图标的是 lucide 自己的语义：它只有 `import`（向下插进容器框）这个
+ * 方向图标，没有 `export`；`folder-input` 指进文件夹、`folder-output` 指离文件夹。
+ */
+describe('ProjectTree — 导入/导出图标方向（容器语义）', () => {
+  it('列表头的导入按钮用 Import 字形，不是 Upload', () => {
+    const { w } = mountTree()
+    const btn = w.get('[data-testid="import-projects"]')
+    expect(btn.find('.lucide-import').exists()).toBe(true)
+    expect(btn.find('.lucide-upload').exists()).toBe(false)
+  })
+})
