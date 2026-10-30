@@ -1156,8 +1156,11 @@ def _aab_guard(context, tools, aab: str, source: Dict[str, Any],
         top = n.split("/", 1)[0]
         if top:
             tops.add(top)
-    modules = sorted(t for t in tops if t not in ("META-INF", "BundleConfig.pb",
-                                                 "SdkModulesConfig.pb"))
+    modules = sorted(
+        t for t in tops
+        if t not in ("META-INF", "BUNDLE-METADATA", "BundleConfig.pb",
+                     "SdkModulesConfig.pb")
+    )
     info["modules"] = modules
     rc, text = _bundletool_dump_manifest(context, tools, aab, tmp_dir)
     if rc != 0:

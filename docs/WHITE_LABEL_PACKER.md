@@ -64,7 +64,7 @@ versionCode / versionName 不填时继承源 APK 的值（versionCode 优先取�
 源 AAB 的一致性 guard（`bundletool dump manifest` 只用于这里）：
 
 - 同包名、同 versionCode / versionName；
-- 只含一个 `base` 模块（无 dynamic feature / asset pack）；
+- 只含一个 `base` 模块（无 dynamic feature / asset pack；`BUNDLE-METADATA/`、`META-INF/` 等标准顶层目录不算模块）；
 - 清单是否含 `dist:*`（含则提示：直改用 APK 清单，可能丢失 bundle 专属元素）。
 
 硬条件不满足时：`google_mode=auto` 自动降级为重建，`google_mode=splice` 直接报错（不静默出坏包），

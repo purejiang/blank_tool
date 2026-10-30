@@ -417,6 +417,28 @@ def test_build_module_zip(workdir):
     assert "root/META-INF/MANIFEST.MF" not in names
 
 
+def test_aab_guard_ignores_bundle_metadata(monkeypatch, workdir):
+    aab = workdir / "real.aab"
+    _zip(aab, {
+        "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map": b"x",
+        "BundleConfig.pb": b"cfg",
+        "base/manifest/AndroidManifest.xml": b"manifest",
+        "base/resources.pb": b"res",
+        "base/dex/classes.dex": b"dex",
+        "META-INF/MANIFEST.MF": b"sig",
+    })
+    dumped = (
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
+        'package="com.test" android:versionCode="1" android:versionName="1.0"/>'
+    )
+    monkeypatch.setattr(WL, "_bundletool_dump_manifest", lambda *a: (0, dumped))
+    source = {"package": "com.test", "version_code": 1, "version_name": "1.0"}
+    info = WL._aab_guard(_Ctx(), {}, str(aab), source, str(workdir))
+    assert info["modules"] == ["base"]          # BUNDLE-METADATA 不是模块
+    assert info["same_build"] is True
+    assert info["splice_available"] is True
+
+
 def test_splice_aab_replaces_and_preserves(workdir):
     source = workdir / "source.aab"
     out = workdir / "out.aab"
