@@ -1,12 +1,13 @@
 # 白包打包（white-label-packer）
 
 可分发插件 `white-label-packer`：从一份**基础 APK**（可选再给一份**同版本 AAB**）批量生成渠道白包——
-**其他包**（通用）、三星、谷歌，以及任意自定义渠道。渠道本身不绑定任何商店，三星、谷歌只是预置模板，
-右侧「＋ 其他包」可继续添加任意自定义渠道。每个渠道独立设置包名、应用名、版本号、图标、签名密钥与渠道标识。
+**其他包**（通用）、三星、谷歌，以及任意自定义渠道。渠道本身不绑定任何商店；**配置模板**可保存/复用
+签名、图标、meta-data、权限、assets 与开关，例如「谷歌」默认带 `BILLING` 权限、「三星」可带多个
+Samsung 需要的 assets 文件。右侧「＋ 其他包」可继续添加任意自定义渠道。
 
 - 插件 id：`white-label-packer`（`plugin.run` / `plugin.export` / `plugin.delete` 都用它；display name 只是标签）
 - 源码目录：`plugins-dist/white-label-packer/`（`manifest.json` / `main.py` / `ui/index.html`）
-- 分发压缩包：`plugins-dist/white-label-packer-1.3.0.zip`，在插件页点「导入」选择该 zip 即可安装到
+- 分发压缩包：`plugins-dist/white-label-packer-1.4.0.zip`，在插件页点「导入」选择该 zip 即可安装到
   `<BT_PLUGINS_DIR>/white-label-packer/`；**不是内建插件**，没有「内建」标签，可独立删除/更新
 - 包格式与 UI 桥规范见 `docs/PLUGIN_PACKAGE.md`
 
@@ -22,8 +23,9 @@
 | 独立签名 | 每个渠道用自己的 keystore；APK 用 apksigner，AAB 用 jarsigner |
 | 额外权限 | 每渠道追加 `<uses-permission>`（如 `com.android.vending.BILLING`），已存在不重复；APK/AAB 都生效 |
 | 渠道标识 | manifest `<meta-data>`、可选 `assets/` 渠道文件、占位符 |
-| 渠道文件 | 每个渠道可向 `assets/<path>` 注入一个文本文件（APK 写 zip，AAB 写 `base/assets/`） |
-| 配置记忆 | 非机密配置存 `profiles.json`，口令不落盘 |
+| 渠道文件 | 每个渠道/模板可向 `assets/<path>` 注入多个文本文件（APK 写 zip，AAB 写 `base/assets/`） |
+| 配置模板 | 模板可新建/编辑/删除/套用；公共项（签名/图标/meta-data/权限/assets/版本/开关）复用，渠道只保留包名/应用名等差异 |
+| 配置记忆 | 非机密配置与模板存 `profiles.json`，口令不落盘 |
 
 不做的事：dex 改名、keystore 生成、商店合规、AAB-only 输入——见「限制与排错」。
 
@@ -47,8 +49,23 @@
 | `google` 谷歌 | 签名 AAB（可附带测试 APK） | 优先直改源 AAB；无 AAB 或 guard 不满足时重建 |
 | 自定义（如 `partner`） | 由格式选择决定 | 与普通渠道完全一致；渠道名/包名/签名独立 |
 
-预置只是模板：每个渠道的包名、应用名、版本、keystore、渠道标识互不影响。**所有渠道**的格式都可在
-`APK` / `AAB` / `两者` 之间选择（默认其他包/三星 APK、谷歌 AAB；选「两者」时额外产出一个可安装的测试 APK）。
+### 配置模板（可增删改查）
+
+渠道卡上方的「配置模板」是**可编辑的公共配置**，不是写死的渠道逻辑：
+
+- 默认自带三个模板：**其他包**（APK）、**三星**（APK，assets 留空，按三星要求自行添加）、
+  **谷歌**（AAB，默认追加 `com.android.vending.BILLING`）；
+- 模板字段：默认格式、keystore path/alias、storepass/keypass（仅本次会话内存，不落盘）、图标、
+  versionCode/versionName、多渠道 meta-data、额外权限、**多个 assets 文件**（path + 文本内容）、三个改名开关；
+- 「＋ 新建」「保存」「删除」管理模板；「应用到所有渠道」或渠道卡里的模板下拉框套用；
+- 套用只覆盖公共项，**保留包名、应用名、启用状态**；套用后仍可在渠道卡里逐项覆盖；
+- 模板与渠道配置一起保存到 `profiles.json` 的 `templates` 字段，重启后恢复（口令除外）。
+
+默认模板只是初始值，例如谷歌模板的 `BILLING` 可以删掉，三星模板可以加任意多个 `assets/...` 文件；
+新增渠道可先建一个模板，再在渠道卡里选它。
+
+**所有渠道**的格式都可在 `APK` / `AAB` / `两者` 之间选择（默认其他包/三星 APK、谷歌 AAB；
+选「两者」时额外产出一个可安装的测试 APK）。
 
 自定义渠道在 UI 右侧「＋ 其他包」添加，自动分配 `other1`、`other2`… 的渠道标识（只用于产物文件名和报告），
 渠道名可任意改（支持中文）。「其他包」预置本身也是普通渠道，可直接改包名/签名。
@@ -61,7 +78,7 @@
 | 源 AAB | 可选 | 与基础 APK **同一次构建**、单 `base` 模块、同包名同版本；用于谷歌渠道直改，缺省则重建。也可由插件自带 `assets/base.aab` 提供默认值 |
 | 图标 PNG | 可选 | 必须是受支持的 8-bit、非交错 PNG（RGB / 调色板 / RGBA），否则直接报错；尺寸任意 |
 | keystore | ✅（每个出包渠道） | JKS/PKCS12 均可，需 path + alias + storepass（keypass 可选）；插件**不**生成密钥 |
-| 渠道文件 | 可选 | `{path, content}`：`path` 是产物内目标路径（相对路径，自动补 `assets/`，禁止绝对路径和 `..`），`content` 是文本内容 |
+| 渠道文件 | 可选 | 单个 `{path, content}` 或模板/渠道的 `assets: [{path, content}, ...]`；`path` 是产物内目标路径（相对路径，自动补 `assets/`，禁止绝对路径和 `..`），`content` 是文本内容 |
 
 versionCode / versionName 不填时继承源 APK 的值（versionCode 优先取渠道配置，其次 apktool.yml / 源包）。
 
@@ -102,23 +119,27 @@ white-label-packer/
 
 ## 使用步骤（插件页操作）
 
-1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.3.0.zip`；导入后左侧出现
-   **白包打包（多渠道）**（v1.3.0，用户插件，无「内建」标签）。
+1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.4.0.zip`；导入后左侧出现
+   **白包打包（多渠道）**（v1.4.0，用户插件，无「内建」标签）。
 2. 右侧是插件自带 UI（沙箱 iframe，经 `window.pluginBridge` 调后端插件）：
    选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 自动带一致性校验状态；
    选 AAB 模式（`auto` / `splice` / `reconstruct`）。解析按钮仍保留，用于手动重新解析。
-3. 预置三张渠道卡（`other` / `samsung` / `google`），可点「＋ 其他包」继续添加任意自定义渠道。
-   逐项填：启用、包名、应用名、versionCode、versionName、图标、keystore（路径 / alias / storepass / keypass）、
-   格式（APK / AAB / 两者）、渠道 meta-data（多行 `name=value`，空行与 `#` 注释忽略）、额外权限
-   （每行一个 `<uses-permission>`，如 `com.android.vending.BILLING`）、渠道文件
-   （`assets` 目标路径 + 文本内容，沙箱 iframe 读不了本地文件，所以没有文件选择框），以及
-   「重命名 provider authority」「重命名自定义权限」「移除 sharedUserId」三个开关。
-   APK / AAB / 图标 / 输出目录的选择框由宿主代弹原生对话框。
-   包名不能与源 APK 相同，渠道之间也不能重复（UI 会直接标红）；自定义渠道可随时删除。
-4. 底部设输出目录（默认 `<BT_OUTPUT_DIR>/white-label/`），按需勾选「严格校验 AAB」和「记住配置」。
-5. 点「开始打包」：日志控制台实时输出解码 / aapt2 链接 / zip 重组 / 对齐 / 签名 / bundletool 校验各步骤；
+3. 「配置模板」卡（渠道卡上方）：
+   - 下拉选择 / 「＋ 新建」/「保存」/「删除」管理模板；
+   - 编辑公共项：默认格式、keystore（path/alias/口令，口令仅内存）、图标、versionCode/versionName、
+     meta-data、额外权限、**多个 assets 文件**（path + 文本内容）、三个开关；
+   - 选中模板点「应用到所有渠道」，或在渠道卡里用模板下拉框单独套用；
+   - 套用只覆盖公共项，包名/应用名/启用状态保留。
+4. 预置三张渠道卡（`other` / `samsung` / `google`），可点「＋ 其他包」继续添加任意自定义渠道。
+   每张卡填：启用、包名、应用名、模板，以及可选的逐渠道覆盖（versionCode、versionName、图标、
+   keystore 路径/alias/口令、格式、meta-data、权限、单文件 asset、三个开关）。
+   - 默认「谷歌」模板带 `com.android.vending.BILLING`；「三星」模板的 assets 初始为空，按三星要求自行添加；
+   - APK / AAB / 图标 / 输出目录的选择框由宿主代弹原生对话框；
+   - 包名不能与源 APK 相同，渠道之间也不能重复（UI 会直接标红）；自定义渠道可随时删除。
+5. 底部设输出目录（默认 `<BT_OUTPUT_DIR>/white-label/`），按需勾选「严格校验 AAB」和「记住配置」。
+6. 点「开始打包」：日志控制台实时输出解码 / aapt2 链接 / zip 重组 / 对齐 / 签名 / bundletool 校验各步骤；
    运行中可「取消」（协作式取消，终止当前子进程）。
-6. 完成后结果卡片列出每个渠道的产物路径，可直接打开所在目录；失败时给出错误与报告路径。
+7. 完成后结果卡片列出每个渠道的产物路径，可直接打开所在目录；失败时给出错误与报告路径。
 
 > 插件页对带 `ui` 的插件只渲染 iframe：运行按钮、日志、结果都由插件 UI 自己画，宿主只转发
 > log/result/error 事件并代发 toast/confirm（机制见 `docs/PLUGIN_PACKAGE.md`）。
@@ -223,9 +244,10 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
 
 1. **meta-data**：每行 `name=value`，在 manifest `<application>` 下写/覆盖渠道键值
    （`<meta-data android:name="name" android:value="value"/>`）；要改已有键填同名即可。
-2. **渠道文件**：字段是 `{path, content}`——`path` 是**产物内目标路径**（相对路径，自动补 `assets/` 前缀，
-   禁止绝对路径和 `..`），`content` 是直接写入的**文本**（沙箱 iframe 读不了本地文件，没有文件选择框）。
-   最终按该路径写入 `assets/`（APK 走 zip 重组写入，AAB 直改注入 `base/assets/`）。
+2. **渠道文件**：单文件字段 `asset: {path, content}`，或多个 `assets: [{path, content}, ...]`（模板与渠道都支持）。
+   `path` 是**产物内目标路径**（相对路径，自动补 `assets/` 前缀，禁止绝对路径和 `..`），`content` 是直接写入的
+   **文本**（沙箱 iframe 读不了本地文件，所以没有文件选择框；模板里的 assets 行就是 path + 文本）。
+   最终按该路径写入 `assets/`（APK 走 zip 重组写入，AAB 直改注入 `base/assets/`），同路径后者覆盖前者。
 3. **占位符**：渠道 meta-data 的 `value`（`name` 也会同样替换）与渠道文件 `content` 支持占位符，
    运行前替换为当前渠道的实际值：
 
@@ -252,17 +274,29 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
 ## profiles 与产物 / 报告
 
 - **profiles**：`<BT_OUTPUT_DIR>/white-label/profiles.json`，勾「记住配置」时写入，只含非机密字段
-  （就是单渠道配置去掉 `keystore.storepass` / `keystore.keypass`）。结构示意：
+  （渠道/模板的 `keystore.storepass` / `keystore.keypass` 都会被剔除）。结构示意：
 
   ```json
   {
     "schema": 1,
     "output_dir": "<BT_OUTPUT_DIR>/white-label",
     "google_mode": "auto",
+    "templates": [
+      {
+        "id": "google",
+        "name": "谷歌",
+        "format": "aab",
+        "keystore": { "path": "...", "alias": "..." },
+        "permissions": ["com.android.vending.BILLING"],
+        "assets": [],
+        "remove_shared_uid": true
+      }
+    ],
     "channels": {
       "other": {
         "label": "其他包",
         "enabled": true,
+        "template_id": "other",
         "package_name": "com.example.other",
         "app_name": "示例-其他包",
         "version_code": 7,
@@ -272,6 +306,7 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
         "keystore": { "path": "...", "alias": "..." },
         "metadata": [{ "name": "channel_id", "value": "other" }],
         "asset": { "path": "assets/channel.json", "content": "{\"channel\":\"{channel}\"}" },
+        "assets": [{ "path": "assets/extra.json", "content": "{}" }],
         "rename_authorities": false,
         "rename_permissions": false,
         "remove_shared_uid": true
@@ -279,6 +314,7 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
       "partner": {
         "label": "合作方",
         "enabled": true,
+        "template_id": "",
         "package_name": "com.example.partner",
         "app_name": "示例-合作方",
         "version_code": 8,
@@ -289,6 +325,7 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
         "metadata": [],
         "permissions": ["com.android.vending.BILLING"],
         "asset": { "path": "", "content": "" },
+        "assets": [],
         "rename_authorities": true,
         "rename_permissions": true,
         "remove_shared_uid": true
@@ -297,7 +334,8 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
   }
   ```
 
-  口令**不落盘**，每次运行在界面输入；换机器/重装后只需重新填口令。
+  口令**不落盘**，每次运行在界面输入；模板里的口令也只保存在本次 UI 内存中。
+  换机器/重装后只需重新填口令。
 - **产物目录**：默认 `<BT_OUTPUT_DIR>/white-label/`（可在界面改）。命名固定：
   `<output_dir>/{package}-{channel}.apk`、`<output_dir>/{package}-{channel}.aab`
   （如 `com.example.other-other.apk`、`com.example.partner-partner.aab`）。`BT_OUTPUT_DIR` 来自 `backend/server.config.json` /
@@ -425,7 +463,7 @@ pytest tests/contracts/test_white_label_packer.py tests/contracts/test_png_image
 | `plugins-dist/white-label-packer/manifest.json` | 插件元数据（id / name / entry / ui / params） |
 | `plugins-dist/white-label-packer/main.py` | 插件入口 `run(context, **params)`：APK / AAB 两条打包流水线 |
 | `plugins-dist/white-label-packer/ui/index.html` | 自定义 UI（沙箱 iframe，单文件内联） |
-| `plugins-dist/white-label-packer-1.3.0.zip` | 可直接在插件页「导入」的分发包 |
+| `plugins-dist/white-label-packer-1.4.0.zip` | 可直接在插件页「导入」的分发包 |
 | `plugins-dist/README.md` | 分发/导入说明 |
 | `backend/app/utils/png_image.py` | stdlib PNG 解码 / 缩放 / 编码（图标替换） |
 | `backend/app/plugins/manager.py` | 插件扫描与加载（内置 + 用户目录、平铺 + 包目录） |

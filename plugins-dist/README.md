@@ -5,7 +5,7 @@
 ## white-label-packer（白包打包）
 
 - 源码：`white-label-packer/`（`manifest.json` + `main.py` + `ui/index.html`）
-- 可直接导入：`white-label-packer-1.3.0.zip`
+- 可直接导入：`white-label-packer-1.4.0.zip`
 - 安装：打开 Blank Tool → 插件页 → 右上角「导入」→ 选择上面的 zip → 左侧出现
   **白包打包（多渠道）**（用户插件，无「内建」标签）。
 - 更新：重新导入 zip，弹窗选覆盖即可；删除走插件页的「删除」。
@@ -23,6 +23,12 @@ white-label-packer/assets/base.aab
 重新打包后，导入的用户不用再选文件；UI 会自动填入路径，仍可改选外部文件。后端在
 `apk_path` / `aab_path` 缺省时也会回退到这两个文件。**不要把 keystore / 口令打进 zip**。
 资源会显著增大 zip（APK/AAB 体积 + 解压复制），第三方包分发前请确认授权。
+
+## 配置模板
+
+渠道卡上方有「配置模板」：默认提供其他包 / 三星 / 谷歌三个可编辑模板，谷歌模板默认带
+`com.android.vending.BILLING`，三星模板可添加多个 assets 文件。模板支持新建、保存、删除、
+套用到所有渠道；保存后的模板写在 `profiles.json`（口令不落盘）。
 
 ## 重新打包
 

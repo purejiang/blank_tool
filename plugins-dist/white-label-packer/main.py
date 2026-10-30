@@ -46,7 +46,7 @@ DESCRIPTION = (
     "改包名、应用名、图标、签名、渠道标识、额外权限（如 BILLING）与 assets 文件；"
     "AAB 渠道优先直改源 AAB，失败自动回退重建。"
 )
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 AUTHOR = "blank_tool"
 
 # 插件自带资源：assets/base.apk / assets/base.aab 作为默认输入。
@@ -1322,6 +1322,7 @@ def _profile_from_channel(ch: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "label": ch.get("label") or "",
         "enabled": bool(ch.get("enabled")),
+        "template_id": ch.get("template_id") or "",
         "package_name": ch.get("package_name") or "",
         "app_name": ch.get("app_name") or "",
         "version_code": ch.get("version_code"),
@@ -1335,10 +1336,147 @@ def _profile_from_channel(ch: Dict[str, Any]) -> Dict[str, Any]:
         "metadata": ch.get("metadata") or [],
         "permissions": ch.get("permissions") or [],
         "asset": ch.get("asset") or {"path": "", "content": ""},
+        "assets": ch.get("assets") or [],
         "rename_authorities": bool(ch.get("rename_authorities")),
         "rename_permissions": bool(ch.get("rename_permissions")),
         "remove_shared_uid": bool(ch.get("remove_shared_uid", True)),
     }
+
+
+# ---------------------------------------------------------------------------
+# 配置模板（可增删改查；密码不落盘）
+# ---------------------------------------------------------------------------
+
+_TEMPLATE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+DEFAULT_TEMPLATES = [
+    {
+        "id": "other",
+        "name": "其他包",
+        "format": "apk",
+        "keystore": {"path": "", "alias": ""},
+        "icon_path": "",
+        "version_code": None,
+        "version_name": "",
+        "metadata": [],
+        "permissions": [],
+        "assets": [],
+        "rename_authorities": False,
+        "rename_permissions": False,
+        "remove_shared_uid": True,
+    },
+    {
+        "id": "samsung",
+        "name": "三星",
+        "format": "apk",
+        "keystore": {"path": "", "alias": ""},
+        "icon_path": "",
+        "version_code": None,
+        "version_name": "",
+        "metadata": [],
+        "permissions": [],
+        "assets": [],
+        "rename_authorities": False,
+        "rename_permissions": False,
+        "remove_shared_uid": True,
+    },
+    {
+        "id": "google",
+        "name": "谷歌",
+        "format": "aab",
+        "keystore": {"path": "", "alias": ""},
+        "icon_path": "",
+        "version_code": None,
+        "version_name": "",
+        "metadata": [],
+        "permissions": ["com.android.vending.BILLING"],
+        "assets": [],
+        "rename_authorities": False,
+        "rename_permissions": False,
+        "remove_shared_uid": True,
+    },
+]
+
+
+def _sanitize_template(t: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(t, dict):
+        return None
+    tid = str(t.get("id") or "").strip()
+    if not _TEMPLATE_ID_RE.match(tid):
+        return None
+    name = (str(t.get("name") or "").strip() or tid)[:64]
+    fmt = str(t.get("format") or ("aab" if tid == "google" else "apk")).lower()
+    if fmt not in ("apk", "aab", "both"):
+        fmt = "apk"
+    ks = t.get("keystore") if isinstance(t.get("keystore"), dict) else {}
+    vc = t.get("version_code")
+    if isinstance(vc, float) and vc.is_integer():
+        vc = int(vc)
+    elif isinstance(vc, str) and vc.strip().isdigit():
+        vc = int(vc.strip())
+    elif not isinstance(vc, int):
+        vc = None
+    metadata = []
+    for item in t.get("metadata") or []:
+        if not isinstance(item, dict):
+            continue
+        mname = str(item.get("name") or "").strip()
+        if mname:
+            metadata.append({"name": mname, "value": str(item.get("value") or "")})
+    permissions = []
+    for item in t.get("permissions") or []:
+        perm = str(item or "").strip()
+        if perm and perm not in permissions and _PKG_RE.match(perm):
+            permissions.append(perm)
+    assets = []
+    for item in t.get("assets") or []:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if path:
+            assets.append({"path": path, "content": str(item.get("content") or "")})
+    return {
+        "id": tid,
+        "name": name,
+        "format": fmt,
+        "keystore": {
+            "path": str(ks.get("path") or "").strip(),
+            "alias": str(ks.get("alias") or "").strip(),
+        },
+        "icon_path": str(t.get("icon_path") or "").strip(),
+        "version_code": vc,
+        "version_name": str(t.get("version_name") or "").strip(),
+        "metadata": metadata,
+        "permissions": permissions,
+        "assets": assets,
+        "rename_authorities": bool(t.get("rename_authorities")),
+        "rename_permissions": bool(t.get("rename_permissions")),
+        "remove_shared_uid": bool(t.get("remove_shared_uid", True)),
+    }
+
+
+def _sanitize_templates(items: Any) -> List[Dict[str, Any]]:
+    out = []
+    seen = set()
+    for item in items if isinstance(items, list) else []:
+        tpl = _sanitize_template(item)
+        if tpl and tpl["id"] not in seen:
+            seen.add(tpl["id"])
+            out.append(tpl)
+    return out
+
+
+def _save_templates(templates: List[Dict[str, Any]]) -> None:
+    data = _load_profiles()
+    data.setdefault("schema", 1)
+    data["templates"] = templates
+    _save_profiles(data)
+
+
+def _save_templates_action(context, params: Dict[str, Any]) -> Dict[str, Any]:
+    templates = _sanitize_templates(params.get("templates") or [])
+    _save_templates(templates)
+    return {"success": True, "action": "save_templates", "templates": templates}
 
 
 # ---------------------------------------------------------------------------
@@ -1452,9 +1590,17 @@ def _channel_config(ch: Dict[str, Any]) -> Dict[str, Any]:
             raise ToolException(f"权限名不合法: {perm}")
         permissions.append(perm)
     asset = ch.get("asset") if isinstance(ch.get("asset"), dict) else {}
+    assets = []
+    for item in ch.get("assets") or []:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if path:
+            assets.append({"path": path, "content": str(item.get("content") or "")})
     return {
         "id": cid,
         "label": label[:64],
+        "template_id": str(ch.get("template_id") or "").strip()[:64],
         "enabled": bool(ch.get("enabled", True)),
         "package_name": str(ch.get("package_name") or "").strip(),
         "app_name": str(ch.get("app_name") or "").strip(),
@@ -1473,6 +1619,7 @@ def _channel_config(ch: Dict[str, Any]) -> Dict[str, Any]:
         "permissions": permissions,
         "asset": {"path": str(asset.get("path") or ""),
                   "content": str(asset.get("content") or "")},
+        "assets": assets,
         "rename_authorities": bool(ch.get("rename_authorities")),
         "rename_permissions": bool(ch.get("rename_permissions")),
         "remove_shared_uid": bool(ch.get("remove_shared_uid", True)),
@@ -1513,12 +1660,21 @@ def _preflight_keystore(context, tools, ch: Dict[str, Any], tmp_dir: str) -> Non
 
 
 def _assets_for(ch: Dict[str, Any], mapping: Dict[str, str]) -> Dict[str, bytes]:
-    asset = ch.get("asset") or {}
-    rel = _safe_asset_rel(asset.get("path") or "")
-    content = asset.get("content") or ""
-    if not rel or not content:
-        return {}
-    return {rel: _substitute(str(content), mapping).encode("utf-8")}
+    """合并单文件 asset 与模板/渠道的多文件 assets；同路径后者覆盖前者。"""
+    items = []
+    legacy = ch.get("asset") or {}
+    if isinstance(legacy, dict) and legacy.get("path"):
+        items.append(legacy)
+    for item in ch.get("assets") or []:
+        if isinstance(item, dict):
+            items.append(item)
+    out: Dict[str, bytes] = {}
+    for item in items:
+        rel = _safe_asset_rel(str(item.get("path") or ""))
+        if not rel:
+            continue
+        out[rel] = _substitute(str(item.get("content") or ""), mapping).encode("utf-8")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1855,11 +2011,15 @@ def _presets(context) -> Dict[str, Any]:
         else:
             chans.pop("tencent")
     status = _tool_status(context)
+    templates = _sanitize_templates(saved.get("templates") if isinstance(saved, dict) else [])
+    if not templates:
+        templates = _sanitize_templates(DEFAULT_TEMPLATES)
     return {
         "success": True,
         "action": "presets",
         "channels": CHANNEL_PRESETS,
         "bundled": _bundled_paths(),
+        "templates": templates,
         "defaults": {
             "output_dir": os.path.join(get_output_dir(), "white-label"),
             "google_mode": "auto",
@@ -1870,6 +2030,7 @@ def _presets(context) -> Dict[str, Any]:
         "tools": status,
         "notes": [
             "插件可在 assets/base.apk、assets/base.aab 自带默认输入；UI 会自动填入，可随时改选外部文件。",
+            "「配置模板」可保存/复用各渠道的签名、图标、meta-data、权限、assets 与开关；模板可新建/编辑/删除。",
             "「其他包」是通用渠道；可继续添加任意多个自定义渠道，标识用于产物文件名。",
             "AAB 直改需要同一次构建的 APK + AAB；不一致时自动回退重建。",
             "包名不能与源包名相同；每个渠道可使用独立 keystore。",
@@ -2061,10 +2222,15 @@ def _pack(context, params: Dict[str, Any]) -> Any:
     # profiles
     if save_profiles:
         try:
+            existing = _load_profiles()
+            tpl_source = params.get("templates")
+            if not isinstance(tpl_source, list):
+                tpl_source = existing.get("templates") or []
             profiles = {
                 "schema": 1,
                 "output_dir": output_dir,
                 "google_mode": google_mode,
+                "templates": _sanitize_templates(tpl_source),
                 "channels": {},
             }
             for raw in raw_channels:
@@ -2121,6 +2287,8 @@ def run(context, action: str = "pack", **params):
             return context.finish(_presets(context))
         if action == "inspect":
             return context.finish(_inspect(context, params))
+        if action == "save_templates":
+            return context.finish(_save_templates_action(context, params))
         if action == "pack":
             return _pack(context, params)
         raise ToolException(f"未知 action: {action}")

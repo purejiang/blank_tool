@@ -324,10 +324,15 @@ def test_channel_config_supports_custom_channels():
     ch = WL._channel_config({
         "id": "other", "package_name": "com.x.o", "app_name": "X",
         "format": "aab", "keystore": {},
+        "template_id": "google",
+        "assets": [{"path": "assets/a.json", "content": "a"},
+                   {"path": "assets/b.txt", "content": "b"}],
     })
     assert ch["id"] == "other"
     assert ch["label"] == "其他包"
     assert ch["format"] == "aab"           # 不再强制 APK
+    assert ch["template_id"] == "google"
+    assert len(ch["assets"]) == 2
 
     custom = WL._channel_config({
         "id": "partner", "label": "合作方", "package_name": "com.x.p",
@@ -519,6 +524,65 @@ def test_presets_shape(monkeypatch, workdir):
     assert "bundled" in payload
 
 
+def test_assets_for_merges_multiple_files():
+    mapping = {"channel": "google"}
+    out = WL._assets_for({
+        "asset": {"path": "assets/one.txt", "content": "one-{channel}"},
+        "assets": [
+            {"path": "assets/two.json", "content": '{"c":"{channel}"}'},
+            {"path": "assets/three.txt", "content": ""},
+        ],
+    }, mapping)
+    assert out["assets/one.txt"] == b"one-google"
+    assert out["assets/two.json"] == b'{"c":"google"}'
+    assert out["assets/three.txt"] == b""
+
+
+def test_templates_sanitize_and_defaults(monkeypatch, workdir):
+    monkeypatch.setenv("BT_OUTPUT_DIR", str(workdir / "out"))
+    tpl = WL._sanitize_template({
+        "id": "google", "name": "谷歌", "format": "aab",
+        "keystore": {"path": "k.p12", "alias": "a", "storepass": "secret"},
+        "permissions": ["com.android.vending.BILLING"],
+        "assets": [{"path": "assets/x", "content": "y"}],
+        "version_code": "2",
+    })
+    assert tpl["name"] == "谷歌"
+    assert tpl["format"] == "aab"
+    assert tpl["keystore"] == {"path": "k.p12", "alias": "a"}
+    assert "secret" not in json.dumps(tpl)
+    assert tpl["version_code"] == 2
+    assert tpl["assets"][0]["path"] == "assets/x"
+    assert tpl["permissions"] == ["com.android.vending.BILLING"]
+
+    ctx = _Ctx({
+        "apktool": _Tool("x"), "aapt": _Tool("x"), "zipalign": _Tool("x"),
+        "apksigner": _Tool("x"), "bundletool": _Tool("x"),
+        "jarsigner": _Tool("x"),
+    })
+    payload = WL.run(ctx, action="presets")
+    names = [t["name"] for t in payload["templates"]]
+    assert "谷歌" in names and "三星" in names
+    google = [t for t in payload["templates"] if t["id"] == "google"][0]
+    assert google["permissions"] == ["com.android.vending.BILLING"]
+
+
+def test_save_templates_roundtrip(monkeypatch, workdir):
+    monkeypatch.setenv("BT_OUTPUT_DIR", str(workdir / "out"))
+    templates = [{
+        "id": "samsung", "name": "三星", "format": "apk",
+        "keystore": {"path": "k.jks", "alias": "a", "storepass": "secret"},
+        "assets": [{"path": "assets/samsung.json", "content": "{}"}],
+    }]
+    res = WL.run(_Ctx(), action="save_templates", templates=templates)
+    assert res["success"] is True
+    assert res["templates"][0]["name"] == "三星"
+    assert "secret" not in json.dumps(res["templates"])
+    loaded = WL._load_profiles()["templates"]
+    assert loaded[0]["id"] == "samsung"
+    assert loaded[0]["assets"][0]["path"] == "assets/samsung.json"
+
+
 def test_bundled_assets_discovery(monkeypatch, workdir):
     plugin = workdir / "plugin"
     assets = plugin / "assets"
@@ -580,6 +644,8 @@ def test_ui_static_contract():
     assert 'data-field="label"' in html
     assert 'data-field="permissions"' in html and "com.android.vending.BILLING" in html
     assert "apkBundled" in html and "aabBundled" in html and "btnClearAab" in html
+    assert 'id="tplEditor"' in html and 'id="tplAssets"' in html
+    assert 'data-field="template_id"' in html and "save_templates" in html
 
 
 def test_plugin_package_importable(monkeypatch, workdir):
@@ -805,6 +871,7 @@ def test_integration_apk_and_aab_splice(monkeypatch, workdir):
             "permissions": ["com.android.vending.BILLING"],
             "asset": {"path": "assets/channel.json",
                       "content": '{"channel":"{channel}"}'},
+            "assets": [{"path": "assets/extra.json", "content": '{"x":"{channel}"}'}],
             "rename_authorities": True, "rename_permissions": True,
             "remove_shared_uid": True,
         }
@@ -832,6 +899,8 @@ def test_integration_apk_and_aab_splice(monkeypatch, workdir):
     assert other["verify"]["zipalign"] == "ok"
     assert other["verify"]["badging"] == "ok"
     assert other["verify"]["resource_ids"] == "ok"
+    with zipfile.ZipFile(other["apk_path"]) as z:
+        assert z.read("assets/extra.json") == b'{"x":"other"}'
     assert partner["apk_path"] and os.path.isfile(partner["apk_path"])
     assert partner["verify"]["apksigner"] == "ok"
     assert google["aab_path"] and os.path.isfile(google["aab_path"])

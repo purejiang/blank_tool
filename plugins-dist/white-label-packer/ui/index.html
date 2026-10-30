@@ -190,6 +190,7 @@
   }
   .card-h .spacer { flex: 1; }
   .req { color: var(--err); font-weight: 400; }
+  .tpl-asset { border: 1px dashed var(--border); border-radius: 6px; padding: 6px; margin-bottom: 6px; }
 
   /* ---------- 表单控件 ---------- */
   input[type="text"], input[type="password"], input[type="number"], select, textarea {
@@ -488,6 +489,69 @@
     <div class="env-body" id="envBody"></div>
   </details>
 
+  <!-- 配置模板（签名 / 图标 / meta-data / 权限 / assets / 开关） -->
+  <details class="card" id="tplCard" open>
+    <summary class="card-h">
+      <span class="arrow">▶</span>配置模板
+      <span class="sub" id="tplSub">可新建/修改/删除，套用到渠道</span>
+      <span class="spacer"></span>
+      <button type="button" id="btnTplNew" class="mini">＋ 新建</button>
+      <button type="button" id="btnTplSave" class="mini">保存</button>
+      <button type="button" id="btnTplDelete" class="mini danger">删除</button>
+    </summary>
+    <div class="ch-body" id="tplEditor">
+      <div class="row">
+        <span class="lbl" style="flex:none;font-size:11.5px;color:var(--fg-muted)">模板</span>
+        <select id="tplSelect" style="flex:1"></select>
+        <input id="tplName" type="text" style="flex:1" placeholder="模板名，例如 谷歌 / 三星 / 普通包">
+      </div>
+      <div class="two">
+        <div class="field"><label>默认格式</label><select id="tplFormat">
+          <option value="apk">APK</option>
+          <option value="aab">AAB</option>
+          <option value="both">APK + AAB</option>
+        </select></div>
+        <div class="field"><label>图标</label><div class="row">
+          <input id="tplIcon" type="text" class="mono" spellcheck="false" placeholder="可选：渠道图标 PNG">
+          <button type="button" id="btnTplPickIcon" class="mini">选择</button>
+        </div></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>keystore</label><div class="row">
+          <input id="tplKsPath" type="text" class="mono" spellcheck="false" placeholder=".jks / .keystore / .p12">
+          <button type="button" id="btnTplPickKs" class="mini">选择</button>
+        </div></div>
+        <div class="field"><label>alias</label><input id="tplKsAlias" type="text" spellcheck="false" placeholder="签名别名"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>storepass</label><input id="tplStorepass" type="password" autocomplete="off"></div>
+        <div class="field"><label>keypass</label><input id="tplKeypass" type="password" autocomplete="off"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>versionCode</label><input id="tplVc" type="number" min="1" step="1" class="mono" placeholder="留空=继承"></div>
+        <div class="field"><label>versionName</label><input id="tplVn" type="text" class="mono" placeholder="留空=继承"></div>
+      </div>
+      <div class="field"><label>渠道 meta-data</label>
+        <textarea id="tplMetadata" rows="3" spellcheck="false" placeholder="name=value，每行一条"></textarea>
+        <div class="fhint">支持 {channel} / {package} / {app_name} 等占位符</div></div>
+      <div class="field"><label>额外权限（uses-permission）</label>
+        <textarea id="tplPermissions" rows="2" spellcheck="false" placeholder="每行一个，例如 com.android.vending.BILLING"></textarea></div>
+      <div class="field"><label>assets 文件</label>
+        <div id="tplAssets"></div>
+        <button type="button" id="btnTplAddAsset" class="mini">＋ assets 文件</button>
+        <div class="fhint">模板里的 assets 会随套用注入该渠道；可加多个文件（path + 文本内容）</div></div>
+      <div class="checks">
+        <label class="ck"><input type="checkbox" id="tplRenameAuth"> 重命名 provider authority</label>
+        <label class="ck"><input type="checkbox" id="tplRenamePerm"> 重命名自定义权限</label>
+        <label class="ck"><input type="checkbox" id="tplRemoveUid"> 移除 sharedUserId</label>
+      </div>
+      <div class="row">
+        <button type="button" id="btnTplApplyAll" class="mini">应用到所有渠道</button>
+        <span class="fhint">只覆盖公共项（签名/图标/meta-data/权限/assets/版本/开关），不改包名、应用名</span>
+      </div>
+    </div>
+  </details>
+
   <!-- 渠道 -->
   <section class="card">
     <div class="card-h">渠道配置 <span class="sub" id="chHeadSub"></span><span class="spacer"></span><button type="button" id="btnAddChannel" class="mini">＋ 其他包</button></div>
@@ -552,6 +616,13 @@
   ];
   var CHANNEL_ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
+  /** 配置模板兜底（与后端 DEFAULT_TEMPLATES 对齐；后端返回为准） */
+  var FALLBACK_TEMPLATES = [
+    { id: 'other', name: '其他包', format: 'apk', keystore: { path: '', alias: '' }, icon_path: '', version_code: null, version_name: '', metadata: [], permissions: [], assets: [], rename_authorities: false, rename_permissions: false, remove_shared_uid: true },
+    { id: 'samsung', name: '三星', format: 'apk', keystore: { path: '', alias: '' }, icon_path: '', version_code: null, version_name: '', metadata: [], permissions: [], assets: [], rename_authorities: false, rename_permissions: false, remove_shared_uid: true },
+    { id: 'google', name: '谷歌', format: 'aab', keystore: { path: '', alias: '' }, icon_path: '', version_code: null, version_name: '', metadata: [], permissions: ['com.android.vending.BILLING'], assets: [], rename_authorities: false, rename_permissions: false, remove_shared_uid: true }
+  ];
+
   /** 桥在宿主外打开时不存在——所有桥调用都要先判空 */
   var bridge = window.pluginBridge || null;
 
@@ -562,6 +633,8 @@
     meta: null,
     presets: null,
     bundled: {},          // 插件自带 assets/base.apk|base.aab（可选）
+    templates: [],
+    tplId: '',
     notes: [],
     tools: {},
     channels: [],
@@ -705,6 +778,8 @@
       notes: str(meta && meta.notes),
       suffix: str(meta && meta.suffix),
       custom: !!(meta && meta.custom),
+      template_id: id,
+      assets: [],
       meta_format: str(meta && meta.format) || (id === 'google' ? 'aab' : 'apk'),
       also_apk: !!(meta && meta.also_apk),
       enabled: id === 'other',
@@ -745,6 +820,10 @@
   function applyProfile(cfg, p) {
     if (!p || typeof p !== 'object') return;
     if (cfg.custom && typeof p.label === 'string' && p.label) cfg.label = p.label;
+    if (typeof p.template_id === 'string') cfg.template_id = p.template_id;
+    if (Array.isArray(p.assets)) cfg.assets = p.assets.map(function (a) {
+      return { path: str(a && a.path), content: str(a && a.content) };
+    });
     if (typeof p.enabled === 'boolean') cfg.enabled = p.enabled;
     if (typeof p.package_name === 'string') cfg.package_name = p.package_name;
     if (typeof p.app_name === 'string') cfg.app_name = p.app_name;
@@ -769,6 +848,196 @@
     clampFormat(cfg);
   }
 
+  /* ========================================================================
+   * 配置模板：CRUD + 套用到渠道
+   * ====================================================================== */
+
+  function templateById(id) {
+    for (var i = 0; i < state.templates.length; i++) {
+      if (state.templates[i].id === id) return state.templates[i];
+    }
+    return null;
+  }
+
+  function templateOptions(selected, includeNone) {
+    var h = includeNone ? '<option value="">（不使用模板）</option>' : '';
+    for (var i = 0; i < state.templates.length; i++) {
+      var t = state.templates[i];
+      h += '<option value="' + esc(t.id) + '"' + (t.id === selected ? ' selected' : '') + '>' + esc(t.name) + '</option>';
+    }
+    return h;
+  }
+
+  /** 把模板公共项套到渠道；包名/应用名/启用状态保留 */
+  function applyTemplateToChannel(cfg, tpl) {
+    if (!cfg || !tpl) return;
+    cfg.template_id = tpl.id;
+    if (tpl.format) cfg.format = tpl.format;
+    cfg.keystore.path = tpl.keystore && tpl.keystore.path ? tpl.keystore.path : '';
+    cfg.keystore.alias = tpl.keystore && tpl.keystore.alias ? tpl.keystore.alias : '';
+    if (tpl.keystore && tpl.keystore.storepass) cfg.keystore.storepass = tpl.keystore.storepass;
+    if (tpl.keystore && tpl.keystore.keypass) cfg.keystore.keypass = tpl.keystore.keypass;
+    cfg.icon_path = tpl.icon_path || '';
+    cfg.version_code = tpl.version_code == null ? '' : String(tpl.version_code);
+    cfg.version_name = tpl.version_name || '';
+    cfg.metadataText = metadataToText(tpl.metadata || []);
+    cfg.permissionsText = (tpl.permissions || []).join('\n');
+    cfg.assets = (tpl.assets || []).map(function (a) {
+      return { path: str(a && a.path), content: str(a && a.content) };
+    });
+    cfg.rename_authorities = !!tpl.rename_authorities;
+    cfg.rename_permissions = !!tpl.rename_permissions;
+    cfg.remove_shared_uid = tpl.remove_shared_uid !== false;
+    clampFormat(cfg);
+  }
+
+  function renderTplAssets(assets) {
+    var box = $('tplAssets');
+    if (!box) return;
+    box.innerHTML = '';
+    (assets || []).forEach(addTplAssetRow);
+  }
+
+  function addTplAssetRow(asset) {
+    var box = $('tplAssets');
+    if (!box) return;
+    asset = asset || { path: '', content: '' };
+    var row = document.createElement('div');
+    row.className = 'tpl-asset';
+    row.setAttribute('data-asset', '1');
+    row.innerHTML =
+      '<div class="row"><input class="mono" data-tpl-asset-path type="text" spellcheck="false" placeholder="assets/xxx.json" value="' + esc(asset.path) + '">' +
+      '<button type="button" class="mini danger" data-tpl-asset-del>移除</button></div>' +
+      '<textarea data-tpl-asset-content rows="2" spellcheck="false" placeholder="写入该路径的文本内容">' + esc(asset.content) + '</textarea>';
+    box.appendChild(row);
+    return row;
+  }
+
+  function collectTplAssets() {
+    var box = $('tplAssets');
+    if (!box) return [];
+    var out = [];
+    var rows = box.querySelectorAll('[data-asset]');
+    for (var i = 0; i < rows.length; i++) {
+      var p = rows[i].querySelector('[data-tpl-asset-path]');
+      var c = rows[i].querySelector('[data-tpl-asset-content]');
+      var path = p ? p.value.trim() : '';
+      if (path) out.push({ path: path, content: c ? c.value : '' });
+    }
+    return out;
+  }
+
+  function loadTemplateForm(tpl) {
+    if (!tpl) return;
+    $('tplSelect').value = tpl.id;
+    $('tplName').value = tpl.name || '';
+    $('tplFormat').value = tpl.format || 'apk';
+    $('tplIcon').value = tpl.icon_path || '';
+    $('tplKsPath').value = (tpl.keystore && tpl.keystore.path) || '';
+    $('tplKsAlias').value = (tpl.keystore && tpl.keystore.alias) || '';
+    $('tplStorepass').value = (tpl.keystore && tpl.keystore.storepass) || '';
+    $('tplKeypass').value = (tpl.keystore && tpl.keystore.keypass) || '';
+    $('tplVc').value = tpl.version_code == null ? '' : String(tpl.version_code);
+    $('tplVn').value = tpl.version_name || '';
+    $('tplMetadata').value = metadataToText(tpl.metadata || []);
+    $('tplPermissions').value = (tpl.permissions || []).join('\n');
+    $('tplRenameAuth').checked = !!tpl.rename_authorities;
+    $('tplRenamePerm').checked = !!tpl.rename_permissions;
+    $('tplRemoveUid').checked = tpl.remove_shared_uid !== false;
+    renderTplAssets(tpl.assets || []);
+    var sub = $('tplSub');
+    if (sub) sub.textContent = '共 ' + state.templates.length + ' 个模板 · 套用后仍可逐渠道覆盖';
+  }
+
+  function renderTemplates() {
+    if (!Array.isArray(state.templates) || !state.templates.length) {
+      state.templates = FALLBACK_TEMPLATES.map(function (t) { return JSON.parse(JSON.stringify(t)); });
+    }
+    if (!state.tplId || !templateById(state.tplId)) state.tplId = state.templates[0].id;
+    var sel = $('tplSelect');
+    if (sel) {
+      sel.innerHTML = templateOptions(state.tplId, false);
+      sel.value = state.tplId;
+    }
+    loadTemplateForm(templateById(state.tplId));
+  }
+
+  function readTemplateForm() {
+    var meta = parseMetadata($('tplMetadata').value);
+    return {
+      id: state.tplId,
+      name: $('tplName').value.trim() || state.tplId,
+      format: $('tplFormat').value,
+      keystore: {
+        path: $('tplKsPath').value.trim(),
+        alias: $('tplKsAlias').value.trim(),
+        storepass: $('tplStorepass').value,
+        keypass: $('tplKeypass').value
+      },
+      icon_path: $('tplIcon').value.trim(),
+      version_code: $('tplVc').value.trim() === '' ? null : Number($('tplVc').value),
+      version_name: $('tplVn').value.trim(),
+      metadata: meta.items,
+      permissions: parsePermissions($('tplPermissions').value),
+      assets: collectTplAssets(),
+      rename_authorities: !!$('tplRenameAuth').checked,
+      rename_permissions: !!$('tplRenamePerm').checked,
+      remove_shared_uid: !!$('tplRemoveUid').checked
+    };
+  }
+
+  function persistTemplates() {
+    if (!bridge) return;
+    if (!startAction('save_templates', { action: 'save_templates', templates: state.templates })) {
+      toast('当前有任务在跑，稍后再保存模板', 'warning');
+    }
+  }
+
+  function saveTemplate() {
+    var tpl = readTemplateForm();
+    var idx = -1;
+    for (var i = 0; i < state.templates.length; i++) if (state.templates[i].id === tpl.id) idx = i;
+    if (idx < 0) state.templates.push(tpl);
+    else state.templates[idx] = tpl;
+    renderTemplates();
+    persistTemplates();
+  }
+
+  function newTemplate() {
+    var id = 'tpl-' + Date.now().toString(36);
+    var tpl = {
+      id: id, name: '新模板', format: 'apk', keystore: { path: '', alias: '' },
+      icon_path: '', version_code: null, version_name: '', metadata: [],
+      permissions: [], assets: [], rename_authorities: false,
+      rename_permissions: false, remove_shared_uid: true
+    };
+    state.templates.push(tpl);
+    state.tplId = id;
+    renderTemplates();
+    persistTemplates();
+  }
+
+  function deleteTemplate() {
+    if (state.templates.length <= 1) {
+      toast('至少保留一个模板', 'warning');
+      return;
+    }
+    state.templates = state.templates.filter(function (t) { return t.id !== state.tplId; });
+    state.tplId = state.templates[0].id;
+    renderTemplates();
+    persistTemplates();
+  }
+
+  function applyTemplateAll() {
+    var tpl = readTemplateForm();
+    for (var i = 0; i < state.channels.length; i++) {
+      applyTemplateToChannel(state.channels[i], tpl);
+    }
+    syncChannelInputs();
+    refresh();
+    toast('已套用到 ' + state.channels.length + ' 个渠道（包名/应用名保留）', 'success');
+  }
+
   function buildChannels() {
     var saved = {};
     var sp = state.presets && state.presets.saved_profiles;
@@ -776,7 +1045,12 @@
     var metas = channelMetas();
     state.channels = metas.map(function (meta) {
       var cfg = emptyChannel(meta);
-      applyProfile(cfg, saved[cfg.id]);
+      if (saved[cfg.id]) {
+        applyProfile(cfg, saved[cfg.id]);
+      } else {
+        var tpl = templateById(cfg.template_id);
+        if (tpl) applyTemplateToChannel(cfg, tpl);
+      }
       return cfg;
     });
     // saved_profiles 里出现、但预置里没有的渠道 → 作为自定义渠道恢复
@@ -858,6 +1132,7 @@
     var noteBits = [];
     if (cfg.notes) noteBits.push(cfg.notes);
     if (cfg.custom) noteBits.push('自定义渠道 · 标识 ' + cfg.id);
+    if (cfg.assets && cfg.assets.length) noteBits.push('模板 assets ' + cfg.assets.length + ' 个');
     if (cfg.suffix) noteBits.push('建议包名后缀 ' + cfg.suffix);
 
     var h = '';
@@ -870,6 +1145,11 @@
     h += '<span class="ch-pkg mono" data-role="ch-pkg"></span>';
     h += '</summary>';
     h += '<div class="ch-body">';
+
+    h += '<div class="field"><label>配置模板</label><div class="row">' +
+      '<select ' + d + ' data-field="template_id">' + templateOptions(cfg.template_id, true) + '</select>' +
+      '<button type="button" class="mini" data-ch="' + esc(cfg.id) + '" data-act="apply-template">套用</button></div>' +
+      '<div class="fhint">套用模板的签名/图标/meta-data/权限/assets/版本/开关；包名和应用名保留</div></div>';
 
     if (cfg.custom) {
       h += '<div class="field"><label>渠道名</label><div class="row">' +
@@ -956,6 +1236,7 @@
   function valueOf(cfg, field) {
     switch (field) {
       case 'enabled': return cfg.enabled;
+      case 'template_id': return cfg.template_id;
       case 'label': return cfg.label;
       case 'package_name': return cfg.package_name;
       case 'app_name': return cfg.app_name;
@@ -981,6 +1262,7 @@
   function assign(cfg, field, value) {
     switch (field) {
       case 'enabled': cfg.enabled = !!value; break;
+      case 'template_id': cfg.template_id = str(value); break;
       case 'label': cfg.label = str(value); break;
       case 'package_name': cfg.package_name = str(value); break;
       case 'app_name': cfg.app_name = str(value); break;
@@ -1419,6 +1701,8 @@
       }, PRESETS_TIMEOUT_MS);
     } else if (action === 'inspect') {
       setStatus('解析中…', 'busy');
+    } else if (action === 'save_templates') {
+      setStatus('保存模板…', 'busy');
     } else if (action === 'pack') {
       setStatus('打包中…', 'busy');
     }
@@ -1484,6 +1768,7 @@
       google_mode: state.googleMode,
       strict_aab_check: !!state.strictAab,
       save_profiles: !!state.saveProfiles,
+      templates: state.templates,
       channels: channels
     });
   }
@@ -1503,6 +1788,7 @@
     return {
       id: cfg.id,
       label: (cfg.label || cfg.id).trim() || cfg.id,
+      template_id: cfg.template_id || '',
       enabled: !!cfg.enabled,
       package_name: cfg.package_name.trim(),
       app_name: cfg.app_name.trim(),
@@ -1519,6 +1805,9 @@
       metadata: metadata.map(function (m) { return { name: m.name, value: m.value }; }),
       permissions: parsePermissions(cfg.permissionsText),
       asset: { path: cfg.assetPath.trim(), content: cfg.assetContent },
+      assets: (cfg.assets || []).map(function (a) {
+        return { path: str(a && a.path), content: str(a && a.content) };
+      }),
       rename_authorities: !!cfg.rename_authorities,
       rename_permissions: !!cfg.rename_permissions,
       remove_shared_uid: !!cfg.remove_shared_uid
@@ -1583,6 +1872,7 @@
 
     if (which === 'presets') handlePresets(payload);
     else if (which === 'inspect') handleInspect(payload);
+    else if (which === 'save_templates') handleSaveTemplates(payload);
     else if (which === 'pack') handlePack(payload);
 
     refresh();
@@ -1660,6 +1950,12 @@
     state.strictAab = typeof d.strict_aab_check === 'boolean' ? d.strict_aab_check : true;
     state.saveProfiles = typeof d.save_profiles === 'boolean' ? d.save_profiles : true;
 
+    state.templates = (p && Array.isArray(p.templates) && p.templates.length)
+      ? p.templates
+      : FALLBACK_TEMPLATES.map(function (t) { return JSON.parse(JSON.stringify(t)); });
+    if (!state.tplId || !templateById(state.tplId)) state.tplId = state.templates[0].id;
+    renderTemplates();
+
     // presets 响应前用户可能已手动加过自定义渠道；重建时保留（同 id 以 saved 为准）
     var keepCustom = state.channels.filter(function (c) { return c.custom; });
     buildChannels();
@@ -1711,6 +2007,16 @@
     if (state.source && state.source.package) {
       pushLog('解析完成：' + state.source.package + ' ' + str(state.source.version_name || ''), 'info');
     }
+  }
+
+  function handleSaveTemplates(p) {
+    if (!p || p.success === false) {
+      showErrorBar('模板保存失败：' + fmtMsg((p && (p.error || p.message)) || '未知错误'));
+      setStatus('模板保存失败', 'err');
+      return;
+    }
+    setStatus('模板已保存', 'ok');
+    toast('模板已保存', 'success');
   }
 
   function handlePack(p) {
@@ -1950,6 +2256,11 @@
     state.touched[fieldKey(chId, field)] = true;
     if (el.type === 'checkbox') assign(cfg, field, el.checked);
     else assign(cfg, field, el.value);
+    if (field === 'template_id') {
+      var tpl = templateById(cfg.template_id);
+      if (tpl) applyTemplateToChannel(cfg, tpl);
+      syncChannelInputs();
+    }
     refresh();
     if (field === 'enabled') {
       var card = channelCard(chId);
@@ -1967,6 +2278,14 @@
     if (act === 'suggest') suggestPackage(cfg);
     else if (act === 'pick-icon') pickIcon(cfg);
     else if (act === 'pick-keystore') pickKeystore(cfg);
+    else if (act === 'apply-template') {
+      var tpl = templateById(cfg.template_id);
+      if (!tpl) { toast('先选择一个配置模板', 'warning'); return; }
+      applyTemplateToChannel(cfg, tpl);
+      syncChannelInputs();
+      refresh();
+      toast('已套用模板：' + tpl.name, 'success');
+    }
     else if (act === 'remove') removeCustomChannel(cfg);
   }
 
@@ -1986,6 +2305,29 @@
 
     $('btnPickApk').addEventListener('click', pickApk);
     $('btnPickAab').addEventListener('click', pickAab);
+    $('btnTplNew').addEventListener('click', newTemplate);
+    $('btnTplSave').addEventListener('click', saveTemplate);
+    $('btnTplDelete').addEventListener('click', deleteTemplate);
+    $('btnTplApplyAll').addEventListener('click', applyTemplateAll);
+    $('btnTplAddAsset').addEventListener('click', function () { addTplAssetRow(); });
+    $('tplAssets').addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-tpl-asset-del]') : null;
+      if (!btn) return;
+      var row = btn.closest('[data-asset]');
+      if (row && row.parentNode) row.parentNode.removeChild(row);
+    });
+    $('tplSelect').addEventListener('change', function () {
+      state.tplId = this.value;
+      loadTemplateForm(templateById(state.tplId));
+    });
+    $('btnTplPickIcon').addEventListener('click', function () {
+      pickPath('file', { title: '选择模板图标（PNG）', filters: [{ name: 'PNG', extensions: ['png'] }] })
+        .then(function (path) { if (path) $('tplIcon').value = path; });
+    });
+    $('btnTplPickKs').addEventListener('click', function () {
+      pickPath('file', { title: '选择模板 keystore', filters: [{ name: 'Keystore', extensions: ['jks', 'keystore', 'p12', 'pfx'] }] })
+        .then(function (path) { if (path) $('tplKsPath').value = path; });
+    });
     $('btnClearAab').addEventListener('click', function () {
       state.aabPath = '';
       state.aabChecked = false;
@@ -2023,6 +2365,9 @@
 
   function init() {
     // 先用内置渠道定义就能渲染完整表单：presets 失败/超时也不至于空白
+    state.templates = FALLBACK_TEMPLATES.map(function (t) { return JSON.parse(JSON.stringify(t)); });
+    state.tplId = state.templates[0].id;
+    renderTemplates();
     buildChannels();
     renderChannels();
     renderEnv();
