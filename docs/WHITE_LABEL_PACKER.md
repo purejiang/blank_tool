@@ -1,12 +1,12 @@
 # 白包打包（white-label-packer）
 
-内置插件 `white-label-packer`：从一份**基础 APK**（可选再给一份**同版本 AAB**）批量生成各渠道白包——
-腾讯（APK）、三星（APK）、谷歌（AAB，可选测试 APK）。每个渠道独立设置包名、应用名、版本号、图标、
-签名密钥与渠道标识。
+内置插件 `white-label-packer`：从一份**基础 APK**（可选再给一份**同版本 AAB**）批量生成渠道白包——
+**其他包**（通用）、三星、谷歌，以及任意自定义渠道。渠道本身不绑定任何商店，三星、谷歌只是预置模板，
+右侧「＋ 其他包」可继续添加任意自定义渠道。每个渠道独立设置包名、应用名、版本号、图标、签名密钥与渠道标识。
 
 - 插件 id：`white-label-packer`（`plugin.run` / `plugin.export` / `plugin.delete` 都用它；display name 只是标签）
 - 插件目录：`backend/app/plugins/builtin/white-label-packer/`（`manifest.json` / `main.py` / `ui/index.html`）
-- 插件页显示：**白包打包（腾讯 / 三星 / 谷歌）**，带「内置」标签；随应用分发，打包安装版里是只读的
+- 插件页显示：**白包打包（多渠道）**，带「内置」标签；随应用分发，打包安装版里是只读的
 - 包格式与 UI 桥规范见 `docs/PLUGIN_PACKAGE.md`（内置插件与用户插件同格式；用户目录同名插件覆盖内置）
 
 ## 功能
@@ -34,16 +34,20 @@
 | `sharedUserId` | **移除**（改包名后共享 uid 会冲突） | 「移除 sharedUserId」默认开启，关掉即保留 |
 | versionCode / versionName | 按渠道覆盖 | — |
 
-## 渠道预置
+## 渠道预置与自定义渠道
 
 | 渠道 | 默认产物 | 流程 |
 |---|---|---|
-| `tencent` 腾讯 | 签名 APK | apktool 解码 → aapt2 重链接 → zip 重组 → zipalign → apksigner |
-| `samsung` 三星 | 签名 APK | 同上，包名/应用名/签名独立 |
+| `other` 其他包 | 签名 APK | apktool 解码 → aapt2 重链接 → zip 重组 → zipalign → apksigner |
+| `samsung` 三星 | 签名 APK | 同上；默认 APK，也可切 AAB / 两者 |
 | `google` 谷歌 | 签名 AAB（可附带测试 APK） | 优先直改源 AAB；无 AAB 或 guard 不满足时重建 |
+| 自定义（如 `partner`） | 由格式选择决定 | 与普通渠道完全一致；渠道名/包名/签名独立 |
 
-预置只是模板：每个渠道的包名、应用名、版本、keystore、渠道标识互不影响。**格式**只有谷歌渠道可选
-`APK` / `AAB` / `两者`（选「两者」时额外产出一个可安装的测试 APK）；腾讯、三星固定输出 APK。
+预置只是模板：每个渠道的包名、应用名、版本、keystore、渠道标识互不影响。**所有渠道**的格式都可在
+`APK` / `AAB` / `两者` 之间选择（默认其他包/三星 APK、谷歌 AAB；选「两者」时额外产出一个可安装的测试 APK）。
+
+自定义渠道在 UI 右侧「＋ 其他包」添加，自动分配 `other1`、`other2`… 的渠道标识（只用于产物文件名和报告），
+渠道名可任意改（支持中文）。「其他包」预置本身也是普通渠道，可直接改包名/签名。
 
 ## 输入要求
 
@@ -68,17 +72,17 @@ versionCode / versionName 不填时继承源 APK 的值（versionCode 优先取�
 
 ## 使用步骤（插件页操作）
 
-1. 进「插件」页，左侧列表选 **白包打包（腾讯 / 三星 / 谷歌）**（「内置」标签，v1.0.0）。
+1. 进「插件」页，左侧列表选 **白包打包（多渠道）**（「内置」标签，v1.1.0）。
 2. 右侧是插件自带 UI（沙箱 iframe，经 `window.pluginBridge` 调后端插件）：
    选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 显示一致性校验状态；
-   选谷歌模式（`auto` / `splice` / `reconstruct`）。
-3. 三张渠道卡（`tencent` / `samsung` / `google`）逐项填：启用、包名、应用名、versionCode、
-   versionName、图标、keystore（路径 / alias / storepass / keypass）、格式（仅谷歌：APK / AAB / 两者）、
-   渠道 meta-data（多行 `name=value`，空行与 `#` 注释忽略）、渠道文件（`assets` 目标路径 + 文本内容，
-   沙箱 iframe 读不了本地文件，所以没有文件选择框），以及「重命名 provider authority」
-   「重命名自定义权限」「移除 sharedUserId」三个开关。
+   选 AAB 模式（`auto` / `splice` / `reconstruct`）。
+3. 预置三张渠道卡（`other` / `samsung` / `google`），可点「＋ 其他包」继续添加任意自定义渠道。
+   逐项填：启用、包名、应用名、versionCode、versionName、图标、keystore（路径 / alias / storepass / keypass）、
+   格式（APK / AAB / 两者）、渠道 meta-data（多行 `name=value`，空行与 `#` 注释忽略）、渠道文件
+   （`assets` 目标路径 + 文本内容，沙箱 iframe 读不了本地文件，所以没有文件选择框），以及
+   「重命名 provider authority」「重命名自定义权限」「移除 sharedUserId」三个开关。
    APK / AAB / 图标 / 输出目录的选择框由宿主代弹原生对话框。
-   包名不能与源 APK 相同，渠道之间也不能重复（UI 会直接标红）。
+   包名不能与源 APK 相同，渠道之间也不能重复（UI 会直接标红）；自定义渠道可随时删除。
 4. 底部设输出目录（默认 `<BT_OUTPUT_DIR>/white-label/`），按需勾选「严格校验 AAB」和「记住配置」。
 5. 点「开始打包」：日志控制台实时输出解码 / aapt2 链接 / zip 重组 / 对齐 / 签名 / bundletool 校验各步骤；
    运行中可「取消」（协作式取消，终止当前子进程）。
@@ -193,7 +197,7 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
 
    | token | 替换为 |
    |---|---|
-   | `{channel}` | 渠道名（`tencent` / `samsung` / `google`） |
+   | `{channel}` | 渠道标识（`other` / `samsung` / `google` / 自定义 id） |
    | `{package}` | 该渠道的新包名 |
    | `{app_name}` | 该渠道的应用名 |
    | `{version_name}` | 该渠道的 versionName |
@@ -214,19 +218,36 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
     "output_dir": "<BT_OUTPUT_DIR>/white-label",
     "google_mode": "auto",
     "channels": {
-      "tencent": {
+      "other": {
+        "label": "其他包",
         "enabled": true,
-        "package_name": "com.example.tencent",
-        "app_name": "示例-腾讯",
+        "package_name": "com.example.other",
+        "app_name": "示例-其他包",
         "version_code": 7,
         "version_name": "1.2.3",
         "icon_path": "",
         "format": "apk",
         "keystore": { "path": "...", "alias": "..." },
-        "metadata": [{ "name": "channel_id", "value": "tencent" }],
+        "metadata": [{ "name": "channel_id", "value": "other" }],
         "asset": { "path": "assets/channel.json", "content": "{\"channel\":\"{channel}\"}" },
         "rename_authorities": false,
         "rename_permissions": false,
+        "remove_shared_uid": true
+      },
+      "partner": {
+        "label": "合作方",
+        "enabled": true,
+        "package_name": "com.example.partner",
+        "app_name": "示例-合作方",
+        "version_code": 8,
+        "version_name": "1.2.4",
+        "icon_path": "",
+        "format": "aab",
+        "keystore": { "path": "...", "alias": "..." },
+        "metadata": [],
+        "asset": { "path": "", "content": "" },
+        "rename_authorities": true,
+        "rename_permissions": true,
         "remove_shared_uid": true
       }
     }
@@ -236,7 +257,7 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
   口令**不落盘**，每次运行在界面输入；换机器/重装后只需重新填口令。
 - **产物目录**：默认 `<BT_OUTPUT_DIR>/white-label/`（可在界面改）。命名固定：
   `<output_dir>/{package}-{channel}.apk`、`<output_dir>/{package}-{channel}.aab`
-  （如 `com.example.tencent-tencent.apk`）。`BT_OUTPUT_DIR` 来自 `backend/server.config.json` /
+  （如 `com.example.other-other.apk`、`com.example.partner-partner.aab`）。`BT_OUTPUT_DIR` 来自 `backend/server.config.json` /
   环境变量，默认 `output/`（相对 `backend/` 解析）。
 - **报告**：`white-label-report-YYYYmmdd-HHMMSS.json`（每次运行一份，时间戳带时分秒），顶层含
   `source`、`aab`（guard 结果）、`google_mode`、`output_dir`、`items`、`errors`、`warnings`。
@@ -343,10 +364,11 @@ pytest tests/contracts/test_white_label_packer.py tests/contracts/test_png_image
   `bundletool/bundletool.jar`、`jre/bin/{java.exe, jarsigner.exe, keytool.exe}`。
   **没有环境变量开关**；`runtime/` 不入库（`.gitignore`），缺任一工具就 skip。集成用例耗时约 1~2 分钟。
 - **真实包验收清单**（手动，自动化测试不覆盖）：
-  - [ ] 腾讯渠道 APK 安装启动正常，桌面名/图标/包名正确
-  - [ ] 三星渠道 APK 同上，且与腾讯包可共存
+  - [ ] 其他包渠道 APK 安装启动正常，桌面名/图标/包名正确
+  - [ ] 三星渠道 APK 同上，且与其他包可共存
+  - [ ] 自定义渠道（如 `partner`）APK/AAB 产物命名、签名、包名正确
   - [ ] 谷歌渠道 AAB：`bundletool validate` 通过，`build-apks` 出的测试 APK 可安装启动
-  - [ ] 三个产物签名校验通过（APK 用 `apksigner verify`，AAB 用 `jarsigner -verify`）
+  - [ ] 所有产物签名校验通过（APK 用 `apksigner verify`，AAB 用 `jarsigner -verify`）
   - [ ] 渠道 meta-data 与 `assets/` 文件确实在产物里（解包 / `aapt2 dump` 确认）
   - [ ] 直改模式产物与源 AAB 的 `resources.pb`、dex 一致（结构未被破坏）
   - [ ] 改过版本号的包 versionCode 生效（`aapt2 dump badging`）

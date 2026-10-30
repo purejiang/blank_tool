@@ -224,6 +224,7 @@
   }
   button:hover:not(:disabled) { background: var(--hover); }
   button.mini { padding: 2px 8px; font-size: 11.5px; }
+  button.mini.danger { color: var(--err); border-color: var(--err); }
   .btn-primary {
     padding: 5px 16px;
     border-color: var(--accent);
@@ -486,7 +487,7 @@
 
   <!-- 渠道 -->
   <section class="card">
-    <div class="card-h">渠道配置 <span class="sub" id="chHeadSub"></span></div>
+    <div class="card-h">渠道配置 <span class="sub" id="chHeadSub"></span><span class="spacer"></span><button type="button" id="btnAddChannel" class="mini">＋ 其他包</button></div>
     <div class="ch-grid" id="chGrid"></div>
   </section>
 
@@ -542,10 +543,11 @@
 
   /** presets 未返回/失败时的兜底渠道定义（与后端预置一致） */
   var FALLBACK_CHANNELS = [
-    { id: 'tencent', label: '腾讯（应用宝）', format: 'apk', suffix: '.tencent' },
-    { id: 'samsung', label: '三星（Galaxy Store）', format: 'apk', suffix: '.samsung' },
+    { id: 'other', label: '其他包', format: 'apk', also_apk: true, suffix: '.other' },
+    { id: 'samsung', label: '三星（Galaxy Store）', format: 'apk', also_apk: true, suffix: '.samsung' },
     { id: 'google', label: '谷歌（Google Play）', format: 'aab', also_apk: true, suffix: '.google' }
   ];
+  var CHANNEL_ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
   /** 桥在宿主外打开时不存在——所有桥调用都要先判空 */
   var bridge = window.pluginBridge || null;
@@ -670,7 +672,7 @@
     return FALLBACK_CHANNELS;
   }
 
-  /** 渠道允许的输出格式：谷歌可 APK/AAB/两者，腾讯/三星默认只 APK */
+  /** 渠道允许的输出格式：默认按预置决定；also_apk 时三种都可选 */
   function formatsFor(cfg) {
     var list = [];
     function add(f) { if (list.indexOf(f) < 0) list.push(f); }
@@ -696,9 +698,10 @@
       label: str(meta && meta.label) || id,
       notes: str(meta && meta.notes),
       suffix: str(meta && meta.suffix),
+      custom: !!(meta && meta.custom),
       meta_format: str(meta && meta.format) || (id === 'google' ? 'aab' : 'apk'),
       also_apk: !!(meta && meta.also_apk),
-      enabled: id === 'tencent',
+      enabled: id === 'other',
       package_name: '',
       app_name: '',
       version_code: '',
@@ -734,6 +737,7 @@
    */
   function applyProfile(cfg, p) {
     if (!p || typeof p !== 'object') return;
+    if (cfg.custom && typeof p.label === 'string' && p.label) cfg.label = p.label;
     if (typeof p.enabled === 'boolean') cfg.enabled = p.enabled;
     if (typeof p.package_name === 'string') cfg.package_name = p.package_name;
     if (typeof p.app_name === 'string') cfg.app_name = p.app_name;
@@ -761,11 +765,75 @@
     var saved = {};
     var sp = state.presets && state.presets.saved_profiles;
     if (sp && sp.channels && typeof sp.channels === 'object') saved = sp.channels;
-    state.channels = channelMetas().map(function (meta) {
+    var metas = channelMetas();
+    state.channels = metas.map(function (meta) {
       var cfg = emptyChannel(meta);
       applyProfile(cfg, saved[cfg.id]);
       return cfg;
     });
+    // saved_profiles 里出现、但预置里没有的渠道 → 作为自定义渠道恢复
+    Object.keys(saved).forEach(function (id) {
+      if (!CHANNEL_ID_RE.test(id)) return;
+      if (metas.some(function (m) { return m.id === id; })) return;
+      var p = saved[id] || {};
+      var cfg = emptyChannel({
+        id: id,
+        label: str(p.label) || id,
+        format: str(p.format) || 'apk',
+        also_apk: true,
+        custom: true,
+        notes: '自定义渠道'
+      });
+      applyProfile(cfg, p);
+      state.channels.push(cfg);
+    });
+  }
+
+  function nextCustomId() {
+    var used = {};
+    for (var i = 0; i < state.channels.length; i++) used[state.channels[i].id] = true;
+    var n = 1;
+    while (used['other' + n]) n++;
+    return 'other' + n;
+  }
+
+  function nextCustomLabel() {
+    var n = 1;
+    for (;;) {
+      var candidate = '其他包 ' + n;
+      var taken = state.channels.some(function (c) { return c.custom && c.label === candidate; });
+      if (!taken) return candidate;
+      n++;
+    }
+  }
+
+  function addCustomChannel() {
+    if (state.busy) return;
+    var id = nextCustomId();
+    var cfg = emptyChannel({
+      id: id,
+      label: nextCustomLabel(),
+      format: 'apk',
+      also_apk: true,
+      custom: true,
+      notes: '自定义渠道'
+    });
+    cfg.enabled = true;
+    state.channels.push(cfg);
+    renderChannels();
+    refresh();
+    var card = channelCard(id);
+    if (card) {
+      card.open = true;
+      if (card.scrollIntoView) card.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function removeCustomChannel(cfg) {
+    if (!cfg || !cfg.custom || state.busy) return;
+    state.channels = state.channels.filter(function (c) { return c !== cfg; });
+    renderChannels();
+    refresh();
   }
 
   /* ========================================================================
@@ -781,6 +849,7 @@
     var singleFmt = fmts.length <= 1 ? ' data-always-disabled="1"' : '';
     var noteBits = [];
     if (cfg.notes) noteBits.push(cfg.notes);
+    if (cfg.custom) noteBits.push('自定义渠道 · 标识 ' + cfg.id);
     if (cfg.suffix) noteBits.push('建议包名后缀 ' + cfg.suffix);
 
     var h = '';
@@ -793,6 +862,13 @@
     h += '<span class="ch-pkg mono" data-role="ch-pkg"></span>';
     h += '</summary>';
     h += '<div class="ch-body">';
+
+    if (cfg.custom) {
+      h += '<div class="field"><label>渠道名</label><div class="row">' +
+        '<input type="text" ' + d + ' data-field="label" placeholder="其他包">' +
+        '<button type="button" class="mini danger" data-act="remove" ' + d + '>删除</button></div>' +
+        '<div class="fhint">渠道标识 ' + esc(cfg.id) + '（用于产物文件名，创建后不可改）</div></div>';
+    }
 
     // 启用开关放在 body 里：summary 内的交互控件会被 details 的点击折叠行为干扰
     h += '<label class="ck ck-en"><input type="checkbox" ' + d + ' data-field="enabled"> 启用此渠道</label>';
@@ -868,6 +944,7 @@
   function valueOf(cfg, field) {
     switch (field) {
       case 'enabled': return cfg.enabled;
+      case 'label': return cfg.label;
       case 'package_name': return cfg.package_name;
       case 'app_name': return cfg.app_name;
       case 'version_code': return cfg.version_code;
@@ -891,6 +968,7 @@
   function assign(cfg, field, value) {
     switch (field) {
       case 'enabled': cfg.enabled = !!value; break;
+      case 'label': cfg.label = str(value); break;
       case 'package_name': cfg.package_name = str(value); break;
       case 'app_name': cfg.app_name = str(value); break;
       case 'version_code': cfg.version_code = str(value); break;
@@ -1095,6 +1173,8 @@
       }
       var fmtEl = card.querySelector('[data-role="ch-fmt"]');
       if (fmtEl) fmtEl.textContent = FORMAT_LABELS[cfg.format] || cfg.format;
+      var nameEl = card.querySelector('.ch-name');
+      if (nameEl) nameEl.textContent = cfg.label || cfg.id;
       var pkgEl = card.querySelector('[data-role="ch-pkg"]');
       if (pkgEl) pkgEl.textContent = cfg.package_name || '';
 
@@ -1387,6 +1467,7 @@
     var vc = vcRaw === '' ? null : Number(vcRaw);
     return {
       id: cfg.id,
+      label: (cfg.label || cfg.id).trim() || cfg.id,
       enabled: !!cfg.enabled,
       package_name: cfg.package_name.trim(),
       app_name: cfg.app_name.trim(),
@@ -1521,7 +1602,14 @@
     state.strictAab = typeof d.strict_aab_check === 'boolean' ? d.strict_aab_check : true;
     state.saveProfiles = typeof d.save_profiles === 'boolean' ? d.save_profiles : true;
 
+    // presets 响应前用户可能已手动加过自定义渠道；重建时保留（同 id 以 saved 为准）
+    var keepCustom = state.channels.filter(function (c) { return c.custom; });
     buildChannels();
+    keepCustom.forEach(function (c) {
+      if (!state.channels.some(function (x) { return x.id === c.id; })) {
+        state.channels.push(c);
+      }
+    });
     renderChannels();
     renderEnv();
     syncGlobalInputs();
@@ -1804,6 +1892,7 @@
     if (act === 'suggest') suggestPackage(cfg);
     else if (act === 'pick-icon') pickIcon(cfg);
     else if (act === 'pick-keystore') pickKeystore(cfg);
+    else if (act === 'remove') removeCustomChannel(cfg);
   }
 
   function bindEvents() {
@@ -1823,6 +1912,7 @@
     $('btnPickAab').addEventListener('click', pickAab);
     $('btnPickOut').addEventListener('click', pickOutputDir);
     $('btnInspect').addEventListener('click', doInspect);
+    $('btnAddChannel').addEventListener('click', addCustomChannel);
     $('btnRun').addEventListener('click', doPack);
     $('btnCancel').addEventListener('click', doCancel);
     $('btnClearLog').addEventListener('click', clearLog);

@@ -60,7 +60,7 @@ Python Backend (backend/main.py)
 
 - **Handlers**：`backend/app/handlers/` 下任何导出 `API_MAP` 字典的 `.py` 都会被 `ApiHandler` 自动注册。键是方法名（如 `"adb.devices"`），值是 handler 函数。新增 handler 不需要改注册表。
 - **Tools**：`backend/app/tools/` 下任何 `BaseTool` 子类被 `ToolManager` 自动发现。现有子类都经由两个中间基类之一：`BinaryTool`（exe，adb / aapt / zipalign / jarsigner）、`JavaTool`（.jar，apktool / apksigner / bundletool）。`ScriptTool` 下的 `PythonTool`（.py）/ `NodeTool`（.js）两条支线已删除——零子类、零实例，且 `runtime/` 并不分发 node。需要时再加（各约 5 行）。
-- **Plugins**：扫描两个目录——内置 `backend/app/plugins/builtin/`（随应用分发）+ 用户目录 `<BT_PLUGINS_DIR>`。平铺 `.py` 带 `run(context, **params)` 即可加载，插件包目录则必须带 `manifest.json`；用户目录先扫，同名覆盖内置。内置当前只带 `white-label-packer`（白包打包：腾讯/三星 APK + 谷歌 AAB，见 `docs/WHITE_LABEL_PACKER.md`）。
+- **Plugins**：扫描两个目录——内置 `backend/app/plugins/builtin/`（随应用分发）+ 用户目录 `<BT_PLUGINS_DIR>`。平铺 `.py` 带 `run(context, **params)` 即可加载，插件包目录则必须带 `manifest.json`；用户目录先扫，同名覆盖内置。内置当前只带 `white-label-packer`（白包打包：其他包/三星 APK + 谷歌 AAB，可添加任意自定义渠道，见 `docs/WHITE_LABEL_PACKER.md`）。
 
 后端 Python 仅用标准库（`main.py`、`api_handler.py` 全部 import 自 stdlib + 本地 `app/` 包），**没有 `requirements.txt`**，开发时直接用系统或 `runtime/python/python.exe` 即可运行。
 

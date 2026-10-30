@@ -131,7 +131,7 @@ def _spec(**over):
         "new_pkg": "com.example.white",
         "app_name": "白包 App",
         "metadata": [{"name": "wl_channel", "value": "{channel}"}],
-        "mapping": {"channel": "tencent"},
+        "mapping": {"channel": "other"},
         "rename_authorities": True,
         "rename_permissions": True,
         "remove_shared_uid": True,
@@ -168,7 +168,7 @@ def test_patch_manifest_identity_and_flags():
     # meta-data inserted with placeholder substituted
     metas = [m for m in app.findall("meta-data") if m.get(A + "name") == "wl_channel"]
     assert len(metas) == 1
-    assert metas[0].get(A + "value") == "tencent"
+    assert metas[0].get(A + "value") == "other"
     # dist namespace element preserved
     assert "dist:module" in out or "module" in out
 
@@ -286,8 +286,8 @@ def test_safe_asset_rel_normalizes():
 
 
 def test_substitute():
-    mapping = {"channel": "tencent", "package": "com.x", "app_name": "X"}
-    assert WL._substitute("{channel}:{package}:{unknown}", mapping) == "tencent:com.x:{unknown}"
+    mapping = {"channel": "other", "package": "com.x", "app_name": "X"}
+    assert WL._substitute("{channel}:{package}:{unknown}", mapping) == "other:com.x:{unknown}"
 
 
 def test_validate_package():
@@ -299,22 +299,35 @@ def test_validate_package():
         WL._validate_package("com.example.base", "com.example.base")
 
 
-def test_channel_config_forces_apk_for_tencent():
+def test_channel_config_supports_custom_channels():
     ch = WL._channel_config({
-        "id": "tencent", "package_name": "com.x.t", "app_name": "X",
+        "id": "other", "package_name": "com.x.o", "app_name": "X",
         "format": "aab", "keystore": {},
     })
-    assert ch["format"] == "apk"
-    assert ch["label"].startswith("腾讯")
-    with pytest.raises(Exception):
-        WL._channel_config({"id": "unknown"})
+    assert ch["id"] == "other"
+    assert ch["label"] == "其他包"
+    assert ch["format"] == "aab"           # 不再强制 APK
+
+    custom = WL._channel_config({
+        "id": "partner", "label": "合作方", "package_name": "com.x.p",
+        "app_name": "P", "format": "both", "keystore": {},
+    })
+    assert custom["id"] == "partner"
+    assert custom["label"] == "合作方"
+    assert custom["format"] == "both"
+
+    for bad in ("", "../x", "腾讯", "A B", "a" * 40):
+        with pytest.raises(Exception):
+            WL._channel_config({"id": bad})
 
 
 def test_profile_excludes_passwords():
     prof = WL._profile_from_channel({
-        "enabled": True, "package_name": "com.x", "app_name": "X",
+        "id": "partner", "label": "合作方", "enabled": True,
+        "package_name": "com.x", "app_name": "X",
         "keystore": {"path": "k.jks", "alias": "a", "storepass": "s", "keypass": "k"},
     })
+    assert prof["label"] == "合作方"
     assert prof["keystore"] == {"path": "k.jks", "alias": "a"}
     assert "storepass" not in json.dumps(prof)
     assert "keypass" not in json.dumps(prof)
@@ -449,7 +462,8 @@ def test_presets_shape(monkeypatch, workdir):
     })
     payload = WL.run(ctx, action="presets")
     assert payload["action"] == "presets"
-    assert [c["id"] for c in payload["channels"]] == ["tencent", "samsung", "google"]
+    assert [c["id"] for c in payload["channels"]] == ["other", "samsung", "google"]
+    assert payload["channels"][0]["label"] == "其他包"
     assert payload["defaults"]["google_mode"] == "auto"
     assert payload["defaults"]["strict_aab_check"] is True
     assert "tools" in payload and "saved_profiles" in payload
@@ -459,10 +473,27 @@ def test_profiles_roundtrip(monkeypatch, workdir):
     monkeypatch.setenv("BT_OUTPUT_DIR", str(workdir / "out"))
     WL._save_profiles({
         "schema": 1,
-        "channels": {"tencent": {"package_name": "com.x.tencent"}},
+        "channels": {"partner": {"label": "合作方", "package_name": "com.x.partner"}},
     })
     loaded = WL._load_profiles()
-    assert loaded["channels"]["tencent"]["package_name"] == "com.x.tencent"
+    assert loaded["channels"]["partner"]["label"] == "合作方"
+    assert loaded["channels"]["partner"]["package_name"] == "com.x.partner"
+
+
+def test_presets_migrates_legacy_tencent(monkeypatch, workdir):
+    monkeypatch.setenv("BT_OUTPUT_DIR", str(workdir / "out"))
+    WL._save_profiles({
+        "schema": 1,
+        "channels": {"tencent": {"package_name": "com.x.tencent"}},
+    })
+    ctx = _Ctx({
+        "apktool": _Tool("x"), "aapt": _Tool("x"), "zipalign": _Tool("x"),
+        "apksigner": _Tool("x"), "bundletool": _Tool("x"),
+        "jarsigner": _Tool("x"),
+    })
+    saved = WL.run(ctx, action="presets")["saved_profiles"]
+    assert "other" in saved["channels"]
+    assert saved["channels"]["other"]["package_name"] == "com.x.tencent"
 
 
 def test_ui_static_contract():
@@ -480,6 +511,8 @@ def test_ui_static_contract():
     assert "html,body" in html.replace(" ", "")
     assert "pluginBridge" in html
     assert "开始打包" in html and "取消" in html
+    assert "其他包" in html and "btnAddChannel" in html
+    assert 'data-field="label"' in html
 
 
 def test_builtin_plugin_discoverable(monkeypatch, workdir):
@@ -697,19 +730,23 @@ def test_integration_apk_and_aab_splice(monkeypatch, workdir):
         output_dir=str(out), google_mode="reconstruct", strict_aab_check=True,
         save_profiles=False, keep_workdir=True,
         channels=[
-            ch("tencent", "com.example.white.tencent", "白包腾讯", "apk"),
+            ch("other", "com.example.white.other", "白包其他", "apk"),
+            ch("partner", "com.example.white.partner", "白包合作方", "apk"),
             ch("google", "com.example.white.google", "白包谷歌", "aab"),
         ],
     )
     assert result["success"] is True
     by = {i["channel"]: i for i in result["items"]}
-    tencent = by["tencent"]
+    other = by["other"]
+    partner = by["partner"]
     google = by["google"]
-    assert tencent["apk_path"] and os.path.isfile(tencent["apk_path"])
-    assert tencent["verify"]["apksigner"] == "ok"
-    assert tencent["verify"]["zipalign"] == "ok"
-    assert tencent["verify"]["badging"] == "ok"
-    assert tencent["verify"]["resource_ids"] == "ok"
+    assert other["apk_path"] and os.path.isfile(other["apk_path"])
+    assert other["verify"]["apksigner"] == "ok"
+    assert other["verify"]["zipalign"] == "ok"
+    assert other["verify"]["badging"] == "ok"
+    assert other["verify"]["resource_ids"] == "ok"
+    assert partner["apk_path"] and os.path.isfile(partner["apk_path"])
+    assert partner["verify"]["apksigner"] == "ok"
     assert google["aab_path"] and os.path.isfile(google["aab_path"])
     assert google["aab_mode"] == "reconstruct"
     assert google["verify"]["bundletool_validate"] == "ok"

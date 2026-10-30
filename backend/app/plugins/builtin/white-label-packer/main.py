@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""white-label-packer — 白包打包插件（腾讯 / 三星 / 谷歌）。
+"""white-label-packer — 白包打包插件（其他包 / 三星 / 谷歌 / 任意自定义渠道）。
 
 输入：基础 APK（必填）+ 同版本 AAB（可选，谷歌优先直改）。
 输出：每渠道签名 APK；谷歌渠道签名 AAB（直改源 AAB，失败回退重建）。
@@ -42,32 +42,33 @@ from app.utils.png_image import (
 )
 
 DESCRIPTION = (
-    "从基础 APK（可选同版本 AAB）批量生成腾讯/三星/谷歌白包：改包名、应用名、"
-    "图标、签名与渠道标识。APK 输出签名 APK；谷歌输出签名 AAB（优先直改源 AAB，"
-    "保留 resources.pb/dex 结构，失败自动回退重建）。"
+    "从基础 APK（可选同版本 AAB）批量生成白包：其他包、三星、谷歌及任意自定义渠道。"
+    "改包名、应用名、图标、签名与渠道标识；AAB 渠道优先直改源 AAB，"
+    "失败自动回退重建。"
 )
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 AUTHOR = "blank_tool"
 
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 DIST_NS = "http://schemas.android.com/apk/distribution"
 ANDROID = "{%s}" % ANDROID_NS
 
-# 渠道预置（UI 也这么做兜底；改这里即可加渠道）
+# 渠道预置（UI 也这么做兜底；改这里即可加内置渠道；用户还能在 UI 里
+# 添加任意「其他包」，id 只用于产物文件名和报告，不参与业务逻辑）
 CHANNEL_PRESETS = [
     {
-        "id": "tencent",
-        "label": "腾讯（应用宝）",
+        "id": "other",
+        "label": "其他包",
         "format": "apk",
-        "also_apk": False,
-        "suffix": ".tencent",
-        "notes": "常规 APK 上架；签名用渠道专属 keystore。",
+        "also_apk": True,
+        "suffix": ".other",
+        "notes": "通用白包渠道；默认 APK，也可选 AAB / 两者。",
     },
     {
         "id": "samsung",
         "label": "三星（Galaxy Store）",
         "format": "apk",
-        "also_apk": False,
+        "also_apk": True,
         "suffix": ".samsung",
         "notes": "常规 APK 上架；如涉及内购需按三星要求接 IAP。",
     },
@@ -86,6 +87,7 @@ _SIG_RE = re.compile(
     r"^META-INF/(MANIFEST\.MF|.*\.(SF|RSA|DSA|EC))$", re.IGNORECASE
 )
 _PKG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
+_CHANNEL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 
 
@@ -1285,6 +1287,7 @@ def _save_profiles(payload: Dict[str, Any]) -> None:
 
 def _profile_from_channel(ch: Dict[str, Any]) -> Dict[str, Any]:
     return {
+        "label": ch.get("label") or "",
         "enabled": bool(ch.get("enabled")),
         "package_name": ch.get("package_name") or "",
         "app_name": ch.get("app_name") or "",
@@ -1375,14 +1378,19 @@ def _validate_package(pkg: str, source_pkg: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _channel_config(ch: Dict[str, Any]) -> Dict[str, Any]:
-    cid = str(ch.get("id") or "")
-    if cid not in ("tencent", "samsung", "google"):
-        raise ToolException(f"未知渠道: {cid}")
-    fmt = str(ch.get("format") or ("aab" if cid == "google" else "apk"))
-    if cid in ("tencent", "samsung"):
-        fmt = "apk"
+    cid = str(ch.get("id") or "").strip().lower()
+    if not _CHANNEL_ID_RE.match(cid):
+        raise ToolException(
+            f"渠道标识不合法（a-z 开头，只含 a-z0-9_-，1~32 字符）: {cid or '(空)'}"
+        )
+    preset = next((c for c in CHANNEL_PRESETS if c["id"] == cid), {})
+    fmt = str(
+        ch.get("format") or preset.get("format")
+        or ("aab" if cid == "google" else "apk")
+    ).strip().lower()
     if fmt not in ("apk", "aab", "both"):
-        raise ToolException(f"渠道 {cid} 格式非法: {fmt}")
+        raise ToolException(f"渠道 {cid} 格式非法: {fmt}（只能是 apk / aab / both）")
+    label = str(ch.get("label") or preset.get("label") or cid).strip() or cid
     ks = ch.get("keystore") or {}
     vc = ch.get("version_code")
     if isinstance(vc, float) and vc.is_integer():
@@ -1399,9 +1407,7 @@ def _channel_config(ch: Dict[str, Any]) -> Dict[str, Any]:
     asset = ch.get("asset") if isinstance(ch.get("asset"), dict) else {}
     return {
         "id": cid,
-        "label": next(
-            (c["label"] for c in CHANNEL_PRESETS if c["id"] == cid), cid
-        ),
+        "label": label[:64],
         "enabled": bool(ch.get("enabled", True)),
         "package_name": str(ch.get("package_name") or "").strip(),
         "app_name": str(ch.get("app_name") or "").strip(),
@@ -1790,6 +1796,13 @@ def _build_aab_output(
 
 def _presets(context) -> Dict[str, Any]:
     saved = _load_profiles()
+    # 旧版内置预置 tencent 已改成通用 other；把旧配置平滑迁移过来
+    chans = saved.get("channels") if isinstance(saved, dict) else None
+    if isinstance(chans, dict) and "tencent" in chans:
+        if "other" not in chans:
+            chans["other"] = chans.pop("tencent")
+        else:
+            chans.pop("tencent")
     status = _tool_status(context)
     return {
         "success": True,
@@ -1804,6 +1817,7 @@ def _presets(context) -> Dict[str, Any]:
         "saved_profiles": saved,
         "tools": status,
         "notes": [
+            "「其他包」是通用渠道；可继续添加任意多个自定义渠道，标识用于产物文件名。",
             "AAB 直改需要同一次构建的 APK + AAB；不一致时自动回退重建。",
             "包名不能与源包名相同；每个渠道可使用独立 keystore。",
             "图标替换复用原图标资源文件，矢量图标会跳过并告警。",
@@ -1888,7 +1902,11 @@ def _pack(context, params: Dict[str, Any]) -> Any:
         raise ToolException("没有启用的渠道")
 
     seen_pkgs: Dict[str, str] = {}
+    seen_ids: Dict[str, bool] = {}
     for ch in channels:
+        if ch["id"] in seen_ids:
+            raise ToolException(f"渠道标识重复: {ch['id']}")
+        seen_ids[ch["id"]] = True
         pkg = ch["package_name"]
         if pkg in seen_pkgs:
             raise ToolException(
