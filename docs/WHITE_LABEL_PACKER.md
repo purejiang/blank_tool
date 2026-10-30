@@ -82,7 +82,8 @@ white-label-packer/
 - 导入 zip 时资源原样解压到 `<BT_PLUGINS_DIR>/white-label-packer/assets/`；插件后端用
   `os.path.dirname(__file__)` 读取，不依赖当前工作目录。
 - UI 在 presets 返回后自动把 `base.apk` / `base.aab` 填进路径框，并在路径旁显示「插件内置」标记；
-  用户仍可改选外部文件，AAB 旁的「清除」按钮可显式不用 AAB（即使插件自带）。
+  填好后会自动触发一次解析，用户不必再点「解析」。用户仍可改选外部文件，AAB 旁的「清除」按钮
+  可显式不用 AAB（即使插件自带）。
 - 后端 `inspect` / `pack` 也支持省略 `apk_path` / `aab_path` 键时回退到这两个文件（显式传空串表示不用 AAB）。
 - **keystore 不要打进 zip**：插件包是可读文件，口令/私钥放进去等于公开；每个渠道在 UI 里选外部 keystore。
 - APK/AAB 会让 zip 变大（导入会复制到用户插件目录）；第三方包随插件分发前请确认授权。
@@ -104,8 +105,8 @@ white-label-packer/
 1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.3.0.zip`；导入后左侧出现
    **白包打包（多渠道）**（v1.3.0，用户插件，无「内建」标签）。
 2. 右侧是插件自带 UI（沙箱 iframe，经 `window.pluginBridge` 调后端插件）：
-   选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 显示一致性校验状态；
-   选 AAB 模式（`auto` / `splice` / `reconstruct`）。
+   选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 自动带一致性校验状态；
+   选 AAB 模式（`auto` / `splice` / `reconstruct`）。解析按钮仍保留，用于手动重新解析。
 3. 预置三张渠道卡（`other` / `samsung` / `google`），可点「＋ 其他包」继续添加任意自定义渠道。
    逐项填：启用、包名、应用名、versionCode、versionName、图标、keystore（路径 / alias / storepass / keypass）、
    格式（APK / AAB / 两者）、渠道 meta-data（多行 `name=value`，空行与 `#` 注释忽略）、额外权限

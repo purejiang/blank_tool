@@ -578,6 +578,7 @@
     validation: { ok: false, issues: [], fieldErrors: {} },
     touched: {},          // "channelId.field" → 用户碰过（决定是否显示必填类错误）
     attempted: false,     // 点过「开始打包」后，所有错误都显示
+    autoInspected: false, // 插件内置默认 APK 已自动触发过 inspect
     presetsRequested: false
   };
 
@@ -585,6 +586,7 @@
   var picker = { pending: null };
   var presetsTimer = null;
   var metaFallbackTimer = null;
+  var inspectTimer = null;
 
   /* ========================================================================
    * 小工具
@@ -1441,6 +1443,16 @@
     startAction('inspect', params);
   }
 
+  /** 选完 APK/AAB 后自动解析（防抖，避免两次选择触发两次解析） */
+  function scheduleInspect(delay) {
+    if (inspectTimer) { clearTimeout(inspectTimer); inspectTimer = null; }
+    if (!state.apkPath.trim()) return;
+    inspectTimer = setTimeout(function () {
+      inspectTimer = null;
+      if (!state.busy && state.apkPath.trim()) doInspect();
+    }, delay == null ? 400 : delay);
+  }
+
   function doPack() {
     if (state.busy) return;
     state.attempted = true;
@@ -1664,6 +1676,21 @@
     renderAab();
     refresh();
     setStatus(failed ? '预设加载失败（可手动配置）' : '就绪', failed ? 'warn' : 'ok');
+    maybeAutoInspect();
+  }
+
+  /**
+   * 插件自带 assets/base.apk 且路径未被用户改过时，自动解析一次：
+   * 「导入即用」不必再点解析；外部选择仍保留手动解析（可能要先选 AAB）。
+   */
+  function maybeAutoInspect() {
+    if (state.autoInspected) return;
+    if (!state.bundled.apk || state.apkPath.trim() !== state.bundled.apk) return;
+    if (state.source) return;
+    state.autoInspected = true;
+    setTimeout(function () {
+      if (!state.busy && state.apkPath.trim() && !state.source) doInspect();
+    }, 30);
   }
 
   function handleInspect(p) {
@@ -1842,6 +1869,8 @@
       state.apkPath = path;
       $('apkPath').value = path;
       refresh();
+      // 选完 APK 自动解析，省一次点击；仍可点「解析」重新解析
+      scheduleInspect(400);
     });
   }
 
@@ -1856,8 +1885,8 @@
       $('aabPath').value = path;
       renderAab();
       refresh();
-      // APK 已在则顺手解析，省一次点击（协议要求）
-      if (state.apkPath.trim()) doInspect();
+      // APK 已在则顺手解析；防抖便于先选完 AAB
+      if (state.apkPath.trim()) scheduleInspect(60);
     });
   }
 
@@ -1948,6 +1977,7 @@
       state.aabChecked = false;   // 路径一变，旧的 AAB 解析结果就不作数了
       renderAab();
       refresh();
+      scheduleInspect(900);       // 手输路径防抖后自动解析
     });
     $('outputDir').addEventListener('input', function () { state.outputDir = this.value; refresh(); });
     $('strictAab').addEventListener('change', function () { state.strictAab = !!this.checked; });
@@ -1962,6 +1992,7 @@
       syncGlobalInputs();
       renderAab();
       refresh();
+      scheduleInspect(300);
     });
     $('btnPickOut').addEventListener('click', pickOutputDir);
     $('btnInspect').addEventListener('click', doInspect);
