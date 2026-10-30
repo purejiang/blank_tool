@@ -444,6 +444,7 @@
     <div class="card-h">
       源 APK <span class="req">*</span>
       <span class="sub">基础包，必选</span>
+      <span class="chip" id="apkBundled" hidden title="来自插件自带 assets/base.apk">插件内置</span>
       <span class="spacer"></span>
       <span class="chip warn" id="srcStale" hidden title="APK 路径已变更，请重新点「解析」">路径已变更，待重新解析</span>
     </div>
@@ -460,12 +461,14 @@
   <section class="card">
     <div class="card-h">
       源 AAB <span class="sub">可选 · 与基础 APK 同一构建时谷歌渠道优先直改</span>
+      <span class="chip" id="aabBundled" hidden title="来自插件自带 assets/base.aab">插件内置</span>
       <span class="spacer"></span>
       <span class="badge" id="aabState">未选择</span>
     </div>
     <div class="pathrow">
       <input id="aabPath" class="mono" type="text" placeholder="可选：同版本 AAB 路径">
       <button type="button" id="btnPickAab" data-rule="pick">选择</button>
+      <button type="button" id="btnClearAab" class="mini" data-rule="aab-clear" title="不使用 AAB（即使插件自带）">清除</button>
     </div>
     <div class="pathrow">
       <span class="lbl" style="flex:none;font-size:11.5px;color:var(--fg-muted)">谷歌模式</span>
@@ -558,6 +561,7 @@
     pending: null,        // { action: 'presets' | 'inspect' | 'pack' } —— 结果路由依据
     meta: null,
     presets: null,
+    bundled: {},          // 插件自带 assets/base.apk|base.aab（可选）
     notes: [],
     tools: {},
     channels: [],
@@ -1242,6 +1246,7 @@
       else if (rule === 'run') dis = busy || !state.validation.ok;
       else if (rule === 'inspect') dis = busy || !state.apkPath.trim();
       else if (rule === 'pick') dis = busy || state.picking;
+      else if (rule === 'aab-clear') dis = busy || !state.aabPath.trim();
       else if (rule === 'suggest') dis = busy || !(state.source && state.source.package);
       if (b.getAttribute('data-always-disabled') === '1') dis = true;
       b.disabled = dis;
@@ -1255,7 +1260,17 @@
     updateChannelSummaries();
     updateValSummary();
     updateStale();
+    syncBundledBadges();
     syncControls();
+  }
+
+  /** 路径等于插件自带默认时显示「插件内置」chip */
+  function syncBundledBadges() {
+    var b = state.bundled || {};
+    var apkChip = $('apkBundled');
+    var aabChip = $('aabBundled');
+    if (apkChip) apkChip.hidden = !(b.apk && state.apkPath.trim() === b.apk);
+    if (aabChip) aabChip.hidden = !(b.aab && state.aabPath.trim() === b.aab);
   }
 
   function syncGlobalInputs() {
@@ -1610,6 +1625,7 @@
 
     // 插件自带 assets/base.apk|base.aab 时自动填入；用户仍可改选/清空
     var bundled = (p && p.bundled && typeof p.bundled === 'object') ? p.bundled : {};
+    state.bundled = bundled;
     if (!state.apkPath.trim() && typeof bundled.apk === 'string' && bundled.apk) {
       state.apkPath = bundled.apk;
     }
@@ -1940,6 +1956,13 @@
 
     $('btnPickApk').addEventListener('click', pickApk);
     $('btnPickAab').addEventListener('click', pickAab);
+    $('btnClearAab').addEventListener('click', function () {
+      state.aabPath = '';
+      state.aabChecked = false;
+      syncGlobalInputs();
+      renderAab();
+      refresh();
+    });
     $('btnPickOut').addEventListener('click', pickOutputDir);
     $('btnInspect').addEventListener('click', doInspect);
     $('btnAddChannel').addEventListener('click', addCustomChannel);

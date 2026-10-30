@@ -579,6 +579,7 @@ def test_ui_static_contract():
     assert "其他包" in html and "btnAddChannel" in html
     assert 'data-field="label"' in html
     assert 'data-field="permissions"' in html and "com.android.vending.BILLING" in html
+    assert "apkBundled" in html and "aabBundled" in html and "btnClearAab" in html
 
 
 def test_plugin_package_importable(monkeypatch, workdir):

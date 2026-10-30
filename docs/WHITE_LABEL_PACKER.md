@@ -81,8 +81,8 @@ white-label-packer/
 
 - 导入 zip 时资源原样解压到 `<BT_PLUGINS_DIR>/white-label-packer/assets/`；插件后端用
   `os.path.dirname(__file__)` 读取，不依赖当前工作目录。
-- UI 在 presets 返回后自动把 `base.apk` / `base.aab` 填进路径框；用户仍可改选外部文件，
-  清空 AAB 路径即表示不用 AAB。
+- UI 在 presets 返回后自动把 `base.apk` / `base.aab` 填进路径框，并在路径旁显示「插件内置」标记；
+  用户仍可改选外部文件，AAB 旁的「清除」按钮可显式不用 AAB（即使插件自带）。
 - 后端 `inspect` / `pack` 也支持省略 `apk_path` / `aab_path` 键时回退到这两个文件（显式传空串表示不用 AAB）。
 - **keystore 不要打进 zip**：插件包是可读文件，口令/私钥放进去等于公开；每个渠道在 UI 里选外部 keystore。
 - APK/AAB 会让 zip 变大（导入会复制到用户插件目录）；第三方包随插件分发前请确认授权。
