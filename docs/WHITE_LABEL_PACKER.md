@@ -1,13 +1,14 @@
 # 白包打包（white-label-packer）
 
-内置插件 `white-label-packer`：从一份**基础 APK**（可选再给一份**同版本 AAB**）批量生成渠道白包——
+可分发插件 `white-label-packer`：从一份**基础 APK**（可选再给一份**同版本 AAB**）批量生成渠道白包——
 **其他包**（通用）、三星、谷歌，以及任意自定义渠道。渠道本身不绑定任何商店，三星、谷歌只是预置模板，
 右侧「＋ 其他包」可继续添加任意自定义渠道。每个渠道独立设置包名、应用名、版本号、图标、签名密钥与渠道标识。
 
 - 插件 id：`white-label-packer`（`plugin.run` / `plugin.export` / `plugin.delete` 都用它；display name 只是标签）
-- 插件目录：`backend/app/plugins/builtin/white-label-packer/`（`manifest.json` / `main.py` / `ui/index.html`）
-- 插件页显示：**白包打包（多渠道）**，带「内置」标签；随应用分发，打包安装版里是只读的（v1.2.0）
-- 包格式与 UI 桥规范见 `docs/PLUGIN_PACKAGE.md`（内置插件与用户插件同格式；用户目录同名插件覆盖内置）
+- 源码目录：`plugins-dist/white-label-packer/`（`manifest.json` / `main.py` / `ui/index.html`）
+- 分发压缩包：`plugins-dist/white-label-packer-1.2.0.zip`，在插件页点「导入」选择该 zip 即可安装到
+  `<BT_PLUGINS_DIR>/white-label-packer/`；**不是内建插件**，没有「内建」标签，可独立删除/更新
+- 包格式与 UI 桥规范见 `docs/PLUGIN_PACKAGE.md`
 
 ## 功能
 
@@ -75,7 +76,8 @@ versionCode / versionName 不填时继承源 APK 的值（versionCode 优先取�
 
 ## 使用步骤（插件页操作）
 
-1. 进「插件」页，左侧列表选 **白包打包（多渠道）**（「内置」标签，v1.2.0）。
+1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.2.0.zip`；导入后左侧出现
+   **白包打包（多渠道）**（v1.2.0，用户插件，无「内建」标签）。
 2. 右侧是插件自带 UI（沙箱 iframe，经 `window.pluginBridge` 调后端插件）：
    选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 显示一致性校验状态；
    选 AAB 模式（`auto` / `splice` / `reconstruct`）。
@@ -394,9 +396,11 @@ pytest tests/contracts/test_white_label_packer.py tests/contracts/test_png_image
 
 | 文件 | 作用 |
 |---|---|
-| `backend/app/plugins/builtin/white-label-packer/manifest.json` | 插件元数据（id / name / entry / ui / params） |
-| `backend/app/plugins/builtin/white-label-packer/main.py` | 插件入口 `run(context, **params)`：APK / AAB 两条打包流水线 |
-| `backend/app/plugins/builtin/white-label-packer/ui/index.html` | 自定义 UI（沙箱 iframe，单文件内联） |
+| `plugins-dist/white-label-packer/manifest.json` | 插件元数据（id / name / entry / ui / params） |
+| `plugins-dist/white-label-packer/main.py` | 插件入口 `run(context, **params)`：APK / AAB 两条打包流水线 |
+| `plugins-dist/white-label-packer/ui/index.html` | 自定义 UI（沙箱 iframe，单文件内联） |
+| `plugins-dist/white-label-packer-1.2.0.zip` | 可直接在插件页「导入」的分发包 |
+| `plugins-dist/README.md` | 分发/导入说明 |
 | `backend/app/utils/png_image.py` | stdlib PNG 解码 / 缩放 / 编码（图标替换） |
 | `backend/app/plugins/manager.py` | 插件扫描与加载（内置 + 用户目录、平铺 + 包目录） |
 | `backend/app/plugins/context.py` | `PluginContext`：工具、`run_command`、`work_dir` |

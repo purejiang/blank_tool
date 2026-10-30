@@ -25,7 +25,7 @@ import pytest
 
 # conftest already puts backend/ on sys.path
 ROOT = Path(__file__).resolve().parents[2]
-PLUGIN_DIR = ROOT / "backend" / "app" / "plugins" / "builtin" / "white-label-packer"
+PLUGIN_DIR = ROOT / "plugins-dist" / "white-label-packer"
 PLUGIN_MAIN = PLUGIN_DIR / "main.py"
 RUNTIME = ROOT / "runtime"
 
@@ -565,25 +565,34 @@ def test_ui_static_contract():
     assert 'data-field="permissions"' in html and "com.android.vending.BILLING" in html
 
 
-def test_builtin_plugin_discoverable(monkeypatch, workdir):
+def test_plugin_package_importable(monkeypatch, workdir):
+    """The plugin must work as a distributable zip, not as a builtin."""
     import app.plugins.manager as m
+    from app.handlers.plugin_package_handler import import_plugin
+
+    assert not (ROOT / "backend" / "app" / "plugins" / "builtin"
+                / "white-label-packer").exists()
+
+    # build a zip with the same layout the plugin page imports
+    zip_path = workdir / "white-label-packer.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in sorted(PLUGIN_DIR.rglob("*")):
+            if not p.is_file() or "__pycache__" in p.parts:
+                continue
+            zf.write(p, p.relative_to(PLUGIN_DIR).as_posix())
 
     user = workdir / "user"
     user.mkdir()
     monkeypatch.setenv("BT_PLUGINS_DIR", str(user))
     m.PluginManager._instance = None
-    mgr = m.PluginManager()
-    mgr.builtin_dir = str(PLUGIN_DIR.parent)
-    mgr.user_dir = str(user)
-    mgr.load_plugins()
     try:
-        names = [p["name"] for p in mgr.get_all_plugins()]
-        assert "white-label-packer" in names
-        info = [p for p in mgr.get_all_plugins() if p["name"] == "white-label-packer"][0]
-        assert info["builtin"] is True
+        plugins = import_plugin({"zip_path": str(zip_path)}, None)
+        info = [p for p in plugins if p["name"] == "white-label-packer"][0]
+        assert info["builtin"] is False
         assert info["ui_path"].endswith("index.html")
         assert os.path.isfile(info["ui_path"])
         assert "白包" in info["display_name"]
+        assert os.path.isdir(user / "white-label-packer")
     finally:
         m.PluginManager._instance = None
 

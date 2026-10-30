@@ -4,8 +4,8 @@ Contract tests for the plugin framework (post-automation-extraction).
 World: plugins are EXTERNAL .py files for outside tools (jadx, scrcpy, ...)
 or directory packages (``manifest.json`` + entry, see ``docs/PLUGIN_PACKAGE.md``).
 They live in the user plugin dir ``BT_PLUGINS_DIR`` (scanned FIRST) or in the
-app-side ``app/plugins/builtin/`` dir, which may ship package-form plugins but
-has **no flat ``.py`` examples** bundled. Same-name user plugins override
+app-side ``app/plugins/builtin/`` dir, which is currently empty (no flat
+``.py`` or package-form examples bundled). Same-name user plugins override
 builtin ones.
 ``adb_auto`` is no longer a plugin — automation runs go through the
 dedicated ``automation.run`` handler.
