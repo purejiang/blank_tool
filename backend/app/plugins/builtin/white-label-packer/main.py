@@ -43,10 +43,10 @@ from app.utils.png_image import (
 
 DESCRIPTION = (
     "从基础 APK（可选同版本 AAB）批量生成白包：其他包、三星、谷歌及任意自定义渠道。"
-    "改包名、应用名、图标、签名与渠道标识；AAB 渠道优先直改源 AAB，"
-    "失败自动回退重建。"
+    "改包名、应用名、图标、签名、渠道标识、额外权限（如 BILLING）与 assets 文件；"
+    "AAB 渠道优先直改源 AAB，失败自动回退重建。"
 )
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 AUTHOR = "blank_tool"
 
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
@@ -606,6 +606,23 @@ def _patch_manifest(xml_text: str, spec: Dict[str, Any]) -> str:
             found.set(ANDROID + "name", name)
         found.set(ANDROID + "value", value)
         found.attrib.pop(ANDROID + "resource", None)
+
+    # 9) 额外 uses-permission（例如 com.android.vending.BILLING）
+    existing_perms = {
+        e.get(ANDROID + "name")
+        for tag in ("uses-permission", "uses-permission-sdk-23")
+        for e in root.findall(tag)
+    }
+    app_index = list(root).index(app)
+    for perm in spec.get("permissions") or []:
+        name = str(perm or "").strip()
+        if not name or name in existing_perms:
+            continue
+        el = ET.Element("uses-permission")
+        el.set(ANDROID + "name", name)
+        root.insert(app_index, el)
+        app_index += 1
+        existing_perms.add(name)
 
     return ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
@@ -1303,6 +1320,7 @@ def _profile_from_channel(ch: Dict[str, Any]) -> Dict[str, Any]:
             "alias": (ch.get("keystore") or {}).get("alias") or "",
         },
         "metadata": ch.get("metadata") or [],
+        "permissions": ch.get("permissions") or [],
         "asset": ch.get("asset") or {"path": "", "content": ""},
         "rename_authorities": bool(ch.get("rename_authorities")),
         "rename_permissions": bool(ch.get("rename_permissions")),
@@ -1407,6 +1425,19 @@ def _channel_config(ch: Dict[str, Any]) -> Dict[str, Any]:
         name = str(item.get("name") or "").strip()
         if name:
             metadata.append({"name": name, "value": str(item.get("value") or "")})
+    raw_perms = ch.get("permissions") or []
+    if isinstance(raw_perms, str):
+        raw_perms = re.split(r"[\s,]+", raw_perms)
+    permissions = []
+    for item in raw_perms:
+        if not isinstance(item, str):
+            continue
+        perm = item.strip()
+        if not perm or perm in permissions:
+            continue
+        if not _PKG_RE.match(perm):
+            raise ToolException(f"权限名不合法: {perm}")
+        permissions.append(perm)
     asset = ch.get("asset") if isinstance(ch.get("asset"), dict) else {}
     return {
         "id": cid,
@@ -1426,6 +1457,7 @@ def _channel_config(ch: Dict[str, Any]) -> Dict[str, Any]:
             "keypass": str(ks.get("keypass") or ""),
         },
         "metadata": metadata,
+        "permissions": permissions,
         "asset": {"path": str(asset.get("path") or ""),
                   "content": str(asset.get("content") or "")},
         "rename_authorities": bool(ch.get("rename_authorities")),
@@ -1514,6 +1546,8 @@ def _build_channel(
     restore: Dict[str, bytes] = {}
     warnings: List[str] = []
     if ch["icon_path"]:
+        if not source["icon"]["files"]:
+            warnings.append("源 APK 未声明 launcher icon/roundIcon，无法替换图标")
         icon_map, restore, icon_warn = _apply_icons(
             project, source["path"], ch["icon_path"], source["icon"]["files"]
         )
@@ -1525,6 +1559,7 @@ def _build_channel(
             "new_pkg": new_pkg,
             "app_name": ch["app_name"],
             "metadata": ch["metadata"],
+            "permissions": ch["permissions"],
             "mapping": mapping,
             "rename_authorities": ch["rename_authorities"],
             "rename_permissions": ch["rename_permissions"],

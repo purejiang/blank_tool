@@ -189,6 +189,27 @@ def test_patch_manifest_flags_off_keep_authority_permission_and_shared_uid():
     assert root.find("permission").get(A + "name") == "com.example.base.permission.C2D"
 
 
+def test_patch_manifest_adds_permissions():
+    import xml.etree.ElementTree as ET
+
+    out = WL._patch_manifest(
+        MANIFEST,
+        _spec(permissions=["com.android.vending.BILLING",
+                           "com.android.vending.BILLING"]),
+    )
+    root = ET.fromstring(out)
+    A = "{http://schemas.android.com/apk/res/android}"
+    names = [e.get(A + "name") for e in root.findall("uses-permission")]
+    assert names.count("com.android.vending.BILLING") == 1
+    assert "com.example.white.permission.C2D" in names
+    # 额外权限插在 <application> 之前
+    app_index = list(root).index(root.find("application"))
+    perm_index = [i for i, e in enumerate(root)
+                  if e.tag == "uses-permission"
+                  and e.get(A + "name") == "com.android.vending.BILLING"][0]
+    assert perm_index < app_index
+
+
 def test_patch_manifest_removes_split_for_aab_base():
     import xml.etree.ElementTree as ET
 
@@ -311,10 +332,16 @@ def test_channel_config_supports_custom_channels():
     custom = WL._channel_config({
         "id": "partner", "label": "合作方", "package_name": "com.x.p",
         "app_name": "P", "format": "both", "keystore": {},
+        "permissions": ["com.android.vending.BILLING",
+                        "com.android.vending.BILLING"],
     })
     assert custom["id"] == "partner"
     assert custom["label"] == "合作方"
     assert custom["format"] == "both"
+    assert custom["permissions"] == ["com.android.vending.BILLING"]
+
+    with pytest.raises(Exception):
+        WL._channel_config({"id": "other", "permissions": ["bad perm"]})
 
     for bad in ("", "../x", "腾讯", "A B", "a" * 40):
         with pytest.raises(Exception):
@@ -535,6 +562,7 @@ def test_ui_static_contract():
     assert "开始打包" in html and "取消" in html
     assert "其他包" in html and "btnAddChannel" in html
     assert 'data-field="label"' in html
+    assert 'data-field="permissions"' in html and "com.android.vending.BILLING" in html
 
 
 def test_builtin_plugin_discoverable(monkeypatch, workdir):
@@ -738,6 +766,7 @@ def test_integration_apk_and_aab_splice(monkeypatch, workdir):
             "icon_path": str(icon), "format": fmt,
             "keystore": keystore,
             "metadata": [{"name": "wl_channel", "value": "{channel}"}],
+            "permissions": ["com.android.vending.BILLING"],
             "asset": {"path": "assets/channel.json",
                       "content": '{"channel":"{channel}"}'},
             "rename_authorities": True, "rename_permissions": True,

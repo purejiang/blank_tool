@@ -6,7 +6,7 @@
 
 - 插件 id：`white-label-packer`（`plugin.run` / `plugin.export` / `plugin.delete` 都用它；display name 只是标签）
 - 插件目录：`backend/app/plugins/builtin/white-label-packer/`（`manifest.json` / `main.py` / `ui/index.html`）
-- 插件页显示：**白包打包（多渠道）**，带「内置」标签；随应用分发，打包安装版里是只读的
+- 插件页显示：**白包打包（多渠道）**，带「内置」标签；随应用分发，打包安装版里是只读的（v1.2.0）
 - 包格式与 UI 桥规范见 `docs/PLUGIN_PACKAGE.md`（内置插件与用户插件同格式；用户目录同名插件覆盖内置）
 
 ## 功能
@@ -19,7 +19,9 @@
 | 换图标 | 可选；替换**已存在**的 launcher 图标栅格文件（同资源 ID / 同路径） |
 | 改版本号 | 按渠道覆盖 versionCode / versionName |
 | 独立签名 | 每个渠道用自己的 keystore；APK 用 apksigner，AAB 用 jarsigner |
+| 额外权限 | 每渠道追加 `<uses-permission>`（如 `com.android.vending.BILLING`），已存在不重复；APK/AAB 都生效 |
 | 渠道标识 | manifest `<meta-data>`、可选 `assets/` 渠道文件、占位符 |
+| 渠道文件 | 每个渠道可向 `assets/<path>` 注入一个文本文件（APK 写 zip，AAB 写 `base/assets/`） |
 | 配置记忆 | 非机密配置存 `profiles.json`，口令不落盘 |
 
 不做的事：dex 改名、keystore 生成、商店合规、AAB-only 输入——见「限制与排错」。
@@ -31,6 +33,7 @@
 | applicationId（包名） | 改成渠道包名（`--rename-manifest-package`），资源包名与类名不变 | — |
 | `provider` authorities | **保持原样** | 「重命名 provider authority」开启后按新包名改写 |
 | 自定义权限（`<permission>` / `uses-permission`） | **保持原样** | 「重命名自定义权限」开启后按新包名改写 |
+| 额外权限（`uses-permission`） | **不添加** | 「额外权限」每行一个，追加到 manifest；已存在不重复 |
 | `sharedUserId` | **移除**（改包名后共享 uid 会冲突） | 「移除 sharedUserId」默认开启，关掉即保留 |
 | versionCode / versionName | 按渠道覆盖 | — |
 
@@ -72,13 +75,14 @@ versionCode / versionName 不填时继承源 APK 的值（versionCode 优先取�
 
 ## 使用步骤（插件页操作）
 
-1. 进「插件」页，左侧列表选 **白包打包（多渠道）**（「内置」标签，v1.1.0）。
+1. 进「插件」页，左侧列表选 **白包打包（多渠道）**（「内置」标签，v1.2.0）。
 2. 右侧是插件自带 UI（沙箱 iframe，经 `window.pluginBridge` 调后端插件）：
    选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 显示一致性校验状态；
    选 AAB 模式（`auto` / `splice` / `reconstruct`）。
 3. 预置三张渠道卡（`other` / `samsung` / `google`），可点「＋ 其他包」继续添加任意自定义渠道。
    逐项填：启用、包名、应用名、versionCode、versionName、图标、keystore（路径 / alias / storepass / keypass）、
-   格式（APK / AAB / 两者）、渠道 meta-data（多行 `name=value`，空行与 `#` 注释忽略）、渠道文件
+   格式（APK / AAB / 两者）、渠道 meta-data（多行 `name=value`，空行与 `#` 注释忽略）、额外权限
+   （每行一个 `<uses-permission>`，如 `com.android.vending.BILLING`）、渠道文件
    （`assets` 目标路径 + 文本内容，沙箱 iframe 读不了本地文件，所以没有文件选择框），以及
    「重命名 provider authority」「重命名自定义权限」「移除 sharedUserId」三个开关。
    APK / AAB / 图标 / 输出目录的选择框由宿主代弹原生对话框。
@@ -182,6 +186,8 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
 - 自适应图标优先替换 `foreground` 引用的位图（`background` 保留原样）；前景/背景层是矢量（vector XML）时跳过并 warning，
   Android 8.0+ 可能仍显示旧图标；
 - 目标文件尺寸无法识别 / 缩放失败 / 不在源 APK 或解码项目里 → 跳过该文件并 warning（不写坏资源）；
+- **源 APK 的 manifest 没有声明 `android:icon` / `roundIcon` 时无法替换**（插件不凭空新增图标资源），
+  会给出 warning；要换图标请用本身声明了 launcher icon 的源包；
 - 不新增 drawable、不改资源 ID、不改应用内 `app_name` 字符串；
 - 图标替换是可选步骤，不选则保留原图标。
 
@@ -206,6 +212,14 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
    未知 token 原样保留；应用名本身是 manifest 字面量，不做占位符替换。
 
 > 占位符只做文本替换，不会改 dex / 二进制内容。
+
+## 额外权限（uses-permission）
+
+- 每行一个权限名，例如 `com.android.vending.BILLING`；插件把它作为 `<uses-permission>` 追加到 manifest
+  （APK 与 AAB 都生效，AAB 直改时写入新的 manifest）。
+- 已存在的同名权限不会重复添加；不会删除源包已有权限。
+- `com.android.vending.BILLING` 只表示声明结算权限，Google Play 后台仍需配置商品/结算；它不是“开通内购”的开关。
+- 权限名必须是合法包名形式（`com.android.vending.BILLING`、`android.permission.XXX`），否则该渠道报错。
 
 ## profiles 与产物 / 报告
 
@@ -245,6 +259,7 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
         "format": "aab",
         "keystore": { "path": "...", "alias": "..." },
         "metadata": [],
+        "permissions": ["com.android.vending.BILLING"],
         "asset": { "path": "", "content": "" },
         "rename_authorities": true,
         "rename_permissions": true,
@@ -370,6 +385,8 @@ pytest tests/contracts/test_white_label_packer.py tests/contracts/test_png_image
   - [ ] 谷歌渠道 AAB：`bundletool validate` 通过，`build-apks` 出的测试 APK 可安装启动
   - [ ] 所有产物签名校验通过（APK 用 `apksigner verify`，AAB 用 `jarsigner -verify`）
   - [ ] 渠道 meta-data 与 `assets/` 文件确实在产物里（解包 / `aapt2 dump` 确认）
+  - [ ] 额外权限（如 `com.android.vending.BILLING`）在产物 manifest 和 `dumpsys package` 的 requested permissions 里
+  - [ ] 带 launcher icon 的源包：图标替换后桌面图标确实变化（源包未声明 icon 时只会 warning，不新增图标）
   - [ ] 直改模式产物与源 AAB 的 `resources.pb`、dex 一致（结构未被破坏）
   - [ ] 改过版本号的包 versionCode 生效（`aapt2 dump badging`）
 

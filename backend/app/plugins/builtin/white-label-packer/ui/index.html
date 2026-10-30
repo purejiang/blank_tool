@@ -710,6 +710,7 @@
       format: str(meta && meta.format) || (id === 'google' ? 'aab' : 'apk'),
       keystore: { path: '', alias: '', storepass: '', keypass: '' },
       metadataText: '',
+      permissionsText: '',
       assetPath: '',
       assetContent: '',
       rename_authorities: false,
@@ -751,6 +752,7 @@
       // storepass / keypass 有意忽略
     }
     if (Array.isArray(p.metadata)) cfg.metadataText = metadataToText(p.metadata);
+    if (Array.isArray(p.permissions)) cfg.permissionsText = p.permissions.join('\n');
     if (p.asset && typeof p.asset === 'object') {
       cfg.assetPath = str(p.asset.path);
       cfg.assetContent = str(p.asset.content);
@@ -918,6 +920,10 @@
       '<textarea ' + d + ' data-field="metadata" rows="3" spellcheck="false" placeholder="name=value，每行一条；空行和 # 行忽略"></textarea>' +
       '<div class="fhint">按第一个 = 切分</div></div>';
 
+    h += '<div class="field"><label>额外权限（uses-permission）</label>' +
+      '<textarea ' + d + ' data-field="permissions" rows="2" spellcheck="false" placeholder="每行一个，例如 com.android.vending.BILLING"></textarea>' +
+      '<div class="fhint">写入 &lt;uses-permission&gt;；已存在则不重复添加，APK / AAB 都生效。</div></div>';
+
     // 协议里 asset 是 { path: "assets/...", content: "文本" }：path 是产物内目标路径，
     // content 直接写文本内容（iframe 读不了本地文件，所以这里没有文件选择框）。
     h += '<div class="field"><label>渠道文件（assets 路径 + 文本内容）</label>' +
@@ -956,6 +962,7 @@
       case 'keypass': return cfg.keystore.keypass;
       case 'format': return cfg.format;
       case 'metadata': return cfg.metadataText;
+      case 'permissions': return cfg.permissionsText;
       case 'asset_path': return cfg.assetPath;
       case 'asset_content': return cfg.assetContent;
       case 'rename_authorities': return cfg.rename_authorities;
@@ -980,6 +987,7 @@
       case 'keypass': cfg.keystore.keypass = str(value); break;
       case 'format': cfg.format = str(value); break;
       case 'metadata': cfg.metadataText = str(value); break;
+      case 'permissions': cfg.permissionsText = str(value); break;
       case 'asset_path': cfg.assetPath = str(value); break;
       case 'asset_content': cfg.assetContent = str(value); break;
       case 'rename_authorities': cfg.rename_authorities = !!value; break;
@@ -1482,6 +1490,7 @@
         keypass: cfg.keystore.keypass
       },
       metadata: metadata.map(function (m) { return { name: m.name, value: m.value }; }),
+      permissions: parsePermissions(cfg.permissionsText),
       asset: { path: cfg.assetPath.trim(), content: cfg.assetContent },
       rename_authorities: !!cfg.rename_authorities,
       rename_permissions: !!cfg.rename_permissions,
@@ -1504,6 +1513,18 @@
       out.push({ name: name, value: line.slice(at + 1).trim() });
     }
     return { items: out, bad: bad };
+  }
+
+  /** 解析额外权限：每行一个；空行 / # 注释忽略；去重 */
+  function parsePermissions(text) {
+    var out = [];
+    var lines = str(text).split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var p = lines[i].trim();
+      if (!p || p.charAt(0) === '#') continue;
+      if (out.indexOf(p) < 0) out.push(p);
+    }
+    return out;
   }
 
   /* ========================================================================
