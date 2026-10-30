@@ -6,7 +6,7 @@
 
 - 插件 id：`white-label-packer`（`plugin.run` / `plugin.export` / `plugin.delete` 都用它；display name 只是标签）
 - 源码目录：`plugins-dist/white-label-packer/`（`manifest.json` / `main.py` / `ui/index.html`）
-- 分发压缩包：`plugins-dist/white-label-packer-1.2.0.zip`，在插件页点「导入」选择该 zip 即可安装到
+- 分发压缩包：`plugins-dist/white-label-packer-1.3.0.zip`，在插件页点「导入」选择该 zip 即可安装到
   `<BT_PLUGINS_DIR>/white-label-packer/`；**不是内建插件**，没有「内建」标签，可独立删除/更新
 - 包格式与 UI 桥规范见 `docs/PLUGIN_PACKAGE.md`
 
@@ -57,13 +57,38 @@
 
 | 输入 | 必需 | 要求 |
 |---|---|---|
-| 基础 APK | ✅ | 完整 APK（release 包，未加固或已脱壳）；split APK 会被直接拒绝（提示用 base/universal APK） |
-| 源 AAB | 可选 | 与基础 APK **同一次构建**、单 `base` 模块、同包名同版本；用于谷歌渠道直改，缺省则重建 |
+| 基础 APK | ✅ | 完整 APK（release 包，未加固或已脱壳）；split APK 会被直接拒绝（提示用 base/universal APK）。也可由插件自带 `assets/base.apk` 提供默认值 |
+| 源 AAB | 可选 | 与基础 APK **同一次构建**、单 `base` 模块、同包名同版本；用于谷歌渠道直改，缺省则重建。也可由插件自带 `assets/base.aab` 提供默认值 |
 | 图标 PNG | 可选 | 必须是受支持的 8-bit、非交错 PNG（RGB / 调色板 / RGBA），否则直接报错；尺寸任意 |
 | keystore | ✅（每个出包渠道） | JKS/PKCS12 均可，需 path + alias + storepass（keypass 可选）；插件**不**生成密钥 |
 | 渠道文件 | 可选 | `{path, content}`：`path` 是产物内目标路径（相对路径，自动补 `assets/`，禁止绝对路径和 `..`），`content` 是文本内容 |
 
 versionCode / versionName 不填时继承源 APK 的值（versionCode 优先取渠道配置，其次 apktool.yml / 源包）。
+
+## 插件自带默认 APK / AAB
+
+插件包本身可以携带任意资源；白包插件约定两个默认输入（都可选）：
+
+```text
+white-label-packer/
+  manifest.json
+  main.py
+  ui/index.html
+  assets/
+    base.apk     # 可选：默认基础 APK
+    base.aab     # 可选：默认源 AAB（与 base.apk 同构建时优先直改）
+```
+
+- 导入 zip 时资源原样解压到 `<BT_PLUGINS_DIR>/white-label-packer/assets/`；插件后端用
+  `os.path.dirname(__file__)` 读取，不依赖当前工作目录。
+- UI 在 presets 返回后自动把 `base.apk` / `base.aab` 填进路径框；用户仍可改选外部文件，
+  清空 AAB 路径即表示不用 AAB。
+- 后端 `inspect` / `pack` 也支持省略 `apk_path` / `aab_path` 键时回退到这两个文件（显式传空串表示不用 AAB）。
+- **keystore 不要打进 zip**：插件包是可读文件，口令/私钥放进去等于公开；每个渠道在 UI 里选外部 keystore。
+- APK/AAB 会让 zip 变大（导入会复制到用户插件目录）；第三方包随插件分发前请确认授权。
+- 注意区分：这里的 `assets/base.apk` 是**插件自己的资源**；渠道文件里的 `asset.path` 是**注入目标 APK 的 `assets/`**。
+- iframe UI 不能 `fetch` 插件目录里的相对资源；插件 UI 的图片/样式必须内联在 `ui/index.html`，
+  而 APK/AAB 这种二进制资源由后端读取。
 
 源 AAB 的一致性 guard（`bundletool dump manifest` 只用于这里）：
 
@@ -76,8 +101,8 @@ versionCode / versionName 不填时继承源 APK 的值（versionCode 优先取�
 
 ## 使用步骤（插件页操作）
 
-1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.2.0.zip`；导入后左侧出现
-   **白包打包（多渠道）**（v1.2.0，用户插件，无「内建」标签）。
+1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.3.0.zip`；导入后左侧出现
+   **白包打包（多渠道）**（v1.3.0，用户插件，无「内建」标签）。
 2. 右侧是插件自带 UI（沙箱 iframe，经 `window.pluginBridge` 调后端插件）：
    选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 显示一致性校验状态；
    选 AAB 模式（`auto` / `splice` / `reconstruct`）。
@@ -399,7 +424,7 @@ pytest tests/contracts/test_white_label_packer.py tests/contracts/test_png_image
 | `plugins-dist/white-label-packer/manifest.json` | 插件元数据（id / name / entry / ui / params） |
 | `plugins-dist/white-label-packer/main.py` | 插件入口 `run(context, **params)`：APK / AAB 两条打包流水线 |
 | `plugins-dist/white-label-packer/ui/index.html` | 自定义 UI（沙箱 iframe，单文件内联） |
-| `plugins-dist/white-label-packer-1.2.0.zip` | 可直接在插件页「导入」的分发包 |
+| `plugins-dist/white-label-packer-1.3.0.zip` | 可直接在插件页「导入」的分发包 |
 | `plugins-dist/README.md` | 分发/导入说明 |
 | `backend/app/utils/png_image.py` | stdlib PNG 解码 / 缩放 / 编码（图标替换） |
 | `backend/app/plugins/manager.py` | 插件扫描与加载（内置 + 用户目录、平铺 + 包目录） |

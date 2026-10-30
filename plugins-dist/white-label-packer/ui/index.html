@@ -1608,6 +1608,15 @@
     state.notes = (p && Array.isArray(p.notes)) ? p.notes : [];
     state.tools = (p && p.tools && typeof p.tools === 'object') ? p.tools : {};
 
+    // 插件自带 assets/base.apk|base.aab 时自动填入；用户仍可改选/清空
+    var bundled = (p && p.bundled && typeof p.bundled === 'object') ? p.bundled : {};
+    if (!state.apkPath.trim() && typeof bundled.apk === 'string' && bundled.apk) {
+      state.apkPath = bundled.apk;
+    }
+    if (!state.aabPath.trim() && typeof bundled.aab === 'string' && bundled.aab) {
+      state.aabPath = bundled.aab;
+    }
+
     var d = (p && p.defaults && typeof p.defaults === 'object') ? p.defaults : {};
     var sp = (p && p.saved_profiles && typeof p.saved_profiles === 'object') ? p.saved_profiles : null;
 

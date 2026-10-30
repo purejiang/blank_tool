@@ -516,6 +516,22 @@ def test_presets_shape(monkeypatch, workdir):
     assert payload["defaults"]["google_mode"] == "auto"
     assert payload["defaults"]["strict_aab_check"] is True
     assert "tools" in payload and "saved_profiles" in payload
+    assert "bundled" in payload
+
+
+def test_bundled_assets_discovery(monkeypatch, workdir):
+    plugin = workdir / "plugin"
+    assets = plugin / "assets"
+    assets.mkdir(parents=True)
+    (assets / "base.apk").write_bytes(b"fake-apk")
+    monkeypatch.setattr(WL, "PLUGIN_DIR", str(plugin))
+    monkeypatch.setattr(WL, "BUNDLED_ASSETS", str(assets))
+    bundled = WL._bundled_paths()
+    assert bundled["apk"] == str(assets / "base.apk")
+    assert bundled["aab"] == ""
+    (assets / "base.aab").write_bytes(b"fake-aab")
+    bundled = WL._bundled_paths()
+    assert bundled["aab"] == str(assets / "base.aab")
 
 
 def test_profiles_roundtrip(monkeypatch, workdir):
@@ -754,6 +770,16 @@ def test_integration_apk_and_aab_splice(monkeypatch, workdir):
     apk, keystore = _build_synthetic_apk(workdir)
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
     ctx = PluginContext("white-label-packer", None)
+
+    # 插件自带 assets/base.apk 时，apk_path 省略也能 inspect
+    bundled = workdir / "bundled-assets"
+    bundled.mkdir()
+    (bundled / "base.apk").write_bytes(apk.read_bytes())
+    monkeypatch.setattr(WL, "BUNDLED_ASSETS", str(bundled))
+    bundled_insp = WL.run(ctx, action="inspect", task_id="bundled-inspect",
+                          apk_path="", aab_path="")
+    assert bundled_insp["success"] is True
+    assert bundled_insp["source"]["package"] == "com.example.base"
 
     insp = WL.run(ctx, action="inspect", task_id="t0",
                   apk_path=str(apk), aab_path="")

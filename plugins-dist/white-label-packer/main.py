@@ -46,8 +46,21 @@ DESCRIPTION = (
     "改包名、应用名、图标、签名、渠道标识、额外权限（如 BILLING）与 assets 文件；"
     "AAB 渠道优先直改源 AAB，失败自动回退重建。"
 )
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 AUTHOR = "blank_tool"
+
+# 插件自带资源：assets/base.apk / assets/base.aab 作为默认输入。
+# 插件是普通 zip 包，resources 由 plugin.import 原样解压到插件目录；
+# 后端可直接按 __file__ 相对路径读取（iframe UI 不能 fetch 相对路径）。
+PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+BUNDLED_ASSETS = os.path.join(PLUGIN_DIR, "assets")
+
+
+def _bundled_paths() -> Dict[str, str]:
+    def pick(name: str) -> str:
+        p = os.path.join(BUNDLED_ASSETS, name)
+        return p if os.path.isfile(p) else ""
+    return {"apk": pick("base.apk"), "aab": pick("base.aab")}
 
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 DIST_NS = "http://schemas.android.com/apk/distribution"
@@ -1846,6 +1859,7 @@ def _presets(context) -> Dict[str, Any]:
         "success": True,
         "action": "presets",
         "channels": CHANNEL_PRESETS,
+        "bundled": _bundled_paths(),
         "defaults": {
             "output_dir": os.path.join(get_output_dir(), "white-label"),
             "google_mode": "auto",
@@ -1855,6 +1869,7 @@ def _presets(context) -> Dict[str, Any]:
         "saved_profiles": saved,
         "tools": status,
         "notes": [
+            "插件可在 assets/base.apk、assets/base.aab 自带默认输入；UI 会自动填入，可随时改选外部文件。",
             "「其他包」是通用渠道；可继续添加任意多个自定义渠道，标识用于产物文件名。",
             "AAB 直改需要同一次构建的 APK + AAB；不一致时自动回退重建。",
             "包名不能与源包名相同；每个渠道可使用独立 keystore。",
@@ -1864,11 +1879,15 @@ def _presets(context) -> Dict[str, Any]:
 
 
 def _inspect(context, params: Dict[str, Any]) -> Dict[str, Any]:
-    apk = str(params.get("apk_path") or "").strip()
-    aab = str(params.get("aab_path") or "").strip()
+    bundled = _bundled_paths()
+    apk = str(params.get("apk_path") or "").strip() or bundled["apk"]
+    # aab_path 键缺省 → 用插件内置 AAB；显式传空串 → 表示不用 AAB
+    aab = (bundled["aab"] if params.get("aab_path") is None
+           else str(params.get("aab_path") or "").strip())
     task_id = str(params.get("task_id") or "")
     if not apk:
-        return {"success": False, "action": "inspect", "error": "缺少 apk_path"}
+        return {"success": False, "action": "inspect",
+                "error": "缺少 apk_path（插件未内置 assets/base.apk）"}
     try:
         _validate_apk(apk)
         tools = _collect_tools(context)
@@ -1906,9 +1925,13 @@ def _inspect(context, params: Dict[str, Any]) -> Dict[str, Any]:
 
 def _pack(context, params: Dict[str, Any]) -> Any:
     task_id = str(params.get("task_id") or "")
-    apk = str(params.get("apk_path") or "").strip()
+    bundled = _bundled_paths()
+    apk = str(params.get("apk_path") or "").strip() or bundled["apk"]
     aab_raw = params.get("aab_path")
-    aab = str(aab_raw).strip() if aab_raw else ""
+    aab = (bundled["aab"] if aab_raw is None
+           else (str(aab_raw).strip() if aab_raw else ""))
+    if not apk:
+        raise ToolException("缺少 apk_path（插件未内置 assets/base.apk）")
     output_dir = str(params.get("output_dir") or "").strip() or \
         os.path.join(get_output_dir(), "white-label")
     google_mode = str(params.get("google_mode") or "auto").strip().lower()
