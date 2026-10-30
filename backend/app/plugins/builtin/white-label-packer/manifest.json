@@ -1,0 +1,9 @@
+{
+  "id": "white-label-packer",
+  "name": "白包打包（腾讯 / 三星 / 谷歌）",
+  "version": "1.0.0",
+  "author": "blank_tool",
+  "description": "从基础 APK（可选同版本 AAB）批量生成腾讯/三星/谷歌白包：改包名、应用名、图标、签名与渠道标识。APK 输出签名 APK；谷歌输出签名 AAB（优先直改源 AAB，保留 resources.pb/dex 结构，失败自动回退重建）。",
+  "entry": "main.py",
+  "ui": "ui/index.html"
+}
