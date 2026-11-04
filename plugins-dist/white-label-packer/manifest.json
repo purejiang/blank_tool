@@ -1,7 +1,7 @@
 {
   "id": "white-label-packer",
   "name": "白包打包（多渠道）",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "author": "blank_tool",
   "description": "从基础 APK（可选同版本 AAB）批量生成白包：其他包、三星、谷歌及任意自定义渠道。支持可增删改查的配置模板（签名/图标/meta-data/权限/assets/版本/开关），多个 assets 文件，改包名、应用名、图标、签名、渠道标识、额外权限（如 BILLING）。APK 输出签名 APK；AAB 渠道优先直改源 AAB（保留 resources.pb/dex 结构），失败自动回退重建。",
   "entry": "main.py",

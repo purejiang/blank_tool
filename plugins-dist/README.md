@@ -4,8 +4,9 @@
 
 ## white-label-packer（白包打包）
 
-- 源码：`white-label-packer/`（`manifest.json` + `main.py` + `ui/index.html`）
-- 可直接导入：`white-label-packer-1.4.0.zip`
+- 源码：`white-label-packer/`（`manifest.json` + `main.py` + `png_image.py` + `ui/index.html`）
+- 可直接导入：`white-label-packer-1.4.1.zip`
+- **兼容 2.5.1 发行版**：旧版后端没有 `app.utils.png_image`，插件包内自带同功能 `png_image.py`，导入时自动回退。
 - 安装：打开 Blank Tool → 插件页 → 右上角「导入」→ 选择上面的 zip → 左侧出现
   **白包打包（多渠道）**（用户插件，无「内建」标签）。
 - 更新：重新导入 zip，弹窗选覆盖即可；删除走插件页的「删除」。

@@ -6,10 +6,11 @@
 Samsung 需要的 assets 文件。右侧「＋ 其他包」可继续添加任意自定义渠道。
 
 - 插件 id：`white-label-packer`（`plugin.run` / `plugin.export` / `plugin.delete` 都用它；display name 只是标签）
-- 源码目录：`plugins-dist/white-label-packer/`（`manifest.json` / `main.py` / `ui/index.html`）
-- 分发压缩包：`plugins-dist/white-label-packer-1.4.0.zip`，在插件页点「导入」选择该 zip 即可安装到
+- 源码目录：`plugins-dist/white-label-packer/`（`manifest.json` / `main.py` / `png_image.py` / `ui/index.html`）
+- 分发压缩包：`plugins-dist/white-label-packer-1.4.1.zip`，在插件页点「导入」选择该 zip 即可安装到
   `<BT_PLUGINS_DIR>/white-label-packer/`；**不是内建插件**，没有「内建」标签，可独立删除/更新
 - 包格式与 UI 桥规范见 `docs/PLUGIN_PACKAGE.md`
+- 兼容 2.5.1 发行版：旧版后端没有 `app.utils.png_image`，插件包自带 `png_image.py`，导入时自动回退
 
 ## 功能
 
@@ -119,8 +120,8 @@ white-label-packer/
 
 ## 使用步骤（插件页操作）
 
-1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.4.0.zip`；导入后左侧出现
-   **白包打包（多渠道）**（v1.4.0，用户插件，无「内建」标签）。
+1. 进「插件」页，先点右上角「导入」选择 `plugins-dist/white-label-packer-1.4.1.zip`；导入后左侧出现
+   **白包打包（多渠道）**（v1.4.1，用户插件，无「内建」标签）。
 2. 右侧是插件自带 UI（沙箱 iframe，经 `window.pluginBridge` 调后端插件）：
    选**基础 APK** → 自动解析包名/版本/图标；可选选**同版本 AAB** → 自动带一致性校验状态；
    选 AAB 模式（`auto` / `splice` / `reconstruct`）。解析按钮仍保留，用于手动重新解析。
@@ -229,7 +230,8 @@ AAB 重签时旧的 `META-INF` 签名条目会先被删除，再写入新的 `ME
 
 **图标**：替换**已存在**的 launcher 图标栅格文件，按目标 density 缩放后写回原资源路径（资源 ID 不变）。
 
-- 尺寸任意，插件按目标尺寸双线性重采样（`backend/app/utils/png_image.py`，纯 stdlib，无 PIL）；
+- 尺寸任意，插件按目标尺寸双线性重采样（插件自带 `png_image.py`，纯 stdlib，无 PIL；新版后端有
+  `app.utils.png_image` 时优先用后端实现，2.5.1 等旧版自动回退到包内副本）；
 - 用户提供的图标必须是受支持的 8-bit PNG（colour type 2/3/6、非交错），否则直接报错（不会静默跳过）；
 - 目标是 WebP 文件时直接写入 PNG 字节（Android 按内容解码），并给 warning——插件不做 WebP 编码；
 - 自适应图标优先替换 `foreground` 引用的位图（`background` 保留原样）；前景/背景层是矢量（vector XML）时跳过并 warning，
@@ -462,8 +464,9 @@ pytest tests/contracts/test_white_label_packer.py tests/contracts/test_png_image
 |---|---|
 | `plugins-dist/white-label-packer/manifest.json` | 插件元数据（id / name / entry / ui / params） |
 | `plugins-dist/white-label-packer/main.py` | 插件入口 `run(context, **params)`：APK / AAB 两条打包流水线 |
+| `plugins-dist/white-label-packer/png_image.py` | 插件自带 PNG 编解码/缩放（兼容 2.5.1 等无 `app.utils.png_image` 的后端） |
 | `plugins-dist/white-label-packer/ui/index.html` | 自定义 UI（沙箱 iframe，单文件内联） |
-| `plugins-dist/white-label-packer-1.4.0.zip` | 可直接在插件页「导入」的分发包 |
+| `plugins-dist/white-label-packer-1.4.1.zip` | 可直接在插件页「导入」的分发包 |
 | `plugins-dist/README.md` | 分发/导入说明 |
 | `backend/app/utils/png_image.py` | stdlib PNG 解码 / 缩放 / 编码（图标替换） |
 | `backend/app/plugins/manager.py` | 插件扫描与加载（内置 + 用户目录、平铺 + 包目录） |

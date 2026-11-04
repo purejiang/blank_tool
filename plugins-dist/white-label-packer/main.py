@@ -21,6 +21,7 @@
 """
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -35,18 +36,35 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.common.exceptions import ToolException
 from app.utils.env import get_output_dir, get_runtime_dir
-from app.utils.png_image import (
-    decode_png_rgba,
-    image_dimensions,
-    resize_png,
-)
+
+try:
+    # 新版后端（app.utils.png_image）直接可用
+    from app.utils.png_image import (
+        decode_png_rgba,
+        image_dimensions,
+        resize_png,
+    )
+except ImportError:
+    # 兼容 2.5.1 及更早的发行版：后端没有 app.utils.png_image，
+    # 使用插件包内自带的 png_image.py（纯标准库，无第三方依赖）。
+    _png_spec = importlib.util.spec_from_file_location(
+        "bt_white_label_png_image",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "png_image.py"),
+    )
+    if _png_spec is None or _png_spec.loader is None:
+        raise
+    _png_mod = importlib.util.module_from_spec(_png_spec)
+    _png_spec.loader.exec_module(_png_mod)
+    decode_png_rgba = _png_mod.decode_png_rgba
+    image_dimensions = _png_mod.image_dimensions
+    resize_png = _png_mod.resize_png
 
 DESCRIPTION = (
     "从基础 APK（可选同版本 AAB）批量生成白包：其他包、三星、谷歌及任意自定义渠道。"
     "改包名、应用名、图标、签名、渠道标识、额外权限（如 BILLING）与 assets 文件；"
     "AAB 渠道优先直改源 AAB，失败自动回退重建。"
 )
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 AUTHOR = "blank_tool"
 
 # 插件自带资源：assets/base.apk / assets/base.aab 作为默认输入。
