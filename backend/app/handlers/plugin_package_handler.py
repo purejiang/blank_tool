@@ -15,10 +15,13 @@ an installed plugin (package dir as-is; legacy flat .py gets a generated
 manifest).
 """
 
+import importlib.util
 import json
 import os
 import re
 import shutil
+import sys
+import time
 import traceback
 import zipfile
 
@@ -87,6 +90,29 @@ def _validate_manifest(manifest: dict, zf: zipfile.ZipFile, prefix: str) -> str:
     return pid
 
 
+def _entry_import_diagnostic(dest: str, manifest: dict) -> str:
+    """Best-effort explanation when the manager did not register a plugin."""
+    entry = str(manifest.get("entry") or "main.py")
+    path = os.path.normpath(os.path.join(dest, entry))
+    if not os.path.isfile(path):
+        return f"入口文件不存在: {path}"
+    mod_key = f"bt_plugin_import_check_{int(time.time() * 1000)}"
+    try:
+        spec = importlib.util.spec_from_file_location(mod_key, path)
+        if not spec or not spec.loader:
+            return "无法创建模块 spec"
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[mod_key] = module
+        spec.loader.exec_module(module)
+        if hasattr(module, "run"):
+            return "入口已加载但未被 PluginManager 注册（扫描/缓存问题，请重启应用后重试）"
+        return "入口已加载但没有 run(context, **params) 函数"
+    except Exception as e:  # noqa: BLE001 — diagnostic only
+        return f"{type(e).__name__}: {e}"
+    finally:
+        sys.modules.pop(mod_key, None)
+
+
 def import_plugin(params, stream_handler):
     """plugin.import — install a zip plugin package into the user dir.
 
@@ -132,10 +158,20 @@ def import_plugin(params, stream_handler):
     # strip the dir name so the manifest id decides (defensive; ids match
     # by construction, but a hand-edited zip could disagree)
     manager = PluginManager.instance()
-    manager.load_plugins()
-    names = [p["name"] for p in manager.get_all_plugins()]
+    names = []
+    for _ in range(3):
+        manager.load_plugins()
+        names = [p["name"] for p in manager.get_all_plugins()]
+        if pid in names:
+            break
+        # Windows AV / indexer can briefly hold a freshly extracted file;
+        # one cheap retry avoids a confusing "extracted but not recognized".
+        time.sleep(0.15)
     if pid not in names:
-        raise ToolException(f"插件已解压但未被识别（id={pid}），请检查 entry 是否含 run 函数")
+        detail = _entry_import_diagnostic(dest, manifest)
+        raise ToolException(
+            f"插件已解压但未被识别（id={pid}），入口无法加载：{detail}"
+        )
     logger.info(f"插件导入成功: {pid} -> {dest}")
     return manager.get_all_plugins()
 
