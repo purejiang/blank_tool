@@ -10,8 +10,6 @@
     <!-- New Task Bar -->
     <div class="new-task-bar">
       <div class="task-bar-row">
-        <!-- Single source input: http(s):// -> remote download, anything else
-             -> local path. No more radio switching. -->
         <n-input
           v-model:value="newTarget"
           :placeholder="t('task.inputPlaceholder')"
@@ -22,7 +20,6 @@
           @drop.prevent="onPathDrop"
         >
           <template #suffix>
-            <!-- Browse only makes sense for local targets. -->
             <IconButton
               v-if="!isUrlLike"
               :icon="FolderOpen"
@@ -48,19 +45,6 @@
           </template>
           {{ startDisabledHint }}
         </n-tooltip>
-
-        <!-- 运行中禁用时，「为什么不能点」就是这条 tooltip 的内容 —— IconButton 的
-             label 同时充当悬停提示与可访问名，所以提示词随禁用状态切换，不再套外层
-             n-tooltip（两个 tooltip 会各自弹一次）。 -->
-        <IconButton
-          :icon="Trash2"
-          :label="taskStore.hasActive ? t('task.clearAllDisabledHint') : t('task.clearAll')"
-          size="small"
-          quaternary
-          type="error"
-          :disabled="taskStore.tasks.length === 0 || taskStore.hasActive"
-          @click="confirmClearAll"
-        />
       </div>
 
       <div class="task-bar-opts">
@@ -92,214 +76,390 @@
       </div>
     </div>
 
-    <!-- Task List Area (scrollable) -->
-    <div class="task-list-area">
-    <div v-if="taskStore.tasks.length === 0" class="empty-state">
-      <n-icon size="48" color="var(--app-text-dim)"><Inbox /></n-icon>
-      <p class="empty-title">{{ t('task.empty') }}</p>
-      <p class="empty-desc">{{ t('task.emptyDesc') }}</p>
-    </div>
+    <!-- Two-column task workspace -->
+    <div class="workspace">
+      <aside class="rail" :aria-label="t('task.railTitle')">
+        <div class="rail-head">
+          <div class="rail-title">{{ t('task.railTitle') }}</div>
+          <IconButton
+            :icon="Trash2"
+            :label="taskStore.hasActive ? t('task.clearAllDisabledHint') : t('task.clearAll')"
+            size="small"
+            quaternary
+            type="error"
+            :disabled="taskStore.tasks.length === 0 || taskStore.hasActive"
+            @click="confirmClearAll"
+          />
+        </div>
 
-    <div v-else class="task-list">
-      <div v-for="task in taskStore.tasks"
-        :key="task.id"
-        class="task-card"
-        :class="'task-' + task.status"
-      >
-        <div class="task-header" @click="toggleTask(task)">
-          <div class="task-header-left">
-            <span class="task-id">#{{ task.id }}</span>
-            <n-icon size="16" :color="task.source === 'url' ? 'var(--app-blue)' : 'var(--app-text-dim)'">
-              <Link v-if="task.source === 'url'" />
-              <FolderOpen v-else />
-            </n-icon>
-            <n-tag :type="opTagType(task.operation)" size="tiny" :bordered="false">
-              {{ task.operationLabel }}
-            </n-tag>
-            <span class="task-filename" :title="task.fileName">{{ task.fileName }}</span>
+        <div class="rail-search">
+          <n-input v-model:value="taskQuery" size="small" clearable :placeholder="t('task.searchPlaceholder')">
+            <template #prefix><n-icon size="14"><Search /></n-icon></template>
+          </n-input>
+        </div>
+
+        <div class="rail-filters" role="group" :aria-label="t('task.filterAll')">
+          <button
+            v-for="filter in filterDefs"
+            :key="filter.key"
+            type="button"
+            class="rail-chip"
+            :class="{ on: taskFilter === filter.key }"
+            @click="taskFilter = filter.key"
+          >
+            {{ filter.label }} <span>{{ filterCounts[filter.key] }}</span>
+          </button>
+        </div>
+
+        <div class="rail-list" role="listbox" :aria-label="t('task.railTitle')">
+          <div v-if="taskStore.tasks.length === 0" class="rail-empty">
+            <n-icon size="32" color="var(--app-text-dim)"><Inbox /></n-icon>
+            <p>{{ t('task.empty') }}</p>
           </div>
-          <div class="task-header-right">
-            <n-tag v-if="task.status === 'completed'" type="success" size="tiny" :bordered="false">
-              <template #icon><n-icon size="12"><CheckCircle /></n-icon></template>
-              {{ t('task.completed') }}
-            </n-tag>
-            <n-tag v-else-if="task.status === 'failed'" type="error" size="tiny" :bordered="false">
-              <template #icon><n-icon size="12"><XCircle /></n-icon></template>
-              {{ t('task.failed') }}
-            </n-tag>
-            <n-tag v-else-if="task.status === 'cancelled'" type="warning" size="tiny" :bordered="false">
-              <template #icon><n-icon size="12"><AlertCircle /></n-icon></template>
-              {{ t('task.cancelled') }}
-            </n-tag>
-            <n-tag v-else-if="task.status === 'cancelling'" type="warning" size="tiny" :bordered="false">
-              <template #icon><n-icon size="12"><Loader /></n-icon></template>
-              {{ t('task.cancelling') }}
-            </n-tag>
-            <n-tag v-else-if="task.status === 'running'" type="success" size="tiny" :bordered="false">
-              <template #icon><n-icon size="12"><Loader /></n-icon></template>
-              {{ task.progressLabel || t('task.running') }}
-            </n-tag>
-            <n-tag v-else-if="task.status === 'downloading'" type="info" size="tiny" :bordered="false">
-              <template #icon><n-icon size="12"><Download /></n-icon></template>
-              {{ task.progressLabel }}
-            </n-tag>
-            <n-tag v-else type="default" size="tiny" :bordered="false">
-              {{ t('task.queued') }}
-            </n-tag>
+          <div v-else-if="filteredTasks.length === 0" class="rail-empty">
+            <n-icon size="28" color="var(--app-text-dim)"><Inbox /></n-icon>
+            <p>{{ t('task.noMatch') }}</p>
+          </div>
+
+          <button
+            v-for="task in filteredTasks"
+            :key="task.id"
+            type="button"
+            class="task-item"
+            :class="{ selected: task.id === selectedTaskId }"
+            role="option"
+            :aria-selected="task.id === selectedTaskId"
+            :aria-label="taskAriaLabel(task)"
+            @click="selectTask(task)"
+          >
+            <div class="file-tile" :class="taskKind(task)">
+              <n-icon v-if="taskKind(task) === 'dir'" size="16"><FolderOpen /></n-icon>
+              <template v-else>{{ taskKind(task).toUpperCase() }}</template>
+            </div>
+            <span class="ti-body">
+              <span class="ti-row1">
+                <span class="ti-name" :title="task.fileName">{{ task.fileName }}</span>
+                <span class="ti-glyph" :class="statusClass(task)" :title="statusLabel(task)">
+                  <n-icon size="13" :class="{ spin: statusSpin(task) }">
+                    <component :is="statusIcon(task)" />
+                  </n-icon>
+                  <span class="sr-only">{{ statusLabel(task) }}</span>
+                </span>
+              </span>
+              <span class="ti-row2">
+                <n-tag :type="opTagType(task.operation)" size="tiny" :bordered="false">{{ task.operationLabel }}</n-tag>
+                <n-icon size="11" class="ti-source" :title="task.source === 'url' ? t('task.urlSource') : t('task.localSource')">
+                  <Link v-if="task.source === 'url'" />
+                  <FolderOpen v-else />
+                </n-icon>
+                <span class="ti-time" :title="fmtDateTime(task.createdAt)">{{ fmtRelative(task.createdAt) }}</span>
+              </span>
+            </span>
+            <span v-if="task.status === 'downloading'" class="ti-progress"><i :style="{ width: Math.max(2, task.progress) + '%' }"></i></span>
+            <span v-else-if="task.status === 'running' || task.status === 'cancelling'" class="ti-progress indeterminate"><i></i></span>
+            <span class="ti-id" :title="`#${task.id}`">#{{ task.id }}</span>
+          </button>
+        </div>
+      </aside>
+
+      <section v-if="selectedTask" class="detail">
+        <div class="detail-head">
+          <div class="file-tile lg" :class="taskKind(selectedTask)">
+            <n-icon v-if="taskKind(selectedTask) === 'dir'" size="20"><FolderOpen /></n-icon>
+            <template v-else>{{ taskKind(selectedTask).toUpperCase() }}</template>
+          </div>
+          <div class="dh-main">
+            <div class="dh-title-row">
+              <h2 class="dh-title">{{ selectedTask.fileName }}</h2>
+              <span class="status-pill" :class="statusClass(selectedTask)">
+                <n-icon v-if="statusShowIcon(selectedTask)" size="11" :class="{ spin: statusSpin(selectedTask) }">
+                  <component :is="statusIcon(selectedTask)" />
+                </n-icon>
+                {{ statusLabel(selectedTask) }}
+              </span>
+            </div>
+            <div class="dh-path">
+              <n-icon size="12"><Link v-if="selectedTask.source === 'url'" /><FolderOpen v-else /></n-icon>
+              <span class="path-text" :title="taskPath(selectedTask)">{{ taskPath(selectedTask) }}</span>
+              <span class="path-actions">
+                <IconButton :icon="Copy" :label="t('task.copyPath')" size="tiny" quaternary @click="copyTaskPath(selectedTask)" />
+                <IconButton
+                  v-if="selectedTask.source === 'local'"
+                  :icon="ExternalLink"
+                  :label="t('common.openInFolder')"
+                  size="tiny"
+                  quaternary
+                  @click="openTaskSource(selectedTask)"
+                />
+              </span>
+            </div>
+            <div class="dh-badges">
+              <n-tag :type="opTagType(selectedTask.operation)" size="tiny" :bordered="false">{{ selectedTask.operationLabel }}</n-tag>
+              <span class="soft-tag">{{ selectedTask.source === 'url' ? t('task.urlSource') : t('task.localSource') }}</span>
+            </div>
+          </div>
+          <div class="dh-actions">
             <IconButton
-              v-if="task.status === 'running' || task.status === 'downloading'"
+              v-if="isActiveTask(selectedTask)"
               :icon="StopCircle"
               :label="t('task.cancel')"
-              size="tiny"
+              size="small"
               quaternary
               type="warning"
-              @click.stop="cancelTask(task)"
+              @click="cancelTask(selectedTask)"
             />
-            <IconButton
-              v-if="task.status === 'failed' || task.status === 'cancelled'"
-              :icon="RotateCcw"
-              :label="t('task.retryStage')"
-              size="tiny"
-              quaternary
-              type="info"
-              @click.stop="retryFailedStage(task)"
-            />
-            <IconButton
-              v-if="task.status === 'failed' || task.status === 'cancelled' || task.status === 'completed'"
-              :icon="RefreshCw"
-              :label="t('task.rerunFromStart')"
-              size="tiny"
-              quaternary
-              type="warning"
-              @click.stop="retryTask(task)"
-            />
-            <IconButton
-              v-if="task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled'"
-              :icon="Trash2"
-              :label="t('task.delete')"
-              size="tiny"
-              quaternary
-              type="error"
-              @click.stop="confirmRemoveTask(task)"
-            />
-            <n-icon size="16" color="var(--app-text-dim)">
-              <ChevronDown v-if="!task.collapsed" />
-              <ChevronRight v-else />
-            </n-icon>
+            <template v-else-if="isTerminalTask(selectedTask)">
+              <IconButton :icon="RefreshCw" :label="t('task.rerunFromStart')" size="small" quaternary type="warning" @click="retryTask(selectedTask)" />
+              <IconButton :icon="Trash2" :label="t('task.delete')" size="small" quaternary type="error" @click="confirmRemoveTask(selectedTask)" />
+            </template>
           </div>
         </div>
 
-        <!-- Progress bar: downloading = real %; running = indeterminate
-             (operations emit no progress events — fake progress removed) -->
-        <div v-if="task.status === 'downloading'" class="task-progress">
-          <n-progress type="line" :percentage="task.progress" :height="3" color="var(--app-green)" :indicator-placement="'none'" />
-        </div>
-        <div v-else-if="task.status === 'running'" class="task-progress">
-          <div class="indeterminate-bar"><div class="indeterminate-fill" /></div>
+        <div class="detail-tabs">
+          <div class="detail-tab-list" role="tablist">
+            <button
+              type="button"
+              class="detail-tab"
+              :class="{ active: activeDetailTab === 'process' }"
+              role="tab"
+              :aria-selected="activeDetailTab === 'process'"
+              aria-controls="task-detail-panel"
+              @click="setDetailTab('process')"
+            >{{ t('task.tabProcess') }}</button>
+            <button
+              type="button"
+              class="detail-tab"
+              :class="{ active: activeDetailTab === 'info' }"
+              role="tab"
+              :aria-selected="activeDetailTab === 'info'"
+              aria-controls="task-detail-panel"
+              @click="setDetailTab('info')"
+            >
+              {{ t('task.tabInfoLogs') }}
+              <span v-if="isLiveTask(selectedTask)" class="tab-live" aria-hidden="true"></span>
+            </button>
+          </div>
+          <span v-if="showTaskTimer(selectedTask)" class="detail-timer" role="timer">
+            <span class="timer-label">{{ taskTimerLabel(selectedTask) }}</span>
+            <span class="timer-value">{{ taskTimerValue(selectedTask) }}</span>
+          </span>
         </div>
 
-        <!-- Expanded detail -->
-        <div v-if="!task.collapsed" class="task-detail">
-          <div v-if="task.error" class="task-error">{{ task.error }}</div>
-          <div v-if="task.filePath" class="task-output">
-            <n-icon size="14" color="var(--app-text-dim)"><FolderOpen /></n-icon>
-            <span class="task-output-path" :title="task.filePath">{{ t('task.source') }}: {{ task.filePath }}</span>
-            <IconButton
-              :icon="ExternalLink"
-              :label="t('common.openInFolder')"
-              size="tiny"
-              quaternary
-              @click.stop="openInExplorerChecked(task.filePath, task.fileName || t('task.source'), t('task.sourceFileMissing'))"
-            />
-          </div>
-          <div v-if="task.outputPath" class="task-output">
-            <n-icon size="14" color="var(--app-green)"><FolderOpen /></n-icon>
-            <span class="task-output-path" :title="task.outputPath">{{ t('task.output') }}: {{ task.outputPath }}</span>
-            <IconButton
-              :icon="ExternalLink"
-              :label="t('common.openInFolder')"
-              size="tiny"
-              quaternary
-              type="info"
-              @click.stop="openInExplorerChecked(task.outputPath, t('task.output'), t('task.outputMissing'))"
-            />
-          </div>
-          <div v-if="task.operation === 'install' && task.deviceLabel" class="task-output">
-            <n-icon size="14" color="var(--app-green)"><Smartphone /></n-icon>
-            <span class="task-output-path">{{ t('task.installedToDevice', { label: task.deviceLabel }) }}</span>
-          </div>
-          <div v-if="task.result && task.operation === 'analyze'" class="task-result-bar">
-            <IconButton
-              :icon="FileDown"
-              :label="t('task.exportReport')"
-              size="tiny"
-              quaternary
-              type="info"
-              @click.stop="exportReport(task)"
-            />
-          </div>
-          <div v-if="task.result" class="task-result" v-html="task.result" @click="onResultClick" />
-          <!-- Unified task log: file log (terminal) or in-memory log (running) -->
-          <div v-if="displayLog(task).length > 0" class="task-logs">
-            <div class="task-logs-toolbar">
-              <IconButton
-                :icon="Search"
-                :label="t('task.logSearch')"
-                size="tiny"
-                quaternary
-                :type="logSearchOpenMap.get(task.id) ? 'info' : 'default'"
-                @click.stop="toggleLogSearch(task)"
-              />
+        <div id="task-detail-panel" class="detail-scroll" :class="{ 'detail-scroll--fill': detailFills(selectedTask) }" role="tabpanel">
+          <template v-if="activeDetailTab === 'process'">
+            <div
+              v-if="selectedPhaseSteps.length"
+              class="phase-strip"
+              :class="{ 'phase-strip--download': selectedTask.status === 'downloading' }"
+              :aria-label="t('task.phases')"
+            >
+              <template v-for="(step, index) in selectedPhaseSteps" :key="`${selectedTask.id}-${index}`">
+                <span v-if="index > 0" class="phase-line" :class="{ done: selectedPhaseSteps[index - 1].state === 'done' }"></span>
+                <span class="phase-step" :class="step.state">
+                  <span class="phase-dot">
+                    <n-icon v-if="step.state === 'done'" size="9"><CheckCircle /></n-icon>
+                    <n-icon v-else-if="step.state === 'current'" size="9" class="spin"><Loader /></n-icon>
+                    <n-icon v-else-if="step.state === 'failed'" size="9"><XCircle /></n-icon>
+                  </span>
+                  <span class="phase-label">{{ step.label }}</span>
+                </span>
+              </template>
+            </div>
+
+            <div v-if="isActiveTask(selectedTask)" class="process-center">
+              <div class="process-loading" role="status" :aria-label="loadingLabel(selectedTask)">
+                <div
+                  v-if="selectedTask.status === 'downloading'"
+                  class="loading-progress-circle"
+                  :style="{ '--pct': selectedTask.progress }"
+                >
+                  <span class="loading-percent">{{ selectedTask.progress }}%</span>
+                </div>
+                <span v-else-if="selectedTask.status === 'queued'" class="loading-queued-circle">
+                  <n-icon size="26"><Clock /></n-icon>
+                </span>
+                <span v-else class="loading-spinner" :class="{ yellow: selectedTask.status === 'cancelling' }"></span>
+                <span class="loading-label">{{ loadingLabel(selectedTask) }}</span>
+              </div>
+            </div>
+
+            <div v-else-if="selectedTask.status === 'failed'" class="process-center">
+              <div class="error-card">
+                <div class="error-label"><n-icon size="13"><XCircle /></n-icon>{{ t('task.failedReason') }}</div>
+                <div class="error-msg">{{ selectedTask.error || t('task.operationFailed') }}</div>
+                <div class="error-hint">{{ taskFailureHint(selectedTask) }}</div>
+                <div class="error-actions">
+                  <n-button type="primary" size="small" @click="retryFailedStage(selectedTask)">
+                    <template #icon><n-icon><RotateCcw /></n-icon></template>
+                    {{ t('task.retryStage') }}
+                  </n-button>
+                </div>
+              </div>
+            </div>
+
+            <div v-else-if="selectedTask.status === 'cancelled'" class="process-center">
+              <div class="cancelled-card">{{ t('task.cancelledHint') }}</div>
+            </div>
+
+            <template v-else-if="selectedTask.status === 'completed' && selectedTask.operation === 'analyze'">
+              <div class="section-head">
+                <div class="section-title"><n-icon size="14"><Package /></n-icon>{{ t('task.analysisResult') }}</div>
+                <div v-if="selectedTask.result" class="section-actions">
+                  <n-button size="small" quaternary @click="exportReport(selectedTask)">
+                    <template #icon><n-icon><FileDown /></n-icon></template>
+                    {{ t('task.exportReport') }}
+                  </n-button>
+                </div>
+              </div>
+
+              <template v-if="selectedAnalyzeSummary">
+                <div class="report-hero">
+                  <img
+                    v-if="selectedAppIcon"
+                    class="app-icon-big"
+                    :src="selectedAppIcon"
+                    :alt="selectedAnalyzeSummary.appLabel"
+                  />
+                  <div v-else class="app-icon-big">{{ appIconInitial(selectedTask) }}</div>
+                  <div class="rh-main">
+                    <div class="rh-name">{{ selectedAnalyzeSummary.appLabel }}</div>
+                    <div class="rh-pkg" :title="selectedAnalyzeSummary.pkg">{{ selectedAnalyzeSummary.pkg }}</div>
+                    <div class="rh-chips">
+                      <span class="chip-static">{{ t('task.version') }} {{ selectedAnalyzeSummary.version }}<template v-if="selectedAnalyzeSummary.code"> ({{ selectedAnalyzeSummary.code }})</template></span>
+                      <span class="chip-static">minSdk {{ selectedAnalyzeSummary.minSdk }}</span>
+                      <span class="chip-static">targetSdk {{ selectedAnalyzeSummary.targetSdk }}</span>
+                      <span class="chip-static">{{ selectedAnalyzeSummary.sizeText }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="stat-grid">
+                  <div class="stat-tile">
+                    <div class="stat-label">{{ t('task.permissions') }}</div>
+                    <div class="stat-value">{{ selectedAnalyzeSummary.permissions }}</div>
+                    <div class="stat-note danger">{{ t('task.dangerPermCount', { count: selectedAnalyzeSummary.dangerous }) }}</div>
+                  </div>
+                  <div class="stat-tile">
+                    <div class="stat-label">{{ t('task.signature') }}</div>
+                    <div class="stat-value">
+                      {{ selectedAnalyzeSummary.signed === null ? '—' : selectedAnalyzeSummary.signed ? t('task.signed') : t('task.unsigned') }}
+                    </div>
+                    <div class="stat-note ok">
+                      {{ selectedTask.resultData?.sig_sha256 && selectedTask.resultData.sig_sha256 !== '-' ? 'SHA256' : '' }}
+                    </div>
+                  </div>
+                  <div class="stat-tile">
+                    <div class="stat-label">{{ t('task.nativeAnalysis') }}</div>
+                    <div class="stat-value">{{ selectedAnalyzeSummary.soCount }} <small>.so</small></div>
+                    <div class="stat-note">{{ selectedAnalyzeSummary.archCount }} {{ t('task.architecture') }}</div>
+                  </div>
+                  <div class="stat-tile">
+                    <div class="stat-label">{{ t('task.compressionAnalysis') }}</div>
+                    <div class="stat-value">{{ selectedAnalyzeSummary.compressionRate }}</div>
+                    <div class="stat-note">{{ t('task.compressionRateHint') }}</div>
+                  </div>
+                </div>
+              </template>
+
+              <div v-if="selectedTask.result" class="task-report" @click="onResultClick" v-html="selectedTask.result"></div>
+              <div v-else class="app-empty-hint">{{ t('task.reportUnavailable') }}</div>
+            </template>
+
+            <template v-else-if="selectedTask.status === 'completed'">
+              <div class="section-head">
+                <div class="section-title">
+                  <n-icon size="14"><component :is="selectedTask.operation === 'install' ? Smartphone : Package" /></n-icon>
+                  {{ selectedTask.operation === 'install' ? t('task.installResult') : t('task.artifact') }}
+                </div>
+                <div v-if="selectedTask.outputPath" class="section-actions">
+                  <n-button size="small" quaternary @click="openTaskOutput(selectedTask)">
+                    <template #icon><n-icon><FolderOpen /></n-icon></template>
+                    {{ t('task.openOutput') }}
+                  </n-button>
+                </div>
+              </div>
+              <div class="output-card">
+                <div v-if="selectedTask.operation === 'install'" class="output-row">
+                  <span class="output-key">{{ t('task.targetDevice') }}</span>
+                  <span class="output-device"><n-icon size="14"><Smartphone /></n-icon>{{ selectedTask.deviceLabel || '—' }}</span>
+                </div>
+                <div v-if="selectedTask.outputPath" class="output-row">
+                  <span class="output-key">{{ selectedTask.operation === 'decompile' ? t('task.outputDir') : t('task.outputFile') }}</span>
+                  <span class="output-path" :title="selectedTask.outputPath">{{ selectedTask.outputPath }}</span>
+                  <IconButton :icon="Copy" :label="t('task.copyPath')" size="tiny" quaternary @click="copyPathValue(selectedTask.outputPath)" />
+                </div>
+                <div v-if="selectedTask.operation === 'decompile'" class="output-row">
+                  <span class="output-key">{{ t('task.decompiledItems') }}</span>
+                  <span class="output-tags">
+                    <span class="soft-tag">{{ t('task.decompileResources') }}</span>
+                    <span class="soft-tag">{{ t('task.decompileSources') }}</span>
+                  </span>
+                </div>
+              </div>
+            </template>
+          </template>
+
+          <template v-else>
+            <div class="section-head">
+              <div class="section-title"><n-icon size="14"><Activity /></n-icon>{{ t('task.taskInfo') }}</div>
+            </div>
+            <div class="info-card">
+              <div class="info-kv"><div class="info-k">{{ t('task.createdAt') }}</div><div class="info-v mono">{{ fmtDateTime(selectedTask.createdAt) }}</div></div>
+              <div class="info-kv"><div class="info-k">{{ t('task.startedAt') }}</div><div class="info-v mono">{{ fmtDateTime(selectedTask.startedAt || selectedTask.createdAt) }}</div></div>
+              <div class="info-kv"><div class="info-k">{{ t('task.finishedAt') }}</div><div class="info-v mono">{{ selectedTask.finishedAt ? fmtDateTime(selectedTask.finishedAt) : '—' }}</div></div>
+              <div class="info-kv"><div class="info-k">{{ t('task.fileSize') }}</div><div class="info-v">{{ fileSizeText(selectedTask) }}</div></div>
+            </div>
+
+            <div class="log-card fill">
+              <div class="log-head">
+                <div class="log-title">{{ t('task.logTitle') }} <span class="log-count">{{ displayLog(selectedTask).length }} {{ t('task.logLines') }}</span></div>
+                <div class="log-actions">
+                  <IconButton
+                    :icon="Search"
+                    :label="t('task.logSearch')"
+                    size="tiny"
+                    quaternary
+                    :type="logSearchOpenMap.get(selectedTask.id) ? 'info' : 'default'"
+                    @click="toggleLogSearch(selectedTask)"
+                  />
+                  <IconButton :icon="Copy" :label="t('task.copyLog')" size="tiny" quaternary @click="copyLog(selectedTask)" />
+                  <IconButton :icon="Download" :label="t('task.exportLog')" size="tiny" quaternary @click="exportTaskLog(selectedTask)" />
+                </div>
+              </div>
               <n-input
-                v-if="logSearchOpenMap.get(task.id)"
-                :value="logSearchMap.get(task.id) || ''"
+                v-if="logSearchOpenMap.get(selectedTask.id)"
+                :value="logSearchMap.get(selectedTask.id) || ''"
                 :placeholder="t('task.logSearch')"
                 size="tiny"
                 clearable
-                style="flex:1; min-width:0"
-                @update:value="(v: string) => logSearchMap.set(task.id, v)"
+                class="log-search-input"
+                @update:value="(value: string) => logSearchMap.set(selectedTask.id, value)"
               />
-              <div v-else class="task-logs-spacer" />
-              <IconButton
-                :icon="Copy"
-                :label="t('task.copyLog')"
-                size="tiny"
-                quaternary
-                @click.stop="copyLog(task)"
-              />
-              <IconButton
-                :icon="Download"
-                :label="t('task.exportLog')"
-                size="tiny"
-                quaternary
-                @click.stop="exportTaskLog(task)"
-              />
+              <div v-if="logTruncatedMap.get(selectedTask.id)" class="log-trunc-hint">{{ t('task.logTruncatedHint') }}</div>
+              <div class="log-body" tabindex="0">
+                <n-virtual-list
+                  :ref="(el: any) => onLogListRef(selectedTask.id, el)"
+                  :key="'log-' + selectedTask.id"
+                  :items="displayLog(selectedTask)"
+                  :item-size="18"
+                  item-resizable
+                  style="height: 100%"
+                >
+                  <template #default="{ item }">
+                    <div class="log-line">{{ item.text }}</div>
+                  </template>
+                </n-virtual-list>
+              </div>
             </div>
-            <div v-if="logTruncatedMap.get(task.id)" class="task-log-trunc-hint">
-              {{ t('task.logTruncatedHint') }}
-            </div>
-            <n-virtual-list
-              :ref="(el: any) => onLogListRef(task.id, el)"
-              :key="'log-' + task.id"
-              :items="displayLog(task)"
-              :item-size="18"
-              item-resizable
-              style="max-height: 170px"
-            >
-              <template #default="{ item }">
-                <div class="task-log-line">{{ item.text }}</div>
-              </template>
-            </n-virtual-list>
-          </div>
+          </template>
         </div>
+      </section>
 
-        <!-- Bottom-left meta: creation time + duration -->
-        <div class="task-meta-row">
-          <span class="task-time">{{ formatTime(task.createdAt) }}</span>
-          <span v-if="task.startedAt || task.createdAt" class="task-duration">{{ formatDuration(task) }}</span>
-        </div>
-      </div>
-    </div>
+      <section v-else class="detail detail-empty">
+        <div class="empty-icon"><n-icon size="26"><Inbox /></n-icon></div>
+        <h3>{{ t('task.selectTask') }}</h3>
+        <p>{{ t('task.selectTaskDesc') }}</p>
+      </section>
     </div>
   </div>
 </template>
@@ -311,7 +471,7 @@ import { NIcon, NVirtualList, useDialog, NInput } from 'naive-ui'
 import {
   Play, Link, FolderOpen, CheckCircle, XCircle, Loader,
   ChevronDown, ChevronRight, Trash2, Inbox, ExternalLink, StopCircle, AlertCircle, Download, RefreshCw, Smartphone,
-  Search, Copy, RotateCcw, FileDown
+  Search, Copy, RotateCcw, FileDown, Clock, Package, Activity
 } from 'lucide-vue-next'
 import { useNotification } from '@composables/useNotification'
 import { useTaskStore } from '@stores/index'
@@ -319,6 +479,7 @@ import { useSignatureStore } from '@stores/signatureStore'
 import { useDeviceStore } from '@stores/deviceStore'
 import type { Task } from '@stores/taskStore'
 import { formatDuration as formatDurationUtil } from '@utils/formatDuration'
+import { formatBytes } from '@utils/format'
 import { log as logUtil } from '@utils/logger'
 import serviceManager from '@services/ServiceManager'
 import { colorTokens, staticTokens } from '@/theme/tokens'
@@ -338,6 +499,27 @@ const OP_TAG_MAP: Record<Task['operation'], string> = {
   analyze: 'info', install: 'success', decompile: 'warning', recompile: 'warning', resign: 'error'
 }
 
+// Permissions Android treats as dangerous. Shared by renderApkInfo() and the
+// right-pane summary tiles so the two never drift apart.
+const DANGEROUS_PERMISSIONS = new Set([
+  'android.permission.READ_CONTACTS', 'android.permission.WRITE_CONTACTS', 'android.permission.GET_ACCOUNTS',
+  'android.permission.READ_CALENDAR', 'android.permission.WRITE_CALENDAR',
+  'android.permission.CAMERA',
+  'android.permission.BODY_SENSORS',
+  'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_BACKGROUND_LOCATION',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.READ_PHONE_STATE', 'android.permission.READ_PHONE_NUMBERS', 'android.permission.CALL_PHONE', 'android.permission.ANSWER_PHONE_CALLS',
+  'android.permission.READ_CALL_LOG', 'android.permission.WRITE_CALL_LOG',
+  'android.permission.SEND_SMS', 'android.permission.RECEIVE_SMS', 'android.permission.READ_SMS', 'android.permission.RECEIVE_MMS', 'android.permission.RECEIVE_WAP_PUSH',
+  'android.permission.READ_EXTERNAL_STORAGE', 'android.permission.WRITE_EXTERNAL_STORAGE', 'android.permission.MANAGE_EXTERNAL_STORAGE',
+  'android.permission.ACTIVITY_RECOGNITION',
+  'android.permission.BLUETOOTH_CONNECT', 'android.permission.BLUETOOTH_SCAN', 'android.permission.BLUETOOTH_ADVERTISE',
+  'android.permission.POST_NOTIFICATIONS',
+  'android.permission.READ_MEDIA_IMAGES', 'android.permission.READ_MEDIA_VIDEO', 'android.permission.READ_MEDIA_AUDIO',
+  'android.permission.NEARBY_WIFI_DEVICES',
+  'android.permission.UWB_RANGING',
+])
+
 const activeIntervals = new Set<ReturnType<typeof setInterval>>()
 
 
@@ -352,6 +534,335 @@ const logSearchOpenMap = ref<Map<number, boolean>>(new Map())
 // Per-task flag: log panel default-truncates (tail 100KB); export yields the full file.
 const logTruncatedMap = ref<Map<number, boolean>>(new Map())
 const logListRefs = new Map<number, any>()
+
+/* ======================= v2 task workspace state ======================= */
+
+type TaskFilter = 'all' | 'active' | 'completed' | 'failed'
+type DetailTab = 'process' | 'info'
+
+const selectedTaskId = ref<number | null>(null)
+const detailTabs = ref<Record<number, DetailTab>>({})
+const taskQuery = ref('')
+const taskFilter = ref<TaskFilter>('all')
+const relativeNow = ref(Date.now())
+let relativeIv: ReturnType<typeof setInterval> | null = null
+const appIconMap = ref<Map<number, string>>(new Map())
+
+const selectedTask = computed(() => taskStore.tasks.find((task) => task.id === selectedTaskId.value) || null)
+const activeDetailTab = computed<DetailTab>(() => {
+  const task = selectedTask.value
+  return task ? (detailTabs.value[task.id] || 'process') : 'process'
+})
+const filterDefs = computed(() => [
+  { key: 'all' as TaskFilter, label: t('task.filterAll') },
+  { key: 'active' as TaskFilter, label: t('task.filterActive') },
+  { key: 'completed' as TaskFilter, label: t('task.filterCompleted') },
+  { key: 'failed' as TaskFilter, label: t('task.filterFailed') },
+])
+const filterCounts = computed(() => ({
+  all: taskStore.tasks.length,
+  active: taskStore.tasks.filter((task) => isActiveTask(task)).length,
+  completed: taskStore.tasks.filter((task) => task.status === 'completed').length,
+  failed: taskStore.tasks.filter((task) => task.status === 'failed' || task.status === 'cancelled').length,
+}))
+const filteredTasks = computed(() => {
+  const query = taskQuery.value.trim().toLowerCase()
+  return taskStore.tasks.filter((task) => {
+    const matchesFilter =
+      taskFilter.value === 'all' ? true
+        : taskFilter.value === 'active' ? isActiveTask(task)
+        : taskFilter.value === 'completed' ? task.status === 'completed'
+        : task.status === 'failed' || task.status === 'cancelled'
+    if (!matchesFilter) return false
+    if (!query) return true
+    return `${task.fileName} ${task.filePath || ''} ${task.url || ''}`.toLowerCase().includes(query)
+  })
+})
+const selectedPhaseSteps = computed(() => (selectedTask.value ? phaseSteps(selectedTask.value) : []))
+const selectedAnalyzeSummary = computed(() => (selectedTask.value ? analyzeSummary(selectedTask.value) : null))
+const selectedAppIcon = computed(() => (selectedTask.value ? appIconMap.value.get(selectedTask.value.id) || '' : ''))
+
+function isActiveTask(task: Task): boolean {
+  return ['queued', 'downloading', 'running', 'cancelling'].includes(task.status)
+}
+function isLiveTask(task: Task): boolean {
+  return ['downloading', 'running', 'cancelling'].includes(task.status)
+}
+function isTerminalTask(task: Task): boolean {
+  return isTerminal(task.status)
+}
+
+function statusLabel(task: Task): string {
+  return (t(`task.${task.status}`) as string).replace(/\.+$/, '')
+}
+function statusClass(task: Task): string {
+  return task.status
+}
+function statusSpin(task: Task): boolean {
+  return task.status === 'running' || task.status === 'cancelling'
+}
+function statusShowIcon(task: Task): boolean {
+  return task.status !== 'running' && task.status !== 'cancelling'
+}
+function statusIcon(task: Task) {
+  switch (task.status) {
+    case 'running':
+    case 'cancelling':
+      return Loader
+    case 'downloading':
+      return Download
+    case 'completed':
+      return CheckCircle
+    case 'failed':
+      return XCircle
+    case 'cancelled':
+      return AlertCircle
+    default:
+      return Clock
+  }
+}
+
+function taskKind(task: Task): 'apk' | 'aab' | 'dir' {
+  if (task.operation === 'recompile') return 'dir'
+  const ext = task.fileName.split('.').pop()?.toLowerCase()
+  return ext === 'aab' ? 'aab' : 'apk'
+}
+function taskAriaLabel(task: Task): string {
+  return `${task.fileName}，#${task.id}，${statusLabel(task)}，${task.operationLabel}`
+}
+function taskPath(task: Task): string {
+  return task.filePath || task.url || ''
+}
+function fileSizeText(task: Task): string {
+  return task.fileSize ? formatBytes(task.fileSize) : '—'
+}
+function taskFailureHint(task: Task): string {
+  return task.operation === 'resign' ? t('task.failedHintResign') : t('task.failedHint')
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
+}
+function fmtDateTime(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+}
+function fmtRelative(ts: number): string {
+  const diff = Math.max(0, relativeNow.value - ts)
+  if (diff < 60000) return t('task.justNow') as string
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return t('task.minutesAgo', { count: mins }) as string
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return t('task.hoursAgo', { count: hrs }) as string
+  const days = Math.floor(hrs / 24)
+  if (days === 1) return t('task.yesterday') as string
+  if (days < 7) return t('task.daysAgo', { count: days }) as string
+  return formatTime(ts)
+}
+function fmtElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) ms = 0
+  const total = Math.floor(ms / 1000)
+  const hrs = Math.floor(total / 3600)
+  const mins = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  return hrs > 0 ? `${hrs}:${pad2(mins)}:${pad2(secs)}` : `${pad2(mins)}:${pad2(secs)}`
+}
+
+/** 实时计时：排队不计时；开始后显示「已用时」，结束后冻结为「耗时」。 */
+function showTaskTimer(task: Task): boolean {
+  return task.status !== 'queued'
+}
+function taskTimerLabel(task: Task): string {
+  return isTerminalTask(task) ? t('task.duration') : t('task.elapsed')
+}
+function taskTimerValue(task: Task): string {
+  const end = task.finishedAt ?? now.value
+  const start = task.startedAt || task.createdAt
+  return fmtElapsed(end - start)
+}
+
+function loadingLabel(task: Task): string {
+  if (task.status === 'downloading') return t('task.downloading') as string
+  if (task.status === 'queued') return `${t('task.queued')}...`
+  if (task.status === 'cancelling') return t('task.cancelling') as string
+  const keyByOp: Record<Task['operation'], string> = {
+    analyze: 'analyzing',
+    install: 'installing',
+    decompile: 'decompiling',
+    recompile: 'recompiling',
+    resign: 'resigningLoading',
+  }
+  return t(`task.${keyByOp[task.operation]}`) as string
+}
+
+interface PhaseStep {
+  label: string
+  state: 'done' | 'current' | 'pending' | 'failed'
+}
+function phaseSteps(task: Task): PhaseStep[] {
+  if (task.status === 'completed' || task.status === 'cancelled' || task.status === 'queued') return []
+  const steps: PhaseStep[] = [{ label: t('task.phaseQueue') as string, state: 'pending' }]
+  if (task.source === 'url') steps.push({ label: t('task.download') as string, state: 'pending' })
+  steps.push({ label: t(`task.${task.operation}`) as string, state: 'pending' })
+  const opIndex = task.source === 'url' ? 2 : 1
+  if (task.status === 'downloading') {
+    steps[0].state = 'done'
+    steps[1].state = 'current'
+  } else if (task.status === 'running' || task.status === 'cancelling') {
+    for (let i = 0; i < opIndex; i++) steps[i].state = 'done'
+    steps[opIndex].state = 'current'
+  } else if (task.status === 'failed') {
+    const failIndex = task.failedPhase === 'download' && task.source === 'url' ? 1 : opIndex
+    for (let i = 0; i < failIndex; i++) steps[i].state = 'done'
+    steps[failIndex].state = 'failed'
+  }
+  return steps
+}
+
+interface AnalyzeSummary {
+  appLabel: string
+  pkg: string
+  version: string
+  code: string
+  minSdk: string
+  targetSdk: string
+  sizeText: string
+  permissions: number
+  dangerous: number
+  signed: boolean | null
+  soCount: number
+  archCount: number
+  compressionRate: string
+}
+function analyzeSummary(task: Task): AnalyzeSummary | null {
+  const data = task.resultData
+  if (!data) return null
+  const permissions: string[] = Array.isArray(data.permissions) ? data.permissions : []
+  const dangerous = permissions.filter((permission) => DANGEROUS_PERMISSIONS.has(permission)).length
+  const soComp = data.so_comparison || {}
+  const archCount = soComp.arches
+    ? Object.keys(soComp.arches).length
+    : Array.isArray(data.native_libs) ? data.native_libs.length : 0
+  const soCount = Array.isArray(soComp.baseline) && soComp.baseline.length
+    ? soComp.baseline.length
+    : soComp.arches
+      ? Object.values(soComp.arches).reduce((total: number, arch: any) => total + (arch?.count || arch?.so_files?.length || 0), 0)
+      : archCount
+  const compression = data.compression_analysis || {}
+  let raw = 0
+  let zip = 0
+  for (const entry of Object.values(compression) as any[]) {
+    raw += Number(entry?.uncompressed) || 0
+    zip += Number(entry?.compressed) || 0
+  }
+  const compressionRate = raw > 0 ? `${((zip / raw) * 100).toFixed(1)}%` : '—'
+  const signed = data.is_bundle
+    ? null
+    : !!(data.sig_md5 && data.sig_md5 !== '-' && data.sig_sha1 && data.sig_sha1 !== '-' && data.sig_sha256 && data.sig_sha256 !== '-')
+  const size = data.file_size || task.fileSize
+  return {
+    appLabel: data.application_label || '—',
+    pkg: data.package_name || '',
+    version: data.version_name || '—',
+    code: data.version_code || '',
+    minSdk: data.min_sdk_version || '—',
+    targetSdk: data.target_sdk_version || '—',
+    sizeText: size ? formatBytes(size) : '—',
+    permissions: permissions.length,
+    dangerous,
+    signed,
+    soCount,
+    archCount,
+    compressionRate,
+  }
+}
+
+function appIconInitial(task: Task): string {
+  const data = task.resultData
+  const label = String(data?.application_label || task.fileName || 'A').trim()
+  return (label.charAt(0) || 'A').toUpperCase()
+}
+
+async function ensureAppIcon(task: Task) {
+  if (!task || task.operation !== 'analyze' || appIconMap.value.has(task.id)) return
+  const raw = task.resultData?.app_icon
+  if (!raw || raw === '-') {
+    appIconMap.value.set(task.id, '')
+    return
+  }
+  if (String(raw).startsWith('data:')) {
+    appIconMap.value.set(task.id, String(raw))
+    return
+  }
+  appIconMap.value.set(task.id, '')
+  try {
+    const api = window.electronAPI as any
+    if (!api?.readImageAsDataURL) return
+    const result = await api.readImageAsDataURL(String(raw))
+    if (result?.success && result.dataUrl) appIconMap.value.set(task.id, result.dataUrl)
+  } catch {
+    // Keep the letter fallback.
+  }
+}
+
+function getDetailTab(task: Task): DetailTab {
+  return detailTabs.value[task.id] || 'process'
+}
+function selectTask(task: Task) {
+  selectedTaskId.value = task.id
+  void ensureAppIcon(task)
+  if (getDetailTab(task) === 'info') void ensureTaskLog(task)
+}
+function setDetailTab(tab: DetailTab) {
+  const task = selectedTask.value
+  if (!task) return
+  detailTabs.value[task.id] = tab
+  if (tab === 'info') void ensureTaskLog(task)
+}
+async function ensureTaskLog(task: Task) {
+  if (!task) return
+  if (isTerminalTask(task) && !taskLogCache.value.has(task.id)) await loadTaskLog(task)
+  await nextTick()
+  scrollLogToBottom(task.id)
+}
+function detailFills(task: Task): boolean {
+  return activeDetailTab.value === 'info'
+    || isActiveTask(task)
+    || task.status === 'failed'
+    || task.status === 'cancelled'
+}
+
+async function copyPathValue(value: string) {
+  if (!value) return
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value)
+    } else {
+      const api = window.electronAPI as any
+      if (api?.writeClipboardText) await api.writeClipboardText(value)
+    }
+    showSuccess(t('task.copyPath'), value)
+  } catch (e) {
+    showWarning(t('task.copyPath'), String(e))
+  }
+}
+function copyTaskPath(task: Task) {
+  void copyPathValue(taskPath(task))
+}
+function openTaskSource(task: Task) {
+  if (task.source === 'local' && task.filePath) {
+    void openInExplorerChecked(task.filePath, t('task.source'), t('task.sourceFileMissing'))
+  }
+}
+function openTaskOutput(task: Task) {
+  if (task.outputPath) {
+    void openInExplorerChecked(task.outputPath, t('task.output'), t('task.outputMissing'))
+  }
+}
+function selectNextTask() {
+  const next = filteredTasks.value[0] || taskStore.tasks[0] || null
+  selectedTaskId.value = next?.id ?? null
+}
 
 /** Toggle the inline log search box; closing it clears the active filter. */
 function toggleLogSearch(task: Task) {
@@ -488,7 +999,7 @@ function fallbackIcon(img: HTMLImageElement) {
 // via IPC and inline them as a data URL, then drop the attribute so the pass
 // is idempotent. Falls back to a letter tile when the file is gone (e.g. task deleted).
 function hydrateResultIcons() {
-  const imgs = document.querySelectorAll('.task-result img.apk-icon[data-icon-path]') as NodeListOf<HTMLImageElement>
+  const imgs = document.querySelectorAll('.task-report img.apk-icon[data-icon-path]') as NodeListOf<HTMLImageElement>
   imgs.forEach((img) => {
     const p = img.getAttribute('data-icon-path')
     if (!p) return
@@ -533,13 +1044,33 @@ watch(locale, () => {
 })
 
 watch(
-  () => taskStore.tasks.flatMap((t) => [t?.id, t?.collapsed, t?.result]),
+  () => [selectedTask.value?.id, activeDetailTab.value, selectedTask.value?.result],
   async () => {
     await nextTick()
     hydrateResultIcons()
   },
   { immediate: true }
 )
+
+// Keep the icon/log cache in sync with the selected task. The report is only in
+// the DOM for the selected task now, so hydration is scoped to it as well.
+watch(() => selectedTask.value?.id, () => {
+  const task = selectedTask.value
+  if (!task) return
+  void ensureAppIcon(task)
+  if (getDetailTab(task) === 'info') void ensureTaskLog(task)
+})
+watch(() => selectedTask.value?.status, (status) => {
+  const task = selectedTask.value
+  if (!task) return
+  void ensureAppIcon(task)
+  if (isTerminal(status) && getDetailTab(task) === 'info') void ensureTaskLog(task)
+})
+watch(() => taskStore.tasks.length, () => {
+  if (selectedTaskId.value != null && !taskStore.tasks.some((task) => task.id === selectedTaskId.value)) {
+    selectNextTask()
+  }
+})
 
 async function exportTaskLog(task: Task) {
   try {
@@ -626,6 +1157,7 @@ body { margin: 0; padding: 16px; background: var(--app-body-bg); color: var(--ap
 .apk-lv--danger { background: var(--app-red-bg); color: var(--app-red); }
 .apk-lv--normal { background: var(--app-storage-bg); color: var(--app-text-dim); }
 .apk-lv--ok { background: var(--app-green-bg); color: var(--app-green); }
+.apk-lv--warn { background: var(--app-yellow-bg); color: var(--app-yellow); }
 .apk-mini { display: inline-block; font-family: var(--app-font-mono); font-size: var(--app-font-size-xs); background: var(--app-yellow-bg); color: var(--app-yellow); border-radius: 3px; padding: 0 5px; margin: 0 2px; }
 .apk-warn { background: var(--app-yellow-bg); border: 1px solid var(--app-yellow); color: var(--app-yellow); border-radius: 6px; padding: 6px 10px; font-size: var(--app-font-size-sm); margin-top: 6px; }
 .apk-muted { color: var(--app-text-dim); font-size: var(--app-font-size-sm); }
@@ -738,7 +1270,7 @@ function flushLogBuffer(taskId: number) {
 
 function startNowTimer() {
   if (nowIv !== null) return
-  const iv = setInterval(() => { now.value = Date.now() }, 100)
+  const iv = setInterval(() => { now.value = Date.now() }, 1000)
   activeIntervals.add(iv)
   nowIv = iv
 }
@@ -763,18 +1295,22 @@ function syncNowTimer() {
 
 onMounted(() => {
   logUtil.debug('任务管理页面已挂载')
-  // 重启后自动回读已展开的已完成任务的磁盘日志，避免日志框空白
-  for (const task of taskStore.tasks) {
-    if (!task.collapsed && isTerminal(task.status) && !taskLogCache.value.has(task.id)) {
-      loadTaskLog(task)
-    }
+  selectedTaskId.value = taskStore.tasks[0]?.id ?? null
+  const task = selectedTask.value
+  if (task) {
+    void ensureAppIcon(task)
+    if (getDetailTab(task) === 'info') void ensureTaskLog(task)
   }
+  syncNowTimer()
+  relativeIv = setInterval(() => { relativeNow.value = Date.now() }, 60_000)
+  activeIntervals.add(relativeIv)
 })
 
 onUnmounted(() => {
   stopNowTimer()
   activeIntervals.forEach(clearInterval)
   activeIntervals.clear()
+  relativeIv = null
 })
 
 // Reactively start/stop the duration clock based on active tasks
@@ -839,7 +1375,7 @@ async function statLocalPath(p: string) {
     const svc = await serviceManager.getService('system') as any
     if (svc && typeof svc.getFileStats === 'function') {
       const r = await svc.getFileStats(p)
-      if (r?.success === true) return r as { isFile: boolean; isDirectory: boolean }
+      if (r?.success === true) return r as { isFile: boolean; isDirectory: boolean; size?: number }
     }
   } catch {
     // An IPC failure is treated the same as "path not found".
@@ -968,6 +1504,7 @@ async function startNewTask() {
   const raw = newTarget.value.trim()
   if (!raw) return
   let source: Task['source'], url: string | undefined, fp: string, fn: string
+  let fileSize = 0
 
   if (/^https?:\/\//i.test(raw)) {
     source = 'url'
@@ -995,10 +1532,21 @@ async function startNewTask() {
       return
     }
     fn = fp.split(/[/\\]/).pop() || 'file'
+    if (st.isFile && typeof st.size === 'number') fileSize = st.size
   }
 
   const opLabel = operationOptions.value.find(o => o.value === newOperation.value)?.label || newOperation.value
-  const task = taskStore.createTask({ source, url, filePath: fp, fileName: fn, operation: newOperation.value, operationLabel: opLabel })
+  const task = taskStore.createTask({
+    source,
+    url,
+    filePath: fp,
+    fileName: fn,
+    operation: newOperation.value,
+    operationLabel: opLabel,
+    fileSize,
+  })
+  selectedTaskId.value = task.id
+  detailTabs.value[task.id] = 'process'
 
   // Clear inputs
   newTarget.value = ''
@@ -1192,25 +1740,37 @@ async function confirmClearAll() {
     content: del === true ? t('task.clearAllConfirmDelete') : t('task.clearAllConfirm'),
     positiveText: t('common.confirm'),
     negativeText: t('common.cancel'),
-    onPositiveClick: () => { taskStore.clearAll() }
+    onPositiveClick: () => {
+      taskStore.clearAll()
+      selectedTaskId.value = null
+      detailTabs.value = {}
+      appIconMap.value.clear()
+    }
   })
 }
 
 async function confirmRemoveTask(task: Task) {
   const del = await window.electronAPI?.appConfig?.get('autoDeleteOutputOnTaskRemove')
   const isTerminal = ['completed', 'failed', 'cancelled'].includes(task.status)
+  const removeTask = () => {
+    taskLogCache.value.delete(task.id)
+    logTruncatedMap.value.delete(task.id)
+    detailTabs.value && delete detailTabs.value[task.id]
+    appIconMap.value.delete(task.id)
+    const wasSelected = selectedTaskId.value === task.id
+    taskStore.removeTask(task.id)
+    if (wasSelected) selectNextTask()
+  }
   if (del === true && isTerminal) {
     dialog.warning({
       title: t('task.clearCompleted'),
       content: t('task.removeConfirmDelete'),
       positiveText: t('common.confirm'),
       negativeText: t('common.cancel'),
-      onPositiveClick: () => { taskLogCache.value.delete(task.id); logTruncatedMap.value.delete(task.id); taskStore.removeTask(task.id) }
+      onPositiveClick: removeTask
     })
   } else {
-    taskLogCache.value.delete(task.id)
-    logTruncatedMap.value.delete(task.id)
-    taskStore.removeTask(task.id)
+    removeTask()
   }
 }
 
@@ -1265,25 +1825,9 @@ function renderApkInfo(data: any) {
   const perms: string[] = data.permissions || []
   const nativeLibs: string[] = data.native_libs || []
 
-  // Classify permissions
-  const DANGEROUS = new Set([
-    'android.permission.READ_CONTACTS', 'android.permission.WRITE_CONTACTS', 'android.permission.GET_ACCOUNTS',
-    'android.permission.READ_CALENDAR', 'android.permission.WRITE_CALENDAR',
-    'android.permission.CAMERA',
-    'android.permission.BODY_SENSORS',
-    'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_BACKGROUND_LOCATION',
-    'android.permission.RECORD_AUDIO',
-    'android.permission.READ_PHONE_STATE', 'android.permission.READ_PHONE_NUMBERS', 'android.permission.CALL_PHONE', 'android.permission.ANSWER_PHONE_CALLS',
-    'android.permission.READ_CALL_LOG', 'android.permission.WRITE_CALL_LOG',
-    'android.permission.SEND_SMS', 'android.permission.RECEIVE_SMS', 'android.permission.READ_SMS', 'android.permission.RECEIVE_MMS', 'android.permission.RECEIVE_WAP_PUSH',
-    'android.permission.READ_EXTERNAL_STORAGE', 'android.permission.WRITE_EXTERNAL_STORAGE', 'android.permission.MANAGE_EXTERNAL_STORAGE',
-    'android.permission.ACTIVITY_RECOGNITION',
-    'android.permission.BLUETOOTH_CONNECT', 'android.permission.BLUETOOTH_SCAN', 'android.permission.BLUETOOTH_ADVERTISE',
-    'android.permission.POST_NOTIFICATIONS',
-    'android.permission.READ_MEDIA_IMAGES', 'android.permission.READ_MEDIA_VIDEO', 'android.permission.READ_MEDIA_AUDIO',
-    'android.permission.NEARBY_WIFI_DEVICES',
-    'android.permission.UWB_RANGING',
-  ])
+  // Classify permissions (the shared set lives at module scope; the summary
+  // tiles on the page use the same list).
+  const DANGEROUS = DANGEROUS_PERMISSIONS
   const dangerous = perms.filter(p => DANGEROUS.has(p))
   const normal = perms.filter(p => !DANGEROUS.has(p))
 
@@ -1323,7 +1867,19 @@ function renderApkInfo(data: any) {
   const unsigned = sigMd5 === '-' || sigSha1 === '-' || sigSha256 === '-'
   const hasSoCompFull = soComp && !soComp.single_arch && !soComp.no_native && soComp.arches && Object.keys(soComp.arches).length > 0
   const hasComp = comp && Object.keys(comp).length > 0
-  const hasPage16 = page16 && !page16.no_64bit_native && Object.keys(page16).filter(k => k !== 'skipped').length > 0
+  // page_size_16kb mixes per-ABI .so details with package-level check results
+  // (manifest/zipalign for APK, bundle for AAB). Reserved keys were added
+  // later; older persisted payloads only carry the per-ABI keys plus "skipped".
+  const PAGE16_RESERVED = ['skipped', 'manifest', 'zipalign', 'bundle', 'supported', 'no_64bit_native', 'container']
+  const page16Abis: string[] = page16
+    ? Object.keys(page16).filter(k => !PAGE16_RESERVED.includes(k))
+    : []
+  const hasPage16 = !!page16 && (
+    page16Abis.length > 0
+    || !!page16.bundle
+    || page16.manifest?.ok === false
+    || page16.zipalign?.ok === false
+  )
 
   const table = (headers: string[], rows: string[]) =>
     `<table class="apk-table"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`
@@ -1336,8 +1892,8 @@ function renderApkInfo(data: any) {
     `<div class="apk-card"><div class="apk-card-h">${title}${summary ? `<span class="apk-sum">${summary}</span>` : ''}</div>${body}</div>`
   // Parent section that groups several related sub-analyses under one
   // collapsible card (e.g. native libraries: SO / compression / 16KB).
-  const group = (title: string, summary: string, body: string, icon = '', accent = '', open = true) =>
-    `<details class="apk-group"${open ? ' open' : ''}${accent ? ` style="--apk-accent:${accent}"` : ''}>${head(title, summary, icon)}<div class="apk-group-body">${body}</div></details>`
+  const group = (title: string, summary: string, body: string, icon = '', accent = '', open = true, section = '') =>
+    `<details class="apk-group"${open ? ' open' : ''}${accent ? ` style="--apk-accent:${accent}"` : ''}${section ? ` data-section="${section}"` : ''}>${head(title, summary, icon)}<div class="apk-group-body">${body}</div></details>`
 
   // dim, subtle copy affordance appended after values for one-click copy
   const COPY_ICO = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>'
@@ -1370,7 +1926,7 @@ function renderApkInfo(data: any) {
     // Basic info becomes the first top-level group so all four sections share
     // one collapsible-card style (icon + app name in the header, package name
     // as the summary, the detail table inside the body).
-    html += group(esc(data.application_label), esc(data.package_name), body, appIcon, '#3b82f6')
+    html += group(esc(data.application_label), esc(data.package_name), body, appIcon, '#3b82f6', true, 'basic')
   }
 
   // ===== SIGNATURE (accumulated into the Security group) =====
@@ -1379,7 +1935,10 @@ function renderApkInfo(data: any) {
   let securityBody = ''
   let signStatus = ''
   let signPill = ''
-  if (hasAnyHash) {
+  // AAB signing is not analysed (jarsigner/apksigner step is separate), so the
+  // signature card would otherwise misreport an unsigned bundle as "signed"
+  // just because a file MD5 exists. Show it for APKs only.
+  if (hasAnyHash && !data.is_bundle) {
     const rows: string[] = []
     if (fileMd5 && fileMd5 !== '-') rows.push(trow([label('apkMd5'), `<span class="mono">${esc(fileMd5)}</span>` + copyBtn(fileMd5)]))
     if (sigMd5 && sigMd5 !== '-') rows.push(trow([label('sigMd5'), `<span class="mono">${esc(sigMd5)}</span>` + copyBtn(sigMd5)]))
@@ -1448,30 +2007,206 @@ function renderApkInfo(data: any) {
     nativeSum.push(label('noNativeLibs'))
   }
   if (hasPage16) {
-    const rows: string[] = []
+    // ---- Per-.so ELF alignment rows (PT_LOAD + GNU_RELRO) ----
+    const soRows: string[] = []
     let total = 0, supported = 0
-    for (const [arch, files] of Object.entries(page16)) {
-      if (arch === 'skipped') continue
-      for (const [file, info] of Object.entries(files as any)) {
+    for (const arch of page16Abis) {
+      for (const [file, info] of Object.entries((page16[arch] || {}) as any)) {
         const fi = info as any
         const ok = fi.supports_16kb
         total++; if (ok) supported++
-        const st = ok
-          ? '<span class="apk-lv apk-lv--ok">' + label('supported') + '</span>'
-          : '<span class="apk-lv apk-lv--danger">' + label('notSupported') + '</span>'
-        const align = fi.max_align ? `0x${fi.max_align.toString(16)}` : '-'
-        rows.push(trow([`<span style="color:var(--app-text-dim)">${esc(arch)}</span>`, `<span class="mono">${esc(file)}</span>`, st, align !== '-' ? align : '-']))
+        // RELRO: risk = 16KB 页内存在可写数据（运行期可能 SIGSEGV）；
+        // unknown = 段表被裁剪无法确认。旧持久化 payload 没有 relro_status，
+        // 用 relro_ok 回退推断。
+        const relroStatus = fi.relro_status || (
+          fi.relro_ok === false ? 'risk'
+            : (fi.relro_ok === true
+                ? (fi.gnu_relro_present === false ? 'none' : 'ok')
+                : undefined))
+        const loadOk = fi.load_ok !== false
+        // 状态：LOAD 对齐失败 → 不支持；仅 RELRO 风险 → 风险；否则支持
+        const st = !loadOk
+          ? '<span class="apk-lv apk-lv--danger">' + label('notSupported') + '</span>'
+          : (relroStatus === 'risk'
+              ? '<span class="apk-lv apk-lv--warn">' + label('relroRisk') + '</span>'
+              : '<span class="apk-lv apk-lv--ok">' + label('supported') + '</span>')
+        // max_align is the largest PT_LOAD p_align; old payloads lack the
+        // GNU_RELRO fields entirely, in which case the cell stays "-".
+        const loadAlign = fi.max_align ? `0x${Number(fi.max_align).toString(16)}` : '-'
+        // GNU_RELRO 关注结束地址所在 16KB 页内是否还有可写数据，不是 p_align
+        // （LLD 恒为 1），所以展示判定结果，风险时把命中的段名放进 tooltip。
+        let relroCell = '-'
+        if (relroStatus === 'none') {
+          relroCell = label('notPresent')
+        } else if (relroStatus === 'ok') {
+          relroCell = '<span class="apk-lv apk-lv--ok">' + label('checkPassed') + '</span>'
+        } else if (relroStatus === 'risk') {
+          const secs = (fi.relro_risk_sections || []).join(', ')
+          relroCell = `<span class="apk-lv apk-lv--warn" title="${esc(secs)}">${label('relroRisk')}</span>`
+        } else if (relroStatus === 'unknown') {
+          relroCell = '<span class="apk-lv apk-lv--warn" title="' + esc(label('relroUnknownTitle')) + '">' + label('relroUnknown') + '</span>'
+        }
+        soRows.push(trow([
+          `<span style="color:var(--app-text-dim)">${esc(arch)}</span>`,
+          `<span class="mono">${esc(file)}</span>`,
+          loadAlign,
+          relroCell,
+          st,
+        ]))
       }
     }
-    let body = table([label('architecture'), label('colFile'), label('colStatus'), label('colAlignment')], rows)
+
+    // ---- Package-level checks: AAB alignment / manifest / APK zipalign ----
+    const pkgRows: string[] = []
+    // AAB: bundletool 生成 APK 时实际生效的页对齐（显式值或按 bundle 记录的
+    // bundletool 版本取的默认值，见 backend parse_bundle_config）。
+    const bundle16 = page16.bundle
+    if (bundle16) {
+      // 无 64 位原生库时（纯 Java/Kotlin 应用）该项不适用：官方明确这类应用
+      // 已兼容 16KB，BundleConfig 的对齐设置不影响判定。
+      const notApplicable = bundle16.applied === false
+      const ok = bundle16.ok !== false
+      const details: string[] = []
+      details.push(`<span class="mono">${esc(bundle16.alignment || label('notDeclared'))}</span>`)
+      // 对齐不是显式声明时，标出来源，避免被误读成"用户配置成 4K"
+      if (bundle16.alignment_source === 'default_by_bundletool_version') {
+        details.push(label('bundleAlignmentDefault', { version: bundle16.bundletool_version || '-' }))
+      } else if (bundle16.alignment_source === 'default_current_tool') {
+        details.push(label('bundleAlignmentDefaultCurrent'))
+      }
+      if (bundle16.uncompress_enabled === false) {
+        details.push(label('bundleCompressedLibs'))
+      }
+      if (bundle16.error) {
+        details.push(label('bundleConfigUnavailable'))
+      }
+      const cell = notApplicable
+        ? '<span class="apk-lv apk-lv--ok">' + label('notApplicable') + '</span>'
+        : (ok
+            ? '<span class="apk-lv apk-lv--ok">' + label('checkPassed') + '</span>'
+            : '<span class="apk-lv apk-lv--danger">' + label('checkFailed') + '</span>')
+      pkgRows.push(trow([label('aabAlignment'), details.join(' · '), cell]))
+    }
+    // Google Play 的 16KB 校验 = ELF LOAD 对齐 + 未压缩 .so 的 ZIP 对齐；
+    // RELRO 结束地址属于运行期风险，不在 Play 上传门禁内。
+    if (page16.container === 'aab') {
+      const gateOk = page16.gate_ok !== false
+      pkgRows.push(trow([
+        label('playGate'),
+        `<span class="apk-muted">${esc(label('playGateBasis'))}</span>`,
+        gateOk
+          ? '<span class="apk-lv apk-lv--ok">' + label('checkPassed') + '</span>'
+          : '<span class="apk-lv apk-lv--danger">' + label('checkFailed') + '</span>',
+      ]))
+    }
+    // RELRO 运行风险汇总（有 64 位 .so 时才展示）
+    if (soRows.length > 0
+      && (Array.isArray(page16.relro_risk) || Array.isArray(page16.relro_unknown))) {
+      const riskList = page16.relro_risk || []
+      const unknownList = page16.relro_unknown || []
+      const fmt = (items: any[]) =>
+        items.map((it: any) => `${it.arch}/${it.file}`).join(', ')
+      const relroDetails: string[] = []
+      if (riskList.length > 0) {
+        relroDetails.push(label('relroRiskList', {
+          count: riskList.length,
+          files: fmt(riskList),
+        }))
+      }
+      if (unknownList.length > 0) {
+        relroDetails.push(label('relroUnknownList', {
+          count: unknownList.length,
+          files: fmt(unknownList),
+        }))
+      }
+      let relroPill = ''
+      if (riskList.length > 0) {
+        relroPill = '<span class="apk-lv apk-lv--warn">' + label('relroRisk') + '</span>'
+      } else if (unknownList.length > 0) {
+        relroPill = '<span class="apk-lv apk-lv--warn">' + label('relroUnknown') + '</span>'
+      } else {
+        relroPill = '<span class="apk-lv apk-lv--ok">' + label('relroNoRisk') + '</span>'
+      }
+      pkgRows.push(trow([
+        label('relroRiskRow'),
+        `<span class="apk-muted">${esc(relroDetails.join(' · ') || label('relroNoRisk'))}</span>`,
+        relroPill,
+      ]))
+    }
+    const manifest16 = page16.manifest
+    if (manifest16) {
+      const ok = manifest16.ok !== false
+      const declared = manifest16.present !== false && manifest16.extract_native_libs != null
+      const value = declared ? String(manifest16.extract_native_libs) : label('notDeclared')
+      pkgRows.push(trow([
+        label('manifestExtractNativeLibs'),
+        `<span class="mono">${esc(value)}</span>`,
+        ok
+          ? '<span class="apk-lv apk-lv--ok">' + label('checkPassed') + '</span>'
+          : '<span class="apk-lv apk-lv--danger">' + label('checkFailed') + '</span>',
+      ]))
+    }
+    const zipalign16 = page16.zipalign
+    if (zipalign16) {
+      const ok = zipalign16.ok !== false
+      const details: string[] = []
+      if (typeof zipalign16.checked === 'number') {
+        details.push(label('zipChecked', {
+          count: zipalign16.checked,
+          so: zipalign16.so_checked || 0,
+        }))
+      }
+      if (zipalign16.misaligned_count > 0) {
+        details.push(label('zipMisalignedCount', { count: zipalign16.misaligned_count }))
+      }
+      if (zipalign16.compressed_so > 0) {
+        details.push(label('zipCompressedSo', { count: zipalign16.compressed_so }))
+      }
+      if (zipalign16.unreadable > 0) {
+        details.push(label('zipUnreadable', { count: zipalign16.unreadable }))
+      }
+      pkgRows.push(trow([
+        label('apkZipalign'),
+        `<span class="apk-muted">${esc(details.join(' · '))}</span>`,
+        ok
+          ? '<span class="apk-lv apk-lv--ok">' + label('checkPassed') + '</span>'
+          : '<span class="apk-lv apk-lv--danger">' + label('checkFailed') + '</span>',
+      ]))
+    }
+
+    let body = ''
+    if (soRows.length > 0) {
+      body += table(
+        [label('architecture'), label('colFile'), label('colLoadAlignment'),
+         label('colRelroAlignment'), label('colStatus')],
+        soRows,
+      )
+    } else {
+      body += `<div class="apk-muted">${label('no64bitNative')}</div>`
+    }
+    if (pkgRows.length > 0) {
+      body += `<div style="margin-top:8px">${table(
+        [label('colItem'), label('colDetail'), label('colStatus')], pkgRows)}</div>`
+    }
     if (page16.skipped && page16.skipped.length > 0) {
       body += `<div class="apk-muted" style="margin-top:4px">${label('pageSizeSkipped', { count: page16.skipped.length })}</div>`
     }
-    const sum = label('page16Supported', { supported, total })
+    const pkgFailed = (bundle16 && bundle16.ok === false && bundle16.applied !== false)
+      || (manifest16 && manifest16.ok === false)
+      || (zipalign16 && zipalign16.ok === false)
+    const relroRiskCount = (page16.relro_risk || []).length
+    const sum = total > 0
+      ? label('page16Supported', { supported, total })
+        + (relroRiskCount > 0
+            ? ' · ' + label('relroRiskCount', { count: relroRiskCount })
+            : '')
+      : (pkgFailed
+          ? `${label('no64bitNative')} · ${label('checkFailed')}`
+          : label('no64bitNative'))
     nativeBody += card(label('pageSize16kb'), sum, body)
     nativeSum.push(sum)
   }
-  if (nativeBody) html += group(label('nativeAnalysis'), nativeSum.join(' · '), nativeBody, '', '#8b5cf6', false)
+  if (nativeBody) html += group(label('nativeAnalysis'), nativeSum.join(' · '), nativeBody, '', '#8b5cf6', true)
 
   // ===== COMPRESSION (whole-package: assets / dex / lib) =====
   // Own top-level group, not nested under native libraries: only the `lib`
@@ -1570,14 +2305,20 @@ function renderApkInfo(data: any) {
 </script>
 
 <style scoped>
-/* height:100% = .main-content 的内容盒高（100vh - 24px 下边距）。
-   原来写的是 calc(100vh - 48px)，把外壳的上下 24px 内边距硬编进来了——
-   外壳 padding 一改这页就悄悄短一截。顶部留白现在归 .app-page-header 管。 */
-.package-page { height: 100%; display: flex; flex-direction: column; }
-  .task-list-area { flex: 1; overflow-y: auto; min-height: 0; scrollbar-gutter: stable; overscroll-behavior: contain; }
+/* The page owns its height (the app shell scrolls the page container only when
+   the viewport is too narrow; the two-column workspace manages its own scroll). */
+.package-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
 
-/* New Task Bar */
+/* ======================= New task bar ======================= */
 .new-task-bar {
+  flex: none;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
   border-radius: 10px;
@@ -1590,11 +2331,7 @@ function renderApkInfo(data: any) {
   flex-wrap: wrap;
   gap: 10px;
 }
-/* Bound by class, not position: inserting an element before the input used to
-   silently steal this flex from it via :nth-child(2). */
 .task-source-input { flex: 1 1 240px; min-width: 0; }
-/* 这个「浏览」入口现在也是 IconButton（内部 n-button），颜色得走 Naive 的
-   CSS 变量，并用更高特异性压过它动态注入的 .n-button 规则 */
 .task-source-input :deep(.task-pick-btn) { --n-text-color: var(--app-text-dim); cursor: pointer; }
 .task-source-input :deep(.task-pick-btn:hover) { --n-text-color-hover: var(--app-green); }
 .task-start-wrap { display: inline-flex; }
@@ -1609,112 +2346,745 @@ function renderApkInfo(data: any) {
 }
 .op-desc { font-size: var(--app-font-size-sm); color: var(--app-text-dim); }
 .op-label { font-size: var(--app-font-size-xs); color: var(--app-text-dim); white-space: nowrap; }
-
 .hidden-input { display: none; }
 
-/* Empty */
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 80px 16px; text-align: center;
+/* ======================= Two-column workspace ======================= */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 16px;
 }
-.empty-title { font-size: var(--app-font-size-xl); font-weight: 600; color: var(--app-text-muted); margin: 0; }
-.empty-desc { font-size: var(--app-font-size-md); color: var(--app-text-dim); margin: 0; max-width: 360px; }
 
-/* Task Cards */
-.task-list { display: flex; flex-direction: column; gap: 8px; }
-.task-card {
+/* ---- left rail ---- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
   border-radius: 10px;
   overflow: hidden;
-  transition: border-color .2s;
 }
-.task-card.task-running { border-color: var(--app-green-border); }
-.task-card.task-failed { border-color: var(--app-red-border); }
-
-.task-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px;
+.rail-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px 14px;
+  border-bottom: 1px solid var(--app-card-border);
+}
+.rail-title {
+  font-size: var(--app-font-size-sm);
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+/* n-input 自身带 width:100%，如果直接给它加左右 margin，宽度会按 100%
+   计算再叠 margin，导致右侧超框。用 padding 包装容器，n-input 始终按
+   容器内容宽度收缩。 */
+.rail-search {
+  flex: none;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 10px 12px 8px;
+}
+.rail-search :deep(.n-input) {
+  --n-height: 30px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.rail-filters {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--app-card-border);
+}
+.rail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 23px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--app-text-dim);
+  font-size: 10.5px;
   cursor: pointer;
-  user-select: none;
-  gap: 10px;
+  white-space: nowrap;
 }
-.task-header:hover { background: var(--app-hover); }
-.task-header-left, .task-header-right { display: flex; align-items: center; gap: 8px; }
-.task-id { font-size: var(--app-font-size-xs); color: var(--app-text-dim); font-weight: 600; min-width: 24px; }
-.task-filename {
-  font-size: var(--app-font-size-md); color: var(--app-text-secondary);
-  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.rail-chip:hover { background: var(--app-hover); color: var(--app-text-secondary); }
+.rail-chip.on { background: var(--app-green-bg); color: var(--app-green); }
+.rail-chip span {
+  min-width: 14px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--app-storage-bg);
+  color: var(--app-text-dim);
+  font-family: var(--app-font-mono);
+  font-size: 9px;
+  text-align: center;
 }
-.task-time { font-size: var(--app-font-size-xs); color: var(--app-text-dim); }
-.task-duration { font-size: var(--app-font-size-xs); color: var(--app-text-muted); font-family: var(--app-font-mono); }
-/* Bottom-left meta line: creation time + duration, always visible on the card */
-.task-meta-row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 14px 8px;
+.rail-chip.on span { background: var(--app-card-bg); color: var(--app-green); }
+.rail-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
-.task-detail ~ .task-meta-row { padding-top: 4px; }
+.rail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 42px 16px;
+  text-align: center;
+  color: var(--app-text-dim);
+  font-size: var(--app-font-size-sm);
+}
+.rail-empty p { margin: 0; }
 
-.task-progress { padding: 0 14px; height: 3px; }
-/* Indeterminate progress: operations emit no real progress events, so the
-   bar shows a sliding stripe instead of a meaningless percentage. */
-.indeterminate-bar {
+/* ---- task item ---- */
+.task-item {
   position: relative;
-  height: 3px;
-  border-radius: 2px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--app-card-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s;
+}
+.task-item:hover { background: var(--app-hover); }
+.task-item.selected { background: var(--app-green-bg); }
+.task-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--app-green);
+}
+.file-tile {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--app-font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+.file-tile.apk { background: var(--app-green-bg); color: var(--app-green); }
+.file-tile.aab { background: var(--app-blue-bg); color: var(--app-blue); }
+.file-tile.dir { background: var(--app-yellow-bg); color: var(--app-yellow); }
+.file-tile.lg { width: 36px; height: 36px; border-radius: 8px; font-size: 9px; }
+.ti-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ti-row1 { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 18px; }
+.ti-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--app-font-size-sm);
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+.ti-glyph { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; }
+.ti-row2 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 14px;
+  color: var(--app-text-dim);
+  font-size: 9.5px;
+}
+.ti-row2 :deep(.n-tag) { height: 14px; border-radius: 3px; font-size: 9.5px; }
+.ti-source { flex: none; color: var(--app-text-dim); }
+.ti-time { margin-left: auto; flex: none; color: var(--app-text-dim); white-space: nowrap; font-size: 9.5px; }
+.ti-progress {
+  position: absolute;
+  left: 14px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
   background: var(--app-storage-bg);
   overflow: hidden;
 }
-.indeterminate-fill {
+.ti-progress i { display: block; height: 100%; background: var(--app-blue); border-radius: 2px; transition: width .3s; }
+.ti-progress.indeterminate i { width: 42%; background: var(--app-green); animation: task-indeterminate 1.5s ease-in-out infinite; }
+.ti-id {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 40%;
-  border-radius: 2px;
-  background: var(--app-green);
-  animation: indeterminate-slide 1.4s ease-in-out infinite;
+  left: 15px;
+  bottom: 2px;
+  font-family: var(--app-font-mono);
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: .02em;
+  color: var(--app-text-dim);
+  opacity: .7;
+  pointer-events: none;
 }
-@keyframes indeterminate-slide {
-  0% { left: -40%; }
-  100% { left: 100%; }
+.ti-glyph.completed { color: var(--app-green); }
+.ti-glyph.failed { color: var(--app-red); }
+.ti-glyph.downloading { color: var(--app-blue); }
+.ti-glyph.running, .ti-glyph.cancelling { color: var(--app-green); }
+.ti-glyph.queued, .ti-glyph.cancelled { color: var(--app-text-dim); }
+
+/* ---- right detail ---- */
+.detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.detail-head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--app-card-border);
+}
+.dh-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dh-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.dh-title {
+  margin: 0;
+  font-size: var(--app-font-size-lg);
+  font-weight: 600;
+  color: var(--app-text-primary);
+  overflow-wrap: anywhere;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--app-storage-bg);
+  color: var(--app-text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.status-pill.running, .status-pill.downloading { background: var(--app-blue-bg); color: var(--app-blue); }
+.status-pill.completed { background: var(--app-green-bg); color: var(--app-green); }
+.status-pill.failed { background: var(--app-red-bg); color: var(--app-red); }
+.status-pill.cancelling { background: var(--app-yellow-bg); color: var(--app-yellow); }
+.status-pill.cancelled { background: var(--app-storage-bg); color: var(--app-text-dim); }
+.dh-path {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--app-text-dim);
+  font-size: 10.5px;
+}
+.path-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--app-font-mono);
+  color: var(--app-text-secondary);
+}
+.path-actions { display: flex; align-items: center; gap: 1px; flex: none; }
+.dh-badges { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.dh-badges :deep(.n-tag) { height: 16px; border-radius: 3px; font-size: 9.5px; }
+.soft-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--app-storage-bg);
+  color: var(--app-text-dim);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.dh-actions { flex: none; display: flex; align-items: center; gap: 2px; }
+
+/* ---- tabs + live timer ---- */
+.detail-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--app-card-border);
+}
+.detail-tab-list { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.detail-tab {
+  position: relative;
+  height: 35px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px 6px 0 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--app-font-size-sm);
+  color: var(--app-text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.detail-tab:hover { background: var(--app-hover); color: var(--app-text-secondary); }
+.detail-tab.active { color: var(--app-text-primary); font-weight: 600; }
+.detail-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--app-green);
+}
+.tab-live {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--app-green);
+  animation: task-pulse 1.2s ease-in-out infinite;
+}
+.detail-timer {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding-left: 12px;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--app-text-dim);
+}
+.detail-timer .timer-value {
+  font-family: var(--app-font-mono);
+  font-size: 11.5px;
+  color: var(--app-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
-.task-detail {
-  padding: 10px 14px;
-  border-top: 1px solid var(--app-card-border);
-  display: flex; flex-direction: column; gap: 8px;
+/* ---- scroll body ---- */
+.detail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
-.task-error {
-  font-size: var(--app-font-size-sm); color: var(--app-red);
-  padding: 8px 10px; background: var(--app-red-bg); border-radius: 6px;
+.detail-scroll--fill {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 14px;
 }
-.task-output {
-  display: flex; align-items: center; gap: 6px;
-  font-size: var(--app-font-size-sm); color: var(--app-green);
+.detail-scroll--fill > .section-head,
+.detail-scroll--fill > .info-card { flex: none; }
+
+/* ---- phase rail: compact, top-centred ---- */
+.phase-strip {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  max-width: 100%;
+  padding: 7px 12px;
+  margin-bottom: 14px;
+  background: var(--app-storage-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
 }
-.task-output-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.task-result { font-size: var(--app-font-size-md); }
-.task-result-bar { display: flex; justify-content: flex-end; margin: 2px 0 6px; }
-.task-logs {
-  background: var(--app-code-bg);
-  border-radius: 6px;
+.phase-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: 10.5px;
+  color: var(--app-text-dim);
+  white-space: nowrap;
+}
+.phase-step.done { color: var(--app-text-secondary); }
+.phase-step.current { color: var(--app-green); font-weight: 600; }
+.phase-step.failed { color: var(--app-red); font-weight: 600; }
+.phase-dot {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-card-bg);
+  color: var(--app-text-dim);
+}
+.phase-step.done .phase-dot { border-color: var(--app-green); background: var(--app-green-bg); color: var(--app-green); }
+.phase-step.current .phase-dot { border: 0; background: transparent; color: var(--app-green); }
+.phase-step.failed .phase-dot { border-color: var(--app-red); background: var(--app-red-bg); color: var(--app-red); }
+.phase-line { width: 30px; height: 1px; margin: 0 8px; background: var(--app-card-border); flex: none; }
+.phase-line.done { background: var(--app-green-border); }
+.phase-strip--download .phase-step.current { color: var(--app-blue); }
+.phase-strip--download .phase-step.current .phase-dot { color: var(--app-blue); }
+
+/* ---- loading / failed / cancelled ---- */
+.process-center {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.process-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.loading-spinner {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 4px solid var(--app-green-bg);
+  border-top-color: var(--app-green);
+  animation: task-spin .9s linear infinite;
+}
+.loading-spinner.yellow { border-color: var(--app-yellow-bg); border-top-color: var(--app-yellow); }
+.loading-progress-circle {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--app-blue) calc(var(--pct, 0) * 1%), var(--app-blue-bg) 0);
+}
+.loading-progress-circle::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--app-card-bg);
+}
+.loading-percent {
+  position: relative;
+  z-index: 1;
+  font-family: var(--app-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+.loading-queued-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-storage-bg);
+  color: var(--app-text-dim);
+}
+.loading-label {
+  font-size: var(--app-font-size-md);
+  font-weight: 500;
+  color: var(--app-text-secondary);
+  text-align: center;
+  letter-spacing: .01em;
+}
+.error-card {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 14px 16px;
+  border: 1px solid var(--app-red-border);
+  border-radius: 10px;
+  background: var(--app-red-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.error-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--app-red);
+}
+.error-msg {
+  font-size: var(--app-font-size-sm);
+  line-height: 1.6;
+  color: var(--app-text-primary);
+  overflow-wrap: anywhere;
+}
+.error-hint { font-size: 10.5px; line-height: 1.6; color: var(--app-text-dim); }
+.error-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+.cancelled-card {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 16px 18px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 10px;
+  background: var(--app-storage-bg);
+  color: var(--app-text-secondary);
+  font-size: var(--app-font-size-sm);
+  line-height: 1.7;
+  text-align: center;
+}
+.app-empty-hint {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: var(--app-font-size-sm);
+  color: var(--app-text-dim);
+}
+
+/* ---- result / artifact ---- */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--app-font-size-sm);
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+.section-title :deep(.n-icon) { color: var(--app-green); }
+.section-actions { display: flex; align-items: center; gap: 2px; }
+.report-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 10px;
+  background: var(--app-card-bg);
+}
+.app-icon-big {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--app-green-bg);
+  color: var(--app-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  object-fit: cover;
+}
+.rh-main { flex: 1; min-width: 0; }
+.rh-name { font-size: var(--app-font-size-lg); font-weight: 600; color: var(--app-text-primary); }
+.rh-pkg { margin-top: 1px; font-family: var(--app-font-mono); font-size: 10px; color: var(--app-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rh-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.chip-static {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--app-storage-bg);
+  color: var(--app-text-secondary);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.stat-tile {
+  min-width: 0;
   padding: 8px 10px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  background: var(--app-card-bg);
+}
+.stat-label { font-size: 9.5px; color: var(--app-text-dim); }
+.stat-value { margin-top: 1px; font-family: var(--app-font-mono); font-size: 15px; font-weight: 600; color: var(--app-text-primary); line-height: 1.3; }
+.stat-value small { font-family: var(--app-font); font-size: 9px; font-weight: 400; color: var(--app-text-dim); }
+.stat-note { margin-top: 1px; font-size: 9px; color: var(--app-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-note.danger { color: var(--app-red); }
+.stat-note.ok { color: var(--app-green); }
+.task-report { font-size: var(--app-font-size-md); }
+/* The report's first group repeats the hero/summary above; keep it for the
+   exported standalone report, hide it only in the page. New snapshots carry
+   data-section="basic"; the :first-child fallback covers pre-existing snapshots. */
+.task-report :deep([data-section="basic"]),
+.task-report :deep(.apk-info > .apk-group:first-child) { display: none; }
+
+.output-card {
+  padding: 4px 12px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 10px;
+  background: var(--app-card-bg);
+}
+.output-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--app-card-border);
+}
+.output-row:last-child { border-bottom: 0; }
+.output-key { width: 64px; flex: none; font-size: 10.5px; color: var(--app-text-dim); }
+.output-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--app-font-mono);
+  font-size: 11px;
+  color: var(--app-text-secondary);
+}
+.output-device { display: flex; align-items: center; gap: 6px; font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
+.output-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---- info + log ---- */
+.info-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 10px;
+  background: var(--app-card-bg);
+}
+.info-k { font-size: 10px; color: var(--app-text-dim); }
+.info-v { margin-top: 2px; font-size: var(--app-font-size-sm); color: var(--app-text-secondary); }
+.info-v.mono { font-family: var(--app-font-mono); font-size: 10.5px; }
+.log-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--app-card-border);
+  border-radius: 10px;
+  background: var(--app-code-bg);
+  margin-top: 12px;
+}
+.log-card.fill { flex: 1; overflow: hidden; }
+.log-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.log-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+.log-count { font-family: var(--app-font-mono); font-size: 9.5px; font-weight: 400; color: var(--app-text-dim); }
+.log-actions { display: flex; align-items: center; gap: 2px; }
+.log-search-input { flex: none; margin-bottom: 6px; }
+.log-trunc-hint { flex: none; margin-bottom: 4px; font-size: 9.5px; color: var(--app-text-dim); }
+.log-body { flex: 1; min-height: 0; overflow: hidden; }
+.log-line {
   font-family: var(--app-font-mono);
   font-size: var(--app-font-size-xs);
-  line-height: 1.6;
-}
-.task-log-line { color: var(--app-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
-.task-logs-toolbar { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
-.task-logs-spacer { flex: 1; }
-.task-logs-toolbar .n-button { flex: 0 0 auto; }
-.task-log-trunc-hint {
-  margin: 0 0 6px;
-  font-family: var(--app-font, system-ui);
-  font-size: var(--app-font-size-xs);
-  color: var(--app-text-dim);
-  line-height: 1.5;
+  line-height: 18px;
+  color: var(--app-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
+/* ---- empty right pane ---- */
+.detail-empty {
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  text-align: center;
+}
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--app-storage-bg);
+  color: var(--app-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.detail-empty h3 { margin: 0; font-size: var(--app-font-size-lg); color: var(--app-text-secondary); }
+.detail-empty p { max-width: 360px; margin: 0; font-size: var(--app-font-size-sm); line-height: 1.7; color: var(--app-text-dim); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.spin { animation: task-spin .9s linear infinite; }
+
+@keyframes task-spin { to { transform: rotate(360deg); } }
+@keyframes task-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes task-indeterminate {
+  0% { margin-left: -42%; }
+  100% { margin-left: 100%; }
+}
+
+/* ======================= Responsive ======================= */
+@media (max-width: 1320px) {
+  .workspace { grid-template-columns: 340px minmax(0, 1fr); }
+}
+@media (max-width: 1060px) {
+  .package-page { height: auto; min-height: 100%; }
+  .workspace { display: flex; flex-direction: column; }
+  .rail { max-height: 320px; }
+  .detail { min-height: 560px; }
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .dh-path { flex-wrap: wrap; }
+  .phase-line { width: 18px; margin: 0 5px; }
+}
 </style>
 
 <style>
@@ -1776,6 +3146,7 @@ function renderApkInfo(data: any) {
 .apk-lv--danger { background: var(--app-red-bg); color: var(--app-red); }
 .apk-lv--normal { background: var(--app-storage-bg); color: var(--app-text-dim); }
 .apk-lv--ok { background: var(--app-green-bg); color: var(--app-green); }
+.apk-lv--warn { background: var(--app-yellow-bg); color: var(--app-yellow); }
 
 .apk-mini { display: inline-block; font-family: var(--app-font-mono); font-size: var(--app-font-size-xs); background: var(--app-yellow-bg); color: var(--app-yellow); border-radius: 3px; padding: 0 5px; margin: 0 2px; }
 

@@ -457,6 +457,7 @@ export interface ApiMethodMap {
   'apk.cancelTask': { params: { task_id?: string }; result: CancelTaskResult }
 
   // --- aab_handler.py ---
+  'aab.analyze': { params: { aab_path: string; task_id?: string }; result: void }
   'aab.sign': { params: { aab_path: string; keystore?: KeystoreConfig; task_id?: string }; result: AabSignResult }
   'device.convert_aab_to_apks': { params: { aab_path: string; output_path?: string; keystore?: KeystoreConfig; device_id?: string; task_id?: string }; result: ConvertAabToApksResult }
   'device.install_aab': { params: { aab_path: string; device_id: string; output_path?: string; keystore?: KeystoreConfig; task_id?: string }; result: void }

@@ -39,8 +39,8 @@ class ApkService {
     }
 
     /**
-     * 分析APK文件
-     * @param {string} apkPath - APK文件路径
+     * 分析 APK / AAB 文件
+     * @param {string} apkPath - APK 或 AAB 文件路径
      */
     async analyzeApk(apkPath: string, taskId: string | Record<string, any> = '') {
         try {
@@ -51,17 +51,28 @@ class ApkService {
               ? String((taskId as any).task_id || '')
               : String(taskId || '')
 
+            // AAB 的 manifest 是 protobuf、且由 bundletool 负责 zip 对齐，
+            // 因此走独立的 aab.analyze 处理器。
+            const isAab = /\.aab$/i.test(apkPath)
             const rawResult: any = tid
-              ? await requireApiMethod('callBackendAPI')('apk.analyze', { apk_path: apkPath, task_id: tid })
-              : await analyzeApk(apkPath)
+              ? await requireApiMethod('callBackendAPI')(
+                  isAab ? 'aab.analyze' : 'apk.analyze',
+                  isAab
+                    ? { aab_path: apkPath, task_id: tid }
+                    : { apk_path: apkPath, task_id: tid },
+                )
+              : (isAab
+                  ? await requireApiMethod('callBackendAPI')('aab.analyze', { aab_path: apkPath })
+                  : await analyzeApk(apkPath))
 
             // Normalize response - preload.js 已解包，rawResult 即为 payload
             let analysis = null;
             if (rawResult) {
                 const p = rawResult;
-                
-                // 简单的校验，确保至少有一些关键字段
-                if (p && (p.package_name || p.packageName || p.version_code || p.versionCode)) {
+
+                // 简单的校验，确保至少有一些关键字段（AAB 可能拿不到 manifest 信息，
+                // 但仍可能有 16KB 检测结果）
+                if (p && (p.package_name || p.packageName || p.version_code || p.versionCode || p.page_size_16kb)) {
                     analysis = {
                         packageName: p.package_name || p.packageName,
                         versionCode: p.version_code || p.versionCode,

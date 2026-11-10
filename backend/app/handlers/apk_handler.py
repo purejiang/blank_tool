@@ -597,10 +597,22 @@ def apk_analyze(params, stream_handler):
             info["warnings"].append(f"Compression analysis failed: {e}")
             stream_handler({"type": "log", "task_id": task_id, "line": f"[Compression Analysis] Failed: {e}"})
 
-        # C3: 16KB page size support for 64-bit .so files
+        # C3: 16KB page support — manifest extractNativeLibs + 64-bit .so
+        #     PT_LOAD / PT_GNU_RELRO alignment + APK zipalign (4-byte/16KB).
         stream_handler({"type": "log", "task_id": task_id, "line": "[16KB Page Check] Starting..."})
         try:
             info["page_size_16kb"] = check_16kb_page_support(apk_path)
+            if task_id:
+                p16 = info["page_size_16kb"]
+                manifest16 = (p16.get("manifest") or {}).get("extract_native_libs")
+                zipalign16 = (p16.get("zipalign") or {}).get("ok")
+                append_task_log(
+                    task_id,
+                    f"[16KB] supported={p16.get('supported')} "
+                    f"gate_ok={p16.get('gate_ok')} "
+                    f"relro_risk={len(p16.get('relro_risk') or [])} "
+                    f"extractNativeLibs={manifest16} zipalign={zipalign16}",
+                )
         except Exception as e:
             logger.warning(f"16KB page check failed: {e}")
             info["warnings"].append(f"16KB page check failed: {e}")

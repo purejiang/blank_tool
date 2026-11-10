@@ -2,7 +2,16 @@
 Contract tests for AAB handler API methods.
 """
 import json
+import os
+import tempfile
 import time
+import zipfile
+
+from app.handlers.aab_handler import (
+    API_MAP,
+    _parse_bundle_manifest,
+    _scan_aab_native_libs,
+)
 
 
 class TestAabSign:
@@ -84,7 +93,7 @@ class TestInstallAab:
 
 
 class TestResponseShape:
-    METHODS = ["aab.sign", "device.convert_aab_to_apks", "device.install_aab"]
+    METHODS = ["aab.analyze", "aab.sign", "device.convert_aab_to_apks", "device.install_aab"]
 
     def test_all_methods_produce_valid_response_shape(self, api_handler):
         for method in self.METHODS:
@@ -94,3 +103,58 @@ class TestResponseShape:
             assert "id" in data, f"{method}: missing id"
             assert "result" in data, f"{method}: missing result"
             assert "finished" in data, f"{method}: missing finished"
+
+
+class TestAabAnalyzeHelpers:
+    MANIFEST_XML = (
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
+        'android:versionCode="42" android:versionName="1.2.3" '
+        'package="com.example.aabtest">\n'
+        '  <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/>\n'
+        '  <uses-permission android:name="android.permission.INTERNET"/>\n'
+        '  <uses-permission android:name="android.permission.CAMERA"/>\n'
+        '  <application android:label="Test Bundle App" '
+        'android:theme="@0x7f0c0005"/>\n'
+        '</manifest>'
+    )
+
+    def test_parse_bundle_manifest(self):
+        info = _parse_bundle_manifest(self.MANIFEST_XML)
+        assert info['package_name'] == 'com.example.aabtest'
+        assert info['version_code'] == '42'
+        assert info['version_name'] == '1.2.3'
+        assert info['min_sdk_version'] == '24'
+        assert info['target_sdk_version'] == '36'
+        assert info['permissions'] == [
+            'android.permission.INTERNET',
+            'android.permission.CAMERA',
+        ]
+        assert info['application_label'] == 'Test Bundle App'
+
+    def test_parse_bundle_manifest_empty(self):
+        assert _parse_bundle_manifest('') == {}
+
+    def test_resource_ref_label_skipped(self):
+        info = _parse_bundle_manifest(
+            '<manifest package="com.x"><application android:label="@0x7f010001"/></manifest>'
+        )
+        assert 'application_label' not in info
+        assert info['package_name'] == 'com.x'
+
+    def test_scan_aab_native_libs(self):
+        fd, path = tempfile.mkstemp(suffix='.aab')
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(path, 'w') as zf:
+                zf.writestr('base/lib/arm64-v8a/liba.so', b'x')
+                zf.writestr('base/lib/armeabi-v7a/liba.so', b'x')
+                zf.writestr('feature/lib/arm64-v8a/libb.so', b'x')
+                zf.writestr('base/lib/arm64-v8a/notes.txt', b'x')
+            so_map = _scan_aab_native_libs(path)
+            assert so_map['arm64-v8a'] == ['liba.so', 'libb.so']
+            assert so_map['armeabi-v7a'] == ['liba.so']
+        finally:
+            os.unlink(path)
+
+    def test_api_map_registers_analyze(self):
+        assert 'aab.analyze' in API_MAP
