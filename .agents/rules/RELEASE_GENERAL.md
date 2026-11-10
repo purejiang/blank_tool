@@ -10,11 +10,11 @@
 
 ### 格式：SemVer vX.Y.Z（如 v2.1.0）
 
-### 双源版本号
+### 版本号载体
 
-版本号有两个载体——git tag 与项目元数据文件（如 package.json）。推荐做法：发版流程先更新元数据文件的版本号并提交，再打 tag，使两个来源在发布时保持一致。
+版本号至少有两个载体——git tag 与项目元数据文件（如 package.json）；本项目还额外有后端配置里的副本。推荐做法：发版流程先更新所有载体并提交，再打 tag，使各来源在发布时保持一致。
 
-> **本项目（Blank Tool）**：双源 = git tag 与 `package.json.version`，由 `npm run release` 统一维护，并在构建阶段校验产物名与 `latest.yml` 的 `version`。手工提前改过 `version` 时必须用 `--version=` 指定同一版本号 —— 理由与已发生的事故见 [发布指南](./RELEASE_GUIDE.md#1-用法速查)。
+> **本项目（Blank Tool）**：前端与服务端版本互相独立 —— 前端 = git tag + `package.json.version`（`npm run release` 每次 bump）；服务端 = `backend/.env` 的 `APP_VERSION` + `backend/server.config.example.json` 的 `env.APP_VERSION`（只有 `backend/` 有改动时才用 `--service-version=X.Y.Z` 一起发布，不指定则保持不变）。构建阶段会校验产物名与 `latest.yml` 的 `version` 是否等于前端版本。手工提前改过 `package.json.version` 时必须用 `--version=` 指定同一版本号 —— 理由与已发生的事故见 [发布指南](./RELEASE_GUIDE.md#1-用法速查)。
 
 ### 打 Tag
 
@@ -26,14 +26,16 @@
 
 ## 2. 发布前质量门禁
 
-- 合并 dev 到 main 后，构建或打 tag 之前必须通过全量质量检查（静态分析、类型检查、完整测试套件）
+- 构建或打 tag 之前必须通过全量质量检查（静态分析、类型检查、自动化测试、契约测试）
 
 ```bash
-npm run check   # 本项目：lint（vue-tsc --noEmit）+ typecheck + vitest（单测 + 集成测试）
-npm run test    # 仅测试；后端 handler 契约测试另跑 pytest tests/contracts/
+npm run check        # 本项目：lint（vue-tsc --noEmit）+ typecheck + vitest（单测 + 集成测试）
+npm run check:full   # 本项目：check + pytest 契约测试 + node:test 共享契约测试（发版门禁用这个）
 ```
 
-- 若项目有一键发布脚本，质量门禁应内置于脚本自动执行，失败即阻断发布
+- `npm run check` **不包含**后两套契约测试（`pytest tests/contracts/`、`node --test tests/shared-contracts.test.mjs`），发版必须用 `npm run check:full`
+- 若项目有一键发布脚本，质量门禁应内置于脚本自动执行，失败即阻断发布（本项目 `npm run release` 执行的就是 `check:full`）
+- UI 回归无法自动化：发版前按 `docs/TEST_CASES.md` 第六节的冒烟最小集人工过一遍
 
 ---
 
@@ -44,6 +46,8 @@ npm run build:win     # 本项目一键发布只构建 Windows；mac/linux 见 R
 ```
 
 ### 产物清单
+
+以下为本项目（Electron + NSIS）的产物示例，拷贝到其他项目时整表替换。
 
 | 文件 | 用途 | 是否上传 |
 |------|------|----------|
@@ -120,14 +124,19 @@ git checkout dev
 
 ## 7. 发布检查清单
 
-- [ ] `git checkout dev && git push origin dev` -- dev 已推送远程
+手动路径按此顺序执行（一键发布脚本会自动完成大部分）：
+
+- [ ] 在 dev 上 bump 前端版本（`package.json`）；后端有改动时同时用 `--service-version` 更新 `backend/.env` / `server.config.example.json` 并提交
+- [ ] 全量质量检查通过（`npm run check:full`，含契约测试）
+- [ ] 冒烟测试通过（按 `docs/TEST_CASES.md` 第六节人工过一遍）
+- [ ] `git push origin dev` -- dev（含 bump 提交）已推送远程
 - [ ] `git checkout main && git merge dev` -- main 与 dev 已同步
 - [ ] `git push origin main` -- main 已推送远程（手动路径最容易漏这一步）
-- [ ] 全量质量检查通过（`npm run check`）
 - [ ] `git tag -a vX.Y.Z -m "..."` -- tag 打在 main 且为 annotated
 - [ ] `git push origin vX.Y.Z` -- tag 已单独推送
 - [ ] 构建成功（`npm run build:win`）
-- [ ] 版本号三处一致：tag / package.json.version / 产物名与 latest.yml 的 `version`
-- [ ] `gh release create` -- Release 资产齐全
+- [ ] 版本号一致：tag / `package.json.version` / 产物名与 `latest.yml` 的 `version`（服务端版本独立，见发布指南 §2）
+- [ ] `gh release create` -- Release 资产齐全且已 publish（非 draft）
+- [ ] 发布后验证：`gh release view vX.Y.Z --json isDraft,assets` 确认状态与资产
 - [ ] 旧版本资产已清理（`gh release delete-asset`）
 - [ ] `git checkout dev` -- 已切回开发分支

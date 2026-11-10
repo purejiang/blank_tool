@@ -11,23 +11,26 @@ npm run typecheck    # vue-tsc --noEmit（带详细输出）
 npm run test         # vitest run（仅跑 TS 单测 + 集成测试）
 npm run test:watch   # vitest 监听模式
 npm run test:coverage
+npm run test:contracts         # python -m pytest tests/contracts/（后端 handler 契约测试）
+npm run test:shared-contracts  # node --test tests/shared-contracts.test.mjs（IPC/路径字符串契约）
 npm run check        # lint && typecheck && test（提交前一键三连）
+npm run check:full   # check + 两套契约测试（发版质量门禁用；pytest 较慢）
 npm run build:win    # node scripts/build.mjs --win（mac/linux 同理）
-npm run release     # 一键发版（流程见下方"发版流程"）
+npm run release      # 一键发版（流程见下方"发版流程"）
 ```
 
 Dev server 监听 `http://localhost:3000`（strictPort，端口被占会直接失败）。构建工具是 `electron-vite`（配置在 `electron.vite.config.ts`，分 main/preload/renderer 三段），renderer 的 `root` 是 `src/`，不是项目根；输出仍为 `dist/{main,preload,renderer}`，`package.json` 的 `main` 指向 `dist/main/main.js`。注意：electron-vite 对 main/preload 强制 `copyPublicDir = false`，`src/main/public` 的图标靠配置里的内联插件 `copy-main-public-assets` 拷入 `dist/main/`。
 
-## 测试有三套，分别由不同运行器驱动（最容易踩坑）
+## 测试有四套，分别由不同运行器驱动（最容易踩坑）
 
 | 命令 | 运行器 | 范围 | 配置 |
 |---|---|---|---|
 | `npm run test` | **vitest** | `tests/unit/**`、`tests/integration/**` | `vitest.config.ts`，环境 `happy-dom` |
-| `pytest tests/contracts/` | **pytest**（不在 npm scripts 里） | 后端 handler 契约测试（Python） | `tests/contracts/conftest.py` 自动把 `backend/` 加入 `sys.path` |
-| `node --test tests/shared-contracts.test.mjs` | **node:test**（不在 npm scripts 里） | 校验 `src/shared/ipc/channels.ts` 与 `pathConfig.ts` 的字符串契约 | 无配置 |
+| `npm run test:contracts`（`pytest tests/contracts/`） | **pytest** | 后端 handler 契约测试（Python） | `tests/contracts/conftest.py` 自动把 `backend/` 加入 `sys.path` |
+| `npm run test:shared-contracts`（`node --test tests/shared-contracts.test.mjs`） | **node:test** | 校验 `src/shared/ipc/channels.ts` 与 `pathConfig.ts` 的字符串契约 | 无配置 |
 | `npx playwright test` | **Playwright** | `tests/e2e/critical-flows.spec.ts` | `tests/e2e/playwright.config.ts` |
 
-`npm run test` 在 `vitest.config.ts` 里显式 **exclude** 了 `tests/e2e/**` 和 `shared-contracts.test.mjs`，所以它不会跑后两者。改了后端 handler 或 IPC 通道名后，必须手动跑对应的契约测试。
+`npm run test` 在 `vitest.config.ts` 里显式 **exclude** 了 `tests/e2e/**` 和 `shared-contracts.test.mjs`，`npm run check` 也不包含两套契约测试；`npm run check:full` 会把它们一起跑（发版脚本用的就是它）。改了后端 handler 或 IPC 通道名后，至少跑一次 `npm run check:full`。
 
 `tests/setup.ts` 给 happy-dom 补了 `localStorage` / `sessionStorage` 桩，单元测试里的 Pinia 持久化依赖它。
 
@@ -103,16 +106,19 @@ icacls . /setintegritylevel Medium          # 修复：只改根目录，子项�
 
 ## 发版流程
 
-发版流程分两层规范，配合三份独立文档：
+发版流程由三份文档共同规定：
 
 - **分支策略与分支纪律**（dev/main 模型、合并规则、会话起步检查）：见 `.agents/rules/BRANCHING.md`
 - **通用发版规范**（版本号与 tag 规则、质量门禁、GitHub Release、存储治理、检查清单模板）：见 `.agents/rules/RELEASE_GENERAL.md`
 - **本项目 Electron 特有部分**（npm run release 用法与前置条件、版本号与产物事实、失败恢复地图、手动兜底发布）：见 `.agents/rules/RELEASE_GUIDE.md`
 
+- **失败恢复与断点续跑**：build / release / upload 阶段失败后用 `npm run release -- --version=<同版本>` 重跑，脚本会跳过 bump/merge/tag 从构建/发布继续；若改过源码则必须换新版本号。详见 RELEASE_GUIDE §1.1 / §3。
+- **前端/服务端独立版本**：`package.json.version` 与 tag 是前端版本；`backend/.env` 和 `server.config.example.json` 的 `APP_VERSION` 是服务端版本（状态栏显示）。后端有改动时发版加 `--service-version=X.Y.Z`，否则服务端版本保持原值。
+
 ## 其他约定
 
 - 仓库根有 `dev-app-update.yml`，是 `electron-updater` 在开发模式下的测试配置，**不要提交生产凭证**。
-- 没有 CI workflow（`.github/` 目录不存在），所有检查靠本地 `npm run check`。
+- 没有 CI workflow（`.github/` 目录不存在），所有检查靠本地 `npm run check` / `npm run check:full`。
 - 国际化在 `src/renderer/i18n/`（zh-CN、en-US），UI 文案改动需同步两个语言文件。
 - 样式：单一 token 命名空间 `--app-*`。颜色（浅/深两套）在 `src/renderer/assets/styles/themes.css`，非颜色 token（间距/圆角/字体/阴影/页宽/控制台色）在 `variables.css`，跨页复用的通用类在 `common/components.css`（一律 `app-` 前缀，避免全局规则静默命中组件同名类），全局重置在 `main.css`，第三方覆盖在 `naive-overrides.css`；加载顺序见 `main.ts`。主题切换靠 `data-theme`（浅色/深色/自动）**不是** `prefers-color-scheme`。组件里禁止写死色值和字体栈：颜色只有 `--app-font` / `--app-font-mono` 两个字体栈，新增色相必须 light / dark 两边都加。
 - 提交信息、文档、注释混用中英文是本仓库的常态，无需统一。

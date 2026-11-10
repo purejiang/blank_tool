@@ -51,8 +51,9 @@ Blank Tool 是一个基于 Electron + Vue 3 + Python 构建的现代化 Android 
 npm install          # 安装依赖
 npm run dev          # 启动开发模式 (Vite HMR + Electron)
 npm run lint         # 类型检查
-npm run test         # 契约测试
-npm run check        # lint + typecheck + test
+npm run test         # vitest 单测 + 集成测试
+npm run check        # lint + typecheck + test（提交前）
+npm run check:full   # check + pytest/node:test 契约测试（发版门禁用）
 ```
 
 ### 打包
@@ -63,23 +64,26 @@ npm run build:mac    # macOS (.dmg)
 npm run build:linux  # Linux (AppImage)
 ```
 
-版本号直接读取 package.json.version；发版时由 `npm run release` 自动 bump。
+前端版本（`package.json.version`，tag 在合并后创建）每次发版都会 bump；服务端版本独立维护
+（`backend/.env` 与 `backend/server.config.example.json` 的 `APP_VERSION`），只有 `backend/` 有改动时
+才用 `--service-version` 一起发布，否则保持原值。
 
 > ⚠️ 不要手工改 `package.json` 的 `version` 然后直接跑默认 patch：bump 的基数是 package.json
 > 的当前值，手工提前提到 2.5.0 后会发出 v2.5.1。要按手工改过的号发版，请用
-> `npm run release -- --version=2.5.0`（package.json 已是该版本时脚本会跳过 bump 提交）。
-> 产物名、latest.yml 的 `version`、应用内自报版本三者都来自 package.json.version：tag 与它脱节
+> `npm run release -- --version=2.5.0`（版本载体已是该版本时脚本会跳过 bump 提交）。
+> 产物名、latest.yml 的 `version`、应用内自报版本（`app.getVersion()`）都来自 package.json.version：tag 与它脱节
 > 时，tag 对应的源码就再也构建不出发布出去的那个安装包（可复现性丢失）。
 
 ### 发布
 
 ```bash
-npm run release                # 一键发布：质量门禁 + bump + tag + 构建 + GitHub Release
-npm run release -- --version=2.5.0   # 指定版本号（手工提前改过 package.json 时用这个）
-npm run release -- --dry-run   # 仅预览版本号与 release notes，不做修改
+npm run release                      # 一键发布：check:full 质量门禁 + bump + tag + 构建 + GitHub Release
+npm run release -- --version=2.5.0   # 指定前端版本；该 tag 已存在时自动断点续跑
+npm run release -- --version=2.6.0 --service-version=2.5.1   # 同时发布服务端版本（后端有改动时）
+npm run release -- --dry-run         # 仅预览版本号与 release notes，不做修改
 ```
 
-详细用法与失败恢复方法见 `.agents/rules/RELEASE_GUIDE.md`。
+详细用法、断点续跑与失败恢复见 `.agents/rules/RELEASE_GUIDE.md`。
 
 ## 项目结构
 
