@@ -347,7 +347,42 @@
 - 架构 chips 正确标注（arm64/armeabi/x86_64）
 - 权限按"危险/普通"分类
 - 如有多架构，SO 对比卡片展示差异
-- 如有 16KB 对齐检查，显示支持情况
+- 16KB 页面对齐卡片：
+  - 逐 .so 展示 PT_LOAD 对齐、GNU_RELRO 结束地址（VirtAddr+MemSiz）对齐与支持状态
+  - `AndroidManifest` 的 `application` → `android:extractNativeLibs` 不能为 `true`
+  - APK zipalign：未压缩条目 4 字节对齐、`.so` 16KB 对齐，且无被压缩的 64 位 `.so`
+
+**优先级**: P1
+
+---
+
+### TC-3.1b 分析 AAB（16KB 页面兼容）
+
+**前置条件**: 准备一个 `.aab`（Android App Bundle）
+
+**步骤**:
+1. 源「本地」→ 选择 AAB
+2. 操作「分析」
+3. 等待完成
+
+**预期**:
+- 基本信息：包名、版本、最小/目标 SDK、权限（通过 `bundletool dump manifest` 解析）
+- 原生库分析：跨模块（base/feature）枚举 `<module>/lib/<abi>/*.so`，展示 SO 对比与 16KB 卡片
+- 16KB 卡片包含 AAB 专属检查行：`AAB ZIP 对齐 (bundletool)`，值为 bundletool
+  生成 APK 时实际生效的页对齐——显式声明时用声明值，缺省或 `UNSPECIFIED` 时按
+  bundle 记录的 `bundletool.version` 取默认值（≥ 1.17.0 默认 16K，否则 4K）；
+  未压缩原生库需 ≥ 16K 才通过，原生库被压缩时该行标注「无需 ZIP 对齐」并按通过处理
+- AAB 卡片包含 `Google Play 16KB 门禁` 行：ELF LOAD 对齐 + 未压缩 .so 的 ZIP
+  对齐（Play 上传校验关注项），RELRO 不参与该门禁
+- `GNU_RELRO 结束对齐` 按 Android linker 的真实行为判定：只统计 RELRO 结束地址
+  所在 16KB 页内是否还有可写数据（`.data`/`.bss` 等）；
+  - 页内无可写数据 → 通过（如 RELRO 段按 4KB 页对齐但落在段间空隙）
+  - 页内有可写数据 → 标记「风险」并单独汇总（运行期可能 SIGSEGV，但不阻断 Play 上传）
+  - 段表被加固裁剪无法判断 → 标记「无法确认」，不误报为风险
+- 无 64 位原生库（纯 Java/Kotlin 应用）时该行显示「不适用」，整体判定不受
+  BundleConfig 对齐影响（官方：这类应用已兼容 16KB 页面）
+- ELF 段（PT_LOAD / GNU_RELRO 结束地址）仍按 `.so` 逐个判定
+- AAB 本身不做 zipalign，卡片不显示 `APK zipalign` 行
 
 **优先级**: P1
 

@@ -1,0 +1,2408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>白包打包</title>
+<!--
+  white-label-packer 自定义插件 UI —— 协议版本 white-label-packer/ui@1
+  ============================================================================
+  运行环境：src/renderer/views/PluginsPage.vue 用
+    <iframe sandbox="allow-scripts" srcdoc="..."> 渲染本文件。
+  宿主会把 BRIDGE_SCRIPT 注入 <head>，因此这里只能通过 window.pluginBridge 与宿主通信。
+
+  约束（改这个文件前先读）：
+    * 只允许白名单桥方法：run / cancel / log / getMeta / getDevices / pickFile /
+      pickDirectory / openPath / toast / confirm，回调：onLog / onResult / onError /
+      onMeta / onDevices / onFile / onDir / onConfirm。
+    * iframe 是 opaque origin：没有 localStorage（SecurityError）、不能 fetch/XHR、
+      srcdoc 解析不了相对路径资源 —— 样式/脚本/图标一律内联，无外部 CDN。
+    * 宿主同一时刻只允许一个 plugin.run（流式），本 UI 用 busy 标志串行化所有动作，
+      并用 pending.action 路由结果，避免「解析」与「打包」的迟到结果互相污染。
+
+  后端动作（全部经 pluginBridge.run 触发，结果走 onResult，错误走 onError）：
+    presets  -> {success, action:"presets", channels[], defaults, saved_profiles, tools, notes}
+    inspect  -> {success, action:"inspect", source{...}, aab|null, warnings[]}
+    pack     -> {success, action:"pack", report_path, items[], errors[], warnings[]}
+  取消时宿主会下发 {success:false, cancelled:true}（没有 action 字段）。
+
+  持久化：插件配置由后端 profiles.json 负责（saved_profiles），前端不落盘；
+  密码（storepass / keypass）只在内存里，从不从 saved_profiles 恢复、也不写回。
+-->
+<style>
+  /* 本 iframe 无法继承宿主 --app-* token：这里定义一套本地中性回退值，
+     浅/深色各一份；语义色（ok/warn/err）只表示状态，不绑定任何品牌色。 */
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --fg-muted: #656d76;
+    --fg-dim: #8b949e;
+    --card: #f6f8fa;
+    --border: #d8dee4;
+    --input-bg: #ffffff;
+    --input-border: #c9d1d9;
+    --hover: rgba(0, 0, 0, .045);
+    --code-bg: rgba(0, 0, 0, .05);
+    --accent: #3b6ea5;
+    --accent-hover: #315c8b;
+    --accent-fg: #ffffff;
+    --ok: #1a7f37;
+    --ok-bg: rgba(26, 127, 55, .12);
+    --warn: #9a6700;
+    --warn-bg: rgba(154, 103, 0, .14);
+    --err: #cf222e;
+    --err-bg: rgba(207, 34, 46, .12);
+    --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --fg: #e6edf3;
+      --fg-muted: #9aa4ae;
+      --fg-dim: #7d8590;
+      --card: #161b22;
+      --border: #30363d;
+      --input-bg: #0d1117;
+      --input-border: #3d444d;
+      --hover: rgba(255, 255, 255, .06);
+      --code-bg: rgba(255, 255, 255, .07);
+      --accent: #4a86c5;
+      --accent-hover: #5b96d4;
+      --ok: #3fb950;
+      --ok-bg: rgba(63, 185, 80, .15);
+      --warn: #d29922;
+      --warn-bg: rgba(210, 153, 34, .15);
+      --err: #f85149;
+      --err-bg: rgba(248, 81, 73, .15);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.5 var(--sans);
+  }
+  [hidden] { display: none !important; }
+
+  /* ---------- 头部 ---------- */
+  .hdr {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+  }
+  .hdr-t { flex: 1; min-width: 0; }
+  .hdr-name { font-size: 14px; font-weight: 650; }
+  .hdr-meta {
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hdr-state {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-dim); }
+  .dot.busy { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .dot.ok { background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .dot.err { background: var(--err); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+  /* ---------- 错误条 ---------- */
+  .err-bar {
+    flex: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 8px 14px 0;
+    padding: 6px 10px;
+    border: 1px solid var(--err);
+    border-radius: 6px;
+    background: var(--err-bg);
+    color: var(--err);
+    font-size: 12px;
+    word-break: break-word;
+  }
+  .err-bar #errBarText { flex: 1; min-width: 0; }
+  .err-bar .x {
+    flex: none;
+    padding: 0 3px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  /* ---------- 主滚动区 ---------- */
+  .main {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overscroll-behavior: contain;
+  }
+
+  .card {
+    flex: none;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+  }
+  .card-h {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .card-h .sub {
+    font-weight: 400;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-h .spacer { flex: 1; }
+  .req { color: var(--err); font-weight: 400; }
+  .tpl-asset { border: 1px dashed var(--border); border-radius: 6px; padding: 6px; margin-bottom: 6px; }
+
+  /* ---------- 表单控件 ---------- */
+  input[type="text"], input[type="password"], input[type="number"], select, textarea {
+    font: inherit;
+    color: inherit;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 5px;
+    padding: 4px 7px;
+    min-width: 0;
+    outline: none;
+  }
+  input::placeholder, textarea::placeholder { color: var(--fg-dim); }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(74, 134, 197, .18);
+  }
+  input:disabled, select:disabled, textarea:disabled, button:disabled { opacity: .55; cursor: default; }
+  input.invalid { border-color: var(--err); }
+  .mono { font-family: var(--mono); font-size: 11.5px; }
+  textarea { resize: vertical; min-height: 46px; font-family: var(--mono); font-size: 11.5px; }
+
+  button {
+    font: inherit;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--input-border);
+    border-radius: 5px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover:not(:disabled) { background: var(--hover); }
+  button.mini { padding: 2px 8px; font-size: 11.5px; }
+  button.mini.danger { color: var(--err); border-color: var(--err); }
+  .btn-primary {
+    padding: 5px 16px;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-warn { border-color: var(--warn); background: var(--warn-bg); color: var(--warn); }
+
+  .pathrow, .row { display: flex; align-items: center; gap: 6px; }
+  .pathrow { margin-top: 7px; }
+  .pathrow > input, .row > input { flex: 1; min-width: 0; }
+  .empty-note { margin-top: 6px; font-size: 11.5px; color: var(--fg-muted); }
+  .fhint { font-size: 11px; color: var(--fg-dim); }
+
+  /* ---------- 键值网格 / chips ---------- */
+  .summary { margin-top: 2px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 5px 12px;
+    margin-top: 7px;
+  }
+  .kv { display: flex; flex-direction: column; min-width: 0; }
+  .kv .k { font-size: 10.5px; color: var(--fg-muted); }
+  .kv .v { font-size: 12px; color: var(--fg); word-break: break-all; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: var(--code-bg);
+    color: var(--fg);
+    font-size: 11px;
+    font-family: var(--mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .chip.err { background: var(--err-bg); color: var(--err); }
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 9px;
+    background: var(--code-bg);
+    color: var(--fg-muted);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.err { background: var(--err-bg); color: var(--err); }
+
+  /* ---------- 渠道卡（details 折叠） ---------- */
+  .ch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 9px;
+    margin-top: 8px;
+  }
+  details.ch {
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  details.ch > summary.ch-sum {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  details.ch > summary.ch-sum::-webkit-details-marker { display: none; }
+  details.ch > summary.ch-sum:hover { background: var(--hover); }
+  details.ch[open] > summary.ch-sum { border-bottom: 1px solid var(--border); }
+  .arrow { flex: none; font-size: 9px; color: var(--fg-muted); transition: transform .12s ease; }
+  details[open] > summary .arrow { transform: rotate(90deg); }
+  .ch-name { flex: none; font-size: 12px; font-weight: 600; }
+  .ch-fmt { flex: none; font-size: 10.5px; color: var(--fg-muted); font-family: var(--mono); }
+  .ch-pkg {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    font-size: 11px;
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ch-body {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 8px 9px 10px;
+  }
+  .ch-note { font-size: 11px; color: var(--fg-muted); }
+  .ck { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+  .ck input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+  .ck-en { font-weight: 600; }
+  .field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .field > label { font-size: 11px; color: var(--fg-muted); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .checks { display: flex; flex-direction: column; gap: 4px; }
+  .ferr { display: none; font-size: 11px; color: var(--err); }
+  .ferr.on { display: block; }
+
+  /* ---------- 环境 / 结果 / 日志 ---------- */
+  details.env > summary { cursor: pointer; list-style: none; user-select: none; }
+  details.env > summary::-webkit-details-marker { display: none; }
+  details.env > summary:hover { background: var(--hover); }
+  .env-body { margin-top: 8px; }
+
+  .notes { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--fg-muted); }
+  .notes li { margin: 1px 0; word-break: break-word; }
+  .notes.err { color: var(--err); }
+
+  .res-item {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg);
+  }
+  .res-item.bad { border-color: var(--err); }
+  .res-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .res-title { font-size: 12.5px; font-weight: 600; }
+  .res-dur { font-size: 11px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+  .res-path {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .res-path .rp-lbl { flex: none; color: var(--fg-muted); font-family: var(--sans); }
+  .res-path .rp { flex: 1; min-width: 0; word-break: break-all; }
+  .res-path .rp-meta { flex: none; color: var(--fg-muted); }
+  .res-err { margin-top: 6px; font-size: 12px; color: var(--err); word-break: break-word; }
+
+  .log {
+    height: 180px;
+    margin-top: 7px;
+    padding: 6px 8px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--code-bg);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overscroll-behavior: contain;
+  }
+  .log .ln { color: var(--fg); }
+  .log .ln.warn { color: var(--warn); }
+  .log .ln.error { color: var(--err); }
+  .log .empty { color: var(--fg-dim); }
+
+  /* ---------- 底部操作区 ---------- */
+  .foot {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--card);
+  }
+  .foot-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .foot-row .lbl { flex: none; font-size: 11.5px; color: var(--fg-muted); }
+  .foot-row #outputDir { flex: 1; min-width: 140px; }
+  .val-summary {
+    flex: 1;
+    min-width: 120px;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .val-summary.bad { color: var(--warn); }
+  .val-summary.ok { color: var(--ok); }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-t">
+    <div class="hdr-name" id="pluginName">白包打包</div>
+    <div class="hdr-meta" id="pluginMeta">正在加载插件信息…</div>
+  </div>
+  <div class="hdr-state"><span class="dot" id="statusDot"></span><span id="statusText">就绪</span></div>
+</header>
+
+<div class="err-bar" id="errBar" hidden>
+  <span id="errBarText"></span>
+  <button type="button" class="x" id="errBarClose" data-allow-busy="1" title="关闭">✕</button>
+</div>
+
+<main class="main" id="main">
+
+  <!-- 源 APK -->
+  <section class="card">
+    <div class="card-h">
+      源 APK <span class="req">*</span>
+      <span class="sub">基础包，必选</span>
+      <span class="chip" id="apkBundled" hidden title="来自插件自带 assets/base.apk">插件内置</span>
+      <span class="spacer"></span>
+      <span class="chip warn" id="srcStale" hidden title="APK 路径已变更，请重新点「解析」">路径已变更，待重新解析</span>
+    </div>
+    <div class="pathrow">
+      <!-- 只读：路径必须来自原生选择框，避免手输不存在的文件 -->
+      <input id="apkPath" class="mono" type="text" readonly title="点「选择」从磁盘选取 APK" placeholder="点「选择」选取基础 APK">
+      <button type="button" id="btnPickApk" data-rule="pick">选择</button>
+      <button type="button" id="btnInspect" data-rule="inspect">解析</button>
+    </div>
+    <div class="summary" id="srcSummary"></div>
+  </section>
+
+  <!-- 源 AAB（可选） -->
+  <section class="card">
+    <div class="card-h">
+      源 AAB <span class="sub">可选 · 与基础 APK 同一构建时谷歌渠道优先直改</span>
+      <span class="chip" id="aabBundled" hidden title="来自插件自带 assets/base.aab">插件内置</span>
+      <span class="spacer"></span>
+      <span class="badge" id="aabState">未选择</span>
+    </div>
+    <div class="pathrow">
+      <input id="aabPath" class="mono" type="text" placeholder="可选：同版本 AAB 路径">
+      <button type="button" id="btnPickAab" data-rule="pick">选择</button>
+      <button type="button" id="btnClearAab" class="mini" data-rule="aab-clear" title="不使用 AAB（即使插件自带）">清除</button>
+    </div>
+    <div class="pathrow">
+      <span class="lbl" style="flex:none;font-size:11.5px;color:var(--fg-muted)">谷歌模式</span>
+      <select id="googleMode" style="flex:none">
+        <option value="auto">auto（优先直改，失败重建）</option>
+        <option value="splice">splice（强制直改）</option>
+        <option value="reconstruct">reconstruct（强制重建）</option>
+      </select>
+      <span class="fhint" id="googleModeHint"></span>
+    </div>
+    <div class="summary" id="aabSummary"></div>
+  </section>
+
+  <!-- 环境检查（presets 返回的工具可用性与 notes） -->
+  <details class="card env" id="envCard" hidden>
+    <summary class="card-h"><span class="arrow">▶</span> 环境检查 <span class="sub" id="envSummary"></span></summary>
+    <div class="env-body" id="envBody"></div>
+  </details>
+
+  <!-- 配置模板（签名 / 图标 / meta-data / 权限 / assets / 开关） -->
+  <details class="card" id="tplCard" open>
+    <summary class="card-h">
+      <span class="arrow">▶</span>配置模板
+      <span class="sub" id="tplSub">可新建/修改/删除，套用到渠道</span>
+      <span class="spacer"></span>
+      <button type="button" id="btnTplNew" class="mini">＋ 新建</button>
+      <button type="button" id="btnTplSave" class="mini">保存</button>
+      <button type="button" id="btnTplDelete" class="mini danger">删除</button>
+    </summary>
+    <div class="ch-body" id="tplEditor">
+      <div class="row">
+        <span class="lbl" style="flex:none;font-size:11.5px;color:var(--fg-muted)">模板</span>
+        <select id="tplSelect" style="flex:1"></select>
+        <input id="tplName" type="text" style="flex:1" placeholder="模板名，例如 谷歌 / 三星 / 普通包">
+      </div>
+      <div class="two">
+        <div class="field"><label>默认格式</label><select id="tplFormat">
+          <option value="apk">APK</option>
+          <option value="aab">AAB</option>
+          <option value="both">APK + AAB</option>
+        </select></div>
+        <div class="field"><label>图标</label><div class="row">
+          <input id="tplIcon" type="text" class="mono" spellcheck="false" placeholder="可选：渠道图标 PNG">
+          <button type="button" id="btnTplPickIcon" class="mini">选择</button>
+        </div></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>keystore</label><div class="row">
+          <input id="tplKsPath" type="text" class="mono" spellcheck="false" placeholder=".jks / .keystore / .p12">
+          <button type="button" id="btnTplPickKs" class="mini">选择</button>
+        </div></div>
+        <div class="field"><label>alias</label><input id="tplKsAlias" type="text" spellcheck="false" placeholder="签名别名"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>storepass</label><input id="tplStorepass" type="password" autocomplete="off"></div>
+        <div class="field"><label>keypass</label><input id="tplKeypass" type="password" autocomplete="off"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>versionCode</label><input id="tplVc" type="number" min="1" step="1" class="mono" placeholder="留空=继承"></div>
+        <div class="field"><label>versionName</label><input id="tplVn" type="text" class="mono" placeholder="留空=继承"></div>
+      </div>
+      <div class="field"><label>渠道 meta-data</label>
+        <textarea id="tplMetadata" rows="3" spellcheck="false" placeholder="name=value，每行一条"></textarea>
+        <div class="fhint">支持 {channel} / {package} / {app_name} 等占位符</div></div>
+      <div class="field"><label>额外权限（uses-permission）</label>
+        <textarea id="tplPermissions" rows="2" spellcheck="false" placeholder="每行一个，例如 com.android.vending.BILLING"></textarea></div>
+      <div class="field"><label>assets 文件</label>
+        <div id="tplAssets"></div>
+        <button type="button" id="btnTplAddAsset" class="mini">＋ assets 文件</button>
+        <div class="fhint">模板里的 assets 会随套用注入该渠道；可加多个文件（path + 文本内容）</div></div>
+      <div class="checks">
+        <label class="ck"><input type="checkbox" id="tplRenameAuth"> 重命名 provider authority</label>
+        <label class="ck"><input type="checkbox" id="tplRenamePerm"> 重命名自定义权限</label>
+        <label class="ck"><input type="checkbox" id="tplRemoveUid"> 移除 sharedUserId</label>
+      </div>
+      <div class="row">
+        <button type="button" id="btnTplApplyAll" class="mini">应用到所有渠道</button>
+        <span class="fhint">只覆盖公共项（签名/图标/meta-data/权限/assets/版本/开关），不改包名、应用名</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- 渠道 -->
+  <section class="card">
+    <div class="card-h">渠道配置 <span class="sub" id="chHeadSub"></span><span class="spacer"></span><button type="button" id="btnAddChannel" class="mini">＋ 其他包</button></div>
+    <div class="ch-grid" id="chGrid"></div>
+  </section>
+
+  <!-- 结果 -->
+  <section id="results"></section>
+
+  <!-- 日志 -->
+  <section class="card">
+    <div class="card-h">
+      日志
+      <span class="spacer"></span>
+      <button type="button" id="btnClearLog" class="mini" data-allow-busy="1">清空</button>
+    </div>
+    <div class="log" id="log"><div class="empty">（暂无日志）</div></div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-row">
+    <span class="lbl">输出目录</span>
+    <input id="outputDir" class="mono" type="text" placeholder="打包产物输出目录">
+    <button type="button" id="btnPickOut" data-rule="pick">选择</button>
+  </div>
+  <div class="foot-row">
+    <label class="ck"><input type="checkbox" id="strictAab"> 严格校验 AAB</label>
+    <label class="ck"><input type="checkbox" id="saveProfiles"> 记住配置</label>
+    <span class="val-summary" id="valSummary"></span>
+    <button type="button" id="btnCancel" class="btn-warn" hidden data-allow-busy="1">取消</button>
+    <button type="button" id="btnRun" class="btn-primary" data-rule="run">开始打包</button>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ========================================================================
+   * 常量
+   * ====================================================================== */
+
+  /** 后端日志形如 "[white-label-packer] xxx"，宿主一般已剥掉，这里防御性再剥一次 */
+  var BRIDGE_PREFIX = /^\[white-label-packer\]\s*/;
+  var LOG_LIMIT = 2000;
+  var PKG_RE = /^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$/;
+  var FORMAT_LABELS = { apk: 'APK', aab: 'AAB', both: '两者' };
+  var VERIFY_KEYS = [
+    'badging', 'apksigner', 'zipalign', 'resource_ids',
+    'jarsigner', 'keytool', 'bundletool_validate', 'bundletool_build_apks'
+  ];
+  var FIELD_ORDER = ['package_name', 'app_name', 'ks_path', 'ks_alias', 'storepass', 'version_code'];
+  var PRESETS_TIMEOUT_MS = 15000;
+
+  /** presets 未返回/失败时的兜底渠道定义（与后端预置一致） */
+  var FALLBACK_CHANNELS = [
+    { id: 'other', label: '其他包', format: 'apk', also_apk: true, suffix: '.other' },
+    { id: 'samsung', label: '三星（Galaxy Store）', format: 'apk', also_apk: true, suffix: '.samsung' },
+    { id: 'google', label: '谷歌（Google Play）', format: 'aab', also_apk: true, suffix: '.google' }
+  ];
+  var CHANNEL_ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+  /** 配置模板兜底（与后端 DEFAULT_TEMPLATES 对齐；后端返回为准） */
+  var FALLBACK_TEMPLATES = [
+    { id: 'other', name: '其他包', format: 'apk', keystore: { path: '', alias: '' }, icon_path: '', version_code: null, version_name: '', metadata: [], permissions: [], assets: [], rename_authorities: false, rename_permissions: false, remove_shared_uid: true },
+    { id: 'samsung', name: '三星', format: 'apk', keystore: { path: '', alias: '' }, icon_path: '', version_code: null, version_name: '', metadata: [], permissions: [], assets: [], rename_authorities: false, rename_permissions: false, remove_shared_uid: true },
+    { id: 'google', name: '谷歌', format: 'aab', keystore: { path: '', alias: '' }, icon_path: '', version_code: null, version_name: '', metadata: [], permissions: ['com.android.vending.BILLING'], assets: [], rename_authorities: false, rename_permissions: false, remove_shared_uid: true }
+  ];
+
+  /** 桥在宿主外打开时不存在——所有桥调用都要先判空 */
+  var bridge = window.pluginBridge || null;
+
+  var state = {
+    busy: false,          // 有 plugin.run 在飞（宿主只允许一个）
+    picking: false,       // 原生文件/目录对话框打开中（并发选择一律拒绝）
+    pending: null,        // { action: 'presets' | 'inspect' | 'pack' } —— 结果路由依据
+    meta: null,
+    presets: null,
+    bundled: {},          // 插件自带 assets/base.apk|base.aab（可选）
+    templates: [],
+    tplId: '',
+    notes: [],
+    tools: {},
+    channels: [],
+    source: null,
+    aab: null,
+    aabChecked: false,    // 上次 inspect 是否已处理过 AAB（区分「待解析」与「解析后无 AAB」）
+    inspectWarnings: [],
+    apkPath: '',
+    aabPath: '',
+    outputDir: '',
+    googleMode: 'auto',
+    strictAab: true,
+    saveProfiles: true,
+    validation: { ok: false, issues: [], fieldErrors: {} },
+    touched: {},          // "channelId.field" → 用户碰过（决定是否显示必填类错误）
+    attempted: false,     // 点过「开始打包」后，所有错误都显示
+    autoInspected: false, // 插件内置默认 APK 已自动触发过 inspect
+    presetsRequested: false
+  };
+
+  /** 同一时刻只挂一个 picker 等待者：{kind:'file'|'dir', resolve} */
+  var picker = { pending: null };
+  var presetsTimer = null;
+  var metaFallbackTimer = null;
+  var inspectTimer = null;
+
+  /* ========================================================================
+   * 小工具
+   * ====================================================================== */
+
+  function $(id) { return document.getElementById(id); }
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function str(v) { return v == null ? '' : String(v); }
+
+  function fieldKey(id, field) { return id + '.' + field; }
+
+  function channelById(id) {
+    for (var i = 0; i < state.channels.length; i++) {
+      if (state.channels[i].id === id) return state.channels[i];
+    }
+    return null;
+  }
+
+  function channelCard(id) {
+    return document.querySelector('details.ch[data-id="' + String(id).replace(/"/g, '') + '"]');
+  }
+
+  function fmtMsg(x) {
+    if (x == null) return '';
+    if (typeof x === 'string') return x;
+    if (typeof x === 'number' || typeof x === 'boolean') return String(x);
+    if (x.message) return String(x.message);
+    try { return JSON.stringify(x); } catch (e) { return String(x); }
+  }
+
+  function shortHash(h) {
+    var s = str(h);
+    if (!s) return '—';
+    return s.length > 20 ? s.slice(0, 20) + '…' : s;
+  }
+
+  function fmtNum(v) {
+    return v == null || v === '' ? '—' : String(v);
+  }
+
+  function fmtSize(n) {
+    if (n == null || n === '' || isNaN(Number(n))) return '—';
+    var b = Number(n);
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(2) + ' MB';
+  }
+
+  function fmtDuration(ms) {
+    if (ms == null) return '';
+    return (Number(ms) / 1000).toFixed(1) + 's';
+  }
+
+  function kv(label, value, cls, title) {
+    var v = value == null || value === '' ? '—' : String(value);
+    return '<div class="kv"><span class="k">' + esc(label) + '</span>' +
+      '<span class="v ' + (cls || '') + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' +
+      esc(v) + '</span></div>';
+  }
+
+  function noteList(arr, cls) {
+    var list = Array.isArray(arr) ? arr : [];
+    if (!list.length) return '';
+    var h = '<ul class="notes' + (cls ? ' ' + cls : '') + '">';
+    for (var i = 0; i < list.length; i++) h += '<li>' + esc(fmtMsg(list[i])) + '</li>';
+    return h + '</ul>';
+  }
+
+  function fieldHtml(label, required, control, errField, hint) {
+    var h = '<div class="field"><label>' + esc(label) + (required ? ' <span class="req">*</span>' : '') + '</label>' + control;
+    if (hint) h += '<div class="fhint">' + esc(hint) + '</div>';
+    if (errField) h += '<div class="ferr" data-err="' + esc(errField) + '"></div>';
+    return h + '</div>';
+  }
+
+  /* ========================================================================
+   * 渠道配置：默认值 / saved_profiles 合并
+   * ====================================================================== */
+
+  function channelMetas() {
+    var p = state.presets;
+    if (p && Array.isArray(p.channels) && p.channels.length) return p.channels;
+    return FALLBACK_CHANNELS;
+  }
+
+  /** 渠道允许的输出格式：默认按预置决定；also_apk 时三种都可选 */
+  function formatsFor(cfg) {
+    var list = [];
+    function add(f) { if (list.indexOf(f) < 0) list.push(f); }
+    if (cfg.meta_format === 'aab') {
+      add('aab');
+      if (cfg.also_apk) { add('apk'); add('both'); }
+    } else {
+      add('apk');
+      if (cfg.also_apk) { add('aab'); add('both'); }
+    }
+    return list;
+  }
+
+  function clampFormat(cfg) {
+    var list = formatsFor(cfg);
+    if (list.indexOf(cfg.format) < 0) cfg.format = list[0];
+  }
+
+  function emptyChannel(meta) {
+    var id = str(meta && meta.id);
+    var cfg = {
+      id: id,
+      label: str(meta && meta.label) || id,
+      notes: str(meta && meta.notes),
+      suffix: str(meta && meta.suffix),
+      custom: !!(meta && meta.custom),
+      template_id: id,
+      assets: [],
+      meta_format: str(meta && meta.format) || (id === 'google' ? 'aab' : 'apk'),
+      also_apk: !!(meta && meta.also_apk),
+      enabled: id === 'other',
+      package_name: '',
+      app_name: '',
+      version_code: '',
+      version_name: '',
+      icon_path: '',
+      format: str(meta && meta.format) || (id === 'google' ? 'aab' : 'apk'),
+      keystore: { path: '', alias: '', storepass: '', keypass: '' },
+      metadataText: '',
+      permissionsText: '',
+      assetPath: '',
+      assetContent: '',
+      rename_authorities: false,
+      rename_permissions: false,
+      remove_shared_uid: true,
+      auto: {}   // 上一轮由源 APK 自动填入的值（源变了才能安全覆盖）
+    };
+    clampFormat(cfg);
+    return cfg;
+  }
+
+  function metadataToText(items) {
+    if (!Array.isArray(items)) return '';
+    var lines = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i] || {};
+      lines.push(str(it.name) + '=' + str(it.value));
+    }
+    return lines.join('\n');
+  }
+
+  /**
+   * 合并优先级：saved_profile > 渠道预置默认 > 源 APK 推导（autofill 阶段补）。
+   * 口令永不从 saved_profiles 恢复（profiles.json 按约定不落盘口令）。
+   */
+  function applyProfile(cfg, p) {
+    if (!p || typeof p !== 'object') return;
+    if (cfg.custom && typeof p.label === 'string' && p.label) cfg.label = p.label;
+    if (typeof p.template_id === 'string') cfg.template_id = p.template_id;
+    if (Array.isArray(p.assets)) cfg.assets = p.assets.map(function (a) {
+      return { path: str(a && a.path), content: str(a && a.content) };
+    });
+    if (typeof p.enabled === 'boolean') cfg.enabled = p.enabled;
+    if (typeof p.package_name === 'string') cfg.package_name = p.package_name;
+    if (typeof p.app_name === 'string') cfg.app_name = p.app_name;
+    if (p.version_code != null && str(p.version_code) !== '') cfg.version_code = str(p.version_code);
+    if (typeof p.version_name === 'string') cfg.version_name = p.version_name;
+    if (typeof p.icon_path === 'string') cfg.icon_path = p.icon_path;
+    if (typeof p.format === 'string' && p.format) cfg.format = p.format;
+    if (p.keystore && typeof p.keystore === 'object') {
+      cfg.keystore.path = str(p.keystore.path);
+      cfg.keystore.alias = str(p.keystore.alias);
+      // storepass / keypass 有意忽略
+    }
+    if (Array.isArray(p.metadata)) cfg.metadataText = metadataToText(p.metadata);
+    if (Array.isArray(p.permissions)) cfg.permissionsText = p.permissions.join('\n');
+    if (p.asset && typeof p.asset === 'object') {
+      cfg.assetPath = str(p.asset.path);
+      cfg.assetContent = str(p.asset.content);
+    }
+    if (typeof p.rename_authorities === 'boolean') cfg.rename_authorities = p.rename_authorities;
+    if (typeof p.rename_permissions === 'boolean') cfg.rename_permissions = p.rename_permissions;
+    if (typeof p.remove_shared_uid === 'boolean') cfg.remove_shared_uid = p.remove_shared_uid;
+    clampFormat(cfg);
+  }
+
+  /* ========================================================================
+   * 配置模板：CRUD + 套用到渠道
+   * ====================================================================== */
+
+  function templateById(id) {
+    for (var i = 0; i < state.templates.length; i++) {
+      if (state.templates[i].id === id) return state.templates[i];
+    }
+    return null;
+  }
+
+  function templateOptions(selected, includeNone) {
+    var h = includeNone ? '<option value="">（不使用模板）</option>' : '';
+    for (var i = 0; i < state.templates.length; i++) {
+      var t = state.templates[i];
+      h += '<option value="' + esc(t.id) + '"' + (t.id === selected ? ' selected' : '') + '>' + esc(t.name) + '</option>';
+    }
+    return h;
+  }
+
+  /** 把模板公共项套到渠道；包名/应用名/启用状态保留 */
+  function applyTemplateToChannel(cfg, tpl) {
+    if (!cfg || !tpl) return;
+    cfg.template_id = tpl.id;
+    if (tpl.format) cfg.format = tpl.format;
+    cfg.keystore.path = tpl.keystore && tpl.keystore.path ? tpl.keystore.path : '';
+    cfg.keystore.alias = tpl.keystore && tpl.keystore.alias ? tpl.keystore.alias : '';
+    if (tpl.keystore && tpl.keystore.storepass) cfg.keystore.storepass = tpl.keystore.storepass;
+    if (tpl.keystore && tpl.keystore.keypass) cfg.keystore.keypass = tpl.keystore.keypass;
+    cfg.icon_path = tpl.icon_path || '';
+    cfg.version_code = tpl.version_code == null ? '' : String(tpl.version_code);
+    cfg.version_name = tpl.version_name || '';
+    cfg.metadataText = metadataToText(tpl.metadata || []);
+    cfg.permissionsText = (tpl.permissions || []).join('\n');
+    cfg.assets = (tpl.assets || []).map(function (a) {
+      return { path: str(a && a.path), content: str(a && a.content) };
+    });
+    cfg.rename_authorities = !!tpl.rename_authorities;
+    cfg.rename_permissions = !!tpl.rename_permissions;
+    cfg.remove_shared_uid = tpl.remove_shared_uid !== false;
+    clampFormat(cfg);
+  }
+
+  function renderTplAssets(assets) {
+    var box = $('tplAssets');
+    if (!box) return;
+    box.innerHTML = '';
+    (assets || []).forEach(addTplAssetRow);
+  }
+
+  function addTplAssetRow(asset) {
+    var box = $('tplAssets');
+    if (!box) return;
+    asset = asset || { path: '', content: '' };
+    var row = document.createElement('div');
+    row.className = 'tpl-asset';
+    row.setAttribute('data-asset', '1');
+    row.innerHTML =
+      '<div class="row"><input class="mono" data-tpl-asset-path type="text" spellcheck="false" placeholder="assets/xxx.json" value="' + esc(asset.path) + '">' +
+      '<button type="button" class="mini danger" data-tpl-asset-del>移除</button></div>' +
+      '<textarea data-tpl-asset-content rows="2" spellcheck="false" placeholder="写入该路径的文本内容">' + esc(asset.content) + '</textarea>';
+    box.appendChild(row);
+    return row;
+  }
+
+  function collectTplAssets() {
+    var box = $('tplAssets');
+    if (!box) return [];
+    var out = [];
+    var rows = box.querySelectorAll('[data-asset]');
+    for (var i = 0; i < rows.length; i++) {
+      var p = rows[i].querySelector('[data-tpl-asset-path]');
+      var c = rows[i].querySelector('[data-tpl-asset-content]');
+      var path = p ? p.value.trim() : '';
+      if (path) out.push({ path: path, content: c ? c.value : '' });
+    }
+    return out;
+  }
+
+  function loadTemplateForm(tpl) {
+    if (!tpl) return;
+    $('tplSelect').value = tpl.id;
+    $('tplName').value = tpl.name || '';
+    $('tplFormat').value = tpl.format || 'apk';
+    $('tplIcon').value = tpl.icon_path || '';
+    $('tplKsPath').value = (tpl.keystore && tpl.keystore.path) || '';
+    $('tplKsAlias').value = (tpl.keystore && tpl.keystore.alias) || '';
+    $('tplStorepass').value = (tpl.keystore && tpl.keystore.storepass) || '';
+    $('tplKeypass').value = (tpl.keystore && tpl.keystore.keypass) || '';
+    $('tplVc').value = tpl.version_code == null ? '' : String(tpl.version_code);
+    $('tplVn').value = tpl.version_name || '';
+    $('tplMetadata').value = metadataToText(tpl.metadata || []);
+    $('tplPermissions').value = (tpl.permissions || []).join('\n');
+    $('tplRenameAuth').checked = !!tpl.rename_authorities;
+    $('tplRenamePerm').checked = !!tpl.rename_permissions;
+    $('tplRemoveUid').checked = tpl.remove_shared_uid !== false;
+    renderTplAssets(tpl.assets || []);
+    var sub = $('tplSub');
+    if (sub) sub.textContent = '共 ' + state.templates.length + ' 个模板 · 套用后仍可逐渠道覆盖';
+  }
+
+  function renderTemplates() {
+    if (!Array.isArray(state.templates) || !state.templates.length) {
+      state.templates = FALLBACK_TEMPLATES.map(function (t) { return JSON.parse(JSON.stringify(t)); });
+    }
+    if (!state.tplId || !templateById(state.tplId)) state.tplId = state.templates[0].id;
+    var sel = $('tplSelect');
+    if (sel) {
+      sel.innerHTML = templateOptions(state.tplId, false);
+      sel.value = state.tplId;
+    }
+    loadTemplateForm(templateById(state.tplId));
+  }
+
+  function readTemplateForm() {
+    var meta = parseMetadata($('tplMetadata').value);
+    return {
+      id: state.tplId,
+      name: $('tplName').value.trim() || state.tplId,
+      format: $('tplFormat').value,
+      keystore: {
+        path: $('tplKsPath').value.trim(),
+        alias: $('tplKsAlias').value.trim(),
+        storepass: $('tplStorepass').value,
+        keypass: $('tplKeypass').value
+      },
+      icon_path: $('tplIcon').value.trim(),
+      version_code: $('tplVc').value.trim() === '' ? null : Number($('tplVc').value),
+      version_name: $('tplVn').value.trim(),
+      metadata: meta.items,
+      permissions: parsePermissions($('tplPermissions').value),
+      assets: collectTplAssets(),
+      rename_authorities: !!$('tplRenameAuth').checked,
+      rename_permissions: !!$('tplRenamePerm').checked,
+      remove_shared_uid: !!$('tplRemoveUid').checked
+    };
+  }
+
+  function persistTemplates() {
+    if (!bridge) return;
+    if (!startAction('save_templates', { action: 'save_templates', templates: state.templates })) {
+      toast('当前有任务在跑，稍后再保存模板', 'warning');
+    }
+  }
+
+  function saveTemplate() {
+    var tpl = readTemplateForm();
+    var idx = -1;
+    for (var i = 0; i < state.templates.length; i++) if (state.templates[i].id === tpl.id) idx = i;
+    if (idx < 0) state.templates.push(tpl);
+    else state.templates[idx] = tpl;
+    renderTemplates();
+    persistTemplates();
+  }
+
+  function newTemplate() {
+    var id = 'tpl-' + Date.now().toString(36);
+    var tpl = {
+      id: id, name: '新模板', format: 'apk', keystore: { path: '', alias: '' },
+      icon_path: '', version_code: null, version_name: '', metadata: [],
+      permissions: [], assets: [], rename_authorities: false,
+      rename_permissions: false, remove_shared_uid: true
+    };
+    state.templates.push(tpl);
+    state.tplId = id;
+    renderTemplates();
+    persistTemplates();
+  }
+
+  function deleteTemplate() {
+    if (state.templates.length <= 1) {
+      toast('至少保留一个模板', 'warning');
+      return;
+    }
+    state.templates = state.templates.filter(function (t) { return t.id !== state.tplId; });
+    state.tplId = state.templates[0].id;
+    renderTemplates();
+    persistTemplates();
+  }
+
+  function applyTemplateAll() {
+    var tpl = readTemplateForm();
+    for (var i = 0; i < state.channels.length; i++) {
+      applyTemplateToChannel(state.channels[i], tpl);
+    }
+    syncChannelInputs();
+    refresh();
+    toast('已套用到 ' + state.channels.length + ' 个渠道（包名/应用名保留）', 'success');
+  }
+
+  function buildChannels() {
+    var saved = {};
+    var sp = state.presets && state.presets.saved_profiles;
+    if (sp && sp.channels && typeof sp.channels === 'object') saved = sp.channels;
+    var metas = channelMetas();
+    state.channels = metas.map(function (meta) {
+      var cfg = emptyChannel(meta);
+      if (saved[cfg.id]) {
+        applyProfile(cfg, saved[cfg.id]);
+      } else {
+        var tpl = templateById(cfg.template_id);
+        if (tpl) applyTemplateToChannel(cfg, tpl);
+      }
+      return cfg;
+    });
+    // saved_profiles 里出现、但预置里没有的渠道 → 作为自定义渠道恢复
+    Object.keys(saved).forEach(function (id) {
+      if (!CHANNEL_ID_RE.test(id)) return;
+      if (metas.some(function (m) { return m.id === id; })) return;
+      var p = saved[id] || {};
+      var cfg = emptyChannel({
+        id: id,
+        label: str(p.label) || id,
+        format: str(p.format) || 'apk',
+        also_apk: true,
+        custom: true,
+        notes: '自定义渠道'
+      });
+      applyProfile(cfg, p);
+      state.channels.push(cfg);
+    });
+  }
+
+  function nextCustomId() {
+    var used = {};
+    for (var i = 0; i < state.channels.length; i++) used[state.channels[i].id] = true;
+    var n = 1;
+    while (used['other' + n]) n++;
+    return 'other' + n;
+  }
+
+  function nextCustomLabel() {
+    var n = 1;
+    for (;;) {
+      var candidate = '其他包 ' + n;
+      var taken = state.channels.some(function (c) { return c.custom && c.label === candidate; });
+      if (!taken) return candidate;
+      n++;
+    }
+  }
+
+  function addCustomChannel() {
+    if (state.busy) return;
+    var id = nextCustomId();
+    var cfg = emptyChannel({
+      id: id,
+      label: nextCustomLabel(),
+      format: 'apk',
+      also_apk: true,
+      custom: true,
+      notes: '自定义渠道'
+    });
+    cfg.enabled = true;
+    state.channels.push(cfg);
+    renderChannels();
+    refresh();
+    var card = channelCard(id);
+    if (card) {
+      card.open = true;
+      if (card.scrollIntoView) card.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function removeCustomChannel(cfg) {
+    if (!cfg || !cfg.custom || state.busy) return;
+    state.channels = state.channels.filter(function (c) { return c !== cfg; });
+    renderChannels();
+    refresh();
+  }
+
+  /* ========================================================================
+   * 渠道卡渲染 + 字段读写
+   * ====================================================================== */
+
+  function channelCardHtml(cfg, index) {
+    var d = 'data-ch="' + esc(cfg.id) + '"';
+    var fmts = formatsFor(cfg);
+    var fmtOpts = fmts.map(function (f) {
+      return '<option value="' + f + '"' + (cfg.format === f ? ' selected' : '') + '>' + FORMAT_LABELS[f] + '</option>';
+    }).join('');
+    var singleFmt = fmts.length <= 1 ? ' data-always-disabled="1"' : '';
+    var noteBits = [];
+    if (cfg.notes) noteBits.push(cfg.notes);
+    if (cfg.custom) noteBits.push('自定义渠道 · 标识 ' + cfg.id);
+    if (cfg.assets && cfg.assets.length) noteBits.push('模板 assets ' + cfg.assets.length + ' 个');
+    if (cfg.suffix) noteBits.push('建议包名后缀 ' + cfg.suffix);
+
+    var h = '';
+    h += '<details class="ch" data-id="' + esc(cfg.id) + '"' + (index === 0 ? ' open' : '') + '>';
+    h += '<summary class="ch-sum">';
+    h += '<span class="arrow">▶</span>';
+    h += '<span class="ch-name">' + esc(cfg.label) + '</span>';
+    h += '<span class="badge ch-state" data-role="ch-state">未启用</span>';
+    h += '<span class="ch-fmt" data-role="ch-fmt"></span>';
+    h += '<span class="ch-pkg mono" data-role="ch-pkg"></span>';
+    h += '</summary>';
+    h += '<div class="ch-body">';
+
+    h += '<div class="field"><label>配置模板</label><div class="row">' +
+      '<select ' + d + ' data-field="template_id">' + templateOptions(cfg.template_id, true) + '</select>' +
+      '<button type="button" class="mini" data-ch="' + esc(cfg.id) + '" data-act="apply-template">套用</button></div>' +
+      '<div class="fhint">套用模板的签名/图标/meta-data/权限/assets/版本/开关；包名和应用名保留</div></div>';
+
+    if (cfg.custom) {
+      h += '<div class="field"><label>渠道名</label><div class="row">' +
+        '<input type="text" ' + d + ' data-field="label" placeholder="其他包">' +
+        '<button type="button" class="mini danger" data-act="remove" ' + d + '>删除</button></div>' +
+        '<div class="fhint">渠道标识 ' + esc(cfg.id) + '（用于产物文件名，创建后不可改）</div></div>';
+    }
+
+    // 启用开关放在 body 里：summary 内的交互控件会被 details 的点击折叠行为干扰
+    h += '<label class="ck ck-en"><input type="checkbox" ' + d + ' data-field="enabled"> 启用此渠道</label>';
+    if (noteBits.length) h += '<div class="ch-note">' + esc(noteBits.join(' · ')) + '</div>';
+
+    h += '<div class="field"><label>包名 <span class="req">*</span></label><div class="row">' +
+      '<input type="text" class="mono" ' + d + ' data-field="package_name" spellcheck="false" placeholder="com.example.app">' +
+      '<button type="button" class="mini" data-act="suggest" ' + d + ' data-rule="suggest">建议包名</button></div>' +
+      '<div class="ferr" data-err="package_name"></div></div>';
+
+    h += fieldHtml('应用名', true,
+      '<input type="text" ' + d + ' data-field="app_name" placeholder="桌面显示名">', 'app_name', '');
+
+    h += '<div class="two">' +
+      fieldHtml('versionCode', false,
+        '<input type="number" min="1" step="1" class="mono" ' + d + ' data-field="version_code" placeholder="留空=继承">',
+        'version_code', '') +
+      fieldHtml('versionName', false,
+        '<input type="text" class="mono" ' + d + ' data-field="version_name" placeholder="留空=继承">',
+        'version_name', '') +
+      '</div>';
+
+    h += '<div class="field"><label>图标</label><div class="row">' +
+      '<input type="text" class="mono" ' + d + ' data-field="icon_path" spellcheck="false" placeholder="可选：渠道图标 PNG">' +
+      '<button type="button" class="mini" data-act="pick-icon" ' + d + ' data-rule="pick">选择 PNG</button></div></div>';
+
+    h += '<div class="field"><label>keystore <span class="req">*</span></label><div class="row">' +
+      '<input type="text" class="mono" ' + d + ' data-field="ks_path" spellcheck="false" placeholder=".jks / .keystore / .p12">' +
+      '<button type="button" class="mini" data-act="pick-keystore" ' + d + ' data-rule="pick">选择</button></div>' +
+      '<div class="ferr" data-err="ks_path"></div></div>';
+
+    h += '<div class="two">' +
+      fieldHtml('alias', true,
+        '<input type="text" ' + d + ' data-field="ks_alias" spellcheck="false" placeholder="签名别名">',
+        'ks_alias', '') +
+      '<div class="field"><label>格式</label><select ' + d + ' data-field="format"' + singleFmt + '>' + fmtOpts + '</select></div>' +
+      '</div>';
+
+    h += '<div class="two">' +
+      fieldHtml('storepass', true,
+        '<input type="password" ' + d + ' data-field="storepass" autocomplete="off">', 'storepass', '') +
+      fieldHtml('keypass', false,
+        '<input type="password" ' + d + ' data-field="keypass" autocomplete="off">', '', '') +
+      '</div>';
+
+    h += '<div class="field"><label>渠道 meta-data</label>' +
+      '<textarea ' + d + ' data-field="metadata" rows="3" spellcheck="false" placeholder="name=value，每行一条；空行和 # 行忽略"></textarea>' +
+      '<div class="fhint">按第一个 = 切分</div></div>';
+
+    h += '<div class="field"><label>额外权限（uses-permission）</label>' +
+      '<textarea ' + d + ' data-field="permissions" rows="2" spellcheck="false" placeholder="每行一个，例如 com.android.vending.BILLING"></textarea>' +
+      '<div class="fhint">写入 &lt;uses-permission&gt;；已存在则不重复添加，APK / AAB 都生效。</div></div>';
+
+    // 协议里 asset 是 { path: "assets/...", content: "文本" }：path 是产物内目标路径，
+    // content 直接写文本内容（iframe 读不了本地文件，所以这里没有文件选择框）。
+    h += '<div class="field"><label>渠道文件（assets 路径 + 文本内容）</label>' +
+      '<input type="text" class="mono" ' + d + ' data-field="asset_path" spellcheck="false" placeholder="assets/channel.txt">' +
+      '<textarea ' + d + ' data-field="asset_content" rows="2" spellcheck="false" placeholder="注入到该路径的文本内容（可留空）"></textarea></div>';
+
+    h += '<div class="checks">' +
+      '<label class="ck"><input type="checkbox" ' + d + ' data-field="rename_authorities"> 重命名 provider authority</label>' +
+      '<label class="ck"><input type="checkbox" ' + d + ' data-field="rename_permissions"> 重命名自定义权限</label>' +
+      '<label class="ck"><input type="checkbox" ' + d + ' data-field="remove_shared_uid"> 移除 sharedUserId</label>' +
+      '</div>';
+
+    h += '</div></details>';
+    return h;
+  }
+
+  function renderChannels() {
+    var grid = $('chGrid');
+    grid.innerHTML = state.channels.map(function (cfg, i) { return channelCardHtml(cfg, i); }).join('');
+    syncChannelInputs();
+  }
+
+  /** 字段 ↔ 配置对象的唯一映射点（序列化/回填都走这里，避免两套名字） */
+  function valueOf(cfg, field) {
+    switch (field) {
+      case 'enabled': return cfg.enabled;
+      case 'template_id': return cfg.template_id;
+      case 'label': return cfg.label;
+      case 'package_name': return cfg.package_name;
+      case 'app_name': return cfg.app_name;
+      case 'version_code': return cfg.version_code;
+      case 'version_name': return cfg.version_name;
+      case 'icon_path': return cfg.icon_path;
+      case 'ks_path': return cfg.keystore.path;
+      case 'ks_alias': return cfg.keystore.alias;
+      case 'storepass': return cfg.keystore.storepass;
+      case 'keypass': return cfg.keystore.keypass;
+      case 'format': return cfg.format;
+      case 'metadata': return cfg.metadataText;
+      case 'permissions': return cfg.permissionsText;
+      case 'asset_path': return cfg.assetPath;
+      case 'asset_content': return cfg.assetContent;
+      case 'rename_authorities': return cfg.rename_authorities;
+      case 'rename_permissions': return cfg.rename_permissions;
+      case 'remove_shared_uid': return cfg.remove_shared_uid;
+    }
+    return '';
+  }
+
+  function assign(cfg, field, value) {
+    switch (field) {
+      case 'enabled': cfg.enabled = !!value; break;
+      case 'template_id': cfg.template_id = str(value); break;
+      case 'label': cfg.label = str(value); break;
+      case 'package_name': cfg.package_name = str(value); break;
+      case 'app_name': cfg.app_name = str(value); break;
+      case 'version_code': cfg.version_code = str(value); break;
+      case 'version_name': cfg.version_name = str(value); break;
+      case 'icon_path': cfg.icon_path = str(value); break;
+      case 'ks_path': cfg.keystore.path = str(value); break;
+      case 'ks_alias': cfg.keystore.alias = str(value); break;
+      case 'storepass': cfg.keystore.storepass = str(value); break;
+      case 'keypass': cfg.keystore.keypass = str(value); break;
+      case 'format': cfg.format = str(value); break;
+      case 'metadata': cfg.metadataText = str(value); break;
+      case 'permissions': cfg.permissionsText = str(value); break;
+      case 'asset_path': cfg.assetPath = str(value); break;
+      case 'asset_content': cfg.assetContent = str(value); break;
+      case 'rename_authorities': cfg.rename_authorities = !!value; break;
+      case 'rename_permissions': cfg.rename_permissions = !!value; break;
+      case 'remove_shared_uid': cfg.remove_shared_uid = !!value; break;
+    }
+  }
+
+  /** 把状态写回 DOM（只用于程序化改动：解析自动填充 / 建议包名 / presets 重建） */
+  function syncChannelInputs() {
+    for (var c = 0; c < state.channels.length; c++) {
+      var cfg = state.channels[c];
+      var card = channelCard(cfg.id);
+      if (!card) continue;
+      var inputs = card.querySelectorAll('[data-field]');
+      for (var i = 0; i < inputs.length; i++) {
+        var el = inputs[i];
+        var f = el.getAttribute('data-field');
+        var v = valueOf(cfg, f);
+        if (el.type === 'checkbox') el.checked = !!v;
+        else el.value = str(v);
+      }
+    }
+  }
+
+  /* ========================================================================
+   * 源 APK / AAB 摘要
+   * ====================================================================== */
+
+  function updateStale() {
+    var staleEl = $('srcStale');
+    if (!staleEl) return;
+    var s = state.source;
+    staleEl.hidden = !(s && s.path && s.path !== state.apkPath.trim());
+  }
+
+  function renderSource() {
+    var el = $('srcSummary');
+    var s = state.source;
+    if (!s) {
+      el.innerHTML = '<div class="empty-note">选择 APK 后点「解析」查看包信息。</div>';
+      return;
+    }
+    var icon = s.icon && typeof s.icon === 'object' ? s.icon : {};
+    var files = Array.isArray(icon.files) ? icon.files : [];
+    var skipped = Array.isArray(icon.skipped) ? icon.skipped : [];
+    var iconTitle = [];
+    if (files.length) iconTitle.push('替换: ' + files.join('\n'));
+    if (skipped.length) iconTitle.push('跳过: ' + skipped.join('\n'));
+
+    var h = '<div class="grid">';
+    h += kv('包名', s.package, 'mono');
+    h += kv('应用名', s.label);
+    h += kv('版本', str(s.version_name || '—') + ' (' + fmtNum(s.version_code) + ')');
+    h += kv('min / target SDK', fmtNum(s.min_sdk) + ' / ' + fmtNum(s.target_sdk));
+    h += kv('签名 SHA-256', shortHash(s.signer_sha256), 'mono', str(s.signer_sha256));
+    h += kv('ABI', (Array.isArray(s.abis) && s.abis.length) ? s.abis.join(', ') : '—', 'mono');
+    h += kv('资源包名', s.resource_package || '—', 'mono');
+    h += kv('图标文件', files.length + ' 个' + (skipped.length ? ' / 跳过 ' + skipped.length : ''),
+      '', iconTitle.join('\n'));
+    h += '</div>';
+
+    var chips = '';
+    if (s.split) chips += '<span class="chip err" title="split / .apks 资源不完整，不能作为基础包">split APK</span>';
+    if (s.debuggable) chips += '<span class="chip warn">debuggable</span>';
+    if (files.length) chips += '<span class="chip ok">图标 ' + files.length + '</span>';
+    if (skipped.length) chips += '<span class="chip warn" title="' + esc(skipped.join('\n')) + '">图标跳过 ' + skipped.length + '</span>';
+    if (chips) h += '<div class="chips">' + chips + '</div>';
+    h += noteList(state.inspectWarnings);
+    el.innerHTML = h;
+  }
+
+  function renderAab() {
+    var el = $('aabSummary');
+    var badge = $('aabState');
+    var path = state.aabPath.trim();
+    var a = state.aab;
+
+    if (!path) {
+      badge.textContent = '未选择';
+      badge.className = 'badge';
+      el.innerHTML = '<div class="empty-note">未选择 AAB：谷歌渠道按所选模式处理；没有源 AAB 时只能 reconstruct。</div>';
+      updateGoogleModeOptions();
+      return;
+    }
+    if (!a) {
+      badge.textContent = state.aabChecked ? '不可用' : '待解析';
+      badge.className = 'badge ' + (state.aabChecked ? 'err' : '');
+      el.innerHTML = state.aabChecked
+        ? '<div class="empty-note">源 AAB 未通过解析（可能不是有效 AAB），谷歌渠道将退回 reconstruct。</div>'
+        : '<div class="empty-note">已选择 AAB 路径，点「解析」后显示模块与 splice 可用性。</div>';
+      updateGoogleModeOptions();
+      return;
+    }
+
+    var fresh = !a.path || a.path === path;
+    badge.textContent = fresh ? '已解析' : '待重新解析';
+    badge.className = 'badge ' + (fresh ? 'ok' : 'warn');
+
+    var h = '<div class="grid">';
+    h += kv('包名', a.package, 'mono');
+    h += kv('版本', str(a.version_name || '—') + ' (' + fmtNum(a.version_code) + ')');
+    h += kv('modules', (Array.isArray(a.modules) && a.modules.length) ? a.modules.join(', ') : '—', 'mono');
+    h += '</div>';
+
+    var chips = '';
+    chips += a.same_build
+      ? '<span class="chip ok" title="与源 APK 同一构建">同构建</span>'
+      : '<span class="chip warn" title="与源 APK 不是同一构建">非同一构建</span>';
+    chips += a.splice_available
+      ? '<span class="chip ok" title="guard 通过，可直改">可 splice</span>'
+      : '<span class="chip warn" title="guard 不满足，只能重建">不可 splice</span>';
+    h += '<div class="chips">' + chips + '</div>';
+    if (a.reason) h += '<div class="empty-note">' + esc(a.reason) + '</div>';
+    if (!fresh) h += '<div class="empty-note">AAB 路径已变更，请重新解析。</div>';
+    el.innerHTML = h;
+    updateGoogleModeOptions();
+  }
+
+  /** 没有 AAB 路径时只允许 reconstruct（auto/splice 无源可改） */
+  function updateGoogleModeOptions() {
+    var sel = $('googleMode');
+    if (!sel) return;
+    var has = !!state.aabPath.trim();
+    for (var i = 0; i < sel.options.length; i++) {
+      var opt = sel.options[i];
+      opt.disabled = !has && opt.value !== 'reconstruct';
+    }
+    sel.value = state.googleMode;
+    $('googleModeHint').textContent = has ? '' : '未选 AAB：仅 reconstruct 可用';
+  }
+
+  /* ========================================================================
+   * 校验
+   * ====================================================================== */
+
+  function validate() {
+    var fieldErrors = {};
+    var issues = [];
+    var enabled = state.channels.filter(function (c) { return c.enabled; });
+
+    if (!state.apkPath.trim()) issues.push('未选择源 APK');
+    if (!state.outputDir.trim()) issues.push('输出目录未填写');
+    if (!enabled.length) issues.push('至少启用一个渠道');
+
+    var seen = {};   // 小写包名 → 渠道 id
+    for (var i = 0; i < enabled.length; i++) {
+      var cfg = enabled[i];
+      var k = function (f) { return fieldKey(cfg.id, f); };
+      var pkg = cfg.package_name.trim();
+
+      if (!pkg) fieldErrors[k('package_name')] = '包名必填';
+      else if (!PKG_RE.test(pkg)) fieldErrors[k('package_name')] = '包名格式不合法';
+      else if (state.source && state.source.package && pkg === state.source.package) fieldErrors[k('package_name')] = '不能与源 APK 包名相同';
+      else if (seen[pkg.toLowerCase()]) fieldErrors[k('package_name')] = '与其他渠道包名重复';
+      if (pkg) seen[pkg.toLowerCase()] = cfg.id;
+
+      if (!cfg.app_name.trim()) fieldErrors[k('app_name')] = '应用名必填';
+      if (!cfg.keystore.path.trim()) fieldErrors[k('ks_path')] = 'keystore 必填';
+      if (!cfg.keystore.alias.trim()) fieldErrors[k('ks_alias')] = 'alias 必填';
+      if (!cfg.keystore.storepass) fieldErrors[k('storepass')] = 'storepass 必填';
+
+      var vc = str(cfg.version_code).trim();
+      if (vc !== '' && !/^\d+$/.test(vc)) fieldErrors[k('version_code')] = '需为整数或留空';
+
+      // 汇总行每渠道只取第一条，避免刷屏
+      for (var j = 0; j < FIELD_ORDER.length; j++) {
+        var msg = fieldErrors[k(FIELD_ORDER[j])];
+        if (msg) { issues.push(cfg.label + '：' + msg); break; }
+      }
+    }
+    return { ok: issues.length === 0, issues: issues, fieldErrors: fieldErrors };
+  }
+
+  /* ========================================================================
+   * 渲染刷新 + 控件联动
+   * ====================================================================== */
+
+  function updateChannelSummaries() {
+    var enabledCount = 0;
+    for (var c = 0; c < state.channels.length; c++) {
+      var cfg = state.channels[c];
+      if (cfg.enabled) enabledCount++;
+      var card = channelCard(cfg.id);
+      if (!card) continue;
+
+      var stateEl = card.querySelector('[data-role="ch-state"]');
+      if (stateEl) {
+        stateEl.textContent = cfg.enabled ? '启用' : '未启用';
+        stateEl.className = 'badge ch-state' + (cfg.enabled ? ' ok' : '');
+      }
+      var fmtEl = card.querySelector('[data-role="ch-fmt"]');
+      if (fmtEl) fmtEl.textContent = FORMAT_LABELS[cfg.format] || cfg.format;
+      var nameEl = card.querySelector('.ch-name');
+      if (nameEl) nameEl.textContent = cfg.label || cfg.id;
+      var pkgEl = card.querySelector('[data-role="ch-pkg"]');
+      if (pkgEl) pkgEl.textContent = cfg.package_name || '';
+
+      // 内联错误：必填类要等用户碰过该字段（或点过开始）才显示；
+      // 格式/重复包名这类「已经填了但填错」的错误立即显示。
+      var errs = card.querySelectorAll('[data-err]');
+      for (var i = 0; i < errs.length; i++) {
+        var slot = errs[i];
+        var f = slot.getAttribute('data-err');
+        var key = fieldKey(cfg.id, f);
+        var msg = state.validation.fieldErrors[key] || '';
+        var show = !!msg && (state.touched[key] || state.attempted || !/必填|未填写/.test(msg));
+        slot.textContent = msg;
+        slot.className = 'ferr' + (show ? ' on' : '');
+        var input = card.querySelector('[data-field="' + f + '"]');
+        if (input) input.classList.toggle('invalid', show);
+      }
+    }
+    var sub = $('chHeadSub');
+    if (sub) sub.textContent = '已启用 ' + enabledCount + ' / ' + state.channels.length;
+  }
+
+  function updateValSummary() {
+    var el = $('valSummary');
+    if (!el) return;
+    var v = state.validation;
+    if (v.ok) {
+      el.textContent = '配置完整，可以开始打包';
+      el.className = 'val-summary ok';
+      el.title = '';
+      return;
+    }
+    var text = v.issues.length
+      ? '待完善：' + v.issues.slice(0, 3).join('；') + (v.issues.length > 3 ? ' 等 ' + v.issues.length + ' 项' : '')
+      : '';
+    el.textContent = text;
+    el.className = 'val-summary' + (text ? ' bad' : '');
+    el.title = v.issues.join('\n');
+  }
+
+  function syncControls() {
+    var busy = state.busy;
+    document.body.classList.toggle('busy', busy);
+
+    var fields = document.querySelectorAll('input,select,textarea');
+    for (var i = 0; i < fields.length; i++) {
+      var el = fields[i];
+      el.disabled = busy || el.getAttribute('data-always-disabled') === '1';
+    }
+
+    var btns = document.querySelectorAll('button');
+    for (var j = 0; j < btns.length; j++) {
+      var b = btns[j];
+      var rule = b.getAttribute('data-rule') || '';
+      var dis = busy;
+      if (b.getAttribute('data-allow-busy') === '1') dis = false;
+      else if (rule === 'run') dis = busy || !state.validation.ok;
+      else if (rule === 'inspect') dis = busy || !state.apkPath.trim();
+      else if (rule === 'pick') dis = busy || state.picking;
+      else if (rule === 'aab-clear') dis = busy || !state.aabPath.trim();
+      else if (rule === 'suggest') dis = busy || !(state.source && state.source.package);
+      if (b.getAttribute('data-always-disabled') === '1') dis = true;
+      b.disabled = dis;
+    }
+
+    $('btnCancel').hidden = !busy;
+  }
+
+  function refresh() {
+    state.validation = validate();
+    updateChannelSummaries();
+    updateValSummary();
+    updateStale();
+    syncBundledBadges();
+    syncControls();
+  }
+
+  /** 路径等于插件自带默认时显示「插件内置」chip */
+  function syncBundledBadges() {
+    var b = state.bundled || {};
+    var apkChip = $('apkBundled');
+    var aabChip = $('aabBundled');
+    if (apkChip) apkChip.hidden = !(b.apk && state.apkPath.trim() === b.apk);
+    if (aabChip) aabChip.hidden = !(b.aab && state.aabPath.trim() === b.aab);
+  }
+
+  function syncGlobalInputs() {
+    $('apkPath').value = state.apkPath;
+    $('aabPath').value = state.aabPath;
+    $('outputDir').value = state.outputDir;
+    $('strictAab').checked = state.strictAab;
+    $('saveProfiles').checked = state.saveProfiles;
+    $('googleMode').value = state.googleMode;
+  }
+
+  /* ========================================================================
+   * 环境 / 日志 / 状态
+   * ====================================================================== */
+
+  function renderEnv() {
+    var card = $('envCard');
+    var keys = Object.keys(state.tools || {});
+    var notes = Array.isArray(state.notes) ? state.notes : [];
+    if (!keys.length && !notes.length) { card.hidden = true; return; }
+    card.hidden = false;
+
+    var okCount = 0;
+    for (var i = 0; i < keys.length; i++) { if (state.tools[keys[i]]) okCount++; }
+    $('envSummary').textContent = keys.length ? '工具 ' + okCount + ' / ' + keys.length + ' 可用' : '';
+
+    var h = '';
+    if (keys.length) {
+      h += '<div class="chips" style="margin-top:0">';
+      for (var j = 0; j < keys.length; j++) {
+        var k = keys[j];
+        h += '<span class="chip ' + (state.tools[k] ? 'ok' : 'err') + '" title="' + esc(k + (state.tools[k] ? '' : ' · 未找到')) + '">' + esc(k) + '</span>';
+      }
+      h += '</div>';
+    }
+    if (notes.length) h += noteList(notes);
+    $('envBody').innerHTML = h;
+  }
+
+  function setStatus(text, kind) {
+    $('statusText').textContent = text;
+    $('statusDot').className = 'dot' + (kind ? ' ' + kind : '');
+  }
+
+  /** 按文本推断日志级别；桥显式给了 level 时以桥为准 */
+  function detectLevel(t) {
+    if (/\[(FAIL|ERROR|FATAL)\]/i.test(t)) return 'error';
+    if (/\[(WARN|WARNING)\]/i.test(t)) return 'warn';
+    return 'info';
+  }
+
+  function pushLog(text, level) {
+    var body = str(text).replace(BRIDGE_PREFIX, '');
+    if (!body) return;
+    var lv = level === 'warn' || level === 'error' ? level : detectLevel(body);
+    var box = $('log');
+    var placeholder = box.querySelector('.empty');
+    if (placeholder) box.removeChild(placeholder);
+
+    var ln = document.createElement('div');
+    ln.className = 'ln' + (lv !== 'info' ? ' ' + lv : '');
+    ln.textContent = body;
+    box.appendChild(ln);
+    while (box.childNodes.length > LOG_LIMIT) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function clearLog() {
+    $('log').innerHTML = '<div class="empty">（暂无日志）</div>';
+  }
+
+  function showErrorBar(msg) {
+    $('errBarText').textContent = str(msg);
+    $('errBar').hidden = false;
+  }
+
+  function hideErrorBar() { $('errBar').hidden = true; }
+
+  function toast(text, level) {
+    if (bridge) { bridge.toast(text, level || 'info'); return; }
+    pushLog(text, level === 'error' ? 'error' : (level === 'warning' ? 'warn' : 'info'));
+  }
+
+  function clearPresetsTimer() {
+    if (presetsTimer) { clearTimeout(presetsTimer); presetsTimer = null; }
+  }
+
+  function scrollMainTo(el) {
+    if (!el) return;
+    var box = $('main');
+    var r = el.getBoundingClientRect();
+    var b = box.getBoundingClientRect();
+    box.scrollTop += (r.top - b.top) - 8;
+  }
+
+  /* ========================================================================
+   * 原生文件/目录选择：回调 → Promise（单等待者）
+   * ====================================================================== */
+
+  function pickPath(kind, options) {
+    return new Promise(function (resolve) {
+      if (!bridge) { resolve(null); return; }
+      if (picker.pending) { toast('已有文件选择框打开，请先完成它', 'warning'); resolve(null); return; }
+      picker.pending = { kind: kind, resolve: resolve };
+      state.picking = true;
+      syncControls();
+      if (kind === 'file') bridge.pickFile(options || {});
+      else bridge.pickDirectory(options || {});
+    });
+  }
+
+  function settlePicker(kind, canceled, path) {
+    var p = picker.pending;
+    if (!p || p.kind !== kind) return;   // 类型不匹配的回包忽略，避免串台
+    picker.pending = null;
+    state.picking = false;
+    syncControls();
+    p.resolve(canceled || !path ? null : String(path));
+  }
+
+  /* ========================================================================
+   * 动作路由
+   * ====================================================================== */
+
+  function startAction(action, params) {
+    if (!bridge || state.busy) return false;
+    hideErrorBar();
+    state.pending = { action: action };
+    state.busy = true;
+
+    if (action === 'presets') {
+      setStatus('加载插件配置…', 'busy');
+      clearPresetsTimer();
+      // 后端入口缺失/卡住时不要让 UI 永久 busy：超时回退到内置渠道定义
+      presetsTimer = setTimeout(function () {
+        if (state.pending && state.pending.action === 'presets') {
+          state.pending = null;
+          state.busy = false;
+          setStatus('预设加载超时', 'warn');
+          showErrorBar('加载插件预设超时，可继续手动配置渠道。');
+          pushLog('加载预设超时，已回退到内置渠道定义', 'warn');
+          refresh();
+        }
+      }, PRESETS_TIMEOUT_MS);
+    } else if (action === 'inspect') {
+      setStatus('解析中…', 'busy');
+    } else if (action === 'save_templates') {
+      setStatus('保存模板…', 'busy');
+    } else if (action === 'pack') {
+      setStatus('打包中…', 'busy');
+    }
+
+    refresh();
+    bridge.run(params);
+    return true;
+  }
+
+  function endBusy() {
+    state.busy = false;
+    refresh();
+  }
+
+  function doInspect() {
+    if (state.busy) return;
+    var apk = state.apkPath.trim();
+    if (!apk) { toast('请先选择源 APK', 'warning'); return; }
+    var params = { action: 'inspect', apk_path: apk };
+    var aab = state.aabPath.trim();
+    if (aab) params.aab_path = aab;
+    startAction('inspect', params);
+  }
+
+  /** 选完 APK/AAB 后自动解析（防抖，避免两次选择触发两次解析） */
+  function scheduleInspect(delay) {
+    if (inspectTimer) { clearTimeout(inspectTimer); inspectTimer = null; }
+    if (!state.apkPath.trim()) return;
+    inspectTimer = setTimeout(function () {
+      inspectTimer = null;
+      if (!state.busy && state.apkPath.trim()) doInspect();
+    }, delay == null ? 400 : delay);
+  }
+
+  function doPack() {
+    if (state.busy) return;
+    state.attempted = true;
+    refresh();
+    if (!state.validation.ok) {
+      toast(state.validation.issues[0] || '配置不完整，请检查渠道设置', 'error');
+      return;
+    }
+    if (!bridge) return;
+
+    clearLog();
+    $('results').innerHTML = '';
+
+    var channels = [];
+    var badMeta = 0;
+    for (var i = 0; i < state.channels.length; i++) {
+      var cfg = state.channels[i];
+      var parsed = parseMetadata(cfg.metadataText);
+      badMeta += parsed.bad;
+      channels.push(channelPayload(cfg, parsed.items));
+    }
+    if (badMeta) pushLog('忽略 ' + badMeta + ' 行无法解析的 meta-data（应形如 name=value）', 'warn');
+
+    startAction('pack', {
+      action: 'pack',
+      apk_path: state.apkPath.trim(),
+      aab_path: state.aabPath.trim(),
+      output_dir: state.outputDir.trim(),
+      google_mode: state.googleMode,
+      strict_aab_check: !!state.strictAab,
+      save_profiles: !!state.saveProfiles,
+      templates: state.templates,
+      channels: channels
+    });
+  }
+
+  function doCancel() {
+    if (!state.busy || !bridge) return;
+    $('btnCancel').disabled = true;
+    setStatus('取消中…', 'warn');
+    pushLog('请求取消…', 'warn');
+    bridge.cancel();
+  }
+
+  /** pack 的渠道配置对象（字段名固定，见协议） */
+  function channelPayload(cfg, metadata) {
+    var vcRaw = str(cfg.version_code).trim();
+    var vc = vcRaw === '' ? null : Number(vcRaw);
+    return {
+      id: cfg.id,
+      label: (cfg.label || cfg.id).trim() || cfg.id,
+      template_id: cfg.template_id || '',
+      enabled: !!cfg.enabled,
+      package_name: cfg.package_name.trim(),
+      app_name: cfg.app_name.trim(),
+      version_code: isFinite(vc) ? vc : null,
+      version_name: cfg.version_name.trim() || null,
+      icon_path: cfg.icon_path.trim(),
+      format: cfg.format,
+      keystore: {
+        path: cfg.keystore.path.trim(),
+        alias: cfg.keystore.alias.trim(),
+        storepass: cfg.keystore.storepass,
+        keypass: cfg.keystore.keypass
+      },
+      metadata: metadata.map(function (m) { return { name: m.name, value: m.value }; }),
+      permissions: parsePermissions(cfg.permissionsText),
+      asset: { path: cfg.assetPath.trim(), content: cfg.assetContent },
+      assets: (cfg.assets || []).map(function (a) {
+        return { path: str(a && a.path), content: str(a && a.content) };
+      }),
+      rename_authorities: !!cfg.rename_authorities,
+      rename_permissions: !!cfg.rename_permissions,
+      remove_shared_uid: !!cfg.remove_shared_uid
+    };
+  }
+
+  /** 解析 meta-data 文本：每行 name=value，按第一个 = 切分；空行 / # 注释忽略 */
+  function parseMetadata(text) {
+    var out = [];
+    var bad = 0;
+    var lines = str(text).split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line || line.charAt(0) === '#') continue;
+      var at = line.indexOf('=');
+      if (at < 0) { bad++; continue; }
+      var name = line.slice(0, at).trim();
+      if (!name) { bad++; continue; }
+      out.push({ name: name, value: line.slice(at + 1).trim() });
+    }
+    return { items: out, bad: bad };
+  }
+
+  /** 解析额外权限：每行一个；空行 / # 注释忽略；去重 */
+  function parsePermissions(text) {
+    var out = [];
+    var lines = str(text).split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var p = lines[i].trim();
+      if (!p || p.charAt(0) === '#') continue;
+      if (out.indexOf(p) < 0) out.push(p);
+    }
+    return out;
+  }
+
+  /* ========================================================================
+   * 结果处理
+   * ====================================================================== */
+
+  function onResult(payload) {
+    payload = payload || {};
+    clearPresetsTimer();
+
+    // 宿主取消路径：{success:false, cancelled:true}，没有 action 字段
+    if (payload.cancelled) {
+      var was = state.pending ? state.pending.action : '';
+      state.pending = null;
+      setStatus('已取消', 'warn');
+      pushLog('运行已取消', 'warn');
+      endBusy();
+      if (was === 'pack') toast('打包已取消', 'warning');
+      return;
+    }
+
+    // 迟到的结果：action 与当前 pending 不符 → 直接丢弃，避免污染当前动作
+    if (state.pending && payload.action && payload.action !== state.pending.action) return;
+    if (!state.pending) return;   // 出错/取消后已复位，迟到的回包不再处理
+
+    var which = state.pending.action;
+    state.pending = null;
+    state.busy = false;
+
+    if (which === 'presets') handlePresets(payload);
+    else if (which === 'inspect') handleInspect(payload);
+    else if (which === 'save_templates') handleSaveTemplates(payload);
+    else if (which === 'pack') handlePack(payload);
+
+    refresh();
+  }
+
+  function onError(message) {
+    var msg = str(message);
+    clearPresetsTimer();
+    state.pending = null;
+    state.busy = false;
+    pushLog('[ERROR] ' + msg, 'error');
+    showErrorBar('执行失败：' + msg);
+    setStatus('出错', 'err');
+    refresh();
+    toast('执行失败：' + msg, 'error');
+  }
+
+  /**
+   * 预设只在拿到 onMeta 之后拉一次（协议要求），但宿主异常导致 meta 不来时
+   * 也不能让 UI 永远停在空表单 —— init 里挂了一个 1.5s 兜底。
+   */
+  function ensurePresets() {
+    if (state.presetsRequested || state.busy || !bridge) return;
+    if (startAction('presets', { action: 'presets' })) state.presetsRequested = true;
+  }
+
+  function onMeta(info) {
+    state.meta = info || {};
+    var name = str(state.meta.display_name) || str(state.meta.name) || '白包打包';
+    $('pluginName').textContent = name;
+    document.title = name;
+
+    var bits = [];
+    if (state.meta.version) bits.push('v' + state.meta.version);
+    if (state.meta.author) bits.push(str(state.meta.author));
+    var line = bits.join(' · ');
+    if (state.meta.description) line += (line ? ' · ' : '') + str(state.meta.description);
+    $('pluginMeta').textContent = line;
+    $('pluginMeta').title = str(state.meta.description);
+
+    if (metaFallbackTimer) { clearTimeout(metaFallbackTimer); metaFallbackTimer = null; }
+    ensurePresets();
+  }
+
+  function handlePresets(p) {
+    var failed = !!p && p.success === false;
+    if (failed) showErrorBar('预设加载失败：' + fmtMsg(p.error || p.message || '未知错误'));
+
+    state.presets = p || null;
+    state.notes = (p && Array.isArray(p.notes)) ? p.notes : [];
+    state.tools = (p && p.tools && typeof p.tools === 'object') ? p.tools : {};
+
+    // 插件自带 assets/base.apk|base.aab 时自动填入；用户仍可改选/清空
+    var bundled = (p && p.bundled && typeof p.bundled === 'object') ? p.bundled : {};
+    state.bundled = bundled;
+    if (!state.apkPath.trim() && typeof bundled.apk === 'string' && bundled.apk) {
+      state.apkPath = bundled.apk;
+    }
+    if (!state.aabPath.trim() && typeof bundled.aab === 'string' && bundled.aab) {
+      state.aabPath = bundled.aab;
+    }
+
+    var d = (p && p.defaults && typeof p.defaults === 'object') ? p.defaults : {};
+    var sp = (p && p.saved_profiles && typeof p.saved_profiles === 'object') ? p.saved_profiles : null;
+
+    // 合并顺序：saved profile > preset default（源 APK 推导在 inspect 后补空位）
+    if (sp && typeof sp.output_dir === 'string' && sp.output_dir) state.outputDir = sp.output_dir;
+    else if (typeof d.output_dir === 'string' && d.output_dir) state.outputDir = d.output_dir;
+
+    var gm = sp && typeof sp.google_mode === 'string' ? sp.google_mode : str(d.google_mode);
+    // 文档里的 rebuild 与协议里的 reconstruct 同义：统一成协议值
+    if (gm === 'rebuild') gm = 'reconstruct';
+    state.googleMode = (gm === 'splice' || gm === 'reconstruct') ? gm : 'auto';
+
+    state.strictAab = typeof d.strict_aab_check === 'boolean' ? d.strict_aab_check : true;
+    state.saveProfiles = typeof d.save_profiles === 'boolean' ? d.save_profiles : true;
+
+    state.templates = (p && Array.isArray(p.templates) && p.templates.length)
+      ? p.templates
+      : FALLBACK_TEMPLATES.map(function (t) { return JSON.parse(JSON.stringify(t)); });
+    if (!state.tplId || !templateById(state.tplId)) state.tplId = state.templates[0].id;
+    renderTemplates();
+
+    // presets 响应前用户可能已手动加过自定义渠道；重建时保留（同 id 以 saved 为准）
+    var keepCustom = state.channels.filter(function (c) { return c.custom; });
+    buildChannels();
+    keepCustom.forEach(function (c) {
+      if (!state.channels.some(function (x) { return x.id === c.id; })) {
+        state.channels.push(c);
+      }
+    });
+    renderChannels();
+    renderEnv();
+    syncGlobalInputs();
+    updateGoogleModeOptions();
+    renderSource();
+    renderAab();
+    refresh();
+    setStatus(failed ? '预设加载失败（可手动配置）' : '就绪', failed ? 'warn' : 'ok');
+    maybeAutoInspect();
+  }
+
+  /**
+   * 插件自带 assets/base.apk 且路径未被用户改过时，自动解析一次：
+   * 「导入即用」不必再点解析；外部选择仍保留手动解析（可能要先选 AAB）。
+   */
+  function maybeAutoInspect() {
+    if (state.autoInspected) return;
+    if (!state.bundled.apk || state.apkPath.trim() !== state.bundled.apk) return;
+    if (state.source) return;
+    state.autoInspected = true;
+    setTimeout(function () {
+      if (!state.busy && state.apkPath.trim() && !state.source) doInspect();
+    }, 30);
+  }
+
+  function handleInspect(p) {
+    if (!p || p.success === false) {
+      showErrorBar('解析失败：' + fmtMsg((p && (p.error || p.message)) || '未知错误'));
+      setStatus('解析失败', 'err');
+      return;
+    }
+    state.source = p.source || null;
+    state.aab = p.aab || null;
+    state.aabChecked = true;
+    state.inspectWarnings = Array.isArray(p.warnings) ? p.warnings : [];
+
+    renderSource();
+    renderAab();
+    if (state.source) autofillChannels();
+    setStatus('解析完成', 'ok');
+    if (state.source && state.source.package) {
+      pushLog('解析完成：' + state.source.package + ' ' + str(state.source.version_name || ''), 'info');
+    }
+  }
+
+  function handleSaveTemplates(p) {
+    if (!p || p.success === false) {
+      showErrorBar('模板保存失败：' + fmtMsg((p && (p.error || p.message)) || '未知错误'));
+      setStatus('模板保存失败', 'err');
+      return;
+    }
+    setStatus('模板已保存', 'ok');
+    toast('模板已保存', 'success');
+  }
+
+  function handlePack(p) {
+    if (!p || p.success === false) {
+      showErrorBar('打包失败：' + fmtMsg((p && (p.error || p.message)) || '未知错误'));
+    }
+    renderResults(p || {});
+    refresh();
+
+    var items = (p && Array.isArray(p.items)) ? p.items : [];
+    var failedItems = items.filter(function (it) { return it && it.error; }).length;
+    var globalErrs = (p && Array.isArray(p.errors)) ? p.errors.length : 0;
+
+    if (failedItems || globalErrs) {
+      setStatus('打包完成（有失败）', 'err');
+      toast('打包完成，但有 ' + (failedItems || globalErrs) + ' 个失败', 'warning');
+    } else {
+      setStatus('打包完成', 'ok');
+      toast('打包完成：' + items.length + ' 项', 'success');
+    }
+    scrollMainTo($('results'));
+  }
+
+  /** 源 APK 解析后补空字段；只覆盖「空」或「上一轮自动填的值」，不抢用户手填 */
+  function autofillChannels() {
+    var src = state.source;
+    if (!src) return;
+    for (var i = 0; i < state.channels.length; i++) {
+      var cfg = state.channels[i];
+      var sugg = {
+        package_name: src.package ? src.package + '.' + cfg.id : '',
+        app_name: src.label || '',
+        version_code: src.version_code == null ? '' : String(src.version_code),
+        version_name: src.version_name == null ? '' : String(src.version_name)
+      };
+      var fields = ['package_name', 'app_name', 'version_code', 'version_name'];
+      for (var f = 0; f < fields.length; f++) {
+        var name = fields[f];
+        var cur = str(cfg[name]).trim();
+        var prevAuto = cfg.auto[name];
+        if (cur === '' || (prevAuto !== undefined && cur === str(prevAuto).trim())) {
+          cfg[name] = sugg[name];
+          cfg.auto[name] = sugg[name];
+        }
+      }
+    }
+    syncChannelInputs();
+  }
+
+  /* ========================================================================
+   * 结果渲染
+   * ====================================================================== */
+
+  function resPathRow(label, path, suffix) {
+    if (!path) return '';
+    return '<div class="res-path">' +
+      '<span class="rp-lbl">' + esc(label) + '</span>' +
+      '<span class="rp" title="' + esc(path) + '">' + esc(path) + '</span>' +
+      (suffix ? '<span class="rp-meta">' + esc(suffix) + '</span>' : '') +
+      '<button type="button" class="mini" data-open="' + esc(path) + '">打开所在目录</button>' +
+      '</div>';
+  }
+
+  function verifyBadges(v) {
+    if (!v || typeof v !== 'object') return '';
+    var chips = '';
+    for (var i = 0; i < VERIFY_KEYS.length; i++) {
+      var k = VERIFY_KEYS[i];
+      var val = v[k];
+      if (val == null) continue;
+      var ok = val === 'ok' || val === true;
+      chips += '<span class="chip ' + (ok ? 'ok' : 'err') + '" title="' + esc(k + ': ' + fmtMsg(val)) + '">' + esc(k) + '</span>';
+    }
+    return chips ? '<div class="chips verify">' + chips + '</div>' : '';
+  }
+
+  function itemHtml(it) {
+    it = it || {};
+    var ok = !it.error;
+    var h = '<div class="res-item' + (ok ? '' : ' bad') + '">';
+    h += '<div class="res-head">';
+    h += '<span class="badge ' + (ok ? 'ok' : 'err') + '">' + (ok ? '成功' : '失败') + '</span>';
+    h += '<span class="res-title">' + esc(it.label || it.channel || '未知渠道') + '</span>';
+    if (it.format) h += '<span class="chip">' + esc(FORMAT_LABELS[it.format] || it.format) + '</span>';
+    if (it.aab_mode) h += '<span class="chip">AAB ' + esc(it.aab_mode) + '</span>';
+    if (it.duration_ms != null) h += '<span class="res-dur">' + esc(fmtDuration(it.duration_ms)) + '</span>';
+    h += '</div>';
+
+    h += '<div class="grid">';
+    h += kv('包名', it.package_name, 'mono');
+    h += kv('应用名', it.app_name);
+    h += kv('版本', str(it.version_name || '—') + ' (' + fmtNum(it.version_code) + ')');
+    h += '</div>';
+
+    h += resPathRow('APK', it.apk_path, it.apk_path ? fmtSize(it.size_apk) : '');
+    h += resPathRow('AAB', it.aab_path, it.aab_path ? fmtSize(it.size_aab) : '');
+
+    var chips = '';
+    if (it.sha256_apk) chips += '<span class="chip mono" title="' + esc(it.sha256_apk) + '">apk ' + esc(shortHash(it.sha256_apk)) + '</span>';
+    if (it.sha256_aab) chips += '<span class="chip mono" title="' + esc(it.sha256_aab) + '">aab ' + esc(shortHash(it.sha256_aab)) + '</span>';
+    if (it.signer_sha256) chips += '<span class="chip mono" title="' + esc(it.signer_sha256) + '">签名 ' + esc(shortHash(it.signer_sha256)) + '</span>';
+    if (it.icon && (Array.isArray(it.icon.replaced) || Array.isArray(it.icon.skipped))) {
+      var rep = Array.isArray(it.icon.replaced) ? it.icon.replaced : [];
+      var skip = Array.isArray(it.icon.skipped) ? it.icon.skipped : [];
+      var title = [];
+      if (rep.length) title.push('已替换: ' + rep.join('\n'));
+      if (skip.length) title.push('已跳过: ' + skip.join('\n'));
+      chips += '<span class="chip' + (skip.length ? ' warn' : '') + '" title="' + esc(title.join('\n')) + '">' +
+        '图标 ' + rep.length + (skip.length ? ' / 跳过 ' + skip.length : '') + '</span>';
+    }
+    if (chips) h += '<div class="chips">' + chips + '</div>';
+
+    h += verifyBadges(it.verify);
+    h += noteList(it.warnings);
+    if (it.error) h += '<div class="res-err">' + esc(fmtMsg(it.error)) + '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  function renderResults(p) {
+    var items = Array.isArray(p.items) ? p.items : [];
+    var errs = Array.isArray(p.errors) ? p.errors : [];
+    var warns = Array.isArray(p.warnings) ? p.warnings : [];
+    var html = '';
+
+    if (p.report_path) {
+      html += '<div class="card"><div class="card-h">报告文件</div>' +
+        resPathRow('报告', p.report_path, '') + '</div>';
+    }
+    if (items.length) {
+      html += '<div class="card"><div class="card-h">打包结果 <span class="sub">' + items.length + ' 项</span></div>';
+      for (var i = 0; i < items.length; i++) html += itemHtml(items[i]);
+      html += '</div>';
+    }
+    if (errs.length) {
+      html += '<div class="card" style="border-color:var(--err)"><div class="card-h">错误</div>' +
+        noteList(errs, 'err') + '</div>';
+    }
+    if (warns.length) {
+      html += '<div class="card"><div class="card-h">警告</div>' + noteList(warns) + '</div>';
+    }
+    if (!html) html = '<div class="card"><div class="empty-note">没有返回内容。</div></div>';
+    $('results').innerHTML = html;
+  }
+
+  /* ========================================================================
+   * 选择 / 建议
+   * ====================================================================== */
+
+  function pickApk() {
+    pickPath('file', {
+      title: '选择基础 APK',
+      filters: [{ name: 'APK', extensions: ['apk'] }]
+    }).then(function (path) {
+      if (!path) return;
+      state.apkPath = path;
+      $('apkPath').value = path;
+      refresh();
+      // 选完 APK 自动解析，省一次点击；仍可点「解析」重新解析
+      scheduleInspect(400);
+    });
+  }
+
+  function pickAab() {
+    pickPath('file', {
+      title: '选择源 AAB（可选）',
+      filters: [{ name: 'AAB', extensions: ['aab'] }]
+    }).then(function (path) {
+      if (!path) return;
+      state.aabPath = path;
+      state.aabChecked = false;
+      $('aabPath').value = path;
+      renderAab();
+      refresh();
+      // APK 已在则顺手解析；防抖便于先选完 AAB
+      if (state.apkPath.trim()) scheduleInspect(60);
+    });
+  }
+
+  function pickOutputDir() {
+    pickPath('dir', { title: '选择输出目录' }).then(function (path) {
+      if (!path) return;
+      state.outputDir = path;
+      $('outputDir').value = path;
+      refresh();
+    });
+  }
+
+  function pickIcon(cfg) {
+    pickPath('file', {
+      title: '选择渠道图标（PNG）',
+      filters: [{ name: 'PNG 图片', extensions: ['png'] }]
+    }).then(function (path) {
+      if (!path) return;
+      cfg.icon_path = path;
+      syncChannelInputs();
+      refresh();
+    });
+  }
+
+  function pickKeystore(cfg) {
+    pickPath('file', {
+      title: '选择签名密钥库',
+      filters: [{ name: '密钥库', extensions: ['jks', 'keystore', 'ks', 'p12', 'pfx'] }]
+    }).then(function (path) {
+      if (!path) return;
+      cfg.keystore.path = path;
+      syncChannelInputs();
+      refresh();
+    });
+  }
+
+  function suggestPackage(cfg) {
+    if (!state.source || !state.source.package) {
+      toast('请先解析源 APK', 'warning');
+      return;
+    }
+    cfg.package_name = state.source.package + '.' + cfg.id;
+    state.touched[fieldKey(cfg.id, 'package_name')] = true;
+    syncChannelInputs();
+    refresh();
+  }
+
+  /* ========================================================================
+   * 事件绑定
+   * ====================================================================== */
+
+  function onChannelField(e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+    var chId = el.getAttribute('data-ch');
+    var field = el.getAttribute('data-field');
+    if (!chId || !field) return;
+    var cfg = channelById(chId);
+    if (!cfg) return;
+
+    state.touched[fieldKey(chId, field)] = true;
+    if (el.type === 'checkbox') assign(cfg, field, el.checked);
+    else assign(cfg, field, el.value);
+    if (field === 'template_id') {
+      var tpl = templateById(cfg.template_id);
+      if (tpl) applyTemplateToChannel(cfg, tpl);
+      syncChannelInputs();
+    }
+    refresh();
+    if (field === 'enabled') {
+      var card = channelCard(chId);
+      if (card && el.checked) card.open = true;
+    }
+  }
+
+  function onChannelClick(e) {
+    var target = e.target;
+    var btn = target && target.closest ? target.closest('button[data-act]') : null;
+    if (!btn) return;
+    var cfg = channelById(btn.getAttribute('data-ch'));
+    if (!cfg || state.busy || state.picking) return;
+    var act = btn.getAttribute('data-act');
+    if (act === 'suggest') suggestPackage(cfg);
+    else if (act === 'pick-icon') pickIcon(cfg);
+    else if (act === 'pick-keystore') pickKeystore(cfg);
+    else if (act === 'apply-template') {
+      var tpl = templateById(cfg.template_id);
+      if (!tpl) { toast('先选择一个配置模板', 'warning'); return; }
+      applyTemplateToChannel(cfg, tpl);
+      syncChannelInputs();
+      refresh();
+      toast('已套用模板：' + tpl.name, 'success');
+    }
+    else if (act === 'remove') removeCustomChannel(cfg);
+  }
+
+  function bindEvents() {
+    $('apkPath').addEventListener('input', function () { state.apkPath = this.value; refresh(); });
+    $('aabPath').addEventListener('input', function () {
+      state.aabPath = this.value;
+      state.aabChecked = false;   // 路径一变，旧的 AAB 解析结果就不作数了
+      renderAab();
+      refresh();
+      scheduleInspect(900);       // 手输路径防抖后自动解析
+    });
+    $('outputDir').addEventListener('input', function () { state.outputDir = this.value; refresh(); });
+    $('strictAab').addEventListener('change', function () { state.strictAab = !!this.checked; });
+    $('saveProfiles').addEventListener('change', function () { state.saveProfiles = !!this.checked; });
+    $('googleMode').addEventListener('change', function () { state.googleMode = this.value; });
+
+    $('btnPickApk').addEventListener('click', pickApk);
+    $('btnPickAab').addEventListener('click', pickAab);
+    $('btnTplNew').addEventListener('click', newTemplate);
+    $('btnTplSave').addEventListener('click', saveTemplate);
+    $('btnTplDelete').addEventListener('click', deleteTemplate);
+    $('btnTplApplyAll').addEventListener('click', applyTemplateAll);
+    $('btnTplAddAsset').addEventListener('click', function () { addTplAssetRow(); });
+    $('tplAssets').addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-tpl-asset-del]') : null;
+      if (!btn) return;
+      var row = btn.closest('[data-asset]');
+      if (row && row.parentNode) row.parentNode.removeChild(row);
+    });
+    $('tplSelect').addEventListener('change', function () {
+      state.tplId = this.value;
+      loadTemplateForm(templateById(state.tplId));
+    });
+    $('btnTplPickIcon').addEventListener('click', function () {
+      pickPath('file', { title: '选择模板图标（PNG）', filters: [{ name: 'PNG', extensions: ['png'] }] })
+        .then(function (path) { if (path) $('tplIcon').value = path; });
+    });
+    $('btnTplPickKs').addEventListener('click', function () {
+      pickPath('file', { title: '选择模板 keystore', filters: [{ name: 'Keystore', extensions: ['jks', 'keystore', 'p12', 'pfx'] }] })
+        .then(function (path) { if (path) $('tplKsPath').value = path; });
+    });
+    $('btnClearAab').addEventListener('click', function () {
+      state.aabPath = '';
+      state.aabChecked = false;
+      syncGlobalInputs();
+      renderAab();
+      refresh();
+      scheduleInspect(300);
+    });
+    $('btnPickOut').addEventListener('click', pickOutputDir);
+    $('btnInspect').addEventListener('click', doInspect);
+    $('btnAddChannel').addEventListener('click', addCustomChannel);
+    $('btnRun').addEventListener('click', doPack);
+    $('btnCancel').addEventListener('click', doCancel);
+    $('btnClearLog').addEventListener('click', clearLog);
+    $('errBarClose').addEventListener('click', hideErrorBar);
+
+    // 渠道卡是动态重建的 → 事件统一委托在容器上
+    $('chGrid').addEventListener('input', onChannelField);
+    $('chGrid').addEventListener('change', onChannelField);
+    $('chGrid').addEventListener('click', onChannelClick);
+
+    // 结果里的「打开所在目录」：reveal=true 让资源管理器定位文件
+    $('results').addEventListener('click', function (e) {
+      var t = e.target;
+      var btn = t && t.closest ? t.closest('button[data-open]') : null;
+      if (!btn) return;
+      var p = btn.getAttribute('data-open');
+      if (p && bridge) bridge.openPath(p, true);
+    });
+  }
+
+  /* ========================================================================
+   * 启动
+   * ====================================================================== */
+
+  function init() {
+    // 先用内置渠道定义就能渲染完整表单：presets 失败/超时也不至于空白
+    state.templates = FALLBACK_TEMPLATES.map(function (t) { return JSON.parse(JSON.stringify(t)); });
+    state.tplId = state.templates[0].id;
+    renderTemplates();
+    buildChannels();
+    renderChannels();
+    renderEnv();
+    renderSource();
+    renderAab();
+    clearLog();
+    syncGlobalInputs();
+    bindEvents();
+    refresh();
+    updateGoogleModeOptions();
+
+    if (!bridge) {
+      showErrorBar('未检测到插件桥：请从「插件」页面打开本工具。');
+      setStatus('不可用', 'err');
+      return;
+    }
+
+    // 先注册回调（含 onMeta），再主动 getMeta，最后加载 presets
+    bridge.onLog(function (text, level) { pushLog(text, level); });
+    bridge.onResult(onResult);
+    bridge.onError(onError);
+    bridge.onMeta(onMeta);
+    bridge.onFile(function (canceled, filePath) { settlePicker('file', canceled, filePath); });
+    bridge.onDir(function (canceled, dirPath) { settlePicker('dir', canceled, dirPath); });
+
+    bridge.getMeta();
+    // 正常路径是 onMeta → ensurePresets；meta 没回来时兜底，避免永远停在空表单
+    metaFallbackTimer = setTimeout(function () {
+      metaFallbackTimer = null;
+      ensurePresets();
+    }, 1500);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

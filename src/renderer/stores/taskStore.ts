@@ -34,6 +34,8 @@ export interface Task {
   finishedAt: number | null
   taskDir: string
   deviceLabel?: string
+  /** File size in bytes when known (local stat / download result). */
+  fileSize?: number
 }
 
 export type TaskEvent =
@@ -202,10 +204,11 @@ export const useTaskStore = defineStore('task', () => {
     ),
   )
 
-  function createTask(partial: Pick<Task, 'source' | 'url' | 'filePath' | 'fileName' | 'operation' | 'operationLabel'>): Task {
+  function createTask(partial: Pick<Task, 'source' | 'url' | 'filePath' | 'fileName' | 'operation' | 'operationLabel' | 'fileSize'>): Task {
     const task: Task = {
       id: nextId++,
       ...partial,
+      fileSize: partial.fileSize ?? 0,
       // Always start queued — TaskExecutionService pulls tasks into execution
       // respecting the global concurrency limit (default 3).
       status: 'queued',
@@ -268,6 +271,9 @@ export const useTaskStore = defineStore('task', () => {
         break
       case 'download_complete':
         if (payload?.file_path) updates.filePath = payload.file_path
+        // The download result carries the final byte size; keep it for the
+        // "信息与日志" tab (local tasks get it from getFileStats at create time).
+        if (payload?.size) updates.fileSize = payload.size
         updates.progress = 100
         break
       case 'start_operation':
@@ -292,6 +298,8 @@ export const useTaskStore = defineStore('task', () => {
         updates.error = ''
         // Accept any of the backend's payload shapes (output_dir / output_apk / apk_path)
         updates.outputPath = payload?.output_dir || payload?.output_apk || payload?.apk_path || ''
+        // Analyze payloads carry the inspected file size; keep it when available.
+        if (payload?.file_size) updates.fileSize = payload.file_size
         // For analyze, PackagePage already converted payload → HTML via renderApkInfo
         updates.result = payload?.result ?? ''
         // Keep the raw analyze payload alongside the HTML so the report can be

@@ -1,10 +1,12 @@
 """
 Contract tests for the plugin framework (post-automation-extraction).
 
-World: plugins are EXTERNAL .py files for outside tools (jadx, scrcpy, ...).
+World: plugins are EXTERNAL .py files for outside tools (jadx, scrcpy, ...)
+or directory packages (``manifest.json`` + entry, see ``docs/PLUGIN_PACKAGE.md``).
 They live in the user plugin dir ``BT_PLUGINS_DIR`` (scanned FIRST) or in the
-app-side ``app/plugins/builtin/`` dir, which now ships **empty** — no example
-plugins are bundled. Same-name user plugins override builtin ones.
+app-side ``app/plugins/builtin/`` dir, which is currently empty (no flat
+``.py`` or package-form examples bundled). Same-name user plugins override
+builtin ones.
 ``adb_auto`` is no longer a plugin — automation runs go through the
 dedicated ``automation.run`` handler.
 """
@@ -48,7 +50,7 @@ def _write_plugin(directory, name, body):
 
 class TestDiscovery:
     def test_builtin_dir_ships_no_examples(self):
-        """内建目录不带任何示例插件（只由 _ensure_dirs 建出空目录）。"""
+        """内建目录不带任何平铺 .py 示例插件（只由 _ensure_dirs 建出目录；包目录形式的插件不受此断言影响）。"""
         mgr = PluginManager.instance()
         assert os.path.isdir(mgr.builtin_dir)
         assert [f for f in os.listdir(mgr.builtin_dir) if f.endswith(".py")] == []
